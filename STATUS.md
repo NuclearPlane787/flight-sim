@@ -610,3 +610,71 @@ Checked OK by the reviewer:
 - **For the public repository:** the absolute `/Users/<name>/…` paths in `tools/bake_common.py` and six `tests/browser-*.mjs` are now built from `__file__` and `import.meta.url`. All four checked resolve to `Claude outputs/flight-sim`.
 - **In the browser pane on Shane's Mac** (`localhost:8001`): the game loads to Flight setup with no console errors, and both version labels read `Flight Sim v0.1.0 · CL#261031`.
 - **Next:** Shane pushes v0.1.0 (`sh tools/push.sh v0.1.0`), then whatever he picks for v0.1.1. The score fix is a candidate.
+
+## 2026-10-31, afternoon: v0.1.1 (Cowork session)
+
+Shane, after pushing v0.1.0: "Let's work on some subupdates. I saw some taxiways at Incheon airport that were z-pinching the hell out of each other. Also, the cockpit windows of the A321 look strange ... let's try to fix that." He also asked for a main menu like Satisfactory's and scenarios. Those went to v0.2.0 (see ROADMAP), with two questions open.
+
+- **Incheon's taxiways** (`src/world/apron.js`, `src/world/apron-geom.js`):
+  - **The cause:** the pavement mesh drew concrete taxilanes and asphalt taxiways at the same height (the ground is flat at 7.0 m there) and with the same pull towards the camera (`PULL.taxi`). So where they overlap, the depth test picked a different one per pixel, in jagged wedges. RKSI has 55 taxilane ends outside aprons that sit on a taxiway.
+  - **The fix:**
+    - The pavement doesn't write depth any more, and draws after the terrain and the runways (`renderOrder = 1`).
+    - Its triangles go in a fixed order, each drawn over the last: taxilanes, taxiways, then aprons and stand pads.
+    - Nothing drawn later needs the pavement's depth: paint, shadows, the taxi route and lights are all transparent and sit on top.
+  - **Also fixed:** `strokeTriangles()` skipped the join wedge for bends under about 2°. That left a gap on the outside of each slight bend, up to 35 cm at the edge of a 23 m taxiway, which showed as hairlines across taxiways.
+    - Now every bend gets its wedge.
+    - New test in `tests/apron.test.mjs`; it fails with the old threshold (checked).
+  - **Seen in the browser pane** at RKSI (−93333, 162373):
+    - before: `v011-taxiway-before.jpg`, `v011-taxiway-before-close.jpg`, `v011-taxiway-bend-gaps-before.jpg`;
+    - after: `v011-taxiway-after.jpg`, `v011-taxiway-after-close.jpg`, `v011-taxiway-after-zoom.jpg`.
+  - Also looked at: an apron with a jet bridge, a parked aircraft with its shadow, and Jeju's runways. Nothing else changed.
+- **The cockpit windows** (new `src/cockpit-windows.js`; `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`):
+  - **The cause:** the six windows were polygons with straight edges in the fuselage's (x, θ) parameters, so the edges came out curved on the nose. The windshield was also narrow at the top. From the Captain's seat, its side post ran from about 15° left at the bottom to straight ahead at the top, across the view.
+  - **The new design:**
+    - Each window is designed from the Captain's eye: its corners are directions (azimuth, elevation), and each edge is where the plane through the eye and its two corners cuts the nose. So every frame is straight from the seat; the right side mirrors it for the First Officer.
+    - The windshield's inboard corners sit on the centre post (body y = ±0.05 m), joined along the crown.
+    - Angles from the Captain's eye: the windshield runs from the centre post to 40–44° left, the sliding window 48–90°, and the rear window 95–124°, narrower at the top. Sills are 17–24° below the eye, tops 12–20° above.
+  - **Outside:**
+    - The glass is geometry on the nose bone (`windowGlass()`): triangulated, split to 12 cm and set 6 mm proud of the skin. Its edges are crisp at any distance; the 2048-px atlas gave about 46 px per metre along the fuselage.
+    - The atlas still paints the window dark (so the glass and the skin can't flicker against each other far away) with a 3 px dark frame.
+    - The glass hides with the nose in the seat views.
+  - **The cockpit shell's alpha map** covers only the upper half (v = θ / 180°, clamped), so the cut-out edges have twice the resolution.
+  - **Screenshots:**
+    - `v011-windows-three-quarter.jpg`, `v011-windows-front.jpg` and `v011-windows-side.jpg` (outside);
+    - `v011-windows-captain.jpg`, `v011-windows-captain-left.jpg` and `v011-windows-fo.jpg` (the seats);
+    - the old ones for comparison: `aircraft-nose.png`, `aircraft-captain.png`.
+- **The landing score** (`src/score.js`, `src/main.js`, `src/ui/score-panel.js`):
+  - **Which runway:** `landingRunway()` picks the runway of the touchdown, whichever it is, not the planned one. That's the runway whose pavement holds the touchdown point (with 2 m of grace), or failing that one within 60 m of it, lined up within 45°; at a crossing, the better lined-up one.
+  - **Off a runway** (a taxiway or an apron; grass at speed is already a crash): points 0, grade F, the part "On a runway: no", and the verdict "That wasn't a runway." The logbook entry stores `offRunway`.
+  - **Ceilings on every part** (`PENALTY` in `score.js`):
+    - vertical speed 50: nothing from 60 to 250 ft/min, 30 at 600, 50 at 900;
+    - peak g 15: from 1.9 g up to 2.6 g;
+    - the touchdown point 35: ±150 m from the aiming point is free, long costs up to 20 (at 650 m), short up to 20, and short of the threshold 15 more;
+    - the centreline 20: from 3 m to 16.3 m;
+    - bank 15: from 3° to 8°;
+    - pitch 15;
+    - bounces 25, at 10 each.
+  - **Peak g** is now the worst touchdown g: the sim's filtered value at the first arrival and at any bounce. It used to include the raw load factor every frame through the whole rollout.
+  - **The score card and the logbook** use the touchdown's runway. They used to use the one under the aircraft when the rollout ended.
+  - **The overnight test landings, rescored:**
+    - 361 ft/min at 2.04 g: D 59 → B 87;
+    - 392 ft/min at 2.16 g: D 51 → B 82;
+    - a firm, long keyboard landing (740 ft/min, 2.5 g, 500 m long): 0 → F 29.
+  - **Shane's 0/100:** most likely the old uncapped penalties adding up (a firm, long touchdown loses about 45 + 36–56 + 20–30). The wrong-runway fallback is the other candidate. Both are fixed.
+  - New `tests/score.test.mjs` (6 tests): runway picking, crossings and margins, ceilings, peak g, bounces, off-runway.
+- **Checks:**
+  - `node --test tests/*.test.mjs` through the guard (VM, Node 22): **161 pass** (154 + 1 apron + 6 score). `--status` shows no slots in use; `--sweep` is clean.
+  - `node --check` passes on every file in `src/`, `src/world/` and `src/ui/`.
+  - A full landing in the browser pane on the Mac: `?test&…&start=final`, Jeju 07, with `tests/e2e-controller.js`. The pane was hidden, so this ran in an iframe whose `requestAnimationFrame` was driven by timers.
+    - It scored **A 100, "Butter."**: 207 ft/min, 1.34 g, 161 m past the aiming point, 1.7 m left of the centreline, RWY 07.
+    - The card, the taxi-in route and the logbook entry (RKSS–RKPC, 07, 100) came out, with no errors. Screenshot `v011-score-jeju07-A100.jpg`.
+  - The game loads with no console errors, and both labels read `Flight Sim v0.1.1 · CL#261031`.
+- **Found, not fixed:** Jeju's runways 07/25 and 13/31 are each drawn at their own end elevations (`uE0`/`uE1` in `airports.js`). Where they cross, 07/25 is at 23.86 m and 13/31 at 24.81 m, so each cuts through the other along a diagonal seam (`v011-jeju-crossing-seam.jpg`). The heightfield there follows 07/25. The fix would take one height for both at the crossing, from the heightfield, and draw the longer runway last. It's in ROADMAP and README.
+- **Note for testing in Chrome:** Python's `http.server` sends no Cache-Control, so Chrome can keep serving old modules for a while after an update. A hard reload (Cmd+Shift+R) loads them all fresh.
+- **v0.1.1 written up:**
+  - `src/version.js` is `Flight Sim v0.1.1 · CL#261031`;
+  - `Updates.md` has the v0.1.1 entry;
+  - ROADMAP: the score item fixed, a "Found after v0.1.0" list, and the menu and scenarios row for v0.2.0;
+  - README: the code map row and the Jeju seam under known issues;
+  - AGENTS.md: State.
+- **Next:** Shane pushes (`sh tools/push.sh v0.1.1`), then v0.2.0 (the main menu and scenarios) once he answers its two questions.

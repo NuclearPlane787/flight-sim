@@ -7,8 +7,8 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { NOSE_X } from './geometry.js';
-import { Builder, grid, boxAt, cylBetween, fusePoint, toModel, fuseTop, fuseBot } from './aircraft.js';
-import { createCockpitAlpha, COCKPIT_ALPHA_X } from './livery.js';
+import { Builder, grid, boxAt, cylBetween, fusePoint, toModel, fuseTop, fuseBot, windowOutlines } from './aircraft.js';
+import { createCockpitAlpha, cockpitAlphaV, COCKPIT_ALPHA_X } from './livery.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -38,7 +38,7 @@ export function createCockpit() {
       for (let j = 0; j <= NA; j++) {
         const th = -90 + (360 * j) / NA;
         row.push(fusePoint(x, th, -0.05));
-        urow.push([(x - COCKPIT_ALPHA_X[0]) / (COCKPIT_ALPHA_X[1] - COCKPIT_ALPHA_X[0]), (th + 90) / 360]);
+        urow.push([(x - COCKPIT_ALPHA_X[0]) / (COCKPIT_ALPHA_X[1] - COCKPIT_ALPHA_X[0]), cockpitAlphaV(th)]);
       }
       rows.push(row); uvs.push(urow);
     }
@@ -48,7 +48,7 @@ export function createCockpit() {
     const mat = new THREE.MeshStandardMaterial({
       color: C.shell, roughness: 0.85, metalness: 0, side: THREE.BackSide,
       emissive: '#27313b', // stands in for the light bouncing round the flight deck
-      alphaMap: createCockpitAlpha(), alphaTest: 0.5, alphaToCoverage: true,
+      alphaMap: createCockpitAlpha(windowOutlines()), alphaTest: 0.5, alphaToCoverage: true,
     });
     const m = new THREE.Mesh(b.build(), mat);
     m.name = 'cockpit-shell';

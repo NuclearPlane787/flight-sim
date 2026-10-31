@@ -4,6 +4,19 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.1.1 · 2026-10-31 (afternoon) · Fixes: Incheon's taxiways, the cockpit windows and the landing score
+
+- **No more flickering taxiways.** Where a concrete taxilane met an asphalt taxiway, the two surfaces fought over the same spot and flickered in jagged patches, worst at Incheon. The airport ground now draws in a fixed order (taxilanes, then taxiways, then aprons and stands), so the overlaps are clean at all three airports.
+  - The faint pale lines across gently bending taxiways are gone too. They were small gaps on the outside of each bend.
+- **New cockpit windows, shaped like the A320 family's:** a wide windshield either side of a slim centre post, a slanted side post, the sliding window, and the smaller rear window.
+  - From the seats, every frame is a straight line, and the side post is about 45° to your left (to the right for the First Officer). It used to cross the view straight ahead.
+  - From outside, the glass has crisp edges and catches the sun.
+- **A fairer landing score.**
+  - Every part now has a ceiling, so one bad number costs a lot but can't zero the score by itself: vertical speed 50, peak g 15, the touchdown point 35, the centreline 20, bank 15, pitch 15 and bounces 25. A normal 350–400 ft/min landing in the touchdown zone now scores a B.
+  - It's measured against the runway you actually touched down on, whichever that is.
+  - A touchdown off the runway, on a taxiway say, scores 0 and says so: "That wasn't a runway." It used to be measured against the runway picked in setup.
+  - Peak g counts the touchdown and any bounce, not the bumps and braking on the rollout.
+
 ## v0.1.0 · 2026-10-31 (overnight) · The first build: an A321neo over South Korea
 
 - **The A321neo, with realistic physics** from Airbus's and EASA's published numbers: weights, flap and gear speeds, stall speeds, and the LEAP-1A's thrust and spool-up.

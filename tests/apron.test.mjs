@@ -25,6 +25,25 @@ test('a straight stroke covers its rectangle plus two round caps', () => {
   assert.ok(Math.abs(soupArea(s) - want) / want < 0.01, `area ${soupArea(s)} vs ${want}`);
 });
 
+test('a slight bend leaves no gap on the outside of the stroke', () => {
+  // 0.86° to the left at (100, 0): the outer side is the right (-y).
+  const s = G.strokeTriangles([[0, 0], [100, 0], [200, 1.5]], 10, [], 8);
+  const inside = (px, py) => {
+    for (let i = 0; i < s.length; i += 6) {
+      const [x0, y0, x1, y1, x2, y2] = s.slice(i, i + 6);
+      const d0 = (x1 - x0) * (py - y0) - (y1 - y0) * (px - x0);
+      const d1 = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+      const d2 = (x0 - x2) * (py - y2) - (y0 - y2) * (px - x2);
+      if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0)) return true;
+    }
+    return false;
+  };
+  const half = Math.atan2(1.5, 100) / 2;
+  for (const r of [3, 6, 9.5]) {
+    assert.ok(inside(100 + r * Math.sin(half), -r * Math.cos(half)), `gap at ${r} m from the centreline`);
+  }
+});
+
 test('subdividing keeps the area and shortens every edge', () => {
   const tri = [0, 0, 500, 0, 0, 300];
   const out = G.subdivideSoup(tri, 60);

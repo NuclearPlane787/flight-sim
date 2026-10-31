@@ -17,7 +17,13 @@ Found in M1–M3 and left for later:
 - **Gimpo stand 7** has no taxi route to 14L/32R.
 - **Pushback speed:** about 100 s at 1.5 m/s. A faster tug, or a 2× pushback option, would help.
 - **The synth's sound hasn't been listened to.** Its levels are measured (`tests/audio-render.mjs`), but the engine timbre needs a real listen.
-- **The landing score when the first touchdown isn't on a runway:** it then measures against the runway picked in setup, and the distance from its centreline has no cap, so the landing can score 0/100. Shane's first flight (Gimpo to Incheon) scored 0/100; the cause isn't confirmed yet.
+- **The landing score:** **fixed in v0.1.1** (2026-10-31). It used to measure a touchdown that wasn't on a runway against the runway picked in setup, and none of its penalties had a ceiling. Shane's first flight (Gimpo to Incheon) scored 0/100; which of the two caused it wasn't confirmed, and both are fixed.
+
+Found after v0.1.0:
+
+- **Incheon's taxiways flickered** where concrete taxilanes overlapped asphalt taxiways: **fixed in v0.1.1** (2026-10-31), with the faint gaps on the outside of taxiway bends.
+- **The cockpit windows looked strange**, and from the seats the side post crossed the view ahead: **fixed in v0.1.1** (2026-10-31), redrawn after the A320 family's.
+- **Jeju's crossing runways** (07/25 and 13/31) are each drawn at their own end elevations. Where they cross, those differ by about 1 m, so each cuts through the other along a diagonal seam. Open: the fix is to take one height for both there, from the heightfield.
 
 
 ## Future additions Shane named (2026-10-31)
@@ -32,6 +38,7 @@ Found in M1–M3 and left for later:
 | Other aircraft in the air and on the taxiways | (same answer) | Today it's "just me for now in the air", with parked aircraft and moving vehicles on the ground. |
 | More aircraft types | "We can add more later." | The first is the A321neo. |
 | More airports | "For now, just have the three" | The other 12 Korean airports with airline service in OurAirports: Gimhae (Busan), Cheongju, Daegu, Gwangju, Muan, Yangyang, Ulsan, Yeosu, Sacheon, Pohang, Gunsan and Wonju. |
+| A main menu like Satisfactory's, and scenarios | "I do also want to add a menu screen like Satisfactory, and since I probably don't want to have everything in just one scenario, so let the current scenario be 'Scenario 1', and you can create more and choose where to begin and where to land." (2026-10-31) | Planned for **v0.2.0**. Open questions, asked 2026-10-31: is a scenario a save slot (the aircraft mid-flight, its fuel and its own logbook) or a saved route flown from the start; and the menu's backdrop, a still from the game or a slowly moving camera. |
 
 ## Not on Shane's list (candidates; ask him)
 

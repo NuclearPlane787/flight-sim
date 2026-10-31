@@ -12,8 +12,11 @@
 //
 // Depth: the pavement and the paint are flat on the ground (heights from the heightfield,
 // the same data the terrain uses), pulled towards the camera along the view ray by less
-// than the runways are, so: terrain < taxiway asphalt < apron concrete < paint < runway.
-// The runways win wherever they overlap.
+// than the runways are, so the terrain stays under them and the runways win wherever they
+// overlap. The pavement doesn't write depth: it's drawn after the terrain and the runways
+// (renderOrder 1), each piece over the ones before it, in this order: concrete taxilanes,
+// asphalt taxiways, aprons and stand pads. Overlapping pieces lie in the same plane, so
+// with depth writes they flickered against each other (v0.1.0, at Incheon's taxilanes).
 
 import * as THREE from '../../vendor/three.module.js';
 import {
@@ -30,7 +33,8 @@ const HOLD_DEPTH = 2.1;      // four 0.3 m lines with 0.3 m gaps (twice ICAO's, 
 const GLYPH_H = 3.2, GLYPH_W = 2.0, GLYPH_GAP = 0.35;
 
 // Pull towards the camera (m = a + b * distance); the runways use 0.16 + 0.0016 d.
-// Aprons sit over the taxiways, so taxilanes crossing an apron read as apron concrete.
+// The draw order (see "Depth") puts the aprons over the taxiways, so taxiways crossing an
+// apron read as apron concrete.
 // The distance terms cover the coarser terrain rings further out (they cut through flat
 // pavement by a few cm per 100 m); the runways (airports.js) stay above all of these.
 const PULL = { taxi: [0.06, 0.0006], apron: [0.10, 0.0010], paint: [0.13, 0.0013] };
@@ -272,6 +276,16 @@ function buildPavement(a, ox, oy, groundAt, aprons) {
       M.push(mat, layer);
     }
   };
+  // The triangles are drawn in the order they're added, each over the last (see "Depth"
+  // above): taxilanes first, so a taxilane's rounded end stays under the taxiway it joins,
+  // then the taxiways, then the aprons and stand pads on top.
+  for (const lanes of [true, false]) {
+    for (const tw of a.taxiways || []) {
+      if (!tw.points || tw.points.length < 2 || (tw.kind === 'taxilane') !== lanes) continue;
+      const soup = strokeTriangles(densify(tw.points, 50), (tw.widthM || TAXI_W) / 2, [], 4);
+      add(soup, lanes ? 1 : 0, 2);
+    }
+  }
   for (const ap of aprons) {
     let ring = openRing(ap.points);
     if (ring.length < 3) continue;
@@ -298,11 +312,6 @@ function buildPavement(a, ox, oy, groundAt, aprons) {
       const q = [[jb.cab.x + nx, jb.cab.y + ny], [jb.cab.x - nx, jb.cab.y - ny], [ex - nx, ey - ny], [ex + nx, ey + ny]];
       add(subdivideSoup([...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]], 30), 1, 1);
     }
-  }
-  for (const tw of a.taxiways || []) {
-    if (!tw.points || tw.points.length < 2) continue;
-    const soup = strokeTriangles(densify(tw.points, 50), (tw.widthM || TAXI_W) / 2, [], 4);
-    add(soup, tw.kind === 'taxilane' ? 1 : 0, 2);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P.a, 3));
@@ -555,9 +564,12 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
 
     const meshes = [];
     const pave = buildPavement(a, ox, oy, groundAt, aprons);
-    meshes.push(new THREE.Mesh(pave, new THREE.ShaderMaterial({
+    const paveMesh = new THREE.Mesh(pave, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + PAVE_VERT, fragmentShader: fhead + PAVE_FRAG, side: THREE.DoubleSide,
-    })));
+      depthWrite: false,
+    }));
+    paveMesh.renderOrder = 1;     // after the terrain and the runways (see "Depth")
+    meshes.push(paveMesh);
     const paint = buildPaint(a, ox, oy, groundAt, aprons, chars);
     const paintMesh = new THREE.Mesh(paint.geo, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + PAINT_VERT, fragmentShader: fhead + PAINT_FRAG(chars.length),

@@ -126,11 +126,13 @@ export function strokeTriangles(pts, hw, out = [], capSteps = 8) {
       tri(p, [p[0] + Math.cos(t0) * hw, p[1] + Math.sin(t0) * hw], [p[0] + Math.cos(t1) * hw, p[1] + Math.sin(t1) * hw]);
     }
   };
-  // Round joins: a wedge on the outer side of each bend.
+  // Round joins: a wedge on the outer side of each bend. Even a slight bend needs one: at
+  // 1.5° a 23 m taxiway's quads leave a 30 cm gap at the outer edge (v0.1.0 skipped bends
+  // under ~2°, and the gaps showed as hairlines across the taxiways).
   for (let i = 1; i < n - 1; i++) {
     const [ax, ay] = norms[i - 1], [bx, by] = norms[i];
     const cross = ax * by - ay * bx;
-    if (Math.abs(cross) < 0.03 && ax * bx + ay * by > 0) continue;    // under ~2°
+    if (Math.abs(cross) < 1e-9 && ax * bx + ay * by > 0) continue;    // straight on
     // Turning left (cross > 0): the outer side is the right (-normal).
     const s = cross > 0 ? -1 : 1;
     fan(pts[i], Math.atan2(s * ay, s * ax), Math.atan2(s * by, s * bx), 1);

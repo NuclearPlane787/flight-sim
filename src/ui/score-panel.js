@@ -22,8 +22,8 @@ export function esc(s) {
 
 const part = (parts, name) => (parts || []).find((p) => p.name === name);
 
-// The one-line verdict. The worst things win: a hard landing, landing short, bounces,
-// then the points band.
+// The one-line verdict. The worst things win: off the runway, a hard landing, landing short,
+// bounces, then the points band.
 export function verdict(result) {
   const parts = result?.parts || [];
   const points = result?.points ?? 0;
@@ -31,6 +31,7 @@ export function verdict(result) {
   const g = part(parts, 'Peak g')?.value ?? 1;
   const bounces = part(parts, 'Bounces')?.value ?? 0;
   const along = result?.touchdown?.along;
+  if (result?.offRunway || part(parts, 'On a runway')) return "That wasn't a runway.";
   if (vs >= 600 || g >= 2.3) return 'That one will need an inspection.';
   if (Number.isFinite(along) && along < 0) return 'Short of the threshold. Far too close.';
   if (bounces >= 2) return 'Kangaroo. Hold the flare and let it settle.';

@@ -11,6 +11,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { TAIL_X, NOSE_X, GEAR, ENGINES, WING, GROUND_Z } from './geometry.js';
 import { createLiveryTextures, UV, FIN_BOX } from './livery.js';
+import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
 
 const DEG = Math.PI / 180;
@@ -77,6 +78,63 @@ export function fusePoint(x, thDeg, off = 0, out = new THREE.Vector3()) {
   const t = fuseTop(x), b = fuseBot(x), hw = fuseHW(x);
   const zc = (t + b) / 2, hh = (t - b) / 2, th = thDeg * DEG;
   return out.set(x, Math.max(0, hw + off) * Math.cos(th), zc + Math.max(0, hh + off) * Math.sin(th));
+}
+
+// The cockpit windows' outlines (left side, [x, θ] lists; cockpit-windows.js), worked out once.
+let windowCache = null;
+export function windowOutlines() {
+  return windowCache || (windowCache = cockpitWindows({ fuseTop, fuseBot, fuseHW }));
+}
+
+// Glass for one window outline: triangulated in (x, θ), split finely enough to follow the nose,
+// and set just proud of the skin, facing out. Body coordinates, smooth normals from the skin.
+function windowGlass(outline, mirror, off = 0.006) {
+  const K = 0.024;                                   // θ degrees → about metres at the nose
+  const th = (t) => (mirror ? 180 - t : t);
+  const ring = outline.map(([x, t]) => new THREE.Vector2(x, th(t) * K));
+  const faces = THREE.ShapeUtils.triangulateShape(ring, []);
+  let tris = [];
+  for (const f of faces) tris.push(f.map((k) => [ring[k].x, ring[k].y]));
+  // Split each triangle at its longest edge until every edge is under 12 cm: the chords then
+  // sag under 2 mm on the nose's 1.4 m radius, well inside the 6 mm the glass stands proud.
+  for (let pass = 0; pass < 12; pass++) {
+    const next = [];
+    let split = false;
+    for (const t of tris) {
+      const e = [0, 1, 2].map((i) => Math.hypot(t[(i + 1) % 3][0] - t[i][0], t[(i + 1) % 3][1] - t[i][1]));
+      const i = e.indexOf(Math.max(...e));
+      if (e[i] < 0.12) { next.push(t); continue; }
+      split = true;
+      const a = t[i], b = t[(i + 1) % 3], c = t[(i + 2) % 3], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      next.push([a, m, c], [m, b, c]);
+    }
+    tris = next;
+    if (!split) break;
+  }
+  const pos = [], nrm = [];
+  const P = new THREE.Vector3(), Px = new THREE.Vector3(), Pt = new THREE.Vector3(), N = new THREE.Vector3();
+  const surf = (x, t) => {
+    fusePoint(x, t / K, off, P);
+    // Outward normal: d/dθ × d/dx, oriented away from the fuselage's axis.
+    fusePoint(x + 0.01, t / K, off, Px).sub(fusePoint(x - 0.01, t / K, off, N));
+    fusePoint(x, t / K + 0.5, off, Pt).sub(fusePoint(x, t / K - 0.5, off, N));
+    N.crossVectors(Pt, Px).normalize();
+    const zc = (fuseTop(x) + fuseBot(x)) / 2;
+    if (N.y * P.y + N.z * (P.z - zc) < 0) N.negate();
+    return [P.toArray(), N.toArray()];
+  };
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), C3 = new THREE.Vector3();
+  for (const t of tris) {
+    const v = t.map(([x, tk]) => surf(x, tk));
+    A.fromArray(v[0][0]); B.fromArray(v[1][0]); C3.fromArray(v[2][0]);
+    const n = B.sub(A).cross(C3.sub(A));
+    const order = n.dot(new THREE.Vector3().fromArray(v[0][1])) < 0 ? [0, 2, 1] : [0, 1, 2];
+    for (const k of order) { pos.push(...v[k][0]); nrm.push(...v[k][1]); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  return g;
 }
 
 // --- Geometry helpers (body frame) -------------------------------------------------------
@@ -277,7 +335,7 @@ const C = {
   white: '#f3f5f7', navy: '#122654', wing: '#c6cbd2', wingDark: '#aab0b8', stab: '#d9dde2',
   metal: '#9aa0a8', gear: '#c9cdd2', chrome: '#e2e5e8', tyre: '#1a1b1d', hub: '#8d939a',
   core: '#767b83', plug: '#3a3d43', fanFace: '#25282e', blade: '#5a6068', pylon: '#d5d9de',
-  cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff',
+  cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117',
 };
 
 // --- The aircraft ------------------------------------------------------------------------
@@ -327,6 +385,8 @@ export function createAircraft(opts = {}) {
   for (let i = 0; i <= 32; i++) noseSt.push(SPLIT + (NOSE_X - SPLIT) * Math.sin((i / 32) * Math.PI / 2));
   b.add(fuseLoft([...tailSt, ...midSt]), ROOT, '#ffffff', 'keep');
   b.add(fuseLoft(noseSt), NOSE, '#ffffff', 'keep');
+  // Cockpit glass, on the nose (so it's hidden with it in the seat views).
+  for (const w of windowOutlines()) for (const mirror of [false, true]) b.add(windowGlass(w, mirror), NOSE, C.glass);
   // APU exhaust
   b.add(lathe([{ x: 0, r: 0.1 }, { x: 0, r: 0.0 }], 10, TAIL_X + 0.03, 0, 0.85), ROOT, C.plug);
 
@@ -564,7 +624,7 @@ export function createAircraft(opts = {}) {
 
   // --- Mesh, material, skeleton ---
   const geometry = b.build();
-  const { map, emissiveMap } = createLiveryTextures(fuseTop);
+  const { map, emissiveMap } = createLiveryTextures(fuseTop, windowOutlines());
   const material = new THREE.MeshStandardMaterial({
     map, emissiveMap, emissive: 0xffffff, emissiveIntensity: 0.6,
     vertexColors: true, roughness: 0.42, metalness: 0.08,

@@ -7,7 +7,7 @@ import { toScene, gridToMag } from './world/frame.js';
 import { createInput, detentName } from './input.js';
 import { createCameraRig } from './camera.js';
 import { createCallouts } from './audio/callouts.js';
-import { createScorer, runwayFrame, aimingPoint } from './score.js';
+import { createScorer, runwayFrame, aimingPoint, landingRunway } from './score.js';
 import { createLogbook } from './ui/logbook.js';
 import { createScorePanel } from './ui/score-panel.js';
 import * as store from './store.js';
@@ -401,14 +401,9 @@ async function boot() {
   };
 
   // ---- Events from the sim ----
-  function landingEndFor(x, y, hdg) {
-    const r = rw.onRunway(x, y);
-    if (!r) return null;
-    const fx = Math.sin(hdg), fy = Math.cos(hdg);
-    const [a, b] = r.ends;
-    const dot = (b.x - a.x) * fx + (b.y - a.y) * fy;
-    return dot >= 0 ? { end: a, other: b } : { end: b, other: a };
-  }
+  // The runway a touchdown was on, whichever it is (not necessarily the planned one), or
+  // null for none (score.js: landingRunway).
+  const allRunways = airports.flatMap((a) => a.runways || []);
 
   function handleEvents() {
     const evs = sim.events;
@@ -418,8 +413,7 @@ async function boot() {
       if (e.type === 'liftoff' && liftoffT === null) liftoffT = sim.state.t;
       if (e.type === 'touchdown') landed = true;
       if (e.type === 'touchdown' && !scorer.touchedDown) {
-        const le = landingEndFor(e.x, e.y, sim.state.hdg);
-        if (le) scorer.setRunway(le.end, le.other);
+        scorer.setLanding(landingRunway(allRunways, e.x, e.y, sim.state.hdg));
       }
       if (e.type === 'crash') {
         crashed = true;
@@ -438,8 +432,10 @@ async function boot() {
 
   function showScore(res) {
     const s = sim.state;
-    const le = landingEndFor(s.pos.x, s.pos.y, s.hdg);
-    const arr = le ? airports.find((a) => a.runways.some((r) => r.ends.includes(le.end))) : null;
+    // The runway (and airport) of the touchdown, not wherever the rollout ended.
+    const le = res.offRunway ? null : scorer.landing;
+    const arr = le ? airports.find((a) => a.runways.some((r) => r.ends.includes(le.end)))
+      : airports.find((a) => a.origin && Math.hypot(a.origin[0] - s.pos.x, a.origin[1] - s.pos.y) < 8000) || null;
     const rf = le ? runwayFrame(le.end, le.other) : null;
     const rwy = le ? airports.flatMap((a) => a.runways).find((x) => x.ends.includes(le.end)) : null;
     scoreCard.show(res, {
@@ -450,7 +446,8 @@ async function boot() {
       date: new Date().toISOString(), route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
       depRunway: plan.start === 'runway' ? plan.depRunway : null, arrRunway: le ? le.end.ident : null, gate: plan.start === 'gate' ? plan.stand ?? null : null,
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,
-      fuelUsedKg: Math.round(fuelAtStart - s.fuelKg), score: { points: res.points, grade: res.grade, parts: res.parts },
+      fuelUsedKg: Math.round(fuelAtStart - s.fuelKg),
+      score: { points: res.points, grade: res.grade, parts: res.parts, ...(res.offRunway ? { offRunway: true } : {}) },
     });
     window.__fsLastScore = res;
   }

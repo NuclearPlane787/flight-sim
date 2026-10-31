@@ -38,16 +38,8 @@ export const NACELLE_V = { intake: [0, 0.3], lip: [0.3, 0.55], cowl: [0.55, 1] }
 
 const DEG = Math.PI / 180;
 
-// Cockpit windows, in (x_body, θ°) on the left side; the right side mirrors θ → 180° − θ.
-// Shared by the exterior paint and the cockpit shell's cut-outs, so they always agree.
-export const COCKPIT_WINDOWS = [
-  // windshield (No. 1); its outboard edge is the slanted post
-  [[19.05, 88.6], [20.05, 88.6], [19.97, 44], [19.15, 72]],
-  // sliding window (No. 2), aft of the post
-  [[18.88, 68], [18.98, 70], [19.82, 42], [19.75, 27], [18.88, 26]],
-  // rear side window (No. 3)
-  [[18.12, 64], [18.72, 66], [18.72, 28], [18.12, 29]],
-];
+// The cockpit windows' outlines come from cockpit-windows.js (via aircraft.js), in (x_body, θ°)
+// on the left side; the right side mirrors θ → 180° − θ.
 
 // Mid-fuselage cabin doors (x centre). Type C doors, 0.81 × 1.85 m.
 export const DOORS = [16.55, 7.9, -3.1, -14.5];
@@ -131,7 +123,7 @@ function polyFuse(ctx, pts, mirror) {
   ctx.closePath();
 }
 
-function paintFuselage(ctx, glow) {
+function paintFuselage(ctx, glow, windows = []) {
   const W = ATLAS, H = 1024;
   ctx.fillStyle = glow ? '#000' : COLORS.white;
   ctx.fillRect(0, 0, W, H);
@@ -205,12 +197,12 @@ function paintFuselage(ctx, glow) {
     ctx.fillText('HL8787', 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
-  // Cockpit windows.
+  // Cockpit windows: the glass itself is geometry (aircraft.js); this is the dark frame round it.
   for (const mirror of [false, true]) {
-    for (const w of COCKPIT_WINDOWS) {
+    for (const w of windows) {
       polyFuse(ctx, w, mirror);
       ctx.fillStyle = COLORS.glass; ctx.fill();
-      ctx.strokeStyle = '#5c6570'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = '#2a3038'; ctx.lineWidth = 3; ctx.stroke();
     }
   }
 }
@@ -287,13 +279,14 @@ function paintNacelle(ctx, glow) {
   ctx.fillStyle = COLORS.blue; ctx.fillRect(X0, vy(0.655), W, vy(0.635) - vy(0.655));
 }
 
-// Builds the colour and emissive atlases. fuseTop(x) is the fuselage's top line (body z).
-export function createLiveryTextures(fuseTop) {
+// Builds the colour and emissive atlases. fuseTop(x) is the fuselage's top line (body z);
+// windows, the cockpit windows' outlines (cockpit-windows.js).
+export function createLiveryTextures(fuseTop, windows = []) {
   const make = (glow) => {
     const c = document.createElement('canvas');
     c.width = c.height = ATLAS;
     const ctx = c.getContext('2d');
-    paintFuselage(ctx, glow);
+    paintFuselage(ctx, glow, windows);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     paintFin(ctx, glow, fuseTop);
     paintNacelle(ctx, glow);
@@ -310,20 +303,23 @@ export function createLiveryTextures(fuseTop) {
 }
 
 // Alpha map for the cockpit shell: white (solid) with the six windows cut out (black).
-// Its own mapping, for resolution: u = (x − x0) / (x1 − x0) over the nose, v = (θ + 90°) / 360°.
+// Its own mapping, for resolution: u = (x − x0) / (x1 − x0) over the nose, v = θ / 180° over
+// the upper half, where the windows are (the texture clamps, so the lower half is solid).
+// windows: the left-side outlines from cockpit-windows.js.
 export const COCKPIT_ALPHA_X = [16.6, 21.0];
-export function createCockpitAlpha() {
+export const cockpitAlphaV = (thetaDeg) => thetaDeg / 180;
+export function createCockpitAlpha(windows) {
   const [x0, x1] = COCKPIT_ALPHA_X;
   const c = document.createElement('canvas');
   c.width = 2048; c.height = 2048;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.fillStyle = '#000';
-  for (const mirror of [false, true]) for (const w of COCKPIT_WINDOWS) {
+  for (const mirror of [false, true]) for (const w of windows) {
     ctx.beginPath();
     w.forEach(([x, th], i) => {
       const t = mirror ? 180 - th : th;
-      const px = ((x - x0) / (x1 - x0)) * c.width, py = (1 - (t + 90) / 360) * c.height;
+      const px = ((x - x0) / (x1 - x0)) * c.width, py = (1 - cockpitAlphaV(t)) * c.height;
       if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
     });
     ctx.closePath(); ctx.fill();

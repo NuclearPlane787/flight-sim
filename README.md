@@ -85,6 +85,7 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll ov
 - Nobody has listened to the sound yet: the levels are measured (`tests/audio-render.mjs`), not judged by ear.
 - Gimpo stand 7 has no taxi route to 14L/32R.
 - Pushback is slow (1.5 m/s, about 100 s).
+- At Jeju, where runways 07/25 and 13/31 cross, each cuts through the other along a diagonal seam (their end elevations disagree there by about 1 m).
 - The predicted path is a straight line on the selected heading, because the autopilot has holds only (route following is on the roadmap).
 
 ## Code map
@@ -100,7 +101,7 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll ov
 | `src/sim/` | atmosphere, A321neo data (with sources), flight model, engines, gear, fly-by-wire, autopilot, prediction worker |
 | `src/world/frame.js` | the map frame: Lambert conformal conic, magnetic variation, headings |
 | `src/world/` | terrain clipmap, sea, sky, surface detail, cities, runways; `heightfield.js` and `runways.js` are the pure data helpers |
-| `src/aircraft.js`, `src/livery.js`, `src/cockpit.js` | the procedural A321neo in Nuclear Airlines colours, and the simple cockpit |
+| `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`, `src/cockpit-windows.js` | the procedural A321neo in Nuclear Airlines colours, the simple cockpit, and the six cockpit windows (shared by the outside, the livery and the cockpit) |
 | `src/ui/` | PFD, ND, engine panel, FCU, map, flight setup, logbook, landing score card |
 | `src/audio/` | `synth.js` (WebAudio engine, wind and warnings), `callouts.js` (radio-altitude callouts and RETARD) |
 | `src/score.js`, `src/store.js` | the landing score; localStorage under `gamedump:flight-sim:` |
