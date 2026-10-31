@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flight Sim: logbook dev page</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../src/ui/ui.css">
+  <link rel="stylesheet" href="../src/ui/logbook.css">
+  <style> #app { background: linear-gradient(#3a6fa8, #9cc3e3 60%, #5b6b4a 60%); } </style>
+</head>
+<body>
+  <!-- ?scene=logbook | empty | score-a | score-d. Fake entries and results; storage in memory only. -->
+  <div id="app">
+    <div id="pause" class="panel center">
+      <h2>Paused</h2>
+      <div class="buttons"><button data-act="resume">Resume</button><button data-act="logbook">Logbook</button></div>
+    </div>
+    <div id="score" hidden></div>
+    <div id="logbook-root"></div>
+  </div>
+  <script type="module">
+    import { createLogbook } from '../src/ui/logbook.js';
+    import { createScorePanel } from '../src/ui/score-panel.js';
+
+    const scene = new URLSearchParams(location.search).get('scene') || 'logbook';
+    const P = (vs, g, aim, cl, bank, pitch, b) => [
+      { name: 'Vertical speed', value: vs[0], unit: 'ft/min', penalty: vs[1] },
+      { name: 'Peak g', value: g[0], unit: 'g', penalty: g[1] },
+      { name: 'Touchdown vs aiming point', value: aim[0], unit: 'm', penalty: aim[1] },
+      { name: 'From centreline', value: cl[0], unit: 'm', penalty: cl[1] },
+      { name: 'Bank', value: bank[0], unit: '°', penalty: bank[1] },
+      { name: 'Pitch', value: pitch[0], unit: '°', penalty: pitch[1] },
+      { name: 'Bounces', value: b, unit: '', penalty: b * 12 },
+    ];
+    const RES_A = { points: 96, grade: 'A', parts: P([142, 0], [1.18, 0], [38, 0], [1.4, 0], [0.8, 0], [4.6, 0], 0),
+      touchdown: { along: 438, cross: 1.4, vsFpm: -142, g: 1.18 } };
+    const RES_D = { points: 55, grade: 'D', parts: P([468, 29], [1.52, 5], [-210, 4], [6.8, 12], [2.9, 4], [3.1, 0], 0),
+      touchdown: { along: 190, cross: -6.8, vsFpm: -468, g: 1.52 } };
+    const RES_F = { points: 22, grade: 'F', parts: P([720, 45], [2.1, 28], [-430, 22], [4.2, 6], [5.5, 14], [1.2, 0], 2) };
+    const RES_B = { points: 84, grade: 'B', parts: P([260, 3], [1.32, 0], [190, 3], [3.6, 4], [2.4, 2], [5.0, 0], 0) };
+    const RES_C = { points: 70, grade: 'C', parts: P([350, 14], [1.41, 0], [320, 11], [2.1, 0], [3.0, 4], [6.2, 0], 0) };
+    const day = (d, h, m) => new Date(2026, 9, d, h, m).toISOString();
+    const LOG = [
+      { date: day(24, 9, 12), route: 'RKSS–RKPC', depRunway: '14R', arrRunway: '07', gate: null, airTimeS: 3420, fuelUsedKg: 3612, score: RES_C },
+      { date: day(25, 20, 41), route: 'RKPC–RKSS', depRunway: '25', arrRunway: '32L', gate: null, airTimeS: 3780, fuelUsedKg: 3920, score: RES_F },
+      { date: day(27, 7, 3), route: 'RKSI–RKPC', depRunway: '33L', arrRunway: '07', gate: '112', airTimeS: 3960, fuelUsedKg: 4105, score: RES_B },
+      { date: day(29, 13, 55), route: 'RKPC–RKPC', depRunway: null, arrRunway: '07', gate: null, airTimeS: null, fuelUsedKg: 140, score: RES_A },
+      { date: day(30, 18, 20), route: 'RKSS–RKPC', depRunway: '14R', arrRunway: '25', gate: '7', airTimeS: 3510, fuelUsedKg: 3550, score: RES_D },
+      { date: day(31, 1, 47), route: 'RKSS–RKSI', depRunway: '32R', arrRunway: '34R', gate: null, airTimeS: 1860, fuelUsedKg: 1712, score: null },
+    ];
+    const mem = { logbook: scene === 'empty' ? [] : LOG };
+    const load = (k, f) => (k in mem ? structuredClone(mem[k]) : f);
+    const save = (k, v) => { mem[k] = structuredClone(v); return true; };
+
+    const keys = [];
+    window.addEventListener('keydown', (e) => keys.push(e.key)); // what the "game" would see
+    const logbook = createLogbook(document.getElementById('logbook-root'), { load, save, onclose: () => { window.__closed = (window.__closed || 0) + 1; } });
+    const card = createScorePanel(document.getElementById('score'), { onnewflight: () => { window.__newflight = true; } });
+    document.querySelector('[data-act="logbook"]').onclick = () => logbook.open();
+
+    if (scene === 'logbook' || scene === 'empty') logbook.open();
+    if (scene === 'score-a') card.show(RES_A, { route: 'RKSS–RKPC', runway: '07', runwayLengthM: 3180, runwayWidthM: 45, aimM: 400 });
+    if (scene === 'score-d') card.show(RES_D, { route: 'RKPC–RKSS', runway: '32L', runwayLengthM: 3600, runwayWidthM: 45, aimM: 400 });
+    Object.assign(window, { __logbook: logbook, __card: card, __mem: mem, __keys: keys, __ready: true });
+  </script>
+</body>
+</html>

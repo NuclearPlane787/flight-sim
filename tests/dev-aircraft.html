@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aircraft dev</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fa9c4; font: 12px system-ui, sans-serif; overscroll-behavior: none; }
+  canvas { display: block; }
+  #ui { position: fixed; top: 8px; left: 8px; width: 250px; max-height: calc(100% - 16px); overflow: auto; background: rgba(15, 22, 34, 0.82); color: #dfe6ee; padding: 8px 10px; border-radius: 6px; }
+  #ui label { display: grid; grid-template-columns: 92px 1fr 36px; gap: 6px; align-items: center; margin: 2px 0; }
+  #ui input[type=range] { width: 100%; }
+  #ui button { margin: 2px 2px 0 0; }
+  #info { position: fixed; right: 8px; bottom: 8px; color: #fff; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; }
+  body.shot #ui, body.shot #info { display: none; }
+</style>
+</head>
+<body>
+<div id="ui"></div>
+<div id="info"></div>
+<script type="module">
+import * as THREE from '../vendor/three.module.js';
+import { createAircraft, toModel } from '../src/aircraft.js';
+import { createCockpit } from '../src/cockpit.js';
+import { EYES, GROUND_Z } from '../src/geometry.js';
+
+const DEG = Math.PI / 180;
+// Same renderer settings as main.js.
+const renderer = new THREE.WebGLRenderer({ antialias: true, reversedDepthBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.info.autoReset = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#9db8d6');
+const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
+const sunEl = 35 * DEG, sunAz = -40 * DEG;
+sun.position.set(Math.sin(sunAz) * Math.cos(sunEl), Math.sin(sunEl), Math.cos(sunAz) * Math.cos(sunEl)).multiplyScalar(60);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 150 });
+scene.add(sun);
+scene.add(new THREE.HemisphereLight('#cfe2ff', '#8d8678', 2.2));
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#7d7f82', roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -GROUND_Z;
+ground.receiveShadow = true;
+scene.add(ground);
+// Centreline marking so the gear position can be judged.
+const line = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 120), new THREE.MeshBasicMaterial({ color: '#e8e8e8' }));
+line.rotation.x = -Math.PI / 2; line.position.set(0, -GROUND_Z + 0.01, 0);
+scene.add(line);
+
+const t0 = performance.now();
+const aircraft = createAircraft();
+const cockpit = createCockpit();
+const buildMs = performance.now() - t0;
+aircraft.object.add(cockpit.object);
+cockpit.object.visible = false;
+scene.add(aircraft.object);
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 5000);
+const orbit = { yaw: 35 * DEG, pitch: 12 * DEG, dist: 70, target: new THREE.Vector3(0, 0, 0) };
+let seat = null; // { eye, yaw, pitch, fov }
+
+const state = {
+  t: 0, surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },
+  slatDeg: 0, flapDeg: 0, flapLever: 0, gearPos: 1, gearDoors: 0,
+  gearCompression: { nose: 0.16, left: 0.22, right: 0.22 }, steerAngle: 0, wheelRate: { nose: 0, main: 0 },
+  engines: [{ n1: 20, rev: 0 }, { n1: 20, rev: 0 }], thrustLever: 0, speedbrake: 0,
+};
+const controls = { pitch: 0, roll: 0, yaw: 0, thrust: 0, flapLever: 0, speedbrake: 0, gearDown: true };
+
+// Sliders.
+const ui = document.getElementById('ui');
+const sliders = [
+  ['elevator°', -30, 17, 0, (v) => (state.surfaces.elevator = v * DEG)],
+  ['stab°', -13.5, 4, 0, (v) => (state.surfaces.stab = v * DEG)],
+  ['aileron°', -25, 25, 0, (v) => { state.surfaces.aileronL = -v * DEG; state.surfaces.aileronR = v * DEG; }],
+  ['rudder°', -30, 30, 0, (v) => (state.surfaces.rudder = v * DEG)],
+  ['spoilers', 0, 1, 0, (v) => { state.surfaces.spoilersL.fill(v); state.surfaces.spoilersR.fill(v); }],
+  ['slats°', 0, 27, 0, (v) => (state.slatDeg = v)],
+  ['flaps°', 0, 40, 0, (v) => (state.flapDeg = v)],
+  ['gearPos', 0, 1, 1, (v) => (state.gearPos = v)],
+  ['gearDoors', 0, 1, 0, (v) => (state.gearDoors = v)],
+  ['compr main', 0, 0.47, 0.22, (v) => (state.gearCompression.left = state.gearCompression.right = v)],
+  ['compr nose', 0, 0.4, 0.16, (v) => (state.gearCompression.nose = v)],
+  ['steer°', -70, 70, 0, (v) => (state.steerAngle = v * DEG)],
+  ['wheel rad/s', 0, 30, 0, (v) => (state.wheelRate.main = v, state.wheelRate.nose = v * 1.6)],
+  ['N1 %', 0, 100, 20, (v) => (state.engines[0].n1 = state.engines[1].n1 = v)],
+  ['reverser', 0, 1, 0, (v) => (state.engines[0].rev = state.engines[1].rev = v)],
+  ['thrust lever', -1, 1, 0, (v) => (state.thrustLever = controls.thrust = v)],
+  ['flap lever', 0, 4, 0, (v) => (state.flapLever = controls.flapLever = Math.round(v))],
+  ['stick pitch', -1, 1, 0, (v) => (controls.pitch = v)],
+  ['stick roll', -1, 1, 0, (v) => (controls.roll = v)],
+];
+for (const [name, min, max, val, fn] of sliders) {
+  const l = document.createElement('label');
+  l.innerHTML = `<span>${name}</span><input type=range min=${min} max=${max} step=${(max - min) / 200} value=${val}><span>${val}</span>`;
+  const [inp, out] = [l.children[1], l.children[2]];
+  inp.oninput = () => { fn(+inp.value); out.textContent = (+inp.value).toFixed(2); };
+  ui.appendChild(l);
+}
+const btn = (name, fn) => { const b = document.createElement('button'); b.textContent = name; b.onclick = fn; ui.appendChild(b); };
+btn('exterior', () => setView('threeQuarter'));
+btn('captain', () => setView('captain'));
+btn('captain left', () => setView('captainLeft'));
+btn('animate', () => (animate = !animate));
+let animate = false;
+
+// Orbit with the mouse: drag to rotate, wheel to zoom.
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', (e) => (drag = { x: e.clientX, y: e.clientY }));
+addEventListener('pointerup', () => (drag = null));
+addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY };
+  if (seat) { seat.yaw -= dx * 0.004; seat.pitch -= dy * 0.004; return; }
+  orbit.yaw -= dx * 0.005; orbit.pitch = Math.max(-1.4, Math.min(1.4, orbit.pitch + dy * 0.005));
+});
+renderer.domElement.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist *= Math.exp(e.deltaY * 0.001); }, { passive: false });
+
+// Camera presets (orbit yaw is measured from the nose, positive towards the left wing).
+const VIEWS = {
+  side: { yaw: 90, pitch: 2, dist: 62, fov: 40 },
+  sideRight: { yaw: -90, pitch: 2, dist: 62, fov: 40 },
+  front: { yaw: 0, pitch: 3, dist: 55, fov: 40 },
+  threeQuarter: { yaw: 40, pitch: 22, dist: 62, fov: 40 },
+  threeQuarterRight: { yaw: -40, pitch: 22, dist: 62, fov: 40 },
+  above: { yaw: 140, pitch: 30, dist: 62, fov: 40 },
+  below: { yaw: -35, pitch: -18, dist: 50, fov: 40, target: [0, -1, 0] },
+  tail: { yaw: 115, pitch: 10, dist: 22, fov: 40, target: [-19, 4.5, 0] },
+  tailHigh: { yaw: 150, pitch: 35, dist: 20, fov: 40, target: [-19, 2, 0] },
+  wingTip: { yaw: 120, pitch: 25, dist: 14, fov: 40, target: [-3, -0.5, 14] },
+  wing: { yaw: 150, pitch: 28, dist: 26, fov: 40, target: [-1, -1, 9] },
+  gear: { yaw: 60, pitch: 6, dist: 24, fov: 40, target: [3, -2.2, 0] },
+  engine: { yaw: 20, pitch: 3, dist: 11, fov: 40, target: [4, -1.75, 5.75] },
+  nose: { yaw: 50, pitch: 8, dist: 16, fov: 40, target: [18, 0, 0] },
+  rearEngine: { yaw: 130, pitch: 8, dist: 16, fov: 40, target: [1.5, -1.75, 5.75] },
+  captain: { seat: EYES.captain, yaw: 0, pitch: -8, fov: 62 },
+  captainLeft: { seat: EYES.captain, yaw: 80, pitch: -5, fov: 62 },
+  fo: { seat: EYES.fo, yaw: 0, pitch: -8, fov: 62 },
+  pedestal: { seat: EYES.captain, yaw: -35, pitch: -42, fov: 70 },
+};
+function setView(name) {
+  const v = VIEWS[name];
+  camera.fov = v.fov; camera.updateProjectionMatrix();
+  if (v.seat) {
+    seat = { eye: toModel(v.seat.x, v.seat.y, v.seat.z), yaw: v.yaw * DEG, pitch: v.pitch * DEG };
+    aircraft.setCockpitView(true); cockpit.object.visible = true;
+  } else {
+    seat = null; aircraft.setCockpitView(false); cockpit.object.visible = false;
+    orbit.yaw = v.yaw * DEG; orbit.pitch = v.pitch * DEG; orbit.dist = v.dist;
+    // target given in body (x, z, y)… keep it simple: [x_body, z_body, y_body]
+    const t = v.target || [0, 0, 0];
+    orbit.target.copy(toModel(t[0], t[2], t[1]));
+  }
+}
+
+function placeCamera() {
+  if (seat) {
+    camera.position.copy(seat.eye);
+    camera.rotation.set(seat.pitch, seat.yaw, 0, 'YXZ');
+    return;
+  }
+  const cp = Math.cos(orbit.pitch);
+  // yaw 0 = in front of the nose (model −Z is forward), yaw 90° = off the left wing (model −X).
+  camera.position.set(-Math.sin(orbit.yaw) * cp, Math.sin(orbit.pitch), -Math.cos(orbit.yaw) * cp).multiplyScalar(orbit.dist).add(orbit.target);
+  camera.lookAt(orbit.target);
+}
+
+let last = performance.now(), tAnim = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (animate) {
+    tAnim += dt;
+    const s = Math.sin(tAnim * 0.8);
+    state.surfaces.elevator = 15 * DEG * s; state.surfaces.rudder = 20 * DEG * s;
+    state.surfaces.aileronL = 20 * DEG * s; state.surfaces.aileronR = -20 * DEG * s;
+    state.flapDeg = 20 + 20 * s; state.slatDeg = 13.5 + 13.5 * s; state.gearPos = 0.5 + 0.5 * s;
+    state.surfaces.spoilersL.fill(Math.max(0, s)); state.surfaces.spoilersR.fill(Math.max(0, s));
+  }
+  render(dt);
+  requestAnimationFrame(frame);
+}
+function render(dt = 1 / 60) {
+  state.t += dt;
+  aircraft.update(state, dt);
+  cockpit.update(state, controls);
+  placeCamera();
+  renderer.info.reset();
+  renderer.render(scene, camera);
+  const i = renderer.info.render;
+  document.getElementById('info').textContent = `${i.triangles} tris · ${i.calls} calls · model ${aircraft.triangles} tris · build ${buildMs.toFixed(0)} ms`;
+}
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+});
+setView('threeQuarter');
+requestAnimationFrame(frame);
+
+// Hooks for tests/browser-aircraft.mjs.
+window.dev = {
+  set(patch) {
+    const merge = (a, b) => { for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) merge(a[k] ??= {}, b[k]); else a[k] = b[k]; } };
+    merge(state, patch.state || {}); Object.assign(controls, patch.controls || {});
+  },
+  view: setView,
+  shot(on) { document.body.classList.toggle('shot', on); },
+  // Render a few frames (lights flash on the clock) and report what the last one drew.
+  info() {
+    render(0);
+    const i = renderer.info.render;
+    // Draw calls and triangles of the aircraft alone (ground + line excluded: 2 calls, 4 tris; shadow pass doubled).
+    return { triangles: i.triangles, calls: i.calls, modelTriangles: aircraft.triangles, buildMs, bones: Object.keys(aircraft.bones).length };
+  },
+  hideGround(on) { ground.visible = line.visible = !on; },
+  ready: true,
+};
+</script>
+</body>
+</html>

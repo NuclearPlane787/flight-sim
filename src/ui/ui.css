@@ -1,0 +1,98 @@
+/* Flight Sim screens: HUD panels, FCU, the path map and flight setup. All classes are fsui-*. */
+
+.fsui-hud { position: absolute; inset: 0; pointer-events: none; overscroll-behavior: none;
+  font-family: "Helvetica Neue", Arial, sans-serif; user-select: none; -webkit-user-select: none; }
+.fsui-panel { pointer-events: auto; overscroll-behavior: none; touch-action: none; }
+.fsui-screen { position: absolute; background: rgba(3, 5, 7, 0.84); border: 1px solid #2b3238;
+  border-radius: 6px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45); overflow: hidden; }
+.fsui-screen canvas { display: block; }
+.fsui-nd { cursor: pointer; }
+
+/* FCU */
+.fsui-fcu { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch;
+  gap: 0.5em; padding: 0.35em 0.6em; background: rgba(38, 44, 50, 0.92); border: 1px solid #4a535b;
+  border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); color: #e8e8e8; cursor: default; }
+.fsui-win { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  min-width: 5.2em; padding: 0 0.45em; background: #050607; border: 1px solid #3a4248; border-radius: 3px; cursor: ns-resize; }
+.fsui-win .fsui-lab { font-size: 0.62em; color: #c9ced2; letter-spacing: 0.06em; }
+.fsui-win .fsui-val { font: 600 1.25em "Menlo", "SF Mono", monospace; color: #ffa515; letter-spacing: 0.04em; line-height: 1.05; }
+.fsui-win .fsui-mode { position: absolute; right: 0.3em; top: 0.3em; width: 0.42em; height: 0.42em; border-radius: 50%; background: transparent; }
+.fsui-win.lit { border-color: #3cff4e; }
+.fsui-win.lit .fsui-mode { background: #3cff4e; box-shadow: 0 0 6px #3cff4e; }
+.fsui-win.arm .fsui-mode { background: #2fe3ff; }
+.fsui-win.pre .fsui-val { color: #2fe3ff; }
+.fsui-win.sel { box-shadow: inset 0 0 0 1px #2fe3ff; }
+.fsui-win:hover { background: #0b0d0f; }
+.fsui-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25em;
+  min-width: 4.2em; padding: 0 0.5em; background: #5a636b; border: 1px solid #2a2f33; border-radius: 3px;
+  font-size: 0.8em; font-weight: 600; color: #f0f0f0; cursor: pointer; }
+.fsui-btn:hover { background: #677079; }
+.fsui-btn:active { background: #4a5259; }
+.fsui-light { display: block; width: 2.4em; height: 0.35em; border-radius: 2px; background: #22282c; }
+.fsui-btn.on .fsui-light { background: #3cff4e; box-shadow: 0 0 6px #3cff4e; }
+.fsui-law { align-self: center; font-size: 0.58em; color: #9aa3aa; padding: 0.2em 0.45em; border: 1px solid #3a4248;
+  border-radius: 3px; cursor: pointer; white-space: nowrap; }
+.fsui-law.altn { color: #ffa515; border-color: #ffa515; }
+
+/* The path map */
+.fsui-map { position: absolute; inset: 0; background: rgba(2, 6, 12, 0.9); pointer-events: auto; overscroll-behavior: none;
+  touch-action: none; font-family: "Helvetica Neue", Arial, sans-serif; color: #e8e8e8; user-select: none; -webkit-user-select: none; }
+.fsui-map[hidden] { display: none; }
+.fsui-map canvas { position: absolute; inset: 0; display: block; cursor: grab; }
+.fsui-map canvas.drag { cursor: grabbing; }
+.fsui-map canvas.hot { cursor: pointer; }
+.fsui-map-bar { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: center; pointer-events: none; }
+.fsui-map-bar > * { pointer-events: auto; }
+.fsui-map-title { font-size: 15px; font-weight: 600; letter-spacing: 0.04em; margin-right: auto; }
+.fsui-map-info { position: absolute; left: 12px; bottom: 12px; font-size: 13px; line-height: 1.5; color: #c9ced2;
+  background: rgba(0, 0, 0, 0.55); padding: 8px 12px; border-radius: 6px; pointer-events: none; }
+.fsui-map-info b { color: #3cff4e; font-weight: 600; }
+.fsui-map-info .amber { color: #ffa515; }
+.fsui-map-help { position: absolute; right: 12px; bottom: 12px; font-size: 12px; color: #8a9097; text-align: right; line-height: 1.5; pointer-events: none; }
+.fsui-b { font: 600 13px "Helvetica Neue", Arial, sans-serif; color: #f0f0f0; background: #39424a; border: 1px solid #56616a;
+  border-radius: 5px; padding: 7px 12px; cursor: pointer; }
+.fsui-b:hover { background: #46515a; }
+.fsui-b.primary { background: #0f6e86; border-color: #2fe3ff; }
+.fsui-b.primary:hover { background: #148aa8; }
+.fsui-b[disabled] { opacity: 0.45; cursor: not-allowed; }
+.fsui-confirm { position: absolute; background: #10161b; border: 1px solid #2fe3ff; border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6); font-size: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
+.fsui-confirm[hidden] { display: none; }
+.fsui-confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+.fsui-tip { position: absolute; pointer-events: none; background: rgba(0, 0, 0, 0.8); color: #fff; font-size: 12px;
+  padding: 3px 7px; border-radius: 4px; white-space: nowrap; }
+.fsui-tip[hidden] { display: none; }
+
+/* Flight setup */
+.fsui-setup { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto;
+  background: rgba(2, 6, 12, 0.72); overscroll-behavior: none; font-family: "Helvetica Neue", Arial, sans-serif; color: #e8e8e8; }
+.fsui-setup[hidden] { display: none; }
+.fsui-dlg { width: min(940px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; background: #12181d;
+  border: 1px solid #36414a; border-radius: 10px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6); padding: 20px 22px; box-sizing: border-box; }
+.fsui-dlg h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+.fsui-dlg .sub { margin: 0 0 16px; color: #8a9097; font-size: 13px; }
+.fsui-grid { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+@media (max-width: 760px) { .fsui-grid { grid-template-columns: 1fr; } }
+.fsui-sec { margin-bottom: 14px; }
+.fsui-sec h3 { margin: 0 0 7px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #2fe3ff; }
+.fsui-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 7px; font-size: 14px; }
+.fsui-row label { min-width: 92px; color: #c9ced2; }
+.fsui-dlg select, .fsui-dlg input[type=number] { font: 14px "Helvetica Neue", Arial, sans-serif; color: #f0f0f0; background: #0a0e11;
+  border: 1px solid #44505a; border-radius: 5px; padding: 6px 8px; }
+.fsui-dlg input[type=number] { width: 96px; }
+.fsui-dlg input[type=range] { width: 160px; accent-color: #2fe3ff; }
+.fsui-seg { display: inline-flex; border: 1px solid #44505a; border-radius: 6px; overflow: hidden; }
+.fsui-seg button { font: 13px "Helvetica Neue", Arial, sans-serif; color: #c9ced2; background: #0a0e11; border: 0; padding: 7px 12px; cursor: pointer; }
+.fsui-seg button + button { border-left: 1px solid #44505a; }
+.fsui-seg button.on { background: #0f6e86; color: #fff; }
+.fsui-seg button[disabled] { color: #5d6c78; cursor: not-allowed; }
+.fsui-seg button small { color: #8a9097; margin-left: 4px; }
+.fsui-mini { width: 300px; height: 300px; background: #070b10; border: 1px solid #2b3238; border-radius: 8px; display: block; cursor: pointer; }
+.fsui-mini-help { font-size: 12px; color: #8a9097; margin-top: 6px; }
+.fsui-weights { font-size: 13px; line-height: 1.6; color: #c9ced2; background: #0a0e11; border: 1px solid #2b3238; border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
+.fsui-weights b { color: #3cff4e; font-weight: 600; }
+.fsui-weights .bad { color: #ff4d4d; }
+.fsui-weights .warn { color: #ffa515; }
+.fsui-foot { display: flex; justify-content: flex-end; gap: 10px; align-items: center; margin-top: 10px; }
+.fsui-foot .msg { margin-right: auto; font-size: 13px; color: #ff6b6b; }
+.fsui-note { font-size: 12px; color: #8a9097; }

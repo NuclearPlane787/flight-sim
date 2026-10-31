@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: sound test</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; background: #15181c; color: #dde; margin: 16px; }
+  fieldset { border: 1px solid #445; margin: 0 0 12px; max-width: 640px; }
+  label { display: grid; grid-template-columns: 140px 1fr 60px; gap: 8px; align-items: center; margin: 4px 0; }
+  label.cb { display: inline-flex; margin-right: 14px; }
+  button { margin: 2px 4px 2px 0; padding: 6px 10px; }
+  output { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<h1>Sound test</h1>
+<p>Mock <code>sim.state</code> driving <code>src/audio/synth.js</code>. Press Start first.</p>
+<p><button id="start">Start</button><button id="stop">Stop</button></p>
+
+<fieldset><legend>Mix</legend>
+  <label>Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><output></output></label>
+  <label class="cb"><input id="inside" type="checkbox" checked> inside (cockpit)</label>
+  <label class="cb"><input id="paused" type="checkbox"> paused</label>
+  <label class="cb">timeScale <select id="ts"><option>1</option><option>2</option><option>8</option></select></label>
+</fieldset>
+
+<fieldset><legend>Flight</legend>
+  <label>N1 left (%) <input id="n1l" type="range" min="0" max="100" value="22"><output></output></label>
+  <label>N1 right (%) <input id="n1r" type="range" min="0" max="100" value="22"><output></output></label>
+  <label>Reverser <input id="rev" type="range" min="0" max="1" step="0.01" value="0"><output></output></label>
+  <label>IAS (kt) <input id="ias" type="range" min="0" max="360" value="0"><output></output></label>
+  <label>Speedbrake <input id="sb" type="range" min="0" max="1" step="0.01" value="0"><output></output></label>
+  <label class="cb"><input id="ground" type="checkbox" checked> on ground (GS = IAS)</label>
+  <p>
+    <button id="gear">Gear up/down</button>
+    <button id="flap">Flaps 0 / FULL</button>
+    <button id="touch">Touchdown (−3 m/s)</button>
+    <button id="soft">Soft touchdown (−0.8 m/s)</button>
+  </p>
+</fieldset>
+
+<fieldset><legend>Warnings</legend>
+  <label class="cb"><input id="apDisc" type="checkbox"> apDisc</label>
+  <label class="cb"><input id="overspeed" type="checkbox"> overspeed</label>
+  <label class="cb"><input id="stall" type="checkbox"> stall</label>
+</fieldset>
+
+<script type="module">
+import { createSynth } from '../src/audio/synth.js';
+
+const $ = (id) => document.getElementById(id);
+const synth = createSynth();
+for (const r of document.querySelectorAll('input[type=range]')) {
+  const out = r.nextElementSibling;
+  const show = () => { out.value = r.value; };
+  r.addEventListener('input', show); show();
+}
+$('start').onclick = () => synth.start();
+$('stop').onclick = () => synth.stop();
+$('vol').oninput = () => { synth.volume = +$('vol').value; };
+
+const KT = 1.943844;
+const s = {
+  t: 0, ias: 0, gs: 0, vs: 0, onGround: true, gearPos: 1, flapDeg: 0, slatDeg: 0,
+  speedbrake: 0, groundSpoilers: 0,
+  engines: [{ n1: 22, rev: 0 }, { n1: 22, rev: 0 }],
+  warnings: { stall: false, overspeed: false, apDisc: false },
+};
+let gearTarget = 1, flapTarget = 0, touchAt = -1, touchVs = 0;
+
+$('gear').onclick = () => { gearTarget = gearTarget ? 0 : 1; };
+$('flap').onclick = () => { flapTarget = flapTarget ? 0 : 1; };
+function touchdown(vs) { s.onGround = false; touchAt = s.t + 0.2; touchVs = vs; }
+$('touch').onclick = () => touchdown(-3);
+$('soft').onclick = () => touchdown(-0.8);
+
+let last = performance.now();
+function frame(ms) {
+  const dt = Math.min(0.1, (ms - last) / 1000); last = ms;
+  const paused = $('paused').checked, timeScale = +$('ts').value;
+  if (!paused) {
+    s.t += dt;
+    const step = (cur, tgt, rate) => cur + Math.max(-rate * dt, Math.min(rate * dt, tgt - cur));
+    s.gearPos = step(s.gearPos, gearTarget, 1 / 10);        // ~10 s cycle
+    s.flapDeg = step(s.flapDeg, flapTarget * 40, 40 / 15);  // ~15 s
+    s.slatDeg = step(s.slatDeg, flapTarget * 27, 27 / 10);
+  }
+  s.engines[0].n1 = +$('n1l').value; s.engines[1].n1 = +$('n1r').value;
+  s.engines[0].rev = s.engines[1].rev = +$('rev').value;
+  s.ias = +$('ias').value / KT;
+  s.gs = s.ias;
+  s.speedbrake = +$('sb').value;
+  s.groundSpoilers = 0;
+  if (touchAt >= 0) {
+    s.vs = touchVs;
+    if (s.t >= touchAt) { s.onGround = true; touchAt = -1; }
+  } else {
+    s.onGround = $('ground').checked;
+    s.vs = 0;
+  }
+  for (const k of ['apDisc', 'overspeed', 'stall']) s.warnings[k] = $(k).checked;
+  synth.update(s, { inside: $('inside').checked, timeScale, paused });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

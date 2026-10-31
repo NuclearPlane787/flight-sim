@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: apron dev page</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: 8px; top: 8px; color: #dfe; font: 12px/1.35 ui-monospace, Menlo, monospace;
+         background: rgba(0,0,0,.45); padding: 6px 8px; border-radius: 4px; white-space: pre; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">loading…</div>
+<script type="module">
+// Apron dev page: the world (as tests/dev-world.html sets it up) plus createAprons().
+//   ?x=&y=  or ?lat=&lon=     camera, map metres or geographic
+//   ?alt= (ft MSL) or ?agl= (ft above the ground)
+//   ?hdg=&pitch=              degrees (grid heading)
+//   ?look=x,y[,h]             aim at a map point (h metres MSL; default the ground)
+//   ?stand=RKSS:12            in the captain's seat of an A321 parked on that stand
+//   ?parked=RKSS:12,RKSS:13   put A321 models on these stands (the stand= one gets one too)
+//   ?hold=RKSS:3              look at hold-short site 3 (index in aprons.sites[...].holds)
+//   ?hold=…&back=40&eye=5     stand back on the taxiway, eye height in metres
+//   ?approach=RKSS:121&back=50  on that stand's lead-in, back metres out, eye 5 m
+//   ?trees=0                  hide the forest trees (they grow on the aprons for now)
+//   ?fov=                     degrees
+// Keys: WASD move, R/F up/down, arrows turn/pitch, Shift = 10x.
+import * as THREE from '../vendor/three.module.js';
+import { createWorld } from '../src/world/world.js';
+import { createAprons } from '../src/world/apron.js';
+import { holdShortSites, hdgVec } from '../src/world/apron-geom.js';
+import { toMap } from '../src/world/frame.js';
+import { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, MAX_PATCHES, MAX_RUNWAYS } from '../src/world/glsl.js';
+import { ATMOS_GLSL } from '../src/world/sky.js';
+import { WATER_GLSL } from '../src/world/water.js';
+import { FIELDS_GLSL } from '../src/world/detail.js';
+import { createAircraft } from '../src/aircraft.js';
+import { EYES, GROUND_Z } from '../src/geometry.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const FT = 0.3048, DEG = Math.PI / 180;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(num('fov', 55), 1, 0.3, 500000);
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const t0 = performance.now();
+const world = await createWorld({ renderer, scene, baseUrl: '../data/' });
+const t1 = performance.now();
+const list = world.airports.airports;
+// The same chunks world.js hands to createRunways.
+const chunks = { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, ATMOS_GLSL, WATER_GLSL, FIELDS_GLSL, MAX_PATCHES, MAX_RUNWAYS };
+const aprons = createAprons(scene, world.uniforms, chunks, list, world.heightfield);
+const apronMs = performance.now() - t1;
+const loadMs = t1 - t0;
+const byIcao = (icao) => list.find((a) => a.icao === icao);
+const findStand = (spec) => { const [icao, ref] = spec.split(':'); const a = byIcao(icao); return a && a.stands.find((s) => String(s.ref) === ref); };
+
+// Starting pose.
+const cam = { x: 0, y: 0, z: 1000, hdg: 0, pitch: 0 };
+if (q.has('lat')) [cam.x, cam.y] = toMap(num('lat'), num('lon'));
+cam.x = num('x', cam.x); cam.y = num('y', cam.y);
+cam.hdg = num('hdg', 0) * DEG; cam.pitch = num('pitch', 0) * DEG;
+
+// Parked A321s (static models, no animation update).
+const parked = (q.get('parked') || '').split(',').filter(Boolean);
+if (q.has('stand')) parked.push(q.get('stand'));
+const models = [];
+for (const spec of parked) {
+  const s = findStand(spec);
+  if (!s) continue;
+  const ac = createAircraft();
+  ac.update({}, 0);
+  ac.object.traverse((o) => { o.frustumCulled = false; });
+  scene.add(ac.object);
+  models.push({ ac, s, h: world.heightAt(s.x, s.y) + GROUND_Z });
+}
+if (q.has('stand')) {
+  const s = findStand(q.get('stand'));
+  if (s) {
+    const [fx, fy] = hdgVec(s.hdgGridDeg);
+    const e = EYES.captain;
+    cam.x = s.x + fx * e.x - fy * e.y; cam.y = s.y + fy * e.x + fx * e.y;   // +y body = left
+    cam.z = world.heightAt(s.x, s.y) + GROUND_Z + e.z;
+    cam.hdg = num('hdg', s.hdgGridDeg) * DEG + num('dhdg', 0) * DEG;
+    cam.pitch = num('pitch', -8) * DEG;
+  }
+}
+if (q.has('approach')) {          // taxiing in on a stand's lead-in, ?back metres before the stand point
+  const s = findStand(q.get('approach'));
+  if (s) {
+    const [fx, fy] = hdgVec(s.hdgGridDeg), b = num('back', 50);
+    cam.x = s.x - fx * b; cam.y = s.y - fy * b;
+    cam.z = world.heightAt(cam.x, cam.y) + num('eye', 5);
+    cam.hdg = s.hdgGridDeg * DEG; cam.pitch = num('pitch', -8) * DEG;
+  }
+}
+const noTrees = q.get('trees') === '0';
+if (q.has('alt')) cam.z = num('alt') * FT;
+if (q.has('agl')) cam.z = world.heightAt(cam.x, cam.y) + num('agl') * FT;
+let look = q.has('look') ? q.get('look').split(',').map(Number) : null;
+if (q.has('hold')) {
+  const [icao, k] = q.get('hold').split(':');
+  const h = holdShortSites(byIcao(icao))[+k];
+  if (h) {
+    look = [h.x + h.dx * num('ahead', 25), h.y + h.dy * num('ahead', 25)];
+    if (q.has('back')) {          // stand back on the taxiway, eye height (m) = ?eye
+      cam.x = h.x - h.dx * num('back'); cam.y = h.y - h.dy * num('back');
+      cam.z = world.heightAt(cam.x, cam.y) + num('eye', 5);
+    }
+  }
+}
+if (look) {
+  const [lx, ly] = look, lh = look.length > 2 ? look[2] : world.heightAt(lx, ly);
+  const dx = lx - cam.x, dy = ly - cam.y;
+  cam.hdg = Math.atan2(dx, dy);
+  cam.pitch = Math.atan2(lh - cam.z, Math.hypot(dx, dy));
+}
+
+const keys = new Set();
+addEventListener('keydown', (e) => keys.add(e.code));
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+const hud = document.getElementById('hud');
+if (q.get('hud') === '0') hud.style.display = 'none';
+const origin = { x: 0, y: 0 };
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+const frameTimes = [];
+window.__dev = { world, aprons, renderer, camera, cam, loadMs, apronMs, frameTimes, ready: false };
+
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  const sp = (keys.has('ShiftLeft') ? 10 : 1) * Math.max(10, (cam.z - world.heightAt(cam.x, cam.y)) * 0.5) * dt;
+  const fx = Math.sin(cam.hdg), fy = Math.cos(cam.hdg);
+  if (keys.has('KeyW')) { cam.x += fx * sp; cam.y += fy * sp; }
+  if (keys.has('KeyS')) { cam.x -= fx * sp; cam.y -= fy * sp; }
+  if (keys.has('KeyA')) { cam.x -= fy * sp; cam.y += fx * sp; }
+  if (keys.has('KeyD')) { cam.x += fy * sp; cam.y -= fx * sp; }
+  if (keys.has('KeyR')) cam.z += sp;
+  if (keys.has('KeyF')) cam.z -= sp;
+  if (keys.has('ArrowLeft')) cam.hdg -= dt * 0.8;
+  if (keys.has('ArrowRight')) cam.hdg += dt * 0.8;
+  if (keys.has('ArrowUp')) cam.pitch += dt * 0.5;
+  if (keys.has('ArrowDown')) cam.pitch -= dt * 0.5;
+
+  origin.x = cam.x; origin.y = cam.y;
+  camera.position.set(0, cam.z, 0);
+  camera.rotation.set(cam.pitch, -cam.hdg, 0, 'YXZ');
+  for (const m of models) {
+    m.ac.object.position.set(m.s.x - origin.x, m.h, -(m.s.y - origin.y));
+    m.ac.object.rotation.set(0, -m.s.hdgGridDeg * DEG, 0, 'YXZ');
+  }
+  const c0 = performance.now();
+  world.update({ camera, origin, state: null, dt });
+  if (noTrees) world.trees.group.visible = false;   // after world.update, which turns them on
+  const ap = aprons.update({ origin });
+  renderer.render(scene, camera);
+  const cpu = performance.now() - c0;
+  frameTimes.push(dt * 1000);
+  if (frameTimes.length > 600) frameTimes.shift();
+
+  frames++;
+  if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  const i = renderer.info.render, s = world.stats;
+  window.__dev.info = { fps, calls: i.calls, triangles: i.triangles, cpuMs: cpu, stats: { ...s }, aprons: ap };
+  hud.textContent =
+    `${fps.toFixed(0)} fps  cpu ${cpu.toFixed(2)} ms  load ${loadMs.toFixed(0)} ms  aprons built in ${apronMs.toFixed(0)} ms\n` +
+    `draw calls ${i.calls}  triangles ${(i.triangles / 1000).toFixed(0)}k   aprons: ${ap.drawCalls} calls ${(ap.triangles / 1000).toFixed(0)}k tris\n` +
+    `x ${cam.x.toFixed(0)}  y ${cam.y.toFixed(0)}  alt ${(cam.z / FT).toFixed(0)} ft  agl ${(s.agl / FT).toFixed(0)} ft\n` +
+    `hdg ${(((cam.hdg / DEG) % 360 + 360) % 360).toFixed(0)}  pitch ${(cam.pitch / DEG).toFixed(1)}\n` +
+    aprons.sites.map((t) => `${t.icao}: ${t.drawCalls} calls ${(t.tris / 1000).toFixed(0)}k tris ${JSON.stringify(t.info)}`).join('\n');
+  window.__dev.ready = true;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

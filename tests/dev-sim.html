@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sim dev: predictor worker check</title>
+<pre id="out">running…</pre>
+<script type="module">
+// Dev page for the sim job: checks the prediction worker in a real browser (module worker,
+// cancel-on-new-request, CPU per job) and the sim's step cost in Chrome.
+import { createSim } from '../src/sim/sim.js';
+import { createPredictor } from '../src/sim/predict.js';
+const out = document.getElementById('out');
+const log = (...a) => { out.textContent += '\n' + a.join(' '); };
+const KT = 0.514444, FT = 0.3048;
+const sim = createSim();
+sim.reset({ x: -50000, y: 100000, hdg: 3.4, onGround: false, z: 3000 * FT, iasMs: 250 * KT, flapLever: 0, gearDown: false, fuelKg: 9000, payloadKg: 18000,
+  ap: { ap: true, athr: true, spdKt: 280, hdgDeg: 190, altFt: 3000 } });
+sim.controls.thrust = 25 / 45;
+sim.ap.setAlt(33000); sim.ap.levelChange();
+// Step cost in the browser.
+let t0 = performance.now();
+for (let i = 0; i < 32 * 600; i++) sim.step(1 / 120);
+const us = (performance.now() - t0) * 1000 / (32 * 600);
+log('step µs (browser):', us.toFixed(2));
+const p = createPredictor();
+const results = [];
+p.onresult = (r) => {
+  results.push(r);
+  log('result: samples', r.samples.length, 'reason', r.reason, 'cpuMs', r.cpuMs, 'last t', (r.samples.at(-1).t / 60).toFixed(1), 'min');
+  if (results.length === 1) {
+    // Jump to the sample 5 min ahead and check the position matches.
+    const target = r.samples.find((s) => s.t >= sim.state.t + 300);
+    sim.restore(target.snap);
+    log('jump ok:', Math.abs(sim.state.pos.x - target.x) < 1e-6 && Math.abs(sim.state.pos.y - target.y) < 1e-6);
+    window.__done = { us, results: results.map((x) => ({ n: x.samples.length, reason: x.reason, cpuMs: x.cpuMs })) };
+  }
+};
+p.onerror = (e) => { log('error', e); window.__done = { error: String(e) }; };
+// Two requests back to back: only the second should answer.
+p.request(sim.snapshot());
+p.request(sim.snapshot());
+</script>

@@ -1,0 +1,109 @@
+// Pushback state machine for gate starts (PLAN.md → Airports → Gate starts).
+// Pure ES module. While it runs it drives the aircraft position directly.
+//
+// P starts it; P again stops (and resumes). It pushes straight back, then turns
+// so the tail swings towards the taxi line and the nose ends up along it.
+// Q/E bias the turn (and can start a gentle curve early).
+//
+//   const pb = createPushback(stand, { line: { x, y, hdgGrid } });  // line optional
+//   pb.toggle();                                      // on P
+//   const { x, y, hdgGrid, done } = pb.update(dt, { steer });  // steer −1 (Q) … 1 (E)
+
+const SPEED = 1.5;      // m/s, pushback speed
+const ACCEL = 0.4;      // m/s², tug pull-away and stop
+const TURN_R = 25;      // m, turn radius of the reference point
+const MIN_R = 12;       // m, the tightest turn, used when the taxi line is close behind
+const BIAS = 0.4;       // Q/E change the turn rate by ±40%
+
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+// stand: { x, y, hdgGridDeg }.
+// opts.line: a point on the taxi line and its grid direction { x, y, hdgGrid (rad) }
+//   (e.g. from taxi.js snapToGraph + the edge direction, or the first leg of the route).
+//   Without it: push 1.5 radii back, then a 90° turn to the left (tail right).
+// opts.finalHdgGrid: force the heading after the turn.
+export function createPushback(stand, opts = {}) {
+  const h0 = stand.hdgGridDeg * Math.PI / 180;
+  const bx = -Math.sin(h0), by = -Math.cos(h0);   // backwards direction
+
+  // Straight leg length and final heading.
+  let straightM = 1.5 * TURN_R, finalHdg = wrap(h0 - Math.PI / 2), radius = TURN_R;
+  if (opts.line) {
+    const L = opts.line;
+    const back = (L.x - stand.x) * bx + (L.y - stand.y) * by;     // distance back to the line
+    // Of the two directions along the line, pick the one the aircraft can turn
+    // into while backing (the nose ends up pointing away from the stand side).
+    const d1 = L.hdgGrid, d2 = wrap(L.hdgGrid + Math.PI);
+    finalHdg = Math.abs(wrap(d1 - h0)) <= Math.abs(wrap(d2 - h0)) ? d1 : d2;
+    if (opts.preferHdgGrid !== undefined) {
+      finalHdg = Math.abs(wrap(d1 - opts.preferHdgGrid)) <= Math.abs(wrap(d2 - opts.preferHdgGrid)) ? d1 : d2;
+    }
+  }
+  if (opts.finalHdgGrid !== undefined) finalHdg = opts.finalHdgGrid;
+  if (opts.line) {
+    // Straight back a metres, then backing round an arc of radius R to finalHdg, must
+    // end on the line: n·(stand + a·back + arc − line point) = 0, n the line's normal.
+    const L = opts.line;
+    const dh = wrap(finalHdg - h0), k = Math.sign(dh || 1) / TURN_R, h1 = h0 + dh;
+    const arcX = -(Math.cos(h0) - Math.cos(h1)) / k, arcY = -(Math.sin(h1) - Math.sin(h0)) / k;
+    const nx = Math.cos(L.hdgGrid), ny = -Math.sin(L.hdgGrid);
+    const nb = nx * bx + ny * by;
+    if (Math.abs(nb) > 0.2) {
+      const want = nx * (L.x - stand.x) + ny * (L.y - stand.y), na = nx * arcX + ny * arcY;
+      const a = (want - na) / nb;
+      straightM = Math.max(5, a);
+      // Too close for the standard radius: turn tighter (the arc scales with the radius).
+      if (a < 5 && Math.abs(na) > 1e-6) {
+        radius = Math.max(MIN_R, Math.min(TURN_R, (want - 5 * nb) / (na / TURN_R)));
+        straightM = Math.max(5, (want - na * radius / TURN_R) / nb);
+      }
+    }
+  }
+
+  const s = {
+    phase: 'idle',          // idle | straight | turn | stopping | done
+    running: false,         // P toggles this
+    x: stand.x, y: stand.y, hdgGrid: h0,
+    v: 0, pushedM: 0,
+  };
+
+  function toggle() {
+    if (s.phase === 'done') return;
+    if (s.phase === 'idle') s.phase = 'straight';
+    s.running = !s.running;
+  }
+
+  function update(dt, inputs = {}) {
+    if (inputs.p) toggle();
+    let steer = inputs.steer ?? ((inputs.e ? 1 : 0) - (inputs.q ? 1 : 0));
+    steer = Math.max(-1, Math.min(1, steer));
+
+    const want = s.running && s.phase !== 'stopping' && s.phase !== 'done' ? SPEED : 0;
+    s.v += Math.max(-ACCEL * dt, Math.min(ACCEL * dt, want - s.v));
+    if (s.phase === 'stopping' && s.v <= 1e-3) { s.v = 0; s.phase = 'done'; s.running = false; }
+
+    // Heading rate while backing: ω = v / R, signed so the heading moves towards finalHdg.
+    let omega = 0;
+    const remaining = wrap(finalHdg - s.hdgGrid);
+    if (s.phase === 'turn') {
+      omega = Math.sign(remaining) * (s.v / radius) * (1 + BIAS * steer * Math.sign(remaining));
+      if (Math.abs(omega * dt) >= Math.abs(remaining)) { omega = remaining / Math.max(dt, 1e-6); s.phase = 'stopping'; }
+    } else if (s.phase === 'straight') {
+      omega = steer * BIAS * s.v / radius;   // small curve if the pilot asks for it
+    }
+    s.hdgGrid = wrap(s.hdgGrid + omega * dt);
+    const ds = s.v * dt;
+    s.x -= Math.sin(s.hdgGrid) * ds;
+    s.y -= Math.cos(s.hdgGrid) * ds;
+    s.pushedM += ds;
+    if (s.phase === 'straight' && s.pushedM >= straightM) s.phase = 'turn';
+
+    return { x: s.x, y: s.y, hdgGrid: s.hdgGrid, done: s.phase === 'done', phase: s.phase, speed: s.v };
+  }
+
+  return {
+    toggle, update,
+    get state() { return { ...s, finalHdg, straightM, radius }; },
+    get active() { return s.phase !== 'idle' && s.phase !== 'done'; },
+  };
+}

@@ -1,0 +1,67 @@
+{
+  "national": {
+    "x0": -400000.0,
+    "y0": -400000.0,
+    "cell": 250.0,
+    "nx": 3200,
+    "ny": 3200,
+    "height": "terrain/height.i16.gz",
+    "water": "terrain/water.rg8.gz",
+    "cover": "terrain/cover.rgba8.gz"
+  },
+  "heightScale": 0.25,
+  "airports": [
+    "airports/RKSS.json",
+    "airports/RKPC.json",
+    "airports/RKSI.json"
+  ],
+  "patches": [
+    {
+      "id": "incheon-gimpo",
+      "x0": -101790.0,
+      "y0": 155400.0,
+      "cell": 30.0,
+      "nx": 1629,
+      "ny": 940,
+      "height": "terrain/patch-incheon-gimpo.i16.gz"
+    },
+    {
+      "id": "jeju",
+      "x0": -130620.0,
+      "y0": -315840.0,
+      "cell": 30.0,
+      "nx": 2808,
+      "ny": 1691,
+      "height": "terrain/patch-jeju.i16.gz"
+    }
+  ],
+  "coastPatches": [
+    {
+      "id": "RKSS",
+      "x0": -70660.0,
+      "y0": 165040.0,
+      "cell": 10.0,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RKSS.u8.gz"
+    },
+    {
+      "id": "RKSI",
+      "x0": -100760.0,
+      "y0": 155410.0,
+      "cell": 10.0,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RKSI.u8.gz"
+    },
+    {
+      "id": "RKPC",
+      "x0": -101530.0,
+      "y0": -283390.0,
+      "cell": 10.0,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RKPC.u8.gz"
+    }
+  ]
+}

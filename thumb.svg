@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <title>Flight Sim: the Nuclear Airlines tail over a runway</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1f45"/>
+      <stop offset="0.62" stop-color="#2a6fb8"/>
+      <stop offset="1" stop-color="#8cc4ee"/>
+    </linearGradient>
+    <linearGradient id="fin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a3270"/>
+      <stop offset="1" stop-color="#0c1a3a"/>
+    </linearGradient>
+    <radialGradient id="core">
+      <stop offset="0" stop-color="#f2ffe6"/>
+      <stop offset="0.45" stop-color="#7cff3a"/>
+      <stop offset="1" stop-color="#7cff3a" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="hazard" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(40)">
+      <rect width="14" height="14" fill="#ffc61a"/>
+      <rect width="7" height="14" fill="#121316"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="finClip"><path d="M152 166 L210 24 L262 24 L270 164 Z"/></clipPath>
+  </defs>
+  <rect width="320" height="200" fill="url(#sky)"/>
+  <!-- runway in perspective, vanishing at the horizon -->
+  <path d="M0 150 L320 150 L320 200 L0 200 Z" fill="#3c4a3a"/>
+  <path d="M146 150 L174 150 L250 200 L70 200 Z" fill="#2d3035"/>
+  <path d="M158.6 150 L161.4 150 L163 158 L157 158 Z M156.3 163 L163.7 163 L166 175 L154 175 Z M152.6 181 L167.4 181 L171 200 L149 200 Z" fill="#e8ecf0"/>
+  <path d="M146 150 L148 150 L74 200 L70 200 Z M172 150 L174 150 L250 200 L246 200 Z" fill="#e8ecf0" opacity="0.8"/>
+  <!-- the fin -->
+  <path d="M152 166 L210 24 L262 24 L270 164 Z" fill="url(#fin)"/>
+  <g clip-path="url(#finClip)">
+    <path d="M140 150 L280 150 L280 172 L140 172 Z" fill="url(#hazard)"/>
+    <rect x="140" y="146" width="140" height="4" fill="#7cff3a"/>
+    <path d="M163 146 L215 22" stroke="#2ea8ff" stroke-width="4" filter="url(#glow)"/>
+  </g>
+  <!-- rudder hinge line -->
+  <path d="M244 24 L250 152" stroke="#08132c" stroke-width="1.2" opacity="0.8"/>
+  <!-- the atom -->
+  <g transform="translate(226 92)" fill="none" stroke="#2ea8ff" stroke-width="4.2" filter="url(#glow)">
+    <ellipse rx="34" ry="12"/>
+    <ellipse rx="34" ry="12" transform="rotate(60)"/>
+    <ellipse rx="34" ry="12" transform="rotate(-60)"/>
+  </g>
+  <circle cx="226" cy="92" r="14" fill="url(#core)"/>
+  <circle cx="226" cy="92" r="5" fill="#b6ff8c"/>
+  <!-- the tail cone under the fin -->
+  <path d="M120 200 Q170 166 300 160 Q316 160 320 162 L320 200 Z" fill="#f3f5f7"/>
+  <path d="M120 200 Q172 172 320 168" stroke="#7cff3a" stroke-width="3" fill="none"/>
+  <path d="M132 200 Q178 177 320 174" stroke="#2ea8ff" stroke-width="3.5" fill="none"/>
+  <path d="M146 200 Q184 182 320 180 L320 200 Z" fill="#122654"/>
+  <text x="18" y="40" font-family="Arial Black, Helvetica Neue, Arial, sans-serif" font-weight="900" font-size="24" fill="#f3f5f7" letter-spacing="1">NUCLEAR</text>
+  <text x="20" y="56" font-family="Helvetica Neue, Arial, sans-serif" font-weight="700" font-size="10" fill="#7cff3a" letter-spacing="4">AIRLINES · HL8787</text>
+</svg>

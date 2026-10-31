@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: screens dev page</title>
+<link rel="stylesheet" href="../src/ui/ui.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #000; }
+  /* A stand-in for the 3D view, so the panels are judged against something like it. */
+  #view { position: absolute; inset: 0; background: linear-gradient(#5b8fc4 0%, #a9c8e2 46%, #c9d6c4 50%, #6e7e55 56%, #4a5a3a 100%); }
+  #hud, #map-root, #setup-root { position: absolute; inset: 0; }
+  #hud { pointer-events: none; }
+  #map-root, #setup-root { pointer-events: none; }
+  #dev { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font: 12px Menlo, monospace; color: #fff;
+    background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; z-index: 10; }
+  #dev a { color: #2fe3ff; margin: 0 4px; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="hud"></div>
+<div id="map-root"></div>
+<div id="setup-root"></div>
+<div id="dev"></div>
+<script type="module">
+import { createHud } from '../src/ui/hud.js';
+import { createMap } from '../src/ui/map.js';
+import { createSetup } from '../src/ui/setup.js';
+import { findEnd, setWaypoints } from '../src/ui/common.js';
+import { loadAirportsOrMock, loadCoastOrMock, makeState, makeAp, derive, placeOnFinal, magToGrid, gridToMag } from './dev-ui-mock.js';
+
+const DEG = Math.PI / 180, KT = 0.514444, FT = 0.3048, NM = 1852;
+const q = new URLSearchParams(location.search);
+const scene = q.get('scene') || 'live';
+const devEl = document.getElementById('dev');
+
+const { airports, source: aSrc } = await loadAirportsOrMock();
+const { coast, source: cSrc } = await loadCoastOrMock();
+const hud = createHud(document.getElementById('hud'), { airports, coast });
+const map = createMap(document.getElementById('map-root'), { airports, coast });
+const setup = createSetup(document.getElementById('setup-root'), { airports, coast });
+
+const st = makeState(), ap = makeAp(st);
+const controls = { law: 'normal', spoilersArmed: true };
+hud.onlaw = (l) => { controls.law = l; };
+const view = { state: st, ap, dest: null, timeScale: 1, timeScaleActual: 1, paused: false, controls };
+const gimpo = findEnd(airports, 'RKSS', '32R'), jeju = findEnd(airports, 'RKPC', '07');
+view.dest = jeju.end;
+
+// ---- scenes ----
+function onRunway(end, ias) {
+  st.pos.x = end.x + Math.sin(end.hdgGridDeg * DEG) * 600; st.pos.y = end.y + Math.cos(end.hdgGridDeg * DEG) * 600;
+  st.pos.z = end.elevM + 3.9; st.hdg = end.hdgGridDeg * DEG; st.onGround = true; st.ias = ias * KT; st.vs = 0; st.pitch = 0; st.roll = 0;
+}
+function setEngines(n1, tgt, ff) { for (const e of st.engines) { e.n1 = n1; e.n1Target = tgt; e.ffKgS = ff; } }
+
+let t0 = performance.now();
+function sceneRunway() {
+  onRunway(gimpo.end, 112); st.t = 30;
+  st.thrustLever = 1; st.detent = 'TOGA'; setEngines(99.2, 100.6, 1.25);
+  st.config = '1+F'; st.flapLever = 1; st.slatDeg = 18; st.flapDeg = 10; st.gearPos = 1; st.pitch = 0.4 * DEG;
+  ap.ap = false; ap.athr = false; ap.spdKt = 156; ap.altFt = 5000; ap.hdgDeg = 323;
+  view.dest = jeju.end; derive(st, gimpo.end.elevM);
+}
+function sceneClimb() {
+  st.onGround = false; st.pos.x = gimpo.end.x - 30000; st.pos.y = gimpo.end.y - 42000; st.pos.z = 7340 * FT; st.t = 420;
+  st.hdg = magToGrid(228 * DEG, st.pos.x, st.pos.y); st.ias = 266 * KT; st.vs = 2350 / 196.85; st.pitch = 8.2 * DEG; st.roll = -22 * DEG; st.beta = 0.4 * DEG;
+  st.thrustLever = 25 / 45; st.detent = 'CL'; setEngines(88.6, 89.4, 0.92);
+  st.config = '0'; st.flapLever = 0; st.slatDeg = 0; st.flapDeg = 0; st.gearPos = 0; st.fuelKg = 9100; st.fuel = { left: 3900, right: 3900, center: 1300 };
+  ap.ap = true; ap.athr = true; ap.spdKt = 280; ap.hdgDeg = 199; ap.altFt = 24000; ap.vertical = 'OP CLB'; ap.thrustMode = 'THR CLB';
+  view.dest = jeju.end; derive(st);
+}
+function sceneApproach() {
+  placeOnFinal(st, jeju.end, 6.2, 0.35, -180); st.onGround = false; st.t = 2900;
+  st.ias = 142 * KT; st.vs = -820 / 196.85; st.pitch = 2.1 * DEG; st.roll = 3 * DEG; st.beta = 0;
+  st.thrustLever = 25 / 45; st.detent = 'CL'; setEngines(52.4, 54, 0.34);
+  st.config = 'FULL'; st.flapLever = 4; st.slatDeg = 27; st.flapDeg = 25; st.gearPos = 1; st.fuelKg = 5200; st.fuel = { left: 2600, right: 2600, center: 0 };
+  ap.ap = true; ap.athr = true; ap.spdKt = 138; ap.hdgDeg = Math.round(gridToMag(jeju.end.hdgGridDeg * DEG, jeju.end.x, jeju.end.y) / DEG); ap.altFt = 3000;
+  ap.vertical = 'V/S'; ap.vsFpm = -800; ap.thrustMode = 'SPEED';
+  view.dest = jeju.end; derive(st, jeju.end.elevM);
+  st.speedbrake = 0; st.agl = st.pos.z - jeju.end.elevM - 3.9;
+}
+
+// The live loop: roll, rotate, climb out, engage AP, turn towards Jeju, level off.
+let phase = 'roll';
+function liveStep(dt) {
+  st.t += dt;
+  const T = st.t;
+  if (phase === 'roll') {
+    st.thrustLever = 1; st.detent = 'TOGA';
+    for (const e of st.engines) { e.n1Target = 100.6; e.n1 += (e.n1Target - e.n1) * Math.min(1, dt / 3); e.ffKgS = 0.08 + e.n1 / 100 * 1.2; }
+    if (st.engines[0].n1 > 60) st.ias += 2.6 * KT * dt;
+    st.pos.x += Math.sin(st.hdg) * st.ias * dt; st.pos.y += Math.cos(st.hdg) * st.ias * dt;
+    if (st.ias > 150 * KT) { phase = 'climb'; st.onGround = false; }
+  } else if (phase === 'climb') {
+    st.pitch += (15 * DEG - st.pitch) * Math.min(1, dt); st.vs += (2600 / 196.85 - st.vs) * Math.min(1, dt / 3);
+    st.ias = Math.min(st.ias + 1.2 * KT * dt, 250 * KT);
+    if (st.pos.z > 400 * FT) st.gearPos = Math.max(0, st.gearPos - dt / 8);
+    if (st.pos.z > 1500 * FT && st.config !== '0') { st.config = '0'; st.flapLever = 0; }
+    st.slatDeg = Math.max(st.config === '0' ? 0 : 18, st.slatDeg - dt * 0.6); st.flapDeg = Math.max(0, st.flapDeg - dt * 0.5);
+    if (st.pos.z > 2000 * FT && !ap.ap) {
+      ap.engageAp(); ap.athr = true; ap.altFt = 12000; ap.levelChange(); ap.spdKt = 250;
+      ap.hdgDeg = Math.round(((gridToMag(Math.atan2(jeju.end.x - st.pos.x, jeju.end.y - st.pos.y), st.pos.x, st.pos.y) / DEG) + 360) % 360);
+      st.thrustLever = 25 / 45; st.detent = 'CL'; for (const e of st.engines) e.n1Target = 89;
+    }
+    for (const e of st.engines) { e.n1 += (e.n1Target - e.n1) * Math.min(1, dt / 3); e.ffKgS = 0.08 + e.n1 / 100 * 1.0; }
+    if (ap.ap) {
+      const hm = gridToMag(st.hdg, st.pos.x, st.pos.y) / DEG, d = ((ap.hdgDeg - hm + 540) % 360) - 180;
+      const bank = Math.max(-25, Math.min(25, d * 2.5)) * DEG;
+      st.roll += (bank - st.roll) * Math.min(1, dt / 2);
+      st.hdg += Math.tan(st.roll) * 9.81 / Math.max(60, st.tas) * dt;
+      const alt = st.pos.z / FT;
+      if (ap.vertical === 'OP CLB' && ap.altFt - alt < 1200) { ap.vertical = 'ALT*'; ap.thrustMode = 'SPEED'; }
+      if (ap.vertical === 'ALT*') { st.vs += ((ap.altFt - alt) * 0.06 / 196.85 * 10 - st.vs) * Math.min(1, dt); st.pitch += (3 * DEG - st.pitch) * dt; if (Math.abs(ap.altFt - alt) < 30) { ap.vertical = 'ALT'; } }
+      if (ap.vertical === 'ALT') { st.vs *= 0.9; }
+    }
+    st.pos.x += st.vel.x * dt; st.pos.y += st.vel.y * dt; st.pos.z += st.vs * dt;
+    st.fuelKg -= (st.engines[0].ffKgS + st.engines[1].ffKgS) * dt;
+  }
+  derive(st, gimpo.end.elevM);
+}
+
+if (scene === 'runway' || scene === 'setup') sceneRunway();
+else if (scene === 'climb' || scene === 'map') sceneClimb();
+else if (scene === 'approach') sceneApproach();
+else { onRunway(gimpo.end, 0); st.config = '1+F'; derive(st, gimpo.end.elevM); }
+
+// A mock predicted path: turn onto the selected heading at 3°/s, climb at 2,000 ft/min, 5 s samples.
+function mockPrediction() {
+  const out = [];
+  let x = st.pos.x, y = st.pos.y, z = st.pos.z, h = st.hdg, t = st.t, gs = Math.max(st.gs, 120);
+  const tgt = magToGrid(ap.hdgDeg * DEG, x, y);
+  for (let i = 0; i < 60 * 12 * 1.2; i++) {
+    const d = ((tgt - h) / DEG + 540) % 360 - 180;
+    h += Math.max(-15, Math.min(15, d)) * DEG;
+    const alt = z / FT, dz = Math.max(-1, Math.min(1, (ap.altFt - alt) / 167)) * 167 * FT;
+    z += dz; gs = Math.min(gs + 2, z > 10000 * FT ? 230 : 150);
+    x += Math.sin(h) * gs * 5; y += Math.cos(h) * gs * 5; t += 5;
+    out.push({ t, x, y, z, snap: { t } });
+    if (Math.abs(x) > 400000 || Math.abs(y) > 400000) break;
+  }
+  return out;
+}
+
+map.onjump = (s) => { devEl.dataset.jump = String(s.t); log(`onjump t=${s.t.toFixed(0)}`); };
+map.onskipfinal = () => log('onskipfinal');
+
+if (scene === 'map') {
+  ap.altFt = 24000; ap.hdgDeg = 199;
+  setWaypoints([]);
+  map.open(); map.update(view); map.setPrediction(mockPrediction());
+  if (q.get('confirm')) setTimeout(() => map._devConfirm?.(0.42), 100);
+}
+if (scene === 'setup') setup.show({}).then((plan) => { log('plan: ' + JSON.stringify(plan)); window.__plan = plan; });
+
+// Keyboard for the live scene: M map, Z AP, X A/THR, = / − rate.
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'm') { map.toggle(); if (map.isOpen) { map.update(view); map.setPrediction(mockPrediction()); } }
+  if (e.key === 'z') ap.ap ? ap.disconnectAp() : ap.engageAp();
+  if (e.key === 'x') ap.toggleAthr();
+  if (e.key === '=') view.timeScale = Math.min(16, view.timeScale * 2);
+  if (e.key === '-') view.timeScale = Math.max(1, view.timeScale / 2);
+  if (e.key === 's') setup.show({}).then((p) => log('plan: ' + JSON.stringify(p)));
+});
+window.__leaks = 0;
+window.addEventListener('mousedown', () => { window.__leaks++; log('mousedown reached window (camera would move)'); });
+window.addEventListener('wheel', () => { window.__leaks++; });
+
+let msg = '';
+function log(m) { msg = m; console.log(m); }
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (scene === 'live') { for (let i = 0; i < view.timeScale; i++) liveStep(dt); view.timeScaleActual = view.timeScale > 4 ? view.timeScale * 0.8 : view.timeScale; }
+  hud.update(view);
+  if (map.isOpen) map.update(view);
+  devEl.innerHTML = `scene: ${scene} · airports: ${aSrc} · coast: ${cSrc} · ` +
+    ['live', 'runway', 'climb', 'approach', 'map', 'setup'].map((s) => `<a href="?scene=${s}">${s}</a>`).join('') + (msg ? ' · ' + msg : '');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__view = view; window.__map = map; window.__hud = hud; window.__ready = true;
+</script>
+</body>
+</html>

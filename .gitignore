@@ -1,0 +1,9 @@
+# Flight Sim is its own public repository (github.com/NuclearPlane787/flight-sim).
+# Shane's raw downloads (hundreds of MB): the bake scripts in tools/ read them, the game never does.
+reference/raw/
+.DS_Store
+# The Airbus and EASA PDFs (11 MB, third-party documents): re-download with PLAN.md → Data.
+# The numbers taken from them, with page references, are in src/sim/a321neo.js.
+reference/docs/*.pdf
+# Python's bytecode cache (tools/*.py)
+__pycache__/

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: world dev page</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: 8px; top: 8px; color: #dfe; font: 12px/1.35 ui-monospace, Menlo, monospace;
+         background: rgba(0,0,0,.45); padding: 6px 8px; border-radius: 4px; white-space: pre; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">loading…</div>
+<script type="module">
+// World dev page: a free camera anywhere on the map.
+//   ?x=&y=          map metres          ?lat=&lon=     or geographic
+//   ?alt=           feet MSL (or ?agl= feet above the ground)
+//   ?hdg=&pitch=    degrees (grid heading; pitch + up)
+//   ?rwy=RKSS:14R   on that runway's threshold, eye 5 m up, looking down it
+//   ?app=RKPC:07&ft=1500   on the 3° approach to that runway, ft above the threshold
+//   ?hud=0          hide the overlay
+// Keys: WASD move, R/F up/down, arrows turn/pitch, Shift = 10x.
+import * as THREE from '../vendor/three.module.js';
+import { createWorld } from '../src/world/world.js';
+import { toMap } from '../src/world/frame.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const FT = 0.3048, DEG = Math.PI / 180;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(num('fov', 55), 1, 0.5, 500000);
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const t0 = performance.now();
+const world = await createWorld({ renderer, scene, baseUrl: '../data/' });
+const loadMs = performance.now() - t0;
+
+// Starting pose.
+const cam = { x: 0, y: 0, z: 1000, hdg: 0, pitch: 0 };
+if (q.has('lat')) [cam.x, cam.y] = toMap(num('lat'), num('lon'));
+cam.x = num('x', cam.x); cam.y = num('y', cam.y);
+cam.hdg = num('hdg', 0) * DEG; cam.pitch = num('pitch', 0) * DEG;
+if (q.has('rwy') || q.has('app')) {
+  const [icao, ident] = (q.get('rwy') || q.get('app')).split(':');
+  const e = world.airports.findRunwayEnd(icao, ident);
+  if (e) {
+    cam.hdg = num('hdg', e.hdgGridDeg) * DEG;
+    if (q.has('rwy')) {
+      const back = num('back', 0);
+      cam.x = e.thrX - e.ux * back; cam.y = e.thrY - e.uy * back;
+      cam.z = e.elevM + num('eye', 5);
+      cam.pitch = num('pitch', -1.5) * DEG;
+    } else {
+      const h = num('ft', 1500) * FT, d = h / Math.tan(3 * DEG) - 300;   // aim 300 m past the threshold
+      cam.x = e.thrX - e.ux * d; cam.y = e.thrY - e.uy * d;
+      cam.z = e.elevM + h;
+      cam.pitch = num('pitch', -3.5) * DEG;
+    }
+  }
+}
+if (q.has('alt')) cam.z = num('alt') * FT;
+if (q.has('agl')) cam.z = world.heightAt(cam.x, cam.y) + num('agl') * FT;
+
+const keys = new Set();
+addEventListener('keydown', (e) => keys.add(e.code));
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+const hud = document.getElementById('hud');
+if (q.get('hud') === '0') hud.style.display = 'none';
+const origin = { x: 0, y: 0 };
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+const frameTimes = [];
+window.__dev = { world, renderer, camera, cam, loadMs, frameTimes, ready: false };
+
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  // Free camera.
+  const sp = (keys.has('ShiftLeft') ? 10 : 1) * Math.max(20, (cam.z - world.heightAt(cam.x, cam.y)) * 0.5) * dt;
+  const fx = Math.sin(cam.hdg), fy = Math.cos(cam.hdg);
+  if (keys.has('KeyW')) { cam.x += fx * sp; cam.y += fy * sp; }
+  if (keys.has('KeyS')) { cam.x -= fx * sp; cam.y -= fy * sp; }
+  if (keys.has('KeyA')) { cam.x -= fy * sp; cam.y += fx * sp; }
+  if (keys.has('KeyD')) { cam.x += fy * sp; cam.y -= fx * sp; }
+  if (keys.has('KeyR')) cam.z += sp;
+  if (keys.has('KeyF')) cam.z -= sp;
+  if (keys.has('ArrowLeft')) cam.hdg -= dt * 0.8;
+  if (keys.has('ArrowRight')) cam.hdg += dt * 0.8;
+  if (keys.has('ArrowUp')) cam.pitch += dt * 0.5;
+  if (keys.has('ArrowDown')) cam.pitch -= dt * 0.5;
+
+  origin.x = cam.x; origin.y = cam.y;
+  camera.position.set(0, cam.z, 0);
+  camera.rotation.set(cam.pitch, -cam.hdg, 0, 'YXZ');
+  const c0 = performance.now();
+  world.update({ camera, origin, state: null, dt });
+  renderer.render(scene, camera);
+  const cpu = performance.now() - c0;
+  frameTimes.push(dt * 1000);
+  if (frameTimes.length > 600) frameTimes.shift();
+
+  frames++;
+  if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  const i = renderer.info.render, s = world.stats;
+  window.__dev.info = { fps, calls: i.calls, triangles: i.triangles, cpuMs: cpu, stats: { ...s } };
+  hud.textContent =
+    `${fps.toFixed(0)} fps  cpu ${cpu.toFixed(2)} ms  load ${loadMs.toFixed(0)} ms\n` +
+    `draw calls ${i.calls}  triangles ${(i.triangles / 1000).toFixed(0)}k\n` +
+    `x ${cam.x.toFixed(0)}  y ${cam.y.toFixed(0)}  alt ${(cam.z / FT).toFixed(0)} ft  agl ${(s.agl / FT).toFixed(0)} ft\n` +
+    `hdg ${(((cam.hdg / DEG) % 360 + 360) % 360).toFixed(0)}  pitch ${(cam.pitch / DEG).toFixed(1)}\n` +
+    `rings ${s.terrainLevels} (from ${s.finestStep} m)  trees ${(s.trees / 1000).toFixed(0)}k tris  bldg ${s.buildings}  lights ${s.lights}\n` +
+    `data: ${JSON.stringify(world.heightfield.info)}`;
+  window.__dev.ready = true;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

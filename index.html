@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flight Sim</title>
+  <link rel="icon" href="thumb.svg">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="src/ui/ui.css">
+  <link rel="stylesheet" href="src/ui/logbook.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="view" tabindex="-1"></canvas>
+    <div id="hud"></div>
+    <div id="map-root"></div>
+    <div id="setup-root"></div>
+
+    <div id="fade"></div>
+    <div id="toast" hidden></div>
+    <pre id="perf" hidden></pre>
+
+    <div id="loading" class="panel center">
+      <h1>Flight Sim</h1>
+      <p id="loading-text">Loading the world…</p>
+      <p class="small" data-version></p>
+    </div>
+
+    <div id="pause" class="panel center" hidden>
+      <h2>Paused</h2>
+      <div class="buttons">
+        <button data-act="resume">Resume</button>
+        <button data-act="logbook">Logbook</button>
+        <button data-act="rewind">Rewind 30 s</button>
+        <button data-act="restart">Restart the flight</button>
+        <button data-act="setup">New flight</button>
+        <button data-act="mute">Callouts: on</button>
+      </div>
+      <table class="keys">
+        <tr><td>W / S</td><td>pitch down / up</td><td>R / F</td><td>thrust levers (hold F at idle on the ground: reverse)</td></tr>
+        <tr><td>A / D</td><td>roll left / right</td><td>Space</td><td>wheel brakes (hold)</td></tr>
+        <tr><td>Q / E</td><td>yaw / steer</td><td>B</td><td>parking brake</td></tr>
+        <tr><td>6 7 8 9 0</td><td>flaps 0, 1, 2, 3, FULL</td><td>G</td><td>gear</td></tr>
+        <tr><td>C / Shift+C</td><td>speed brakes / arm ground spoilers</td><td>Z / X</td><td>autopilot / autothrust</td></tr>
+        <tr><td>= / −</td><td>time compression</td><td>M</td><td>map, jumps, skip to final</td></tr>
+        <tr><td>V</td><td>next view</td><td>F3 or `</td><td>performance overlay</td></tr>
+        <tr><td>swipe / pinch</td><td>look or orbit / zoom</td><td>double-click</td><td>recentre</td></tr>
+        <tr><td>T</td><td>rewind 30 s (paused or crashed)</td><td>P</td><td>pushback</td></tr>
+      </table>
+      <p class="small"><a href="../../index.html">Back to Game Dump</a> · <span data-version></span></p>
+    </div>
+
+    <div id="crash" class="panel center" hidden>
+      <h2>Crashed</h2>
+      <p id="crash-reason"></p>
+      <div class="buttons">
+        <button data-act="rewind">Rewind 30 s</button>
+        <button data-act="restart">Restart the flight</button>
+        <button data-act="setup">New flight</button>
+      </div>
+    </div>
+
+    <div id="score" hidden></div>
+    <div id="logbook-root"></div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

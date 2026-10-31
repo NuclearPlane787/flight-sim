@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: offline sound render</title>
+<style>body { font: 13px/1.4 ui-monospace, monospace; background: #15181c; color: #dde; margin: 16px; } pre { white-space: pre-wrap; }</style>
+</head>
+<body>
+<h1>Offline sound render</h1>
+<p>Renders scripted <code>sim.state</code> sequences through <code>src/audio/synth.js</code> in an
+OfflineAudioContext and measures the PCM. Driven by <code>tests/audio-render.mjs</code>; open by hand and
+call <code>runAll()</code> in the console to see the numbers.</p>
+<pre id="out"></pre>
+<script type="module">
+import { createSynth } from '../src/audio/synth.js';
+
+const SR = 48000;
+const FPS = 60;
+const KT = 1 / 1.943844; // kt → m/s
+
+// ---- scripted states ----
+
+// One state object, mutated every frame (like the sim's).
+function baseState() {
+  return {
+    t: 0, ias: 0, gs: 0, vs: 0, onGround: true, gearPos: 1, flapDeg: 0, slatDeg: 0,
+    speedbrake: 0, groundSpoilers: 0, brakes: { left: 0, right: 0 }, parkingBrake: false,
+    engines: [{ n1: 20.5, rev: 0 }, { n1: 20.5, rev: 0 }],
+    warnings: { stall: false, overspeed: false, apDisc: false },
+  };
+}
+const n1 = (s, v) => { s.engines[0].n1 = v; s.engines[1].n1 = v; };
+const rev = (s, v) => { s.engines[0].rev = v; s.engines[1].rev = v; };
+const lerp = (a, b, f) => a + (b - a) * Math.max(0, Math.min(1, f));
+
+// Each scenario: dur (s), step(s, t, opts) sets the state for time t.
+const SCEN = {
+  'idle-out': { dur: 3, step(s, t, o) { o.inside = false; } },
+  'idle-in': { dur: 3, step(s, t, o) { o.inside = true; } },
+  'spoolup-out': { dur: 9, step(s, t, o) { o.inside = false; n1(s, lerp(20.5, 95, (t - 0.5) / 8)); } },
+  'toga-out': { dur: 3, step(s, t, o) { o.inside = false; n1(s, 95); s.ias = s.gs = 100 * KT; } },
+  'toga-in': { dur: 3, step(s, t, o) { o.inside = true; n1(s, 95); s.ias = s.gs = 100 * KT; } },
+  'cruise-in': { dur: 3, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 0; n1(s, 82); s.ias = 280 * KT; } },
+  'cruise-in-eng': { dur: 3, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 0; n1(s, 82); s.ias = 0; } },
+  'cruise-in-wind': { dur: 3, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 0; n1(s, 0); s.ias = 280 * KT; } },
+  'cruise-out-eng': { dur: 3, step(s, t, o) { o.inside = false; s.onGround = false; s.gearPos = 0; n1(s, 82); s.ias = 0; } },
+  'cruise-out-wind': { dur: 3, step(s, t, o) { o.inside = false; s.onGround = false; s.gearPos = 0; n1(s, 0); s.ias = 280 * KT; } },
+  'cruise-out': { dur: 3, step(s, t, o) { o.inside = false; s.onGround = false; s.gearPos = 0; n1(s, 82); s.ias = 280 * KT; } },
+  // Approach: flaps run 1–4 s, then the gear 5–11 s, against a quiet background.
+  'motors-in': { dur: 12, step(s, t, o) {
+    o.inside = true; s.onGround = false; n1(s, 45); s.ias = 160 * KT;
+    s.flapDeg = lerp(0, 20, (t - 1) / 3); s.slatDeg = lerp(0, 22, (t - 1) / 3); s.gearPos = lerp(0, 1, (t - 5) / 6);
+  } },
+  // Landing: touchdown at 1 s (−2 m/s), reversers 1.5–2.5 s, rev N1 to 70 % by 3.5 s,
+  // decel 140 → 60 kt with brakes, reverse idle at 60 kt, stowed by 9 s, stop at 13.4 s.
+  'landing-out': { dur: 14, step(s, t, o) {
+    o.inside = false;
+    s.onGround = t >= 1; s.vs = t < 1 ? -2 : 0;
+    const gs = t < 1 ? 140 : t < 8 ? 140 - (t - 1) * 11.5 : Math.max(0, 59.5 - (t - 8) * 11);
+    s.gs = s.ias = gs * KT;
+    const r = t < 1.5 ? 0 : t < 8 ? lerp(0, 1, (t - 1.5) / 1) : lerp(1, 0, (t - 8) / 1);
+    rev(s, r);
+    n1(s, t < 2.5 ? 22 : t < 6 ? lerp(22, 70, (t - 2.5) / 1.5) : lerp(70, 22, (t - 6) / 1.5));
+    s.groundSpoilers = t >= 1.2 ? 1 : 0;
+    const b = t > 1.5 ? 0.6 : 0; s.brakes.left = s.brakes.right = b;
+  } },
+  'landing-in': null, // filled below (same, inside)
+  // Warnings over a TOGA background inside (the loudest steady inside sound).
+  'warn-cav': { dur: 4, step(s, t, o) { o.inside = true; n1(s, 95); s.ias = s.gs = 150 * KT; s.warnings.apDisc = t >= 0.5; } },
+  'warn-chime': { dur: 3, step(s, t, o) { o.inside = true; s.onGround = false; n1(s, 82); s.ias = 345 * KT; s.warnings.overspeed = t >= 0.5; } },
+  'warn-stall': { dur: 4, step(s, t, o) { o.inside = true; s.onGround = false; n1(s, 95); s.ias = 120 * KT; s.warnings.stall = t >= 0.5; } },
+  'paused': { dur: 3, step(s, t, o) { o.inside = false; n1(s, 95); s.ias = s.gs = 100 * KT; s.warnings.stall = true; o.paused = t >= 1; } },
+  'fast-x4': { dur: 3, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 0; n1(s, 82); s.ias = 280 * KT; s.warnings.overspeed = true; o.timeScale = t >= 1 ? 4 : 1; } },
+  // Everything at once, outside: the worst case for clipping.
+  'everything': { dur: 5, step(s, t, o) {
+    o.inside = false; n1(s, 100); rev(s, 1); s.ias = 345 * KT; s.gs = 150 * KT; s.speedbrake = 1; s.groundSpoilers = 1;
+    s.onGround = t >= 1; s.vs = t < 1 ? -4 : 0; s.gearPos = lerp(0, 1, t / 5); s.flapDeg = lerp(0, 40, t / 5); s.slatDeg = s.flapDeg;
+    s.brakes.left = s.brakes.right = 1;
+    s.warnings.apDisc = t >= 0.5; s.warnings.overspeed = t >= 0.5; s.warnings.stall = t >= 0.5;
+  } },
+  // Abrupt parameter changes: N1 jumps, view toggles, pause toggles.
+  'jumps': { dur: 6, step(s, t, o) {
+    n1(s, t < 1 ? 20 : t < 2 ? 100 : t < 3 ? 20 : 80); s.ias = s.gs = 80 * KT;
+    o.inside = Math.floor(t * 2) % 2 === 0; o.paused = t > 4 && t < 4.6;
+  } },
+};
+SCEN['landing-in'] = { dur: 14, step(s, t, o) { SCEN['landing-out'].step(s, t, o); o.inside = true; } };
+
+// ---- rendering ----
+
+const timing = { calls: 0, ms: 0, max: 0 };
+
+async function render(name) {
+  const sc = SCEN[name];
+  const len = Math.round(sc.dur * SR);
+  const ctx = new OfflineAudioContext(2, len, SR);
+  const synth = createSynth({ context: ctx });
+  await synth.start();
+  const s = baseState();
+  const o = { inside: true, timeScale: 1, paused: false };
+  const frames = Math.floor(sc.dur * FPS) - 1;
+  for (let k = 0; k < frames; k++) {
+    const t = k / FPS;
+    ctx.suspend(t).then(() => {
+      s.t = t; o.timeScale = 1; o.paused = false;
+      sc.step(s, t, o);
+      const t0 = performance.now();
+      synth.update(s, o);
+      const dt = performance.now() - t0;
+      if (k > 5) { timing.calls++; timing.ms += dt; timing.max = Math.max(timing.max, dt); }
+      ctx.resume();
+    });
+  }
+  const buf = await ctx.startRendering();
+  return [buf.getChannelData(0), buf.getChannelData(1)];
+}
+
+// ---- analysis ----
+
+function fft(re, im) { // in place, radix 2
+  const N = re.length;
+  for (let i = 1, j = 0; i < N; i++) {
+    let bit = N >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let size = 2; size <= N; size <<= 1) {
+    const ang = -2 * Math.PI / size;
+    for (let i = 0; i < N; i += size) {
+      for (let k = 0; k < size / 2; k++) {
+        const wr = Math.cos(ang * k), wi = Math.sin(ang * k);
+        const a = i + k, b = a + size / 2;
+        const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  }
+}
+
+const dB = (x) => (x > 0 ? 20 * Math.log10(x) : -200);
+
+// Measures [t0, t1) of a render: RMS (dB, mono mix), peak, spectral centroid (Hz),
+// the strongest tonal peak between lo and hi Hz, and NaNs.
+function measure([L, R], t0, t1, lo = 250, hi = 4000) {
+  const a = Math.round(t0 * SR), b = Math.min(L.length, Math.round(t1 * SR));
+  let sum = 0, peak = 0, nan = 0;
+  for (let i = a; i < b; i++) {
+    const l = L[i], r = R[i];
+    if (!Number.isFinite(l) || !Number.isFinite(r)) { nan++; continue; }
+    const m = (l + r) / 2; sum += m * m;
+    peak = Math.max(peak, Math.abs(l), Math.abs(r));
+  }
+  const N = 4096, re = new Float64Array(N), im = new Float64Array(N), pow = new Float64Array(N / 2);
+  let frames = 0;
+  for (let s0 = a; s0 + N <= b; s0 += N) {
+    for (let i = 0; i < N; i++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); re[i] = ((L[s0 + i] + R[s0 + i]) / 2 || 0) * w; im[i] = 0; }
+    fft(re, im);
+    for (let k = 0; k < N / 2; k++) pow[k] += re[k] * re[k] + im[k] * im[k];
+    frames++;
+  }
+  let num = 0, den = 0, best = 0, bestK = 0;
+  for (let k = 1; k < N / 2; k++) {
+    const f = k * SR / N; num += f * pow[k]; den += pow[k];
+    if (f >= lo && f <= hi && pow[k] > best) { best = pow[k]; bestK = k; }
+  }
+  let band = 0;
+  for (let k = 1; k < N / 2; k++) { const f = k * SR / N; if (f >= lo && f <= hi) band += pow[k]; }
+  return { rms: dB(Math.sqrt(sum / Math.max(1, b - a))), peak, centroid: den ? num / den : 0, tone: bestK * SR / N,
+    bandDb: 10 * Math.log10(Math.max(1e-30, den ? band / den : 0)), nan };
+}
+
+// RMS (dB) per 100 ms window.
+function windows([L, R], ms = 100) {
+  const w = Math.round(SR * ms / 1000), out = [];
+  for (let a = 0; a + w <= L.length; a += w) {
+    let s = 0; for (let i = a; i < a + w; i++) { const m = (L[i] + R[i]) / 2; s += m * m; }
+    out.push(Math.round(dB(Math.sqrt(s / w)) * 10) / 10);
+  }
+  return out;
+}
+
+// Clicks: a sample-to-sample step far above the local typical step. For each 1 ms block,
+// compare its largest |Δ| with the RMS of |Δ| over the surrounding 40 ms; report the worst
+// ratio among blocks whose step is also audible in absolute terms (> 0.004).
+function clicks([L, R]) {
+  let worst = 0, at = 0;
+  for (const X of [L, R]) {
+    const n = X.length, d = new Float32Array(n);
+    for (let i = 1; i < n; i++) d[i] = Math.abs(X[i] - X[i - 1]);
+    const blk = 48, ctxN = 1920;
+    const pre = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + d[i] * d[i];
+    for (let a = 0; a + blk <= n; a += blk) {
+      let mx = 0; for (let i = a; i < a + blk; i++) if (d[i] > mx) mx = d[i];
+      if (mx < 0.004) continue;
+      const c0 = Math.max(0, a - ctxN / 2), c1 = Math.min(n, a + ctxN / 2);
+      const rmsD = Math.sqrt((pre[c1] - pre[c0]) / (c1 - c0));
+      const ratio = mx / Math.max(rmsD, 1e-6);
+      if (ratio > worst) { worst = ratio; at = a / SR; }
+    }
+  }
+  return { ratio: Math.round(worst * 10) / 10, at: Math.round(at * 1000) / 1000 };
+}
+
+async function runAll(names = Object.keys(SCEN)) {
+  const res = {};
+  for (const name of names) {
+    const pcm = await render(name);
+    res[name] = { pcm, win: windows(pcm), click: clicks(pcm), whole: measure(pcm, 0, SCEN[name].dur) };
+  }
+  return res;
+}
+
+// Summary used by the Node runner (keeps the PCM in the page).
+window.runAudio = async () => {
+  timing.calls = 0; timing.ms = 0; timing.max = 0;
+  const r = await runAll();
+  const m = (name, t0, t1, lo, hi) => measure(r[name].pcm, t0, t1, lo, hi);
+  const out = { scen: {}, seg: {}, timing: { avgMs: timing.ms / timing.calls, maxMs: timing.max, calls: timing.calls } };
+  for (const [k, v] of Object.entries(r)) out.scen[k] = { peak: v.whole.peak, nan: v.whole.nan, click: v.click, win: v.win };
+  const seg = out.seg;
+  seg.idleOut = m('idle-out', 1, 3); seg.idleIn = m('idle-in', 1, 3);
+  seg.togaOut = m('toga-out', 1, 3); seg.togaIn = m('toga-in', 1, 3);
+  seg.cruiseOut = m('cruise-out', 1, 3); seg.cruiseIn = m('cruise-in', 1, 3);
+  seg.spool = [];
+  for (let t = 0.5; t < 8.5; t += 1) seg.spool.push(m('spoolup-out', t, t + 1, 250, 2500));
+  seg.motorsBase = m('motors-in', 0.3, 0.9); seg.flapRun = m('motors-in', 2, 3.8); seg.gearRun = m('motors-in', 7, 10.5);
+  seg.preTouch = m('landing-out', 0.5, 0.95); seg.touch = m('landing-out', 1.0, 1.3);
+  seg.revOut = m('landing-out', 4, 6); seg.revIn = m('landing-in', 4, 6);
+  seg.slowRoll = m('landing-out', 9, 11, 2700, 3100); seg.squealRoll = m('landing-out', 11.7, 13.2, 2700, 3100);
+  seg.stopped = m('landing-out', 13.5, 14);
+  seg.preDoor = m('landing-out', 1.42, 1.5); seg.door = m('landing-out', 1.53, 1.61);
+  seg.cruiseInEng = m('cruise-in-eng', 1, 3); seg.cruiseInWind = m('cruise-in-wind', 1, 3);
+  seg.cruiseOutEng = m('cruise-out-eng', 1, 3); seg.cruiseOutWind = m('cruise-out-wind', 1, 3);
+  // Detector self-test: a 440 Hz sine with a 0.05 step at 0.5 s must read as a click.
+  {
+    const L = new Float32Array(SR), R = new Float32Array(SR);
+    for (let i = 0; i < SR; i++) L[i] = R[i] = 0.1 * Math.sin(2 * Math.PI * 440 * i / SR) + (i > SR / 2 ? 0.05 : 0);
+    out.clickSelfTest = clicks([L, R]);
+  }
+  seg.cavBase = m('warn-cav', 0, 0.45); seg.cav = m('warn-cav', 0.6, 2);
+  seg.chimeBase = m('warn-chime', 0, 0.45); seg.chime = m('warn-chime', 0.6, 3);
+  seg.stallBase = m('warn-stall', 0, 0.45); seg.stall = m('warn-stall', 0.6, 4);
+  seg.pausedBefore = m('paused', 0.5, 0.95); seg.paused = m('paused', 1.5, 3);
+  seg.fastBefore = m('fast-x4', 0.5, 0.95); seg.fast = m('fast-x4', 1.5, 3);
+  window.__audioPcm = r; // for poking at by hand
+  return out;
+};
+window.runAll = runAll;
+document.getElementById('out').textContent = 'ready';
+</script>
+</body>
+</html>
