@@ -4,7 +4,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { toScene, gridToMag } from './world/frame.js';
-import { createInput, detentName } from './input.js';
+import { createInput } from './input.js';
 import { createCameraRig } from './camera.js';
 import { createCallouts } from './audio/callouts.js';
 import { createScorer, runwayFrame, aimingPoint, landingRunway } from './score.js';
@@ -127,7 +127,10 @@ async function boot() {
   const scorer = createScorer();
   const synth = synthMod ? synthMod.createSynth() : null;
   const synthOpts = { inside: false, timeScale: 1, paused: false };
-  if (store.load('settings', {})?.muted) callouts.muted = true;
+  // Saved settings: { muted, volume (0..1), showPerf }.
+  const settings = store.load('settings', {}) || {};
+  const saveSetting = (k, v) => store.save('settings', { ...(store.load('settings', {}) || {}), [k]: v });
+  if (settings.muted) callouts.muted = true;
 
   const hud = hudMod.createHud($('hud'), { airports, coast });
   const map = mapMod.createMap($('map-root'), { airports, coast });
@@ -316,7 +319,7 @@ async function boot() {
     crashed = false;
     ui.crash.hidden = true;
     setTimeScale(1);
-    scorer.reset();
+    scorer.reset(true); // the approach flown before the rewound-to moment still counts
     if (dest) scorer.setRunway(dest.end, dest.other);
     setPaused(false);
   }
@@ -361,7 +364,7 @@ async function boot() {
         if (gate.phase === 'parked' || gate.phase === 'pushback') gate.onKey('pushback');
         else toast('Pushback works from a gate start (Flight setup → At the gate)');
         break;
-      case 'perf': ui.perf.hidden = !ui.perf.hidden; break;
+      case 'perf': setPerf(ui.perf.hidden); break;
       case 'rewind': break; // T: handled above, only from the pause or crash screens
       default:
         if (a.startsWith('flap')) c.flapLever = Number(a.slice(4));
@@ -381,10 +384,39 @@ async function boot() {
       else if (act === 'mute') {
         callouts.muted = !callouts.muted;
         btn.textContent = 'Callouts: ' + (callouts.muted ? 'off' : 'on');
-        store.save('settings', { ...store.load('settings', {}), muted: callouts.muted });
+        saveSetting('muted', callouts.muted);
       }
+      else if (act === 'perf') setPerf(ui.perf.hidden);
     });
   }
+  const muteBtn = document.querySelector('#pause [data-act="mute"]');
+  if (muteBtn) muteBtn.textContent = 'Callouts: ' + (callouts.muted ? 'off' : 'on');
+
+  // ---- Master volume (the pause menu) ----
+  // Scales the synth's master gain and the callouts' voice; 100% is the level before v0.1.3.
+  const volumeEl = $('volume'), volumeOut = $('volume-out');
+  function setVolume(v, save = true) {
+    v = Math.max(0, Math.min(1, Number(v) || 0));
+    if (synth) synth.volume = synthMod.FULL_VOLUME * v;
+    callouts.volume = v;
+    volumeEl.value = String(Math.round(v * 100));
+    volumeOut.textContent = Math.round(v * 100) + '%';
+    if (save) saveSetting('volume', v);
+  }
+  setVolume(settings.volume ?? 1, false);
+  volumeEl.addEventListener('input', () => setVolume(volumeEl.value / 100));
+  // On release, a moment of sound at the new level: the audio is stopped while paused. The
+  // slider is a user gesture, so this may start the audio for the first time too.
+  let previewTimer = 0;
+  volumeEl.addEventListener('change', () => {
+    if (!synth) return;
+    audioStarted = true;
+    clearTimeout(previewTimer);
+    synth.start().then(() => {
+      synth.blip();
+      previewTimer = setTimeout(() => { if (paused) synth.stop(); }, 600);
+    });
+  });
   // The first click or key starts the audio (browsers need a user gesture).
   const startAudio = () => { if (paused) return; audioStarted = true; synth?.start(); window.removeEventListener('pointerdown', startAudio); window.removeEventListener('keydown', startAudio); };
   window.addEventListener('pointerdown', startAudio);
@@ -443,7 +475,7 @@ async function boot() {
       runwayLengthM: rf ? rf.lda : undefined, runwayWidthM: rwy?.widthM, aimM: rf ? aimingPoint(rf.lda) : 400,
     });
     store.addLogEntry({
-      date: new Date().toISOString(), route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
+      date: new Date().toISOString(), version: VERSION.number, route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
       depRunway: plan.start === 'runway' ? plan.depRunway : null, arrRunway: le ? le.end.ident : null, gate: plan.start === 'gate' ? plan.stand ?? null : null,
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,
       fuelUsedKg: Math.round(fuelAtStart - s.fuelKg),
@@ -472,6 +504,7 @@ async function boot() {
   const view = { state: sim.state, ap, controls: sim.controls, dest: null, timeScale: 1, timeScaleActual: 1, paused: false };
   let last = performance.now(), lastRender = 0, raf = 0;
   let fpsFrames = 0, fpsT = performance.now(), fps = 0, cpuMs = 0, mapSkip = 0;
+  let simMs = 0, stepsAvg = 0, drawMs = 0, perfShownAt = 0; // for the performance readout
 
   function requestFrame() { if (!raf) raf = requestAnimationFrame(frame); }
 
@@ -507,11 +540,14 @@ async function boot() {
     let steps = Math.floor(acc / STEP);
     acc -= steps * STEP;
     let done = 0;
+    const tSim = performance.now();
     for (; done < steps; done++) {
       sim.step(STEP);
       if (s.crashed) { done++; break; }
       if (timeScale > 1 && (done & 7) === 7 && performance.now() - t0 > PHYSICS_BUDGET_MS) { done++; break; }
     }
+    simMs += (performance.now() - tSim - simMs) * 0.05;
+    stepsAvg += (done - stepsAvg) * 0.05;
     if (done < steps) acc = 0;
     if (timeScale > 1) {
       const reached = (done * STEP) / dt;
@@ -559,8 +595,10 @@ async function boot() {
     if (seat) cockpit.update(s, sim.controls);
     // Behind the (nearly opaque) map, the 3D view only needs a few frames a second.
     if (!map.isOpen || ++mapSkip % 10 === 0) {
+      const tDraw = performance.now();
       world.update({ camera, origin, state: s, dt, paused });
       renderer.render(scene, camera);
+      drawMs += (performance.now() - tDraw - drawMs) * 0.1;
     }
 
     view.dest = dest ? dest.end : null;
@@ -578,16 +616,50 @@ async function boot() {
     fpsFrames++;
     const now = performance.now();
     if (now - fpsT >= 1000) { fps = (fpsFrames * 1000) / (now - fpsT); fpsFrames = 0; fpsT = now; }
-    if (!ui.perf.hidden) {
-      const info = renderer.info.render;
-      ui.perf.textContent = `${fps.toFixed(0)} fps  cpu ${cpuMs.toFixed(1)} ms  tris ${(info.triangles / 1000).toFixed(0)}k  calls ${info.calls}\n` +
-        `x${timeScale}${timeScale > 1 ? ` (reached ${achievedScale.toFixed(1)})` : ''}  ${detentName(sim.controls.thrust)}  ${rig.view.name}`;
-    }
-    window.__fsStats = { fps, cpuMs, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls };
+    if (!ui.perf.hidden && now - perfShownAt >= 500) { perfShownAt = now; ui.perf.textContent = perfLine(); }
+    window.__fsStats = { fps, cpuMs, simMs, drawMs, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls };
   }
-  function renderOnce() { render(0); synth?.update(sim.state, { inside: false, timeScale, paused: true }); }
+  function renderOnce() {
+    render(0);
+    synth?.update(sim.state, { inside: false, timeScale, paused: true });
+    if (!ui.perf.hidden && paused) ui.perf.textContent = perfLine();
+  }
+
+  // ---- The performance readout (F3 or `, or the pause menu) ----
+  // One line across the top, as in Satisfactory, refreshed twice a second. The HUD moves
+  // down by its height while it shows.
+  const PERF_BAR_H = 22;
+  const perfBtn = document.querySelector('#pause [data-act="perf"]');
+  const kfmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'k' : String(Math.round(n)));
+  function perfLine() {
+    const ri = renderer.info, w = world.stats || {}, heap = performance.memory?.usedJSHeapSize;
+    return [
+      paused ? 'paused' : null,
+      `${fps.toFixed(0)} fps`,
+      `${cpuMs.toFixed(1)} ms/frame (sim ${simMs.toFixed(1)}, draw ${drawMs.toFixed(1)})`,
+      `${stepsAvg.toFixed(0)} steps`,
+      `${ri.render.calls} draws`,
+      `${kfmt(ri.render.triangles)} tris`,
+      `${ri.memory.geometries} geo · ${ri.memory.textures} tex · ${ri.programs ? ri.programs.length : 0} shaders`,
+      `${w.terrainLevels ?? '–'} terrain rings`,
+      `${kfmt(w.buildings || 0)} buildings`,
+      `${kfmt(w.lights || 0)} lights`,
+      `${canvas.width}×${canvas.height}`,
+      heap ? `${Math.round(heap / 1048576)} MB heap` : null,
+      timeScale > 1 ? `×${timeScale} (reached ×${achievedScale.toFixed(1)})` : '×1',
+    ].filter(Boolean).join(' · ');
+  }
+  function setPerf(on) {
+    ui.perf.hidden = !on;
+    document.body.classList.toggle('perf-on', on);
+    hud.setTopInset(on ? PERF_BAR_H : 0);
+    if (perfBtn) perfBtn.textContent = 'Performance readout: ' + (on ? 'on' : 'off');
+    saveSetting('showPerf', on);
+    if (on) { perfShownAt = 0; ui.perf.textContent = perfLine(); }
+  }
 
   resize();
+  if (settings.showPerf) setPerf(true);
   booted = true;
   ui.loading.hidden = true;
 

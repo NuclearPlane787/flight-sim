@@ -59,7 +59,14 @@ test('newest first, keeping stored indices', () => {
 test('verdict thresholds', () => {
   assert.equal(verdict({ points: 97, parts: parts(140, 1.15) }), 'Butter.');
   assert.match(verdict({ points: 92, parts: parts(200, 1.2) }), /^Smooth/);
-  assert.equal(verdict({ points: 82, parts: parts(300, 1.3) }), 'Firm but fine.');
+  assert.equal(verdict({ points: 82, parts: parts(300, 1.3) }), 'Fine, with a few things to tidy.');
+  // Since v0.1.3 the biggest flaw, when one stands out (3 points or more), says what to fix.
+  const flawed = [...parts(237, 1.47), { name: 'Touchdown vs aiming point', value: 140, unit: 'm', penalty: 4 },
+    { name: 'Approach path', value: 0.4, unit: 'dots', note: 'high', penalty: 2 }];
+  assert.equal(verdict({ points: 89, parts: flawed }), 'Long. Put it down at the aiming point.');
+  flawed[4].penalty = 7; // the approach now costs the most
+  assert.equal(verdict({ points: 82, parts: flawed }), 'Off the path on final (high). Get on it early and stay there.');
+  assert.match(verdict({ points: 93, parts: flawed }), /^Smooth/); // 90 and up: no advice
   assert.match(verdict({ points: 70, parts: parts(350, 1.4) }), /^Safe/);
   assert.match(verdict({ points: 55, parts: parts(420, 1.5) }), /cabin crew/);
   assert.match(verdict({ points: 30, parts: parts(450, 1.6) }), /inspection/);

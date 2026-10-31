@@ -31,9 +31,9 @@ From a gate:
 2. Release the parking brake (B).
 3. Follow the green-yellow line to the holding point.
 
-After landing, a new line leads from the runway to a free stand. Every landing is scored, and the pause menu opens the logbook.
+After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and the pause menu opens the logbook. The score is strict: 100 takes a landing that's perfect in every part.
 
-Sound starts with the first click or key, because browsers don't play audio before then.
+Sound starts with the first click or key, because browsers don't play audio before then. The pause menu has a master volume slider.
 
 ## Controls
 
@@ -56,7 +56,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | V | next view (1st person, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
 | Esc | pause menu |
-| F3 or \` | performance overlay (fps, CPU ms, triangles, draw calls) |
+| F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the pause menu) |
 | T | rewind 30 s (from the pause menu or after a crash) |
 | two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
 
@@ -104,7 +104,7 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll ov
 | `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`, `src/cockpit-windows.js` | the procedural A321neo in Nuclear Airlines colours, the simple cockpit, and the six cockpit windows (shared by the outside, the livery and the cockpit) |
 | `src/ui/` | PFD, ND, engine panel, FCU, map, flight setup, logbook, landing score card |
 | `src/audio/` | `synth.js` (WebAudio engine, wind and warnings), `callouts.js` (radio-altitude callouts and RETARD) |
-| `src/score.js`, `src/store.js` | the landing score; localStorage under `gamedump:flight-sim:` |
+| `src/score.js`, `src/store.js` | the landing score (100 × e^(−cost), the approach included); localStorage under `gamedump:flight-sim:` |
 | `src/ground/` | the taxi graph and routing, pushback, the gate flow (gate starts, routes out and in) |
 | `src/world/apron*.js`, `src/world/traffic*.js`, `src/world/liveries-other.js` | taxiways, aprons, stands, jet bridges and terminals; parked aircraft (made-up airlines) and ground vehicles |
 | `src/world/taxiroute.js`, `src/world/airport-mask.js` | the taxi route line; no trees or city blocks inside the airports |

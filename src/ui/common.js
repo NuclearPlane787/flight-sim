@@ -90,10 +90,12 @@ export function locateEnd(airports, end) {
   return { airport: null, runway: null, end, other: null };
 }
 
-// Landing threshold of a runway end (map metres), past any displaced part.
+// Landing threshold of a runway end (map metres). The airport data already puts an end's
+// x, y at the landing threshold, past any displaced part (pavementEnd is the physical end);
+// until v0.1.3 this added the displacement again, which put Jeju 31's glideslope, localizer
+// and route end 411 m too far down the runway.
 export function thresholdOf(end) {
-  const h = (end.hdgGridDeg ?? 0) * DEG, d = end.displacedM || 0;
-  return [end.x + d * Math.sin(h), end.y + d * Math.cos(h)];
+  return [end.x, end.y];
 }
 
 // The route shared by the map (which edits it) and the ND (which draws it).

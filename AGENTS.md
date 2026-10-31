@@ -24,7 +24,8 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **Shane's first flight**, Gimpo to Incheon, went "mostly good (other than the 0/100 landing)".
 - **v0.1.1** (2026-10-31, a Cowork session): Incheon's flickering taxiways, new cockpit windows (`src/cockpit-windows.js`) and a fairer landing score. `STATUS.md` has the details.
 - **v0.1.2** (2026-10-31, the same session): a lower windshield on a reshaped nose (sections are now two half-ellipses, `fuseSection()` in `aircraft.js`), the engines under the wing (`NACELLES` in `geometry.js`; the sim's thrust still acts at `ENGINES`), and gentle touchdowns on grass.
-- **Next: v0.2.0**, a main menu like Satisfactory's and scenarios, which Shane asked for on 2026-10-31. Two questions are open (`ROADMAP.md`). The other future additions are in `ROADMAP.md` too.
+- **v0.1.3** (2026-10-31, the same session): a stricter landing score that counts the approach (`score.js`: 100 × e^(−cost), calibrated so Shane's described landing scores 80), a master volume slider and a performance readout bar (F3), and Jeju 31's glideslope fix (`thresholdOf()` in `ui/common.js`).
+- **Next: v0.2.0**, a main menu like Satisfactory's and scenarios, which Shane asked for on 2026-10-31. Both questions are answered (`ROADMAP.md`): a scenario is a save slot with the whole state, and the menu's backdrop is a still. Shane asked for them to wait until v0.2.0. The other future additions are in `ROADMAP.md` too.
 
 ## Versions, Updates.md and pushing
 

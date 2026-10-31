@@ -748,3 +748,76 @@ Shane, after v0.1.1, with a screenshot of the nose from the front: "What I meant
   - ROADMAP: the three items under "Found after v0.1.0", fixed;
   - AGENTS.md: State.
 - **Next:** Shane pushes (`sh tools/push.sh v0.1.2`), then v0.2.0 (the main menu and scenarios) once he answers its two questions.
+
+## 2026-10-31, night: v0.1.3 (Cowork session)
+
+Shane: "One thing about the landing score, though. It is too lenient in a way? I got 100/100 for a landing that was ok but had obvious flaws. Use my recent recent as a baseline and give that a 80/100 score. Make it so that it is nearly impossible to get 100/100, and similarly for 0/100. Also, in the paused menu, add a master volume control bar. Also, Satisfactory has a text bar on the top that tells you a bunch of performance stats like triangle count, ms per frame, all that. Can you put something similar for flight sim? Call this 0.1.3."
+
+His answers to the v0.2.0 questions: "1. Yes, the saved state including the plane's location, speed, roll, everything, so that when you reload a scenario after doing a another, it is exactly where it was before. 2. I'd say stick with a still picture. Don't make these two changes until its time for v0.2.0 though."
+
+The baseline landing's numbers are in his Chrome's logbook, so I asked for them: "the landing was like 2m left of the centerline, 150m past the touchdown zone, with an approach that was ... questionable. My altitude was like 150 feet like a kilometer from the runway so I had to 'bob' in the air. The touchdown rate was 190 feet/min though." I took "150m past the touchdown zone" as 150 m past the aiming point (what the card shows). Under v0.1.2, 150 m long was free, while 650 m past it would have cost points.
+
+- **The landing score** (`src/score.js`, `src/ui/score-panel.js`, `src/ui/logbook.css`, `src/main.js`):
+  - **Why it was lenient:** v0.1.1's penalties all had free bands (60–250 ft/min, ±150 m from the aiming point, 3 m from the centreline, 3° of bank, up to 1.9 g). His landing (190 ft/min, 150 m long, 2 m off) lost nothing, and the approach wasn't scored at all.
+  - **Now:** points = round(100 × e^(−C)), where C is the sum of the parts' costs (`COST`). Each cost is 0 only at its ideal and grows smoothly away from it (quadratic, or quadratic then linear):
+    - vertical speed (ideal 130 ft/min), peak g, the touchdown point against the aiming point (short costs more, and short of the threshold 0.3 more), the centreline, and bank;
+    - pitch: a shallow bowl around 5.5°, steep below 2.5° and above 8°;
+    - bounces 0.2 each, grass 0.35, off a runway 2.3.
+  - **The approach** (`approachStats()`), from a track the scorer now keeps: a sample every 0.25 s in the air, for the last 5 minutes. A rewind trims it; a lift-off or a go-around clears it.
+    - Between 1,000 and 100 ft (the wheels above the threshold), lined up within 10°: the RMS deviation in dots from the PFD's glideslope (3° from 300 m past the threshold, 1 dot = 0.4°) and localizer (from the far end, 1 dot = 0.8°), each clamped at 5 dots.
+    - Between 1,000 and 50 ft: the sink rate's swing, the standard deviation of (sink rate − groundspeed × tan 3°).
+    - With less than 20 s of the window flown, there are no approach parts.
+  - **The card:**
+    - Each part's points lost are the total loss shared out in proportion to the costs (largest remainders first), so they add up.
+    - Below 90 points, the verdict names the biggest flaw if it cost 3 points or more. Otherwise it gives the band text; "Firm but fine." became "Fine, with a few things to tidy."
+    - The value column is wider, for "1.2 dots low" and "±90 ft/min".
+    - The grades are unchanged. New logbook entries record the game's version.
+  - **The calibration:** his landing, rebuilt in `tests/score.test.mjs`.
+    - The profile: on the PFD's path until 3.1 km out, then down more steeply to 150 ft 1 km out, level until back on the path, then down it, smoothed over ±1.5 s. That's 0.81 dots RMS (low) and 200 ft/min of swings.
+    - With 190 ft/min, 150 m long and 2 m left, plus 1.3 g, 0.5° of bank and 6° of pitch (these three assumed), it scores **80 (B)**: "Off the path on final (low)."
+    - The costs: approach path 0.078, swings 0.049, the touchdown point 0.050, the centreline 0.030, the rest 0.018.
+    - The same touchdown after an on-path approach scores 91 (A).
+  - **Other anchors** (unit tests):
+    - perfect: 100;
+    - very good everywhere (160 ft/min, 1.15 g, 30 m long, 0.5 m off, 0.5° of bank): 97–99;
+    - firm and long (740 ft/min, 2.5 g, 500 m long, 6 m off): F, 10–30;
+    - each single worst-plausible part (900 ft/min, 2.6 g, 1 km long, 20 m off, 7° of bank, 9.5° of pitch, 3 dots all the way): 20 or more;
+    - everything bad at once: 2 or less;
+    - a perfect touchdown on a taxiway: 10.
+  - **Through the game:** `main.js` in headless Chromium in the cloud container, flown by `tests/e2e-controller.js`, RKSS to RKSI 33L from `start=final`.
+    - Its normal approach: **B 89**. That's 237 ft/min, 1.47 g, 140 m long, 0.4 m off, the approach 0.4 dots high (the controller aims at 400 m, above the PFD's path from 300 m), and swings of 0.
+    - Aimed short so it was 134–149 ft up 1 km out, then put back on its normal aim: **C 73** and **C 65** in two runs. That's 1.2–1.3 dots low, 90 ft/min of swings, and touchdowns 166–208 m before the aiming point, with the verdict "Off the path on final (low)."
+    - The controller recaptures the path smoothly, so it doesn't bob as Shane did. The rebuilt profile in the test is the yardstick.
+    - Screenshot: `v013-score-card-low-approach.jpg`.
+- **Master volume** (`index.html`, `style.css`, `src/main.js`, `src/audio/synth.js`, `src/audio/callouts.js`):
+  - A slider in the pause menu, 0–100% in 5% steps, saved as `settings.volume`.
+  - It scales the synth's master gain (`FULL_VOLUME`, 0.8 at 100%, the old level) and the callouts' voice (0.9 × the volume; silent at 0).
+  - The audio stops while paused (the CPU rules). So on release, the slider plays 0.6 s of sound and a short tone (`synth.blip()`) at the new level, then stops it again.
+  - Checked in the container: a click at 40% gives 40%, a master gain of 0.32 and the callouts at 0.4, all saved, and they come back after a reload. Screenshots: `v013-pause-menu.jpg`, `v013-pause-menu-volume-40.jpg`.
+  - Not done: listening to it.
+- **Performance readout** (`index.html`, `style.css`, `src/main.js`, `src/ui/hud.js`):
+  - **Before:** Satisfactory's is one line at the top (fps, ms/frame, draws, tris, items, sim ms/tick, buildings, belts), off by default, on F3 or a setting. Flight Sim's was a small two-line box under the FCU.
+  - **Now:** a 22 px bar across the top. F3, ` or the pause menu's "Performance readout" button toggles it; it's saved as `settings.showPerf` and refreshed every 0.5 s.
+  - It shows: paused · fps · ms/frame (sim, draw) · physics steps · draws · tris · the GPU's geometries, textures and shaders · terrain rings · buildings · lights · the canvas size · the JS heap (Chrome only) · time compression.
+  - While it shows, the HUD moves down (`hud.setTopInset(22)` moves the FCU's top and the panels), and so does the map's top bar.
+  - Checked in the container: the bar's text; the FCU's top at 30 px with the bar and 8 px without; the PFD 21 px lower; the menu's toggle; and the setting saved across a reload. Screenshot: `v013-perf-bar.jpg`.
+- **Jeju 31's glideslope** (`src/ui/common.js`):
+  - **The bug:** `thresholdOf()` added an end's `displacedM` to its x, y, but the airport data already puts x, y at the landing threshold (`pavementEnd` is the physical end).
+  - **The effect:** only RKPC 31 has a displaced threshold (411 m). Its PFD glideslope and localizer, and the route's end on the ND, the map and the setup screen, were 411 m too far down the runway. On the real path 3 km out, the PFD showed 0.83 dots low.
+  - **The fix:** it now returns x, y.
+  - New test in `tests/ui.test.mjs`. The old function puts that end's threshold 411 m off (checked with a script), so the test fails with it.
+- **How the screenshots were taken:**
+  - In the container, headless captures hang once the game is up. SwiftShader WebGL keeps the GPU process busy, and even a static page in the same browser times out.
+  - So each picture is a snapshot: frames throttled to 2.5 a second, the page cloned with each canvas swapped for its image, then opened in a second page without scripts and captured there.
+- **Checks:**
+  - `node --test tests/*.test.mjs` through the guard: **171 pass**. That's 166 − 7 old score tests + 11 new ones + 1 ui test; the logbook's verdict test gained cases.
+  - `node --check` passes on all 101 files. `--status` shows no slots in use; `--sweep` is clean.
+  - Not done: a flight in Chrome on the Mac.
+- **v0.2.0:** both questions are answered (above), and ROADMAP and AGENTS.md now have them. Not started, as Shane asked.
+- **Written up:**
+  - `src/version.js` is `Flight Sim v0.1.3 · CL#261031`;
+  - `Updates.md` has the v0.1.3 entry;
+  - ROADMAP: two items under "Found after v0.1.0", and the v0.2.0 decisions;
+  - README: the controls row, the score and the volume;
+  - AGENTS.md: State.
+- **Next:** Shane pushes (`sh tools/push.sh v0.1.3`), then v0.2.0.

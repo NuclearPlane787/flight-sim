@@ -37,10 +37,13 @@ const MIX = {
   packs: { in: 1, out: 0 }, // cockpit air conditioning; outside the engines cover it
 };
 
+// The master gain at 100% on the pause menu's volume slider (main.js scales it).
+export const FULL_VOLUME = 0.8;
+
 export function createSynth({ context = null } = {}) {
   let ctx = null;
   let n = null; // all the nodes, made once in start()
-  let vol = 0.8;
+  let vol = FULL_VOLUME;
   let inside = true;
 
   // Edge detectors and state between updates.
@@ -383,6 +386,19 @@ export function createSynth({ context = null } = {}) {
       return new Promise((r) => setTimeout(r, 150)).then(() => ctx.suspend());
     },
     set volume(v) { vol = clamp01(v); if (ctx) set(n.master.gain, vol, 0.05); },
+    // A short, soft tone through the master gain: the volume slider's preview.
+    blip() {
+      if (!ctx || !n) return;
+      const t = ctx.currentTime + 0.12, o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.3, t + 0.01);
+      g.gain.setTargetAtTime(0, t + 0.08, 0.06);
+      o.connect(g).connect(n.master);
+      o.start(t);
+      o.stop(t + 0.5);
+    },
     get volume() { return vol; },
     get running() { return !!ctx && ctx.state === 'running'; },
   };

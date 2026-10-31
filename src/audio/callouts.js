@@ -18,6 +18,7 @@ export function createCallouts() {
   let retardArmed = false;
   let warnAt = -Infinity;
   let muted = false;
+  let volume = 1;    // the pause menu's master volume
   const heard = []; // the most recent calls, for tests and the log
 
   function pickVoice() {
@@ -31,13 +32,13 @@ export function createCallouts() {
   function say(text, urgent) {
     heard.push(text);
     if (heard.length > 30) heard.shift();
-    if (!synth || muted) return;
+    if (!synth || muted || volume <= 0) return;
     if (urgent) synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.rate = 1.35;
     u.pitch = 0.9;
-    u.volume = 0.9;
+    u.volume = 0.9 * volume;
     synth.speak(u);
   }
 
@@ -74,6 +75,8 @@ export function createCallouts() {
     heard,
     set muted(v) { muted = v; if (v && synth) synth.cancel(); },
     get muted() { return muted; },
+    set volume(v) { volume = Math.max(0, Math.min(1, v)); },
+    get volume() { return volume; },
     reset() { lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; if (synth) synth.cancel(); },
   };
 }

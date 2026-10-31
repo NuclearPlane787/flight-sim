@@ -26,6 +26,8 @@ Found after v0.1.0:
 - **From outside, the windshield was taller than the side windows** (Shane: "it should be thinner than the side windows"): **fixed in v0.1.2** (2026-10-31), with the nose's crown cut down over the windshield.
 - **The engines sat up against the wing, like a 737 MAX's**: **fixed in v0.1.2** (2026-10-31), hung at the A321neo's 0.45 m ground clearance under a wing raised 0.3 m.
 - **Touching the grass just short of the runway crashed the aircraft**: **fixed in v0.1.2** (2026-10-31). A gentle touchdown on grass is fine; a hard one, or a fast run of more than 450 m across it, still ends the flight.
+- **The landing score was too lenient** (Shane: 100/100 "for a landing that was ok but had obvious flaws"): **reworked in v0.1.3** (2026-10-31). No free bands, the approach counts, and his landing now scores 80; 100 and 0 are both nearly out of reach.
+- **Jeju 31's glideslope and localizer** on the PFD were measured from 411 m past its displaced threshold (the displacement was applied twice): **fixed in v0.1.3** (2026-10-31).
 - **Jeju's crossing runways** (07/25 and 13/31) are each drawn at their own end elevations. Where they cross, those differ by about 1 m, so each cuts through the other along a diagonal seam. Open: the fix is to take one height for both there, from the heightfield.
 
 
@@ -41,7 +43,7 @@ Found after v0.1.0:
 | Other aircraft in the air and on the taxiways | (same answer) | Today it's "just me for now in the air", with parked aircraft and moving vehicles on the ground. |
 | More aircraft types | "We can add more later." | The first is the A321neo. |
 | More airports | "For now, just have the three" | The other 12 Korean airports with airline service in OurAirports: Gimhae (Busan), Cheongju, Daegu, Gwangju, Muan, Yangyang, Ulsan, Yeosu, Sacheon, Pohang, Gunsan and Wonju. |
-| A main menu like Satisfactory's, and scenarios | "I do also want to add a menu screen like Satisfactory, and since I probably don't want to have everything in just one scenario, so let the current scenario be 'Scenario 1', and you can create more and choose where to begin and where to land." (2026-10-31) | Planned for **v0.2.0**. Open questions, asked 2026-10-31: is a scenario a save slot (the aircraft mid-flight, its fuel and its own logbook) or a saved route flown from the start; and the menu's backdrop, a still from the game or a slowly moving camera. |
+| A main menu like Satisfactory's, and scenarios | "I do also want to add a menu screen like Satisfactory, and since I probably don't want to have everything in just one scenario, so let the current scenario be 'Scenario 1', and you can create more and choose where to begin and where to land." (2026-10-31) | Planned for **v0.2.0**, not before (Shane: "Don't make these two changes until its time for v0.2.0 though."). Decided 2026-10-31: a scenario is a save slot holding the whole state ("the saved state including the plane's location, speed, roll, everything, so that when you reload a scenario after doing a another, it is exactly where it was before"), and the menu's backdrop is a still ("I'd say stick with a still picture"). |
 
 ## Not on Shane's list (candidates; ask him)
 

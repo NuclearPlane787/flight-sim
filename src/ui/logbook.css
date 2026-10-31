@@ -23,7 +23,7 @@
 .fssc-rw { display: block; margin: 4px 0 0; width: 100%; height: auto; font-family: "Helvetica Neue", Arial, sans-serif; }
 .fssc-td { font-size: 12px; color: #c9ced2; margin: 0 0 8px; }
 .fssc-parts { display: flex; flex-direction: column; gap: 3px; }
-.fssc-part { display: grid; grid-template-columns: 1fr 76px 80px 30px; gap: 8px; align-items: center; font-size: 12.5px; }
+.fssc-part { display: grid; grid-template-columns: 1fr 96px 62px 30px; gap: 8px; align-items: center; font-size: 12.5px; }
 .fssc-part .n { color: #c9ced2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fssc-part .v { text-align: right; font-variant-numeric: tabular-nums; color: #f2f2f2; }
 .fssc-part .bar { height: 6px; background: #1e252b; border-radius: 3px; overflow: hidden; }

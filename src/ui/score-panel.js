@@ -22,8 +22,26 @@ export function esc(s) {
 
 const part = (parts, name) => (parts || []).find((p) => p.name === name);
 
+// The part that cost the most, as advice, when it cost at least 3 points.
+function worstFlaw(parts) {
+  let w = null;
+  for (const p of parts) if ((Number(p.penalty) || 0) >= 3 && (!w || p.penalty > w.penalty)) w = p;
+  if (!w) return null;
+  switch (w.name) {
+    case 'Approach path': return `Off the path on final${w.note ? ` (${w.note})` : ''}. Get on it early and stay there.`;
+    case 'Sink rate swings': return 'Bobbing on final. Hold a steady descent.';
+    case 'Touchdown vs aiming point': return w.value > 0 ? 'Long. Put it down at the aiming point.' : 'Early. Carry it on to the aiming point.';
+    case 'From centreline': return 'Off the centreline. Line up earlier.';
+    case 'Bank': return 'Wings level for the touchdown.';
+    case 'Pitch': return w.value < 4 ? 'Nose low. Flare a little more.' : 'Nose high. Mind the tail.';
+    case 'Vertical speed': return w.value > 130 ? 'Firm. Start the flare a little earlier.' : 'Held off too long. It eats runway.';
+    case 'Peak g': return 'A jolt on the gear. Ease it on.';
+    default: return null; // bounces have their own lines
+  }
+}
+
 // The one-line verdict. The worst things win: off the runway, a hard landing, landing short,
-// bounces, then the points band.
+// bounces; then the points band, naming the biggest flaw when one stands out.
 export function verdict(result) {
   const parts = result?.parts || [];
   const points = result?.points ?? 0;
@@ -39,7 +57,9 @@ export function verdict(result) {
   if (points >= 95) return 'Butter.';
   if (points >= 90) return 'Smooth. The cabin barely noticed.';
   if (bounces === 1 && points < 78) return 'One bounce. Keep the pitch on touchdown.';
-  if (points >= 78) return 'Firm but fine.';
+  const flaw = worstFlaw(parts);
+  if (flaw) return flaw;
+  if (points >= 78) return 'Fine, with a few things to tidy.';
   if (points >= 64) return 'Safe, if not pretty.';
   if (points >= 50) return 'The cabin crew will have words.';
   return 'That one will need an inspection.';
@@ -51,6 +71,8 @@ const penColor = (pen) => (pen <= 0 ? '#3cff4e' : pen < 8 ? '#ffe838' : pen < 20
 
 const fmtValue = (p) => {
   if (p.name === 'Touchdown vs aiming point') return `${p.value > 0 ? '+' : p.value < 0 ? '−' : ''}${Math.abs(p.value)} m`;
+  if (p.name === 'Approach path') return `${p.value} dots${p.note ? ' ' + p.note : ''}`;
+  if (p.name === 'Sink rate swings') return `±${p.value} ft/min`;
   return `${p.value}${p.unit ? (p.unit === '°' ? '°' : ' ' + p.unit) : ''}`;
 };
 

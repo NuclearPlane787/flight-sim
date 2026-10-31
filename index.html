@@ -18,7 +18,7 @@
 
     <div id="fade"></div>
     <div id="toast" hidden></div>
-    <pre id="perf" hidden></pre>
+    <div id="perf" hidden></div>
 
     <div id="loading" class="panel center">
       <h1>Flight Sim</h1>
@@ -35,7 +35,9 @@
         <button data-act="restart">Restart the flight</button>
         <button data-act="setup">New flight</button>
         <button data-act="mute">Callouts: on</button>
+        <button data-act="perf">Performance readout: off</button>
       </div>
+      <label class="volume"><span>Master volume</span><input id="volume" type="range" min="0" max="100" step="5" value="100"><output id="volume-out">100%</output></label>
       <table class="keys">
         <tr><td>W / S</td><td>pitch down / up</td><td>R / F</td><td>thrust levers (hold F at idle on the ground: reverse)</td></tr>
         <tr><td>A / D</td><td>roll left / right</td><td>Space</td><td>wheel brakes (hold)</td></tr>
@@ -43,7 +45,7 @@
         <tr><td>6 7 8 9 0</td><td>flaps 0, 1, 2, 3, FULL</td><td>G</td><td>gear</td></tr>
         <tr><td>C / Shift+C</td><td>speed brakes / arm ground spoilers</td><td>Z / X</td><td>autopilot / autothrust</td></tr>
         <tr><td>= / −</td><td>time compression</td><td>M</td><td>map, jumps, skip to final</td></tr>
-        <tr><td>V</td><td>next view</td><td>F3 or `</td><td>performance overlay</td></tr>
+        <tr><td>V</td><td>next view</td><td>F3 or `</td><td>performance readout</td></tr>
         <tr><td>swipe / pinch</td><td>look or orbit / zoom</td><td>double-click</td><td>recentre</td></tr>
         <tr><td>T</td><td>rewind 30 s (paused or crashed)</td><td>P</td><td>pushback</td></tr>
       </table>

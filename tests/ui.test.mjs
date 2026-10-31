@@ -36,6 +36,16 @@ test('hidden behind the runway or far off the course', () => {
   assert.equal(ilsDeviation(at(5000, 2500, 300), info).visible, true);  // 26.6° off
 });
 
+test('a displaced threshold: the glideslope starts from the end\'s x, y, not 411 m further on', () => {
+  // As the airport data has Jeju 31: x, y is the landing threshold, pavementEnd the physical end.
+  const e = info.end, a = e.hdgGridDeg * DEG, ux = Math.sin(a), uy = Math.cos(a);
+  const disp = { ...e, displacedM: 411, pavementEnd: [e.x - ux * 411, e.y - uy * 411] };
+  assert.deepEqual(thresholdOf(disp), [e.x, e.y]);
+  const d = 3000, h = Math.tan(3 * DEG) * (d + 300);
+  const r = ilsDeviation({ pos: { x: e.x - ux * d, y: e.y - uy * d, z: e.elevM + h } }, { ...info, end: disp });
+  assert.ok(Math.abs(r.gsDots) < 0.01, JSON.stringify(r));
+});
+
 test('course is the runway magnetic heading (07 ≈ 066°)', () => {
   const r = ilsDeviation(at(5000, 0, 300), info);
   assert.ok(Math.abs(r.courseMag - 66) < 1.5, String(r.courseMag));

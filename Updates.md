@@ -4,6 +4,20 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.1.3 · 2026-10-31 (night) · A stricter landing score, a master volume, and a performance readout
+
+- **The landing score is stricter: 100 and 0 are both nearly out of reach.**
+  - Every part costs something as soon as it's off its ideal. The free bands are gone (±150 m around the aiming point, 3 m either side of the centreline, 60–250 ft/min).
+  - The costs multiply the score down, so 100 takes a landing that's perfect in every part, and 0 takes several things going badly wrong at once. One poor part on its own, say 900 ft/min or 20 m off the centreline, still leaves 20 or more.
+  - **The approach counts now**, from 1,000 ft down: how far it strayed from the PFD's glideslope and localizer (in dots), and how much the sink rate swung (bobbing).
+  - Set against your landing: 190 ft/min, 2 m left of the centreline, 150 m past the aiming point, after a final that was about 150 ft up 1 km out and had to bob back up. It scored 100 before and **80 (B)** now. The same touchdown after a steady approach scores about 91.
+  - The card's verdict names the biggest flaw ("Off the path on final (low). Get on it early and stay there."), and the points it lists add up to what was lost.
+  - A touchdown off a runway (a taxiway, say) now scores about 10 at best, not 0.
+  - The grades are unchanged: A from 90, B from 78, C from 64, D from 50.
+- **A master volume slider** in the pause menu, for the engines, the warnings and the callouts. When you let go of it you hear a moment of sound at the new level. It's remembered.
+- **A performance readout like Satisfactory's.** F3 or ` (or the pause menu) shows a line across the top: fps; ms per frame, split into the physics and the drawing; physics steps; draw calls; triangles; the GPU's geometries, textures and shaders; terrain rings, buildings and lights; the resolution; and memory. The screens move down to make room. It's remembered too.
+- **Fixed:** at Jeju runway 31, which has a displaced threshold, the PFD's glideslope and localizer were measured from a point 411 m too far down the runway, and so was the route's end on the ND and the map. On the real path 3 km out, the PFD showed you most of a dot low.
+
 ## v0.1.2 · 2026-10-31 (evening) · A lower windshield, engines under the wing, and grass that doesn't bite
 
 - **The windshield is a low band now, thinner than the side windows,** as on the real A320 family.

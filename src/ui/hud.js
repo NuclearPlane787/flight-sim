@@ -30,7 +30,7 @@ export function createHud(root, { airports, coast } = {}) {
   const pfd = createPfd(pfdCv);
   const nd = createNd(ndCv, { airports, coast: coast ? buildCoast(coast) : null });
   const eng = createEnginesPanel(engCv);
-  const hud = { update, resize, setCoast, onlaw: null, poke, el };
+  const hud = { update, resize, setCoast, setTopInset, onlaw: null, poke, el };
   const fcu = createFcu(el, hud);
 
   // ND range: scroll or click.
@@ -89,18 +89,22 @@ export function createHud(root, { airports, coast } = {}) {
     force = false;
   }
 
+  // The top `inset` px belong to the performance readout while it shows (main.js).
+  let inset = 0;
+  function setTopInset(px) { if (px !== inset) { inset = px; resize(); } }
+
   // Layout: panel size s from the window, PFD left, ND and engine panel right, FCU top.
   function resize() {
-    const W = window.innerWidth, H = window.innerHeight;
+    const W = window.innerWidth, H = window.innerHeight - inset;
     const fcuH = Math.max(38, Math.min(56, H * 0.052));
-    const top = fcuH + 16, pad = 12;
+    const top = inset + fcuH + 16, pad = 12;
     let s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560));
-    const sr = Math.min(s, (H - top - pad * 2 - 8) / 1.62);
+    const sr = Math.min(s, (H - fcuH - 16 - pad * 2 - 8) / 1.62);
     const place = (p, cv, x, y, w, h) => { Object.assign(p.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); cv.size(w, h); };
     place(pfdEl, pfdCv, pad, top, s, s);
     place(ndEl, ndCv, W - sr - pad, top, sr, sr);
     place(engEl, engCv, W - sr - pad, top + sr + 8, sr, sr * 0.62);
-    Object.assign(fcu.el.style, { height: fcuH + 'px', fontSize: (fcuH * 0.36) + 'px' });
+    Object.assign(fcu.el.style, { top: (8 + inset) + 'px', height: fcuH + 'px', fontSize: (fcuH * 0.36) + 'px' });
     force = true;
     if (view) draw(performance.now());
   }

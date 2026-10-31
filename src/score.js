@@ -1,10 +1,19 @@
 // The landing score: worked out at the first touchdown, finished after the rollout.
-// Vertical speed and peak g, the touchdown point against the aiming point, distance from
-// the centreline, bank, pitch and bounces, and a grade.
 //
-// Every part has a ceiling, so one bad number costs a lot but can't zero the score by
-// itself (in v0.1.0 they had none, and a firm, long keyboard landing came out at 0/100).
-// A touchdown that isn't on a runway scores 0 (F), and says so.
+// Since v0.1.3 it's 100 × e^(−C), where C adds up a cost for each part of the landing:
+// vertical speed and peak g, the touchdown point against the aiming point, distance from
+// the centreline, bank, pitch, bounces, and the approach (how far off the glide path and
+// localizer it was from 1,000 ft down, and how much the sink rate swung). Every cost is 0
+// only at its ideal and grows smoothly away from it, with no free band, so 100 takes a
+// landing that's perfect in every part, and 0 takes several things going badly wrong at once.
+//
+// Shane's yardstick (2026-10-31): his landing at 190 ft/min, 2 m left of the centreline and
+// 150 m past the aiming point, after a final flown low (about 150 ft 1 km out) with a bob to
+// get back up, scored 100 under v0.1.2 and should score 80 (tests/score.test.mjs rebuilds it).
+//
+// A touchdown that isn't on a runway costs 2.3 (×0.1) more, and says so.
+
+import { GROUND_Z } from './geometry.js';
 
 const FT = 3.28084;
 const DEG = 180 / Math.PI;
@@ -70,31 +79,99 @@ function grade(points) {
   return points >= 90 ? 'A' : points >= 78 ? 'B' : points >= 64 ? 'C' : points >= 50 ? 'D' : 'F';
 }
 
-const lerpCap = (x, x0, x1, p1) => Math.max(0, Math.min(p1, ((x - x0) / (x1 - x0)) * p1));
+const sq = (x) => x * x;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+// About (x/s)²/2 near 0 and |x|/s far out: small misses cost little, big ones don't explode.
+const soft = (x, s) => Math.sqrt(1 + sq(x / s)) - 1;
 
-// The penalties, each with its ceiling (points).
-export const PENALTY = {
-  // ft/min: nothing from 60 to 250, 30 at 600 (the A321's design sink rate, 10 ft/s), 50 at 900.
-  vs: (vs) => (vs < 60 ? 4 : vs <= 600 ? lerpCap(vs, 250, 600, 30) : Math.min(50, 30 + lerpCap(vs, 600, 900, 20))),
-  // This sim's gear reads about 1.9 g at a firm 380–400 ft/min, so g mostly follows the
-  // vertical speed; it adds a little for a hard bounce or a dropped nose. 15 at 2.6 g, where
-  // Airbus calls for a hard-landing inspection.
-  g: (g) => lerpCap(g, 1.9, 2.6, 15),
-  // m from the aiming point: ±150 m is the touchdown zone's sweet spot. Long costs up to 20
-  // (at 650 m), short up to 20, and short of the threshold 15 more.
+// What each part costs, 0 at its ideal. The score is 100 × e^(−total cost), so a cost of
+// 0.01 takes about 1% off, 0.05 about 5%, 0.22 a fifth, 0.69 half.
+export const COST = {
+  // ft/min, ideal 130: 190 → 0.009, 250 → 0.03, 360 → 0.13, 450 → 0.24, 600 → 0.52, 750 → 0.91.
+  // Below it the aircraft floats: 60 → 0.03.
+  vs: (vs) => (vs >= 130 ? sq((vs - 130) / 650) : sq((130 - vs) / 400)),
+  // The touchdown g (1 = none): 1.3 → 0.007, 1.5 → 0.02, 2.0 → 0.08, 2.6 → 0.21. This sim's g
+  // mostly follows the sink rate, so it weighs little on its own.
+  g: (g) => sq(Math.max(0, g - 1) / 3.5),
+  // m from the aiming point, + long: 50 → 0.006, 150 → 0.05, 300 → 0.17, 500 → 0.40, 800 → 0.78.
+  // Short costs more (−150 → 0.07, −400 → 0.35), and short of the threshold 0.3 on top.
   aim: (along, aim) => {
     const off = along - aim;
-    if (Math.abs(off) <= 150) return 0;
-    const p = off > 0 ? lerpCap(off, 150, 650, 20) : lerpCap(-off, 150, 450, 20);
-    return Math.min(35, p + (along < 0 ? 15 : 0));
+    return (off >= 0 ? 0.42 * soft(off, 300) : 0.28 * soft(off, 200)) + (along < 0 ? 0.3 : 0);
   },
-  // m off the centreline: the main gear is 3.8 m either side of it.
-  centreline: (cross) => lerpCap(Math.abs(cross), 3, 16.3, 20),
-  bank: (deg) => lerpCap(deg, 3, 8, 15),
-  pitch: (deg) => (deg < 0 ? 15 : deg > 9 ? Math.min(15, (deg - 9) * 6) : 0),
-  bounces: (n) => Math.min(25, n * 10),
-  grass: 25,     // the first main wheels landed on the grass (short of the runway or off its side)
+  // m off the centreline: 1 → 0.008, 2 → 0.03, 4 → 0.10, 8 → 0.31, 15 → 0.72.
+  centreline: (cross) => 0.25 * soft(cross, 4),
+  // °: 1 → 0.007, 2 → 0.03, 4 → 0.11, 6 → 0.25.
+  bank: (deg) => sq(deg / 12),
+  // °: a shallow bowl around 5.5° (4 → 0.006, 7.2 → 0.007), steep below 2.5° (the nosewheel
+  // first) and above 8° (the tail strikes at 9.7° with the struts compressed): 1 → 0.33, 9 → 0.25.
+  pitch: (deg) => 0.01 * sq((deg - 5.5) / 2) + 0.5 * sq(Math.max(0, 2.5 - deg) / 2) + 0.5 * sq(Math.max(0, deg - 8) / 1.5),
+  bounces: (n) => 0.2 * n,
+  grass: 0.35,      // the first main wheels landed on the grass (short of the runway or off its side)
+  offRunway: 2.3,   // not on a runway at all: a perfect touchdown on a taxiway scores 10
+  // The approach (approachStats below). RMS dots off the PFD's glideslope and localizer from
+  // 1,000 ft to 100 ft: 0.25 → 0.007, 0.5 → 0.03, 1 → 0.12, 2 → 0.48 (full scale all the way).
+  path: (dots) => sq(dots / 2.9),
+  // ft/min, the sink rate's swing (its standard deviation) about a steady 3° descent from
+  // 1,000 ft to 50 ft: 50 → 0.003, 100 → 0.012, 200 → 0.05, 400 → 0.20, 700 → 0.60.
+  swing: (fpm) => sq(fpm / 900),
 };
+
+export const pointsFor = (cost) => Math.round(100 * Math.exp(-cost));
+
+// The approach, measured on the track the scorer keeps: the same 3° glideslope from 300 m
+// past the threshold and the same localizer from the far end as the PFD shows (1 dot = 0.4°
+// and 0.8°, Airbus's scales). Only samples lined up within 10° of the runway count, so a
+// base leg doesn't.
+export const APPROACH = {
+  gsOriginM: 300, gsDeg: 3, gsDotDeg: 0.4, locDotDeg: 0.8,
+  topFt: 1000, pathBottomFt: 100, swingBottomFt: 50, maxLocDeg: 10,
+  minSeconds: 20,       // less of the window than this flown: no approach parts
+  sampleS: 0.25, keepS: 300,
+};
+
+// track: [{ t, x, y, z, vs, gs }] (map m, the fuselage centre's MSL height in m, m/s), oldest
+// first; rf: runwayFrame(); elev: the threshold's elevation (m). Heights for the window are
+// the wheels' above the threshold. Returns null if too little of the window was flown.
+export function approachStats(track, rf, elev = 0) {
+  const A = APPROACH, tanGs = Math.tan(A.gsDeg / DEG);
+  let n = 0, sum2 = 0, gsSum = 0, locSum = 0;
+  const errs = [];
+  for (const p of track || []) {
+    const { along, cross } = alongCross(rf, p.x, p.y);
+    if (along >= 0) continue;                                    // over the runway already
+    const hFt = (p.z - GROUND_Z - elev) * FT;
+    if (hFt > A.topFt || hFt < A.swingBottomFt) continue;
+    const locDeg = Math.atan2(cross, rf.lda - along) * DEG;       // + right of the course
+    if (Math.abs(locDeg) > A.maxLocDeg) continue;
+    errs.push((-p.vs - p.gs * tanGs) * 60 * FT);                  // sinking faster than 3° (ft/min)
+    if (hFt < A.pathBottomFt) continue;
+    const gsDots = (Math.atan2(p.z - elev, A.gsOriginM - along) * DEG - A.gsDeg) / A.gsDotDeg; // + above
+    const g = clamp(gsDots, -5, 5), l = clamp(locDeg / A.locDotDeg, -5, 5);
+    n++; sum2 += g * g + l * l; gsSum += g; locSum += l;
+  }
+  if (n * A.sampleS < A.minSeconds) return null;
+  const mean = errs.reduce((a, b) => a + b, 0) / errs.length;
+  const swingFpm = Math.sqrt(errs.reduce((a, b) => a + sq(b - mean), 0) / errs.length);
+  const gsMean = gsSum / n, locMean = locSum / n;
+  const note = Math.max(Math.abs(gsMean), Math.abs(locMean)) < 0.25 ? ''
+    : Math.abs(gsMean) >= Math.abs(locMean) ? (gsMean < 0 ? 'low' : 'high') : (locMean < 0 ? 'left' : 'right');
+  return { pathDots: Math.sqrt(sum2 / n), gsMeanDots: gsMean, locMeanDots: locMean, swingFpm, seconds: n * A.sampleS, note };
+}
+
+// Points lost per part: the total loss shared out in proportion to the parts' costs, as whole
+// points that add up to it (largest remainders first).
+export function sharePoints(parts, points) {
+  const total = parts.reduce((a, p) => a + p.cost, 0);
+  const loss = 100 - points;
+  if (!(total > 0) || loss <= 0) { for (const p of parts) p.penalty = 0; return parts; }
+  const raw = parts.map((p) => (loss * p.cost) / total);
+  const pen = raw.map(Math.floor);
+  const order = raw.map((r, i) => [r - pen[i], i]).sort((a, b) => b[0] - a[0]);
+  for (let k = 0, left = loss - pen.reduce((a, b) => a + b, 0); k < left; k++) pen[order[k][1]]++;
+  parts.forEach((p, i) => { p.penalty = pen[i]; });
+  return parts;
+}
 
 export function createScorer() {
   let rf = null;
@@ -104,6 +181,9 @@ export function createScorer() {
   let bounces = 0;
   let airborneSince = null;
   let result = null;
+  // The track for the approach: a sample every 0.25 s in the air, the last 5 minutes.
+  let track = [], lastSampleT = -Infinity;
+  const clearTrack = () => { track = []; lastSampleT = -Infinity; };
 
   return {
     // The runway end being landed on (null clears it). The touchdown sets it again
@@ -121,16 +201,34 @@ export function createScorer() {
     get landing() { return landing; },
     get result() { return result; },
     get touchedDown() { return !!td; },
-    reset() { td = null; result = null; bounces = 0; peakG = 0; airborneSince = null; },
+    get track() { return track; },
+    // keepTrack: after a rewind, the approach flown before the rewound-to moment still counts.
+    reset(keepTrack = false) {
+      td = null; result = null; bounces = 0; peakG = 0; airborneSince = null;
+      if (!keepTrack) clearTrack();
+    },
 
     // Feed sim events and the state every frame. Returns the result once, when it's done.
     update(s, events) {
+      // The sim went back in time (a rewind): so does the track.
+      if (track.length && s.t < track[track.length - 1].t) {
+        while (track.length && track[track.length - 1].t > s.t) track.pop();
+        lastSampleT = track.length ? track[track.length - 1].t : -Infinity;
+      }
+      // A lift-off (the take-off, or a touch-and-go) starts a new approach.
+      for (const e of events) if (e.type === 'liftoff') clearTrack();
+      if (!td && !s.onGround && s.t - lastSampleT >= APPROACH.sampleS) {
+        lastSampleT = s.t;
+        track.push({ t: s.t, x: s.pos.x, y: s.pos.y, z: s.pos.z, vs: s.vs, gs: s.gs });
+        while (s.t - track[0].t > APPROACH.keepS) track.shift();
+      }
       for (const e of events) {
         if (e.type === 'touchdown' && !td) {
           const ac = rf ? alongCross(rf, e.x, e.y) : { along: NaN, cross: NaN };
           td = { vsFpm: -e.vsMs * 60 * FT, g: e.g, along: ac.along, cross: ac.cross,
             bank: Math.abs(e.bank) * DEG, pitch: e.pitch * DEG, ias: s.ias * 1.943844, t: s.t, onRunway: !!rf,
-            surface: e.surface || 'runway' };
+            surface: e.surface || 'runway',
+            approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0) : null };
           peakG = e.g;
         } else if (e.type === 'touchdown' && td && !result) {
           peakG = Math.max(peakG, e.g);           // a bounce's second arrival
@@ -139,31 +237,39 @@ export function createScorer() {
       if (!td || result) return null;
       if (s.onGround) airborneSince = null;
       else if (airborneSince === null) airborneSince = s.t;
-      // Off the ground again for 4 s after touching down: a go-around, nothing to score.
-      if (airborneSince !== null && s.t - airborneSince > 4) { td = null; bounces = 0; return null; }
+      // Off the ground again for 4 s after touching down: a go-around, nothing to score, and
+      // the next approach starts afresh.
+      if (airborneSince !== null && s.t - airborneSince > 4) { td = null; bounces = 0; clearTrack(); return null; }
       const stopped = s.onGround && s.gs < 30 / 1.943844;
       if (!stopped && s.t - td.t < 60) return null;
 
       const aim = rf ? aimingPoint(rf.lda) : 400;
       const parts = [];
-      const add = (name, value, unit, penalty) => parts.push({ name, value, unit, penalty: Math.round(penalty) });
+      const add = (name, value, unit, cost, extra) => parts.push({ name, value, unit, cost: +cost.toFixed(4), penalty: 0, ...extra });
       const vs = Math.abs(td.vsFpm);
-      add('Vertical speed', Math.round(vs), 'ft/min', PENALTY.vs(vs));
+      add('Vertical speed', Math.round(vs), 'ft/min', COST.vs(vs));
       // The touchdown g as an accelerometer reads it (the sim's 0.1 s filter), the worst of
       // the first arrival and any bounce; the rollout's bumps and braking don't count.
-      add('Peak g', +peakG.toFixed(2), 'g', PENALTY.g(peakG));
+      add('Peak g', +peakG.toFixed(2), 'g', COST.g(peakG));
       if (td.onRunway) {
-        add('Touchdown vs aiming point', Math.round(td.along - aim), 'm', PENALTY.aim(td.along, aim));
-        add('From centreline', +Math.abs(td.cross).toFixed(1), 'm', PENALTY.centreline(td.cross));
-        if (td.surface === 'ground') add('On the grass', 'yes', '', PENALTY.grass);
+        add('Touchdown vs aiming point', Math.round(td.along - aim), 'm', COST.aim(td.along, aim));
+        add('From centreline', +Math.abs(td.cross).toFixed(1), 'm', COST.centreline(td.cross));
+        if (td.surface === 'ground') add('On the grass', 'yes', '', COST.grass);
       }
-      add('Bank', +td.bank.toFixed(1), '°', PENALTY.bank(td.bank));
-      add('Pitch', +td.pitch.toFixed(1), '°', PENALTY.pitch(td.pitch));
-      add('Bounces', bounces, '', PENALTY.bounces(bounces));
-      let points = Math.max(0, 100 - parts.reduce((a, p) => a + p.penalty, 0));
-      if (!td.onRunway) { add('On a runway', 'no', '', 100); points = 0; }
-      result = { points: Math.round(points), grade: grade(points), parts, touchdown: td, offRunway: !td.onRunway,
-        runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim };
+      add('Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
+      add('Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch));
+      add('Bounces', bounces, '', COST.bounces(bounces));
+      const ap = td.approach;
+      if (ap) {
+        add('Approach path', +ap.pathDots.toFixed(1), 'dots', COST.path(ap.pathDots), ap.note ? { note: ap.note } : {});
+        add('Sink rate swings', Math.round(ap.swingFpm), 'ft/min', COST.swing(ap.swingFpm));
+      }
+      if (!td.onRunway) add('On a runway', 'no', '', COST.offRunway);
+      const cost = parts.reduce((a, p) => a + p.cost, 0);
+      const points = pointsFor(cost);
+      sharePoints(parts, points);
+      result = { points, grade: grade(points), parts, cost: +cost.toFixed(4), touchdown: td, offRunway: !td.onRunway,
+        runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim, approach: ap };
       return result;
     },
   };
