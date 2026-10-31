@@ -16,7 +16,7 @@ import { engineStep, togaThrust, idleN1, detentName, leverToPhi } from './engine
 import { legStep } from './gear.js';
 import { fbwStep } from './fbw.js';
 import { createAp, apStep, athrStep, AP_FIELDS } from './autopilot.js';
-import { GEAR, GROUND_Z, ENGINES, TAIL_STRIKE_POINT } from '../geometry.js';
+import { GEAR, GROUND_Z, ENGINES, NACELLES, NACELLE_DIAMETER, TAIL_STRIKE_POINT } from '../geometry.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -33,8 +33,8 @@ const CRASH_POINTS = [
   { x: 19.6, y: 0, z: -1.7, why: 'nose impact' },
   { x: -4, y: 0, z: -2.05, why: 'belly impact' },
   { x: TAIL_STRIKE_POINT.x, y: 0, z: TAIL_STRIKE_POINT.z, why: 'tail strike' },
-  { x: ENGINES[0].x, y: ENGINES[0].y, z: ENGINES[0].z - 1.2, why: 'engine strike' },
-  { x: ENGINES[1].x, y: ENGINES[1].y, z: ENGINES[1].z - 1.2, why: 'engine strike' },
+  { x: NACELLES[0].x, y: NACELLES[0].y, z: NACELLES[0].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
+  { x: NACELLES[1].x, y: NACELLES[1].y, z: NACELLES[1].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
   { x: -4.6, y: 17.9, z: 0.6, why: 'wingtip strike' },
   { x: -4.6, y: -17.9, z: 0.6, why: 'wingtip strike' },
 ];
@@ -57,7 +57,8 @@ function newCore() {
     protAlpha: false, protSpeed: false, alphaFloorTrig: false, alphaFloorLock: false,
     athrPhi: 0, phiNow: 0, opGamma: 0, opInt: 0, capVs: 0, hdgGridTgt: 0, hdgTimer: 0,
     airTime: 0, groundTime: 0, everAirborne: false,
-    tdArmed: false, tdPending: false, tdT: 0, tdVs: 0, tdPeakG: 0, tdX: 0, tdY: 0, tdBank: 0, tdPitch: 0,
+    tdArmed: false, tdPending: false, tdT: 0, tdVs: 0, tdPeakG: 0, tdX: 0, tdY: 0, tdBank: 0, tdPitch: 0, tdSurf: 'runway',
+    grassRun: 0,
     lastTdT: -100, bounceT: 0,
     apDiscT: 0, crashed: null,
     prevAlpha: 0, prevIas: 0, iasDot: 0, nzPrev: 1, nzF: 1, fAlong: 0, gspLatched: false,
@@ -429,6 +430,7 @@ export function createSim({ ground } = {}) {
       X.tdPending = true; X.tdT = 0;
       X.tdVs = -X.vd; // vertical speed at contact (negative = descending)
       X.tdPeakG = X.nzF; X.tdX = X.px; X.tdY = X.py; X.tdBank = phi; X.tdPitch = theta;
+      X.tdSurf = (wowL ? legs[1] : legs[2]).kind;   // what the first main wheels landed on
       if (X.t - X.lastTdT < 8) events.push({ type: 'bounce' });
       X.lastTdT = X.t;
       if (-X.vd > A.GEAR_BREAK_VS) crash('hard landing: gear collapsed');
@@ -438,17 +440,23 @@ export function createSim({ ground } = {}) {
       if (X.nzF > X.tdPeakG) X.tdPeakG = X.nzF;
       if (X.tdT >= 0.6) {
         X.tdPending = false;
-        events.push({ type: 'touchdown', vsMs: X.tdVs, g: X.tdPeakG, x: X.tdX, y: X.tdY, bank: X.tdBank, pitch: X.tdPitch });
+        events.push({ type: 'touchdown', vsMs: X.tdVs, g: X.tdPeakG, x: X.tdX, y: X.tdY, bank: X.tdBank, pitch: X.tdPitch, surface: X.tdSurf });
       }
     }
     if (nowAny) {
       if (X.airTime > 0.5) X.airTime = 0;
+      let grass = false;
       for (let i = 0; i < 3; i++) {
         const L = legs[i];
         if (!L.wow) continue;
         if (L.kind === 'water') crash('ditched');
-        else if (L.kind !== 'runway' && gs > 15) crash('ran off the runway');
+        else if (L.kind !== 'runway') grass = true;
       }
+      // Off the pavement, a light touchdown or a slow roll is fine (a hard one breaks the gear
+      // anywhere, above), but a fast run across the grass takes the gear (v0.1.2; it used to
+      // crash at the first touch of grass above 15 m/s).
+      if (!grass) X.grassRun = 0;
+      else if (gs > A.GRASS_SAFE_GS && (X.grassRun += gs * dt) > A.GRASS_RUN_M) crash('ran off the runway');
     } else {
       if (X.groundTime > 0 && !X.everAirborne && X.airTime > 0.5 && ias > 60 * A.KT) {
         X.everAirborne = true;

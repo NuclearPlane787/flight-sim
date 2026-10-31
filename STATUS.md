@@ -678,3 +678,73 @@ Shane, after pushing v0.1.0: "Let's work on some subupdates. I saw some taxiways
   - README: the code map row and the Jeju seam under known issues;
   - AGENTS.md: State.
 - **Next:** Shane pushes (`sh tools/push.sh v0.1.1`), then v0.2.0 (the main menu and scenarios) once he answers its two questions.
+
+## 2026-10-31, evening: v0.1.2 (Cowork session)
+
+Shane, after v0.1.1, with a screenshot of the nose from the front: "What I meant by the strange cockpit windows is that from the outside, the middle cockpit windows are much taller than they have to be, and it looks a little strange. From that reference photo, it should be thinner than the side windows. Also, the engine is all the way up to the wing like a 737 max, when it should be clearly below it. Also, I see that touching down on the grass just before the runway immediately crashes. In general, if you hit surface light enough with landing gear, it shouldn't trigger a crash. Package these into v0.1.2."
+
+- **The windshield** (`src/aircraft.js`, `src/cockpit-windows.js`, `src/cockpit.js`, `src/livery.js`):
+  - **The cause:** the nose's crown came down from x 16 m to the tip in one even slope of about 40°, so it was still high just ahead of the eye. For the pilots to see about 20° down over the nose (Airbus's visibility figure), the windshield had to reach a long way down that slope, so from outside it was taller than the side windows.
+  - **The new nose** follows the A320 family's profile: the crown drops steeply over the windshield (x 17.6–19.35 m), then runs gently down the radome to the tip (`fuseTop`).
+    - Each section is now two half-ellipses that meet at the old centre line (`fuseMid`, worked out from the crown before the cut): the upper one up to the crown, the lower one down to the keel. So only the top of the nose changed.
+    - `fuseSection(x)` gives the centre line, the two half-heights and the half-width. `fusePoint()`, the window design, the glass and the cockpit shell all use it.
+  - **The windows, redesigned on the new nose** with v0.1.1's method (corners as directions from the Captain's eye, in `WINDOW_DESIGN`):
+    - the windshield: from the centre post to 40–44° left; its sill 17–22° below the eye, its top 14–16° above;
+    - the sliding window: 48–90°; 24–26° below, 16–18° above;
+    - the rear window: 95–117°; 20–24° below, 13–16° above, narrower at the top.
+    - **From outside,** the windshield is now a band 0.62 m tall on the skin, against 0.83 m for the sliding window and 0.80 m for the rear one.
+  - **The livery** keeps each window's dark backing 2 px inside the glass's outline, so it stays under the glass. On the steep nose the atlas is too coarse for v0.1.1's painted 3 px frame.
+  - **The cockpit,** to stay inside the new skin: the instrument panel moved 0.24 m aft (`PANEL_X` = 19.14), the glare shield and the FCU moved back with it (the glare shield narrower and lower), and the overhead panel moved and tilted. A one-off check puts every corner of the interior boxes inside the inner skin (5 cm in from the outer); the closest is at 0.993 of the way.
+  - **New `tests/aircraft-shape.test.mjs`** (3 tests):
+    - the windshield's height on the skin is at least 0.1 m less than each side window's;
+    - the Captain sees at least 17° down over the nose, and the windshield's bottom is at least 0.3 m below the eye;
+    - the nacelles (below).
+- **The engines** (`src/geometry.js`, `src/aircraft.js`, `src/sim/sim.js`, `src/world/traffic-models.js`):
+  - **The cause:** the nacelles were drawn at the sim's thrust points (`ENGINES`, 1.75 m below the centre line), so their tops sat in the wing, like a 737 MAX's.
+  - **Airbus's A321 AC** (Aircraft Characteristics):
+    - The LEAP-1A nacelle's low point is 0.45 m above the ground at the maximum ramp weight (2-3-0, Ground Clearances; 0.465–0.532 m at lighter weights or other CG positions).
+    - The heights of the flap-track fairings (2.61–3.38 m) and the sharklet's foot (4.08 m) put the wing about 0.3 m higher than v0.1.0 drew it.
+  - **Now:**
+    - The nacelles hang at `NACELLES` (`geometry.js`): low point 0.45 m above the ground, centre 2.25 m below the fuselage's centre line.
+    - The wing's chord line at the fuselage side went from −1.35 m to −1.05 m (`WING_Z0`).
+    - A new pylon runs from the top of the nacelle up to the wing's leading edge and back under the wing.
+    - The main gear legs hang from inside the wing (pivot at z −0.9 m, braces up to −0.98 m).
+    - The wingtip lights and strobes moved up with the wing (z 0.12 → 0.42 m).
+    - Engine strikes (`CRASH_POINTS` in `sim.js`) are checked at the nacelles' new low points.
+    - The thrust still acts at `ENGINES`, so the sim's pitch from thrust, and its calibration, are unchanged.
+    - The parked aircraft (`traffic-models.js`): narrow-bodies' wings at −1.05 m with their engines 1.57 m above the ground, wide-bodies' at −1.8 m and 2.3 m.
+  - New test: the nacelles' low point is 0.45 m above the ground, and their tops are at least 3 cm below the wing's lower surface.
+- **Grass** (`src/sim/sim.js`, `src/sim/gear.js`, `src/sim/a321neo.js`, `src/score.js`, `src/ui/score-panel.js`):
+  - **The cause:** any wheel touching anything but a runway above 15 m/s crashed the aircraft at once ("ran off the runway"), however gently it touched.
+  - **Now:**
+    - Off the pavement, a touchdown is judged as on a runway: only a hard one breaks the gear (`GEAR_BREAK_VS`, about 900 ft/min).
+    - On grass the wheels roll heavier (rolling resistance 0.06), brake less (0.30) and grip less sideways (0.6 of the runway's). All [EST].
+    - More than 450 m (`GRASS_RUN_M`) on the grass faster than 29 kt (`GRASS_SAFE_GS`, 15 m/s) still ends the flight ("ran off the runway"). Slower, the grass can't hurt the gear. Water still ditches at once.
+    - The touchdown event records what the first main wheel landed on (`surface`).
+  - **The score:**
+    - `landingRunway()` tries, in order: the pavement (with 2 m of grace), within 60 m of it, then up to 400 m short of a threshold and within 15 m of the runway's sides, lined up within 45°.
+    - "On the grass: yes" costs 25 points (`PENALTY.grass`).
+    - A landing off the side onto the grass gets the verdict "Off the side, onto the grass." A short one keeps "Short of the threshold. Far too close."
+  - **Tests:**
+    - `tests/sim-ground.test.mjs`: "a light touchdown on the grass short of the runway is fine; a run across the grass is not".
+    - `tests/score.test.mjs`: "main wheels on the grass: short of the threshold, or off the side", and new cases in the runway picking: 300 m short counts (from either end), but not 300 m short and 100 m off to the side, 500 m short, or 300 m past the far end.
+  - **Through the game** (`main.js`, in headless Chromium in the cloud container): `?test&origin=RKSS&dep=14R&dest=RKSI&arr=33L&start=final`, flown by `tests/e2e-controller.js` with its aim moved short of the threshold:
+    - aimed 150 m short: it floated to 8 m short of the threshold, on the pavement there. C 68, "Short of the threshold. Far too close."
+    - aimed 300 m short: touched down on the grass **157 m short** at 233 ft/min and 1.45 g, rolled onto the runway, no crash. **F 40** (the touchdown point −35, on the grass −25), "Short of the threshold. Far too close."
+    - aimed 450 m short: on the grass **311 m short** at 236 ft/min, no crash, F 40. With `GRASS_RUN_M` at 300 m, a run like this one ended on the grass ("ran off the runway"), so it went to 450 m.
+    - Each run takes about 2.5 minutes: `requestAnimationFrame` is faked so that each frame is 0.1 s of sim, and nothing is drawn until the score card.
+- **Checks:**
+  - `node --test tests/*.test.mjs` through the guard (VM, Node 22.23.4): **166 pass** (161 + 1 sim-ground + 1 score + 3 aircraft-shape). `--status` shows no slots in use; `--sweep` is clean.
+  - `node --check` passes on all 101 `.js` and `.mjs` files in `src/` and `tests/`.
+  - **Renders:** the browser pane on the Mac doesn't draw while it's hidden, so the stills came from the cloud container: headless Chromium with SwiftShader WebGL, the game served with no-store headers, the camera placed by script, and each frame read back from the canvas. All from the final code, with no console errors:
+    - outside: `v012-front-above.jpg` (Shane's angle), `v012-front-level.jpg`, `v012-front-three-quarter.jpg`, `v012-side.jpg`, `v012-windows-side.jpg`, `v012-whole.jpg`;
+    - the engines: `v012-engine-front.jpg`, `v012-engine-side.jpg`, `v012-engine-under.jpg`;
+    - the seats: `v012-windows-captain.jpg`, `v012-windows-captain-left.jpg`, `v012-windows-fo.jpg`.
+  - **Not done:** a look in Chrome on the Mac's GPU. Worth one after the push (with a hard reload).
+- **A slip:** to compare with v0.1.1's cockpit, I ran `git show HEAD:src/cockpit.js` in this folder. It only reads, and nothing changed, but the house rule allows no git here beyond `GIT_OPTIONAL_LOCKS=0 git log`.
+- **Written up:**
+  - `src/version.js` is `Flight Sim v0.1.2 · CL#261031`;
+  - `Updates.md` has the v0.1.2 entry;
+  - ROADMAP: the three items under "Found after v0.1.0", fixed;
+  - AGENTS.md: State.
+- **Next:** Shane pushes (`sh tools/push.sh v0.1.2`), then v0.2.0 (the main menu and scenarios) once he answers its two questions.

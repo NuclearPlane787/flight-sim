@@ -4,6 +4,21 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.1.2 · 2026-10-31 (evening) · A lower windshield, engines under the wing, and grass that doesn't bite
+
+- **The windshield is a low band now, thinner than the side windows,** as on the real A320 family.
+  - The nose's crown drops steeply over the windshield and then runs gently down the radome to the tip, so the windshield sits on the steep part.
+  - From the seats you still see about 17° down over the nose and 16° up. The glare shield, the FCU and the instrument panel moved back to fit under it.
+  - The side windows are taller, and the rear window is smaller than the sliding window.
+- **The engines hang clearly below the wing, with the pylon showing,** instead of tucked up against it like a 737 MAX.
+  - They sit where Airbus's documents put them: the nacelle's low point is 0.45 m above the ground.
+  - The wing is about 0.3 m higher, which Airbus's documents also support, and the main gear legs now reach up into it.
+  - The parked aircraft at the airports got the same treatment.
+- **Touching down on the grass doesn't crash you any more,** as long as the touchdown is gentle. A hard touchdown still breaks the gear anywhere.
+  - On grass the wheels roll heavier and brake and grip less than on a runway.
+  - A long, fast run across the grass (more than 450 m above 29 kt) still ends the flight.
+  - The score counts a touchdown up to 400 m short of a runway, if it was lined up with it, and adds "On the grass" (−25). A landing 150 m short scores an F 40: "Short of the threshold. Far too close."
+
 ## v0.1.1 · 2026-10-31 (afternoon) · Fixes: Incheon's taxiways, the cockpit windows and the landing score
 
 - **No more flickering taxiways.** Where a concrete taxilane met an asphalt taxiway, the two surfaces fought over the same spot and flickered in jagged patches, worst at Incheon. The airport ground now draws in a fixed order (taxilanes, then taxiways, then aprons and stands), so the overlaps are clean at all three airports.

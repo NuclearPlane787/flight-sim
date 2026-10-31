@@ -18,21 +18,22 @@ export const PART = {
 };
 
 // The parked types. Dimensions after the A321neo (44.5 m, 35.8 m span) and a generic
-// twin widebody (A330-300 sized: 63.7 m, 60.3 m span). `shortScale` shrinks the
+// twin widebody (A330-300 sized: 63.7 m, 60.3 m span). engineZ is the nacelle centre's height
+// above the ground: the engines hang clearly below the wing (v0.1.2). `shortScale` shrinks the
 // narrowbody's length to an A320's 37.6 m.
 export const AIRLINER_TYPES = [
   {
     name: 'narrowbody', length: 44.5, radius: 2.0, zc: 3.9, span: 35.8, stabSpan: 12.5,
-    wingRootX: 15.6, rootChord: 6.6, tipChord: 1.6, sweepDeg: 27, dihedralDeg: 5.5, wingZ: -1.35,
-    engineY: 5.75, engineX: 11.4, engineLen: 4.9, engineR: 1.12, engineZ: 1.75,
+    wingRootX: 15.6, rootChord: 6.6, tipChord: 1.6, sweepDeg: 27, dihedralDeg: 5.5, wingZ: -1.05,
+    engineY: 5.75, engineX: 11.4, engineLen: 4.9, engineR: 1.12, engineZ: 1.57,
     stabRootX: 37.6, stabRootChord: 3.8, stabTipChord: 1.5, stabSweepDeg: 32, stabZ: 1.0,
     finRootX: 34.6, finRootChord: 6.6, finTipChord: 2.4, finTop: 11.76, finSweepDeg: 38,
     noseGearX: 5.1, mainGearX: 20.3, mainGearY: 3.8, shortScale: 37.6 / 44.5, segs: 16,
   },
   {
     name: 'widebody', length: 63.7, radius: 2.82, zc: 5.7, span: 60.3, stabSpan: 19.4,
-    wingRootX: 22.5, rootChord: 10.5, tipChord: 2.4, sweepDeg: 30, dihedralDeg: 5.5, wingZ: -2.0,
-    engineY: 9.4, engineX: 18.0, engineLen: 7.0, engineR: 1.55, engineZ: 2.6,
+    wingRootX: 22.5, rootChord: 10.5, tipChord: 2.4, sweepDeg: 30, dihedralDeg: 5.5, wingZ: -1.8,
+    engineY: 9.4, engineX: 18.0, engineLen: 7.0, engineR: 1.55, engineZ: 2.3,
     stabRootX: 54.0, stabRootChord: 5.6, stabTipChord: 2.1, stabSweepDeg: 32, stabZ: 1.4,
     finRootX: 49.5, finRootChord: 9.6, finTipChord: 3.4, finTop: 16.8, finSweepDeg: 40,
     noseGearX: 7.0, mainGearX: 30.0, mainGearY: 5.3, shortScale: 1, segs: 18,

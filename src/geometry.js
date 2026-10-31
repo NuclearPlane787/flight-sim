@@ -30,13 +30,20 @@ export const GEAR = {
 // tail-strike pitch, about 9.7° with the struts compressed and 11.2° extended.
 export const TAIL_STRIKE_POINT = { x: -17.5, y: 0, z: -1.1 };
 
-// Engines (LEAP-1A): nacelle centre and size.
+// Engines (LEAP-1A): where the sim's thrust acts. With the sim's centre of gravity on the
+// fuselage centreline, 1.75 m below it is about the real thrust line's offset below the real
+// CG (which sits lower), so the pitch moment from thrust is right.
 export const ENGINES = [
   { x: 3.6, y: 5.75, z: -1.75 },  // engine 1, left
   { x: 3.6, y: -5.75, z: -1.75 }, // engine 2, right
 ];
 export const NACELLE_DIAMETER = 2.4;
 export const NACELLE_LENGTH = 5.0;
+// Where the nacelles hang (aircraft.js draws them there, and sim.js checks engine strikes
+// against their low points): Airbus's A321 AC (2-3-0, Ground Clearances) puts the LEAP-1A
+// nacelle's low point 0.45 m above the ground at the maximum ramp weight. Clearly below the
+// wing, with the pylon showing (v0.1.2; they used to sit at ENGINES, up against the wing).
+export const NACELLES = ENGINES.map((e) => ({ x: e.x, y: e.y, z: 0.45 + NACELLE_DIAMETER / 2 - GROUND_Z }));
 
 // Wing: root and tip leading edges, sweep 25° at the quarter chord.
 export const WING = { rootX: 4.6, rootChord: 6.1, tipChord: 1.6, dihedralDeg: 5.1, sweepDeg: 25 };

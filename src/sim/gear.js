@@ -47,10 +47,12 @@ export function legStep(leg, k) {
   const vLong = ub * cs + vb * sn;
   const vLat = -ub * sn + vb * cs;
   leg.vRoll = vLong;
-  const mu = leg.mu;
+  // Off the pavement (grass), the tyres roll heavier and brake and grip less.
+  const soft = leg.kind !== 'runway';
+  const mu = soft ? leg.mu * A.SIDE_MU_GRASS : leg.mu;
   // Rolling resistance and brakes (anti-skid holds the optimum slip: force ≤ BRAKE_MU·N).
   const brake = leg.isNose ? 0 : k.brake;
-  const fLongMax = (A.ROLL_RESIST + A.BRAKE_MU * brake) * fs;
+  const fLongMax = ((soft ? A.ROLL_RESIST_GRASS : A.ROLL_RESIST) + (soft ? A.BRAKE_MU_GRASS : A.BRAKE_MU) * brake) * fs;
   const fLong = -fLongMax * Math.tanh(vLong / 0.08);
   // Side force: linear in slip angle up to ~6°, saturating at mu·N.
   const vRef = Math.max(0.25, 0.1 * Math.abs(vLong));

@@ -29,15 +29,21 @@ test('a little short or off the edge still counts; a parallel taxiway does not',
   assert.equal(landingRunway(runways, -30, 0, EAST).end.ident, '09');
   assert.equal(landingRunway(runways, 500, 40, EAST).end.ident, '09'); // a wheel off the edge
   assert.equal(landingRunway(runways, 500, 180, EAST), null);        // the parallel taxiway
+  // an undershoot in line with the runway, up to 400 m short, on either end
+  assert.equal(landingRunway(runways, -300, 5, EAST).end.ident, '09');
+  assert.equal(landingRunway(runways, 3300, -5, -EAST).end.ident, '27');
+  assert.equal(landingRunway(runways, -300, 100, EAST), null);       // short and well off to the side
+  assert.equal(landingRunway(runways, -500, 0, EAST), null);         // too far short
+  assert.equal(landingRunway(runways, 3300, 0, EAST), null);         // past the far end
 });
 
 // A landing on 09: touchdown event, then the rollout to a stop.
-function land({ vs = 360, g = 1.9, along = 400, cross = 0, bank = 0, pitch = 4, runway = true, rolloutNz = 1, bounceG = null } = {}) {
+function land({ vs = 360, g = 1.9, along = 400, cross = 0, bank = 0, pitch = 4, runway = true, rolloutNz = 1, bounceG = null, surface = 'runway' } = {}) {
   const sc = createScorer();
   const s = { t: 100, ias: 70, gs: 70, onGround: true, nz: 1 };
-  if (runway) sc.setLanding(landingRunway(runways, along, cross, EAST));
+  if (runway) sc.setLanding(landingRunway(runways, along, -cross, EAST));
   else sc.setLanding(null);
-  sc.update(s, [{ type: 'touchdown', vsMs: -vs / 196.85, g, x: along, y: -cross, bank: bank * DEG, pitch: pitch * DEG }]);
+  sc.update(s, [{ type: 'touchdown', vsMs: -vs / 196.85, g, x: along, y: -cross, bank: bank * DEG, pitch: pitch * DEG, surface }]);
   if (bounceG) {
     s.t += 1; s.onGround = false; sc.update(s, []);
     s.t += 1; s.onGround = true; sc.update(s, [{ type: 'bounce' }, { type: 'touchdown', vsMs: -3, g: bounceG, x: along + 100, y: 0, bank: 0, pitch: 0.05 }]);
@@ -76,6 +82,20 @@ test('the rollout does not count towards peak g; a bounce does', () => {
   const b = land({ g: 1.8, bounceG: 2.6 });
   assert.equal(b.parts.find((p) => p.name === 'Peak g').value, 2.6);
   assert.equal(pen(b, 'Bounces'), 10);
+});
+
+test('main wheels on the grass: short of the threshold, or off the side', () => {
+  const short = land({ along: -120, surface: 'ground' });
+  assert.equal(short.runway, '09');
+  assert.equal(pen(short, 'On the grass'), 25);
+  assert.equal(pen(short, 'Touchdown vs aiming point'), 35);
+  assert.equal(short.grade, 'F');
+  assert.ok(short.points > 0);
+  assert.match(verdict(short), /^Short of the threshold/);
+  const side = land({ along: 450, cross: 25, surface: 'ground' });
+  assert.equal(pen(side, 'On the grass'), 25);
+  assert.equal(verdict(side), 'Off the side, onto the grass.');
+  assert.equal(land({}).parts.find((p) => p.name === 'On the grass'), undefined);
 });
 
 test('a touchdown off the runway scores 0 and says so', () => {

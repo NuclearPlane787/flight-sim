@@ -32,10 +32,11 @@ export function aimingPoint(lda) {
 }
 
 // The runway a touchdown at map (x, y), heading hdg (rad, grid), was on: one whose paved
-// rectangle (pavement end to pavement end, plus `margin` metres all round) holds the point
-// and whose line is within 45° of the heading; where two qualify (a crossing), the better
-// lined-up one. Returns { runway, end, other } with `end` the threshold landed on, or null.
-export function pickRunway(runways, x, y, hdg, margin = 0) {
+// rectangle (pavement end to pavement end, plus `margin` metres all round, or `short` metres
+// before either end) holds the point and whose line is within 45° of the heading; where two
+// qualify (a crossing), the better lined-up one. Returns { runway, end, other } with `end`
+// the threshold landed on, or null.
+export function pickRunway(runways, x, y, hdg, margin = 0, short = margin) {
   const fx = Math.sin(hdg), fy = Math.cos(hdg);
   let best = null, bestCos = Math.cos(45 / DEG);
   for (const r of runways || []) {
@@ -45,20 +46,24 @@ export function pickRunway(runways, x, y, hdg, margin = 0) {
     if (!(len > 1)) continue;
     const ux = (bx - ax) / len, uy = (by - ay) / len;
     const u = (x - ax) * ux + (y - ay) * uy, v = (x - ax) * uy - (y - ay) * ux;
-    if (u < -margin || u > len + margin || Math.abs(v) > (r.widthM || 45) / 2 + margin) continue;
+    if (Math.abs(v) > (r.widthM || 45) / 2 + margin) continue;
     const c = ux * fx + uy * fy;
     if (Math.abs(c) < bestCos) continue;
+    // short of the end being landed on: before a (u < 0) heading for b, before b heading for a
+    if (c >= 0 ? (u < -short || u > len + margin) : (u > len + short || u < -margin)) continue;
     bestCos = Math.abs(c);
     best = c >= 0 ? { runway: r, end: a, other: b } : { runway: r, end: b, other: a };
   }
   return best;
 }
 
-// The landing runway for a touchdown: on the pavement (2 m of grace past the edges), or
-// failing that within 60 m of it (a little short of the pavement, or a wheel off the edge),
-// scored all the same. null: not a runway at all (a taxiway, an apron).
+// The landing runway for a touchdown: on the pavement (2 m of grace past the edges); failing
+// that within 60 m of it (a wheel off the edge, or a little short); failing that up to 400 m
+// short of the threshold and in line with the runway (an undershoot, on the grass). All are
+// scored on that runway. null: not a runway at all (a taxiway, an apron, a field).
 export function landingRunway(runways, x, y, hdg) {
-  return pickRunway(runways, x, y, hdg, 2) || pickRunway(runways, x, y, hdg, 60);
+  return pickRunway(runways, x, y, hdg, 2) || pickRunway(runways, x, y, hdg, 60)
+    || pickRunway(runways, x, y, hdg, 15, 400);
 }
 
 function grade(points) {
@@ -88,6 +93,7 @@ export const PENALTY = {
   bank: (deg) => lerpCap(deg, 3, 8, 15),
   pitch: (deg) => (deg < 0 ? 15 : deg > 9 ? Math.min(15, (deg - 9) * 6) : 0),
   bounces: (n) => Math.min(25, n * 10),
+  grass: 25,     // the first main wheels landed on the grass (short of the runway or off its side)
 };
 
 export function createScorer() {
@@ -123,7 +129,8 @@ export function createScorer() {
         if (e.type === 'touchdown' && !td) {
           const ac = rf ? alongCross(rf, e.x, e.y) : { along: NaN, cross: NaN };
           td = { vsFpm: -e.vsMs * 60 * FT, g: e.g, along: ac.along, cross: ac.cross,
-            bank: Math.abs(e.bank) * DEG, pitch: e.pitch * DEG, ias: s.ias * 1.943844, t: s.t, onRunway: !!rf };
+            bank: Math.abs(e.bank) * DEG, pitch: e.pitch * DEG, ias: s.ias * 1.943844, t: s.t, onRunway: !!rf,
+            surface: e.surface || 'runway' };
           peakG = e.g;
         } else if (e.type === 'touchdown' && td && !result) {
           peakG = Math.max(peakG, e.g);           // a bounce's second arrival
@@ -148,6 +155,7 @@ export function createScorer() {
       if (td.onRunway) {
         add('Touchdown vs aiming point', Math.round(td.along - aim), 'm', PENALTY.aim(td.along, aim));
         add('From centreline', +Math.abs(td.cross).toFixed(1), 'm', PENALTY.centreline(td.cross));
+        if (td.surface === 'ground') add('On the grass', 'yes', '', PENALTY.grass);
       }
       add('Bank', +td.bank.toFixed(1), '°', PENALTY.bank(td.bank));
       add('Pitch', +td.pitch.toFixed(1), '°', PENALTY.pitch(td.pitch));

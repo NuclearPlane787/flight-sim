@@ -7,7 +7,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { NOSE_X } from './geometry.js';
-import { Builder, grid, boxAt, cylBetween, fusePoint, toModel, fuseTop, fuseBot, windowOutlines } from './aircraft.js';
+import { Builder, grid, boxAt, cylBetween, fusePoint, toModel, fuseMid, windowOutlines } from './aircraft.js';
 import { createCockpitAlpha, cockpitAlphaV, COCKPIT_ALPHA_X } from './livery.js';
 
 const DEG = Math.PI / 180;
@@ -21,8 +21,11 @@ const C = {
 };
 
 const PANEL_TILT = 12 * DEG;
+// The main instrument panel's base, under the glare shield. It moved 0.24 m aft in v0.1.2,
+// when the nose's crown came down over the windshield.
+const PANEL_X = 19.14;
 // Main instrument panel surface: x at height z (body), just aft of the panel.
-const panelX = (z) => 19.38 - (z - 0.12) * Math.tan(PANEL_TILT) - 0.03;
+const panelX = (z) => PANEL_X - (z - 0.12) * Math.tan(PANEL_TILT) - 0.03;
 
 export function createCockpit() {
   const object = new THREE.Group();
@@ -42,7 +45,7 @@ export function createCockpit() {
       }
       rows.push(row); uvs.push(urow);
     }
-    const g = grid(rows, { uvs, expect: (c) => V(0, c.y, c.z - (fuseTop(c.x) + fuseBot(c.x)) / 2) });
+    const g = grid(rows, { uvs, expect: (c) => V(0, c.y, c.z - fuseMid(c.x)) });
     const b = new Builder();
     b.add(g, 0, '#ffffff', 'keep');
     const mat = new THREE.MeshStandardMaterial({
@@ -61,12 +64,12 @@ export function createCockpit() {
   add(boxAt(18.3, 0, -0.38, 3.2, 2.5, 0.06), C.floor);
   add(boxAt(16.72, 0, 0.75, 0.06, 3.7, 2.9), C.shell);                 // rear bulkhead
   add(boxAt(16.69, 0.45, 0.45, 0.02, 0.8, 1.9), C.panel);              // its door
-  // Glare shield and FCU.
-  add(boxAt(19.42, 0, 0.5, 0.55, 2.0, 0.07), C.glare);
-  add(boxAt(19.17, 0, 0.44, 0.08, 0.95, 0.13), C.fcu);
-  for (const s of [1, -1]) add(boxAt(19.17, s * 0.72, 0.44, 0.08, 0.38, 0.13), C.fcu);
+  // Glare shield, just under the windshield's lower frame from the seats, and the FCU on its face.
+  add(boxAt(19.04, 0, 0.535, 0.28, 1.6, 0.07), C.glare);
+  add(boxAt(18.9, 0, 0.485, 0.08, 0.95, 0.13), C.fcu);
+  for (const s of [1, -1]) add(boxAt(18.9, s * 0.66, 0.485, 0.08, 0.34, 0.13), C.fcu);
   // Main panel, tilted back.
-  add(boxAt(19.38, 0, 0.12, 0.05, 2.0, 0.68).rotateY(0).applyMatrix4(tiltAbout(19.38, 0.12)), C.panel);
+  add(boxAt(PANEL_X, 0, 0.12, 0.05, 2.0, 0.68).applyMatrix4(tiltAbout(PANEL_X, 0.12)), C.panel);
   // Six screens: Captain PFD and ND, E/WD and SD in the centre, FO ND and PFD.
   const screens = [[0.72, 0.2], [0.47, 0.2], [0, 0.26], [0, 0.0], [-0.47, 0.2], [-0.72, 0.2]];
   for (const [y, z] of screens) {
@@ -74,8 +77,8 @@ export function createCockpit() {
     add(boxAt(panelX(z) - 0.008, y, z, 0.006, 0.185, 0.185).applyMatrix4(tiltAbout(panelX(z) - 0.008, z)), C.screen);
   }
   // Pedestal and side consoles.
-  add(boxAt(18.72, 0, -0.12, 1.3, 0.44, 0.5), C.console);
-  add(boxAt(19.2, 0, 0.04, 0.4, 0.44, 0.3).applyMatrix4(tiltAbout(19.2, 0.04, -30 * DEG)), C.console);
+  add(boxAt(18.6, 0, -0.12, 1.06, 0.44, 0.5), C.console);
+  add(boxAt(18.96, 0, 0.04, 0.4, 0.44, 0.3).applyMatrix4(tiltAbout(18.96, 0.04, -30 * DEG)), C.console);
   for (const s of [1, -1]) add(boxAt(18.45, s * 1.12, -0.06, 1.3, 0.4, 0.5), C.console);
   // Seats.
   for (const s of [1, -1]) {
@@ -87,7 +90,7 @@ export function createCockpit() {
     add(boxAt(18.38, y - s * 0.3, 0.32, 0.4, 0.06, 0.06), C.seat); // inboard armrest
   }
   // Overhead panel.
-  add(boxAt(17.95, 0, 1.66, 1.0, 0.8, 0.1).applyMatrix4(tiltAbout(17.95, 1.66, 12 * DEG)), C.overhead);
+  add(boxAt(17.85, 0, 1.6, 0.9, 0.8, 0.1).applyMatrix4(tiltAbout(17.85, 1.6, 14 * DEG)), C.overhead);
 
   const stat = new THREE.Mesh(b.build(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.05, emissive: '#161b21' }));
   stat.name = 'cockpit-interior';

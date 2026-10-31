@@ -23,6 +23,7 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **v0.1.0** (2026-10-31): M1, M2 and M3 from `PLAN.md`, built in one overnight Claude Code run (03:21–08:37 KST). `STATUS.md` has the log and the evidence.
 - **Shane's first flight**, Gimpo to Incheon, went "mostly good (other than the 0/100 landing)".
 - **v0.1.1** (2026-10-31, a Cowork session): Incheon's flickering taxiways, new cockpit windows (`src/cockpit-windows.js`) and a fairer landing score. `STATUS.md` has the details.
+- **v0.1.2** (2026-10-31, the same session): a lower windshield on a reshaped nose (sections are now two half-ellipses, `fuseSection()` in `aircraft.js`), the engines under the wing (`NACELLES` in `geometry.js`; the sim's thrust still acts at `ENGINES`), and gentle touchdowns on grass.
 - **Next: v0.2.0**, a main menu like Satisfactory's and scenarios, which Shane asked for on 2026-10-31. Two questions are open (`ROADMAP.md`). The other future additions are in `ROADMAP.md` too.
 
 ## Versions, Updates.md and pushing

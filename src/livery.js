@@ -197,12 +197,14 @@ function paintFuselage(ctx, glow, windows = []) {
     ctx.fillText('HL8787', 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
-  // Cockpit windows: the glass itself is geometry (aircraft.js); this is the dark frame round it.
+  // Cockpit windows: the glass itself is geometry (aircraft.js), with crisp edges. This dark
+  // backing, kept 2 px inside its outline (the atlas is too coarse on the steep nose for a
+  // painted frame), only shows if the glass and the skin flicker against each other far away.
   for (const mirror of [false, true]) {
     for (const w of windows) {
       polyFuse(ctx, w, mirror);
       ctx.fillStyle = COLORS.glass; ctx.fill();
-      ctx.strokeStyle = '#2a3038'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.strokeStyle = COLORS.white; ctx.lineWidth = 4; ctx.stroke();
     }
   }
 }

@@ -9,7 +9,7 @@
 //   createAircraft(opts?) → { object, update(state, dt), setCockpitView(bool), mesh, triangles }
 
 import * as THREE from '../vendor/three.module.js';
-import { TAIL_X, NOSE_X, GEAR, ENGINES, WING, GROUND_Z } from './geometry.js';
+import { TAIL_X, NOSE_X, GEAR, NACELLES, WING, GROUND_Z } from './geometry.js';
 import { createLiveryTextures, UV, FIN_BOX } from './livery.js';
 import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
@@ -58,7 +58,16 @@ function curve(pts) {
 }
 
 // Top line, bottom line and half-width (body z / y) along the fuselage.
+// The crown drops steeply over the windshield, then gently down the radome to the tip, as on
+// the A320 family: the pilots see 20° down over the nose through a windshield that, from
+// outside, is a low band (v0.1.2; before, one even slope made the windshield tall).
 export const fuseTop = curve([
+  [TAIL_X, 0.95], [-23.3, 1.12], [-22.5, 1.28], [-21, 1.48], [-19, 1.72], [-17, 1.92],
+  [-15, 2.04], [-13, 2.07], [16, 2.07], [17, 2.02], [17.6, 1.93], [18.1, 1.77], [18.45, 1.57],
+  [18.8, 1.30], [19.35, 0.56], [19.8, 0.33], [20.3, 0.14], [20.7, -0.06], [20.9, -0.24], [NOSE_X, -0.45],
+]);
+// The top line before the crown was cut down for the windshield; it sets the centre line.
+const crownBeforeCut = curve([
   [TAIL_X, 0.95], [-23.3, 1.12], [-22.5, 1.28], [-21, 1.48], [-19, 1.72], [-17, 1.92],
   [-15, 2.04], [-13, 2.07], [16, 2.07], [17, 2.03], [18, 1.86], [18.5, 1.68], [19.0, 1.4],
   [19.5, 1.02], [20.0, 0.6], [20.5, 0.22], [20.8, -0.06], [20.95, -0.27], [NOSE_X, -0.45],
@@ -73,17 +82,26 @@ export const fuseHW = curve([
   [-15, 1.78], [-13, 1.94], [-11, 1.975], [16.5, 1.975], [17.5, 1.94], [18.5, 1.84],
   [19.3, 1.64], [20.0, 1.32], [20.5, 0.98], [20.8, 0.66], [20.95, 0.36], [NOSE_X, 0.0],
 ]);
+// A section is two half-ellipses that meet at the centre line fuseMid(x), where it's widest:
+// the upper one up to fuseTop, the lower one down to fuseBot. The centre line stays where it
+// was before the crown was cut down, so only the top of the nose changed.
+export const fuseMid = (x) => (crownBeforeCut(x) + fuseBot(x)) / 2;
+// The section at x: centre line zc, upper and lower half-heights, half-width.
+export function fuseSection(x) {
+  const zc = fuseMid(x);
+  return { zc, up: fuseTop(x) - zc, down: zc - fuseBot(x), hw: fuseHW(x) };
+}
 // Point on the fuselage surface at body x and angle θ (deg; 0 left, 90 crown, 180 right).
 export function fusePoint(x, thDeg, off = 0, out = new THREE.Vector3()) {
-  const t = fuseTop(x), b = fuseBot(x), hw = fuseHW(x);
-  const zc = (t + b) / 2, hh = (t - b) / 2, th = thDeg * DEG;
-  return out.set(x, Math.max(0, hw + off) * Math.cos(th), zc + Math.max(0, hh + off) * Math.sin(th));
+  const zc = fuseMid(x), th = thDeg * DEG, sn = Math.sin(th);
+  const hh = sn >= 0 ? fuseTop(x) - zc : zc - fuseBot(x);
+  return out.set(x, Math.max(0, fuseHW(x) + off) * Math.cos(th), zc + Math.max(0, hh + off) * sn);
 }
 
 // The cockpit windows' outlines (left side, [x, θ] lists; cockpit-windows.js), worked out once.
 let windowCache = null;
 export function windowOutlines() {
-  return windowCache || (windowCache = cockpitWindows({ fuseTop, fuseBot, fuseHW }));
+  return windowCache || (windowCache = cockpitWindows({ fuseSection }));
 }
 
 // Glass for one window outline: triangulated in (x, θ), split finely enough to follow the nose,
@@ -119,8 +137,7 @@ function windowGlass(outline, mirror, off = 0.006) {
     fusePoint(x + 0.01, t / K, off, Px).sub(fusePoint(x - 0.01, t / K, off, N));
     fusePoint(x, t / K + 0.5, off, Pt).sub(fusePoint(x, t / K - 0.5, off, N));
     N.crossVectors(Pt, Px).normalize();
-    const zc = (fuseTop(x) + fuseBot(x)) / 2;
-    if (N.y * P.y + N.z * (P.z - zc) < 0) N.negate();
+    if (N.y * P.y + N.z * (P.z - fuseMid(x)) < 0) N.negate();
     return [P.toArray(), N.toArray()];
   };
   const A = new THREE.Vector3(), B = new THREE.Vector3(), C3 = new THREE.Vector3();
@@ -261,7 +278,9 @@ const KINK_Y = 6.4, TIP_Y = 17.0;
 const TE_ROOT = WING.rootX - WING.rootChord;
 const TE_SLOPE = ((WING.rootX - (TIP_Y - Y_SIDE) * TAN_LE - WING.tipChord) - TE_ROOT) / (TIP_Y - KINK_Y);
 const DIH = WING.dihedralDeg * DEG;
-const WING_Z0 = -1.35;
+// The wing's chord line at the fuselage side. Airbus's A321 AC heights (flap tracks, the
+// sharklet's foot) put the wing about 0.3 m higher than v0.1.0's −1.35.
+const WING_Z0 = -1.05;
 function wingSec(y, side) {
   const xle = WING.rootX - (y - Y_SIDE) * TAN_LE;
   const xte = y <= KINK_Y ? TE_ROOT : TE_ROOT + (y - KINK_Y) * TE_SLOPE;
@@ -269,6 +288,8 @@ function wingSec(y, side) {
   const t = 0.15 - 0.04 * clamp((y - Y_SIDE) / (TIP_Y - Y_SIDE), 0, 1);
   return { le: V(xle, side * y, z), chord: xle - xte, t, c: V(-1, 0, 0), n: V(0, -side * Math.sin(DIH), Math.cos(DIH)), camber: 0.012 };
 }
+// The wing's lower surface (body z) at span y and chord fraction f (0 leading edge, 1 trailing).
+export const wingLowerZ = (y, f) => foilPoint(wingSec(y, 1), f, -1).z;
 const STAB_DIH = 6 * DEG;
 function stabSec(y, side) {
   const k = clamp((y - 1.0) / 5.22, 0, 1.2);
@@ -376,7 +397,7 @@ export function createAircraft(opts = {}) {
       }
       rows.push(row); uvs.push(urow);
     }
-    return grid(rows, { uvs, expect: (c) => V(0, c.y, c.z - (fuseTop(c.x) + fuseBot(c.x)) / 2) });
+    return grid(rows, { uvs, expect: (c) => V(0, c.y, c.z - fuseMid(c.x)) });
   }
   const SPLIT = 16.6;
   const tailSt = [], midSt = [], noseSt = [];
@@ -480,7 +501,7 @@ export function createAircraft(opts = {}) {
     parts[S] = true;
 
     // Engine: nacelle, pylon, fan and the translating cowl of the thrust reverser.
-    const E = ENGINES[side > 0 ? 0 : 1];
+    const E = NACELLES[side > 0 ? 0 : 1];
     const ex = E.x, ey = E.y, ez = E.z;
     b.add(lathe([
       { x: 1.45, r: 0.93, v: 0 }, { x: 1.9, r: 0.95, v: 0.12 }, { x: 2.25, r: 0.985, v: 0.24 }, { x: 2.42, r: 1.01, v: 0.3 },
@@ -509,11 +530,15 @@ export function createAircraft(opts = {}) {
       g.translate(ex + 1.45, ey, ez);
       b.add(g, FAN, C.blade);
     }
-    // Pylon: a profile in (x, z) extruded sideways.
+    // Pylon: a profile in (x, z) extruded sideways. Its lower edge sits inside the nacelle's
+    // top and its upper edge rises to the wing's leading edge, then runs on inside the wing.
     {
       const sh = new THREE.Shape();
-      const pts = [[ex + 1.6, ez + 1.13], [ex - 0.2, ez + 1.32], [ex - 1.6, ez + 1.2], [ex - 3.4, ez + 0.82],
-        [ex - 5.5, ez + 0.7], [ex - 4.9, ez + 0.43], [ex - 3.0, ez + 0.4], [ex - 1.4, ez + 0.75], [ex + 0.2, ez + 0.98]];
+      const w = wingSec(Math.abs(ey), side);
+      const lower = (x) => foilPoint(w, clamp((w.le.x - x) / w.chord, 0, 1), -1).z;  // wing's lower surface
+      const pts = [[ex + 1.8, ez + 1.15], [ex + 0.6, ez + 1.42], [w.le.x + 0.1, w.le.z + 0.01], [ex - 2.2, lower(ex - 2.2) + 0.1],
+        [ex - 4.2, lower(ex - 4.2) + 0.06], [ex - 4.9, lower(ex - 4.9) + 0.04], [ex - 5.2, lower(ex - 5.2) - 0.14],
+        [ex - 3.8, ez + 1.13], [ex - 2.0, ez + 0.89], [ex - 1.0, ez + 0.98], [ex + 1.0, ez + 1.15]];
       pts.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
       const g = new THREE.ExtrudeGeometry(sh, { depth: 0.42, bevelEnabled: false });
       g.translate(0, 0, -0.21);
@@ -526,12 +551,13 @@ export function createAircraft(opts = {}) {
     const gm = side > 0 ? GEAR.left : GEAR.right;
     const TYRE_R = WHEEL_R_MAIN;
     const axleZ = gm.z + TYRE_R;
-    const pivot = V(gm.x, gm.y, -1.45);
+    // The leg hangs from inside the wing (its pivot and braces moved up with the wing in v0.1.2).
+    const pivot = V(gm.x, gm.y, -0.9);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
     b.add(cylBetween(pivot, V(gm.x, gm.y, -2.7), 0.15, 0.14, 14), LEG, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, -2.15), V(gm.x, gm.y - side * 0.95, -1.5), 0.06, 0.06, 8), LEG, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, -2.0), V(gm.x + 1.0, gm.y, -1.45), 0.06, 0.06, 8), LEG, C.gear);
-    b.add(boxAt(gm.x, gm.y + side * 0.24, -2.0, 0.75, 0.04, 1.05), LEG, C.navy);
+    b.add(cylBetween(V(gm.x, gm.y, -2.15), V(gm.x, gm.y - side * 0.95, -0.98), 0.06, 0.06, 8), LEG, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, -2.0), V(gm.x + 1.0, gm.y, -0.98), 0.06, 0.06, 8), LEG, C.gear);
+    b.add(boxAt(gm.x, gm.y + side * 0.24, -1.76, 0.75, 0.04, 1.52), LEG, C.navy);
     const PIS = bone('mainPiston' + S, 'mainLeg' + S, V(gm.x, gm.y, axleZ), V(0, 0, 1));
     b.add(cylBetween(V(gm.x, gm.y, -2.6), V(gm.x, gm.y, axleZ), 0.1, 0.1, 12), PIS, C.chrome);
     b.add(cylBetween(V(gm.x, gm.y - 0.5, axleZ), V(gm.x, gm.y + 0.5, axleZ), 0.075, 0.075, 8), PIS, C.gear);
@@ -548,7 +574,7 @@ export function createAircraft(opts = {}) {
     b.add(boxAt(gm.x, side * 0.85, -2.37, 1.7, 1.15, 0.03), DR, C.navy);
 
     // Lights: navigation (red left, green right) and strobe at the sharklet root.
-    b.add(sphereAt(V(-3.0, side * 17.3, 0.12), 0.08), ROOT, side > 0 ? C.red : C.green);
+    b.add(sphereAt(V(-3.0, side * 17.3, 0.42), 0.08), ROOT, side > 0 ? C.red : C.green);
   }
 
   // Horizontal stabiliser (trimmable) with elevators.
@@ -660,11 +686,11 @@ export function createAircraft(opts = {}) {
     return pts;
   };
   const nav = pointsOf([
-    [V(-3.0, 17.3, 0.12), C.red], [V(-3.0, -17.3, 0.12), C.green], [V(TAIL_X - 0.05, 0, 0.85), '#ffffff'],
+    [V(-3.0, 17.3, 0.42), C.red], [V(-3.0, -17.3, 0.42), C.green], [V(TAIL_X - 0.05, 0, 0.85), '#ffffff'],
   ], 1.4);
   const flash = pointsOf([
     [V(-1.5, 0, fuseTop(-1.5) + 0.1), C.red], [V(1.5, 0, -2.45), C.red],
-    [V(-3.15, 17.35, 0.12), '#ffffff'], [V(-3.15, -17.35, 0.12), '#ffffff'], [V(TAIL_X - 0.08, 0, 0.75), '#ffffff'],
+    [V(-3.15, 17.35, 0.42), '#ffffff'], [V(-3.15, -17.35, 0.42), '#ffffff'], [V(TAIL_X - 0.08, 0, 0.75), '#ffffff'],
   ], 3.2);
 
   const object = new THREE.Group();

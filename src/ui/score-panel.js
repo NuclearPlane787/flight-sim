@@ -34,6 +34,7 @@ export function verdict(result) {
   if (result?.offRunway || part(parts, 'On a runway')) return "That wasn't a runway.";
   if (vs >= 600 || g >= 2.3) return 'That one will need an inspection.';
   if (Number.isFinite(along) && along < 0) return 'Short of the threshold. Far too close.';
+  if (part(parts, 'On the grass')) return 'Off the side, onto the grass.';
   if (bounces >= 2) return 'Kangaroo. Hold the flare and let it settle.';
   if (points >= 95) return 'Butter.';
   if (points >= 90) return 'Smooth. The cabin barely noticed.';

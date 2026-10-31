@@ -124,6 +124,25 @@ test('crashes: water, off-runway, gear-up and gear-breaking landings', () => {
   assert.ok(/collapsed/.test(hard.s.crashed), hard.s.crashed);
 });
 
+test('a light touchdown on the grass short of the runway is fine; a run across the grass is not', () => {
+  // The same approach three ways: onto a runway; onto grass that ends 60 m past where it
+  // touched down; and onto grass all the way (crashed by the run, not by the touch).
+  const ref = descendInto(() => ({ h: 0, kind: 'runway' }));
+  const td = ref.events.find((e) => e.type === 'touchdown');
+  assert.ok(td, 'touchdown');
+  assert.equal(ref.s.crashed, null);
+  assert.equal(td.surface, 'runway');
+  const edge = td.y + 60;
+  const short = descendInto((x, y) => ({ h: 0, kind: y < edge ? 'ground' : 'runway' }));
+  assert.equal(short.s.crashed, null, 'a light touch on the grass, then the runway');
+  assert.equal(short.events.find((e) => e.type === 'touchdown').surface, 'ground');
+  const grass = descendInto(() => ({ h: 0, kind: 'ground' }));
+  assert.equal(grass.s.crashed, 'ran off the runway');
+  const t3 = grass.events.find((e) => e.type === 'touchdown');
+  const crash = grass.events.find((e) => e.type === 'crash');
+  assert.ok(t3 && crash, 'touched down, then crashed');
+});
+
 test('tail strike on over-rotation', () => {
   const sim = onRunway({ massKg: 85000, flapLever: 1 });
   const s = sim.state, c = sim.controls;

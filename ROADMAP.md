@@ -23,6 +23,9 @@ Found after v0.1.0:
 
 - **Incheon's taxiways flickered** where concrete taxilanes overlapped asphalt taxiways: **fixed in v0.1.1** (2026-10-31), with the faint gaps on the outside of taxiway bends.
 - **The cockpit windows looked strange**, and from the seats the side post crossed the view ahead: **fixed in v0.1.1** (2026-10-31), redrawn after the A320 family's.
+- **From outside, the windshield was taller than the side windows** (Shane: "it should be thinner than the side windows"): **fixed in v0.1.2** (2026-10-31), with the nose's crown cut down over the windshield.
+- **The engines sat up against the wing, like a 737 MAX's**: **fixed in v0.1.2** (2026-10-31), hung at the A321neo's 0.45 m ground clearance under a wing raised 0.3 m.
+- **Touching the grass just short of the runway crashed the aircraft**: **fixed in v0.1.2** (2026-10-31). A gentle touchdown on grass is fine; a hard one, or a fast run of more than 450 m across it, still ends the flight.
 - **Jeju's crossing runways** (07/25 and 13/31) are each drawn at their own end elevations. Where they cross, those differ by about 1 m, so each cuts through the other along a diagonal seam. Open: the fix is to take one height for both there, from the heightfield.
 
 

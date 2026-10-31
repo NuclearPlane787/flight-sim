@@ -210,6 +210,15 @@ export const WHEEL_R_MAIN = 0.62, WHEEL_R_NOSE = 0.39;
 export const STEER_TILLER = 75 * DEG, STEER_PEDAL = 6 * DEG; // max nosewheel angle
 export const GEAR_TRAVEL_S = 7.0, GEAR_DOOR_S = 2.0;
 export const GEAR_BREAK_VS = 4.6;  // m/s (≈ 900 ft/min) sink at touchdown breaks the gear
+// Grass, or any unpaved ground [EST]: firm, dry grass rolls heavier and brakes and grips less
+// than a runway. A light touchdown or a slow roll on it is fine (v0.1.2); a fast run across it
+// (soft ground, ditches, lights and signs) breaks the gear after GRASS_RUN_M.
+export const ROLL_RESIST_GRASS = 0.06;
+export const BRAKE_MU_GRASS = 0.30;
+export const SIDE_MU_GRASS = 0.6;    // side grip, as a fraction of the runway's
+export const GRASS_SAFE_GS = 15;     // m/s (29 kt): slower than this, the grass can't hurt the gear
+export const GRASS_RUN_M = 450;      // m run on grass faster than GRASS_SAFE_GS before the gear gives way
+                                     // (enough for a 400 m undershoot that rolls on to the runway)
 export const PITCH_TAILSTRIKE_DEG = 11.2; // [EST] A321 geometric limit, struts extended
 
 // ---- Fly-by-wire protections [EST] (A320-family FCOM values) ---------------------------------
