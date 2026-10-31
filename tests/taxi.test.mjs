@@ -159,3 +159,17 @@ for (const icao of ['RKSS', 'RKPC', 'RKSI']) {
     }
   });
 }
+
+test('an island of taxi line near the network is bridged (v0.1.4); a far one is not', () => {
+  const ap = { ...synth, taxiways: [...synth.taxiways,
+    { ref: 'X', points: [[100, 60], [150, 14], [200, 60]] },     // its bend passes 14 m from A; its ends are 60 m off
+    { ref: 'Y', points: [[500, 100], [550, 40], [600, 100]] },   // 40 m from A at its closest
+  ] };
+  const g = buildTaxiGraph(ap);
+  assert.equal(g.bridges, 1, 'one bridge');
+  const end09 = synth.runways[0].ends[0];
+  const fromX = routeFromStand(g, { x: 110, y: 52 }, end09);
+  assert.ok(fromX, 'a route from the bridged island');
+  checkRoute(g, fromX, [fromX.hold.x, fromX.hold.y], 'from X');
+  assert.equal(routeFromStand(g, { x: 510, y: 92 }, end09), null, 'no route from the far island');
+});

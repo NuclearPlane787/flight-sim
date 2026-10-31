@@ -18,6 +18,7 @@ import { VERSION } from './version.js';
 const STEP = 1 / 120;
 const KT = 1.943844, FT = 3.28084, NM = 1852, DEG = Math.PI / 180;
 const RATES = [1, 2, 4, 8, 16];
+const PUSH_MAX_RATE = 4;     // time compression in a pushback
 const TC_MIN_AGL = 2000 / FT;   // time compression only above 2,000 ft AGL
 const PHYSICS_BUDGET_MS = 7;    // per frame; beyond it, steps are dropped and the rate falls
 const FRAME_MS = 1000 / 60;
@@ -132,6 +133,14 @@ async function boot() {
   const saveSetting = (k, v) => store.save('settings', { ...(store.load('settings', {}) || {}), [k]: v });
   if (settings.muted) callouts.muted = true;
 
+  // The fonts (style.css, vendor/fonts): loaded before the canvases first draw, at most 3 s.
+  if (document.fonts?.load) {
+    await Promise.race([
+      Promise.all(['400 16px B612', '700 16px B612', '400 16px "B612 Mono"', '700 16px "B612 Mono"', '400 16px Barlow', '600 16px Barlow']
+        .map((f) => document.fonts.load(f))),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]).catch(() => {});
+  }
   const hud = hudMod.createHud($('hud'), { airports, coast });
   const map = mapMod.createMap($('map-root'), { airports, coast });
   const setup = setupMod.createSetup($('setup-root'), { airports, coast });
@@ -290,8 +299,12 @@ async function boot() {
   }
 
   // ---- Time compression ----
+  // Time compression: with the autopilot on and 2,000 ft up, or in a pushback (up to 4x, so
+  // the tug keeps its real speed without the wait).
+  function pushing() { return gate.phase === 'pushback' && !!gate.pushback?.state.running && !crashed; }
   function canCompress() {
     const s = sim.state;
+    if (pushing()) return timeScale <= PUSH_MAX_RATE;
     return ap.ap && !s.onGround && s.agl >= TC_MIN_AGL && !(s.warnings && s.warnings.master) && !crashed;
   }
   function setTimeScale(r) {
@@ -302,7 +315,8 @@ async function boot() {
   function changeRate(dir) {
     const i = RATES.indexOf(timeScale) + dir;
     if (i < 0 || i >= RATES.length) return;
-    if (dir > 0 && !canCompress()) { toast('Time compression needs the autopilot on and 2,000 ft above the ground'); return; }
+    if (dir > 0 && !canCompress()) { toast('Time compression needs the autopilot on and 2,000 ft above the ground, or a pushback'); return; }
+    if (dir > 0 && pushing() && RATES[i] > PUSH_MAX_RATE) { toast(`Pushback: up to ${PUSH_MAX_RATE}×`); return; }
     setTimeScale(RATES[i]);
   }
 
@@ -557,7 +571,7 @@ async function boot() {
     }
     if (timeScale > 1 && !canCompress()) setTimeScale(1);
 
-    gate.update(dt, sim.controls);
+    gate.update(gate.phase === 'pushback' && timeScale > 1 ? done * STEP : dt, sim.controls);   // the tug at the sim's rate
     if (landed) {
       gate.afterLanding(s);
       // Keep the arrival stand clear of parked aircraft (and of neighbours overlapping it).

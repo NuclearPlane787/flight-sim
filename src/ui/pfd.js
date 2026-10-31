@@ -255,6 +255,14 @@ export function createPfd(cv) {
     for (let yy = y; yy < y + h; yy += step) ctx.fillRect(x, yy, w, Math.min(step / 2, y + h - yy));
   }
 
+  // The largest font size up to `size` at which `text` fits in `maxW` px. The altitude windows
+  // were sized for Helvetica; B612's digits (v0.1.4) are wider.
+  function fitSize(text, size, maxW) {
+    ctx.font = font(size);
+    const w = ctx.measureText(text).width;
+    return w > maxW ? (size * maxW) / w : size;
+  }
+
   // ---- altitude tape ----
   function drawAlt(s, st, ap, yc) {
     const x0 = 0.715 * s, x1 = 0.81 * s, top = 0.17 * s, bot = 0.79 * s;
@@ -270,11 +278,11 @@ export function createPfd(cv) {
       if (gy < bot) { ctx.fillStyle = C.red; ctx.fillRect(x0, gy, 0.012 * s, bot - gy); }
     }
     ctx.strokeStyle = C.white; ctx.fillStyle = C.white; ctx.lineWidth = Math.max(1.2, s * 0.003);
-    ctx.font = font(s * 0.04); ctx.textAlign = 'left';
+    ctx.font = font(fitSize('000', s * 0.04, x1 - x0 - 0.034 * s)); ctx.textAlign = 'left';
     for (let a = Math.floor((alt - 700) / 100) * 100; a <= alt + 700; a += 100) {
       const y = Y(a);
       ctx.beginPath(); ctx.moveTo(x1 - 0.016 * s, y); ctx.lineTo(x1, y); ctx.stroke();
-      if (a % 500 === 0) ctx.fillText(String(Math.round(a / 100)), x0 + 0.018 * s, y);
+      if (a % 500 === 0) ctx.fillText(String(Math.round(a / 100)), x0 + 0.012 * s, y);
     }
     // Selected altitude marker on the tape.
     const sel = ap.altFt;
@@ -307,15 +315,15 @@ export function createPfd(cv) {
     const step = 20, f = A / step, base = Math.floor(f), frac = f - base;
     const hund = Math.floor(A / 100);
     ctx.fillStyle = C.green; ctx.textAlign = 'right';
-    ctx.font = font(s * 0.06);
+    ctx.font = font(fitSize('000', s * 0.06, bw - 0.01 * s));
     ctx.fillText((neg ? '-' : '') + String(hund), bx + bw - 0.004 * s, by);
     ctx.save();
     ctx.beginPath(); ctx.rect(bx + bw, by - bh * 0.85, dw, bh * 1.7); ctx.clip();
-    ctx.font = font(s * 0.044); ctx.textAlign = 'left';
+    ctx.font = font(fitSize('00', s * 0.044, dw - 0.01 * s)); ctx.textAlign = 'center';
     const rowH = bh * 0.62;
     for (let k = -2; k <= 2; k++) {
       const v = ((base + k) * step) % 100;
-      ctx.fillText(String((v + 100) % 100).padStart(2, '0'), bx + bw + 0.008 * s, by - (k - frac) * rowH);
+      ctx.fillText(String((v + 100) % 100).padStart(2, '0'), bx + bw + dw / 2, by - (k - frac) * rowH);
     }
     ctx.restore();
 

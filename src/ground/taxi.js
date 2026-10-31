@@ -19,6 +19,7 @@ const RUNWAY_JOIN_M = 35;     // a taxiway end this far beyond a runway edge joi
 const AXIS_COST = 2;          // cost per metre of rolling along a runway centreline
 const HOLD_SNAP_M = 60;       // a holding position farther than this from any taxiway is ignored
 const RUNWAY_CROSS_PENALTY = 400; // metres added to an edge that crosses a runway (prefer not to)
+const BRIDGE_M = 30;          // a piece of taxi line this close to the network, but not joined to it, gets a link
 
 // ---- small geometry ----
 const dist = (ax, ay, bx, by) => Math.hypot(bx - ax, by - ay);
@@ -184,6 +185,7 @@ export function buildTaxiGraph(airport, opts = {}) {
     graph.holds.push({ ref: hp.ref, node: id, x: nodes[id].x, y: nodes[id].y });
   }
   for (const r of rects) addRunwayAxis(graph, r);
+  graph.bridges = bridgeIslands(graph);
   for (const e of edges) if (e.runway && !e.dead && !e.axis) {
     graph.runwayCrossings.push({ edge: e.id, runway: e.runway,
       x: (nodes[e.a].x + nodes[e.b].x) / 2, y: (nodes[e.a].y + nodes[e.b].y) / 2 });
@@ -283,6 +285,56 @@ function addRunwayAxis(graph, r) {
   // 3. The chain along the centreline.
   axis.sort((p, q) => p.s - q.s);
   for (let i = 1; i < axis.length; i++) link(graph, axis[i - 1].id, axis[i].id, { runway: r.id, axis: true, ref: 'RWY ' + r.id });
+}
+
+// Pieces of taxi line that pass within BRIDGE_M of the network without meeting it, at a bend
+// rather than an end (so neither the crossings nor the end joins above catch them), get one
+// link to the nearest point of the network. Gimpo's apron line behind stand 7 passes 14 m from
+// it, so until v0.1.4 that stand's pushback ended on an island and no route led anywhere.
+// A link onto a runway's centreline is a way onto that runway, like addRunwayAxis's joins.
+function bridgeIslands(graph) {
+  const { nodes, edges } = graph;
+  const comp = new Array(nodes.length).fill(-1), members = [];
+  for (let i = 0; i < nodes.length; i++) {
+    if (comp[i] >= 0 || !nodes[i].edges.length) continue;
+    const c = members.length, m = [i];
+    comp[i] = c;
+    for (let j = 0; j < m.length; j++) {
+      for (const e of nodes[m[j]].edges) {
+        if (e.dead) continue;
+        const v = e.a === m[j] ? e.b : e.a;
+        if (comp[v] < 0) { comp[v] = c; m.push(v); }
+      }
+    }
+    members.push(m);
+  }
+  if (members.length < 2) return 0;
+  const main = members.reduce((b, m, i) => (m.length > members[b].length ? i : b), 0);
+  let bridged = 0;
+  for (let c = 0; c < members.length; c++) {
+    if (c === main || members[c].length < 2) continue;
+    let best = null;
+    for (const e of edges) {
+      if (e.dead || comp[e.a] !== main) continue;
+      const A = nodes[e.a], B = nodes[e.b];
+      for (const u of members[c]) {
+        const p = project(nodes[u].x, nodes[u].y, A.x, A.y, B.x, B.y);
+        if (p.d <= BRIDGE_M && (!best || p.d < best.d)) best = { u, d: p.d, at: { edge: e, t: p.t, x: p.x, y: p.y } };
+      }
+    }
+    if (!best) continue;
+    const e = best.at.edge, id = splitAt(graph, best.at);
+    comp[id] = main;
+    let props = { ref: '', widthM: e.widthM || 20 };
+    if (e.axis) { nodes[id].runway = e.runway; props = { runway: e.runway, pw: 0.5 }; }
+    else {
+      const U = nodes[best.u], N = nodes[id];
+      for (const r of graph.rects) if (segmentHitsRunway(U.x, U.y, N.x, N.y, r)) { props = { ...props, runway: r.id, pw: 1 }; break; }
+    }
+    if (link(graph, best.u, id, props)) bridged++;
+    for (const u of members[c]) comp[u] = main;
+  }
+  return bridged;
 }
 
 // ---- routing ----

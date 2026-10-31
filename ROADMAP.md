@@ -14,8 +14,8 @@ The plan itself, with Shane's answers word for word, is in `PLAN.md` here, and i
 
 Found in M1–M3 and left for later:
 
-- **Gimpo stand 7** has no taxi route to 14L/32R.
-- **Pushback speed:** about 100 s at 1.5 m/s. A faster tug, or a 2× pushback option, would help.
+- **Gimpo stand 7** had no taxi route to 14L/32R: **fixed in v0.1.4** (2026-11-01). It had none to any runway: its pushback ended on a piece of taxi line that passes 14 m from the network without meeting it. Pieces like that are joined now (`bridgeIslands()` in `src/ground/taxi.js`).
+- **Pushback speed:** about 100 s at 1.5 m/s (measured in v0.1.4: a median of 60–70 s at the three airports, up to 170 s): **done in v0.1.4** (2026-11-01). = speeds a pushback up to 4×, and the tug keeps its real speed.
 - **The synth's sound hasn't been listened to.** Its levels are measured (`tests/audio-render.mjs`), but the engine timbre needs a real listen.
 - **The landing score:** **fixed in v0.1.1** (2026-10-31). It used to measure a touchdown that wasn't on a runway against the runway picked in setup, and none of its penalties had a ceiling. Shane's first flight (Gimpo to Incheon) scored 0/100; which of the two caused it wasn't confirmed, and both are fixed.
 
@@ -28,7 +28,10 @@ Found after v0.1.0:
 - **Touching the grass just short of the runway crashed the aircraft**: **fixed in v0.1.2** (2026-10-31). A gentle touchdown on grass is fine; a hard one, or a fast run of more than 450 m across it, still ends the flight.
 - **The landing score was too lenient** (Shane: 100/100 "for a landing that was ok but had obvious flaws"): **reworked in v0.1.3** (2026-10-31). No free bands, the approach counts, and his landing now scores 80; 100 and 0 are both nearly out of reach.
 - **Jeju 31's glideslope and localizer** on the PFD were measured from 411 m past its displaced threshold (the displacement was applied twice): **fixed in v0.1.3** (2026-10-31).
-- **Jeju's crossing runways** (07/25 and 13/31) are each drawn at their own end elevations. Where they cross, those differ by about 1 m, so each cuts through the other along a diagonal seam. Open: the fix is to take one height for both there, from the heightfield.
+- **Jeju's crossing runways** (07/25 and 13/31) are each drawn at their own end elevations. Where they cross, those differ by about 1 m, so each cuts through the other along a diagonal seam. **Fixed in v0.1.4** (2026-11-01): the longer runway (07/25) is drawn whole through the crossing, and 13/31 bends to meet it at its edges and is cut away there (`runwayCrossings()` in `src/world/runways.js`). The seam was the smaller part of it: near the crossing the ground under 07/25 followed 13/31's slope, up to 0.69 m below 07/25's surface. Now the ground on every runway is that runway's surface.
+- **The FCU's heading won't change** (Shane, 2026-11-01: "I can't change the autopilot's heading from 066, for example."). **Fixed in v0.1.4** (2026-11-01). Reproduced in the game: the knob did turn when scrolled, but 1° per 25 px of trackpad scrolling, and nothing on screen said it could; 066 is Jeju 07's course, which the FCU takes on a 15 nm final start or a skip to final. Now a click opens the window for typing a value, scrolling turns it a step per 12 px, and a flick turns it in big steps.
+- **A point on the path can't be picked for a jump** (Shane, 2026-11-01: "I can't select a point on the path we are given."). **Fixed in v0.1.4** (2026-11-01). In the game a click on one of the path's dots did offer the jump, but a click between dots (5 s of flight apart, far apart when zoomed in) didn't, and the magenta line never does. Now a click anywhere on the bright path picks its nearest point, and a click on the magenta line says why it doesn't jump.
+- **Why the checks missed both:** `tests/browser-ui.mjs` scrolled the FCU and confirmed a jump on a mock page (`tests/dev-ui.html`) with mouse-wheel notches, and the end-to-end flight set its heading and jumped through test hooks. Neither went through the game itself with a trackpad.
 
 
 ## Future additions Shane named (2026-10-31)
@@ -37,19 +40,36 @@ Found after v0.1.0:
 |---|---|---|
 | Autopilot: route following, planned climb and descent, ILS capture | "b will be hard to detail, so just a for now. Add b and c later." | Once it follows a route, the map's bright predicted path bends with the route instead of running straight along the selected heading. |
 | Autopilot: autoland (flare and rollout) | (same answer) | RETARD moves from 20 ft to 10 ft in an autoland. |
-| Weather: wind direction and speed, gusts, crosswinds, rain, clouds | "Clear skies for now, and we'll add weather in a future update." | |
+| Weather: wind direction and speed, gusts, crosswinds, rain, clouds | "Clear skies for now, and we'll add weather in a future update." | Extended on 2026-11-01 (row 10 below). |
 | Challenges and landing replays | "c once weather (wind currents and direction, crosswind, rain) is added." | For example a gusty crosswind at Jeju, an engine failure on take-off, or a night approach (if night exists by then). |
-| Air traffic control | "c and d are for future updates." | Text clearances, taxi routes, "cleared to land". |
-| Other aircraft in the air and on the taxiways | (same answer) | Today it's "just me for now in the air", with parked aircraft and moving vehicles on the ground. |
-| More aircraft types | "We can add more later." | The first is the A321neo. |
+| Air traffic control | "c and d are for future updates." | Text clearances, taxi routes, "cleared to land". Extended on 2026-11-01 (row 7 below). |
+| Other aircraft in the air and on the taxiways | (same answer) | Today it's "just me for now in the air", with parked aircraft and moving vehicles on the ground. Extended on 2026-11-01 (row 7 below). |
+| More aircraft types | "We can add more later." | The first is the A321neo. Shane named the next ones on 2026-11-01 (row 3 below). |
 | More airports | "For now, just have the three" | The other 12 Korean airports with airline service in OurAirports: Gimhae (Busan), Cheongju, Daegu, Gwangju, Muan, Yangyang, Ulsan, Yeosu, Sacheon, Pohang, Gunsan and Wonju. |
-| A main menu like Satisfactory's, and scenarios | "I do also want to add a menu screen like Satisfactory, and since I probably don't want to have everything in just one scenario, so let the current scenario be 'Scenario 1', and you can create more and choose where to begin and where to land." (2026-10-31) | Planned for **v0.2.0**, not before (Shane: "Don't make these two changes until its time for v0.2.0 though."). Decided 2026-10-31: a scenario is a save slot holding the whole state ("the saved state including the plane's location, speed, roll, everything, so that when you reload a scenario after doing a another, it is exactly where it was before"), and the menu's backdrop is a still ("I'd say stick with a still picture"). |
+| A main menu like Satisfactory's, and scenarios | "I do also want to add a menu screen like Satisfactory, and since I probably don't want to have everything in just one scenario, so let the current scenario be 'Scenario 1', and you can create more and choose where to begin and where to land." (2026-10-31) | Planned for **v0.2.0**, not before (Shane: "Don't make these two changes until its time for v0.2.0 though."). Decided 2026-10-31: a scenario is a save slot holding the whole state ("the saved state including the plane's location, speed, roll, everything, so that when you reload a scenario after doing a another, it is exactly where it was before"), and the menu's backdrop is a still ("I'd say stick with a still picture"). Saves stay in the browser's localStorage: asked on 2026-11-01 whether to keep a copy in the folder too, Shane said "Nah its fine. Keep it browser." |
+
+## Future additions Shane named (2026-11-01)
+
+Shane: "Add these to the roadmap." Numbered as he sent them.
+
+| # | Addition | In Shane's words | Notes |
+|---|---|---|---|
+| 1 | Aircraft customisation: a parts "warehouse" | "Airplane customisation beyond normal; Similar to MSFS, have a 'warehouse' where you can swap out elements like engines for other planes' parts. So, you can attach GE90 engines to an A321, for example." | Each part becomes a module with its own numbers (an engine's thrust, fuel burn, weight, size and sound), which the model, the sim and the synth read. Other types' parts come with those types (row 3). Size matters: a GE90-115B's fan is 3.25 m across, against 1.98 m for the LEAP-1A's, and the A321neo's nacelles clear the ground by 0.45 m, so a GE90 there needs taller gear, or it scrapes. |
+| 2 | Leaving the seat on autopilot, and walking the cabin | "When on autopilot, you can get up from your seat in the cockpit, exit through the cockpit door, and go around the cabin. This means creating an interior for our planes: one very big job." | An interior for each type: the cockpit door, galleys, cabin seats, lavatories and doors. A walking mode, in which W/A/S/D walk instead of fly, with collisions, while the autopilot flies. Today's cockpit is `PLAN.md`'s simple one, built only for the view out. |
+| 3 | More aircraft: the A330, B737, B747, B777 and B787, with their variants | "Adding other planes like the A330, B737, B747, B777, and B787, and all their variants. Another huge job." | Each type needs its numbers from its type certificate and airport-planning document (the A321neo's method, in `src/sim/a321neo.js`), its own flight model and control laws, a model, a cockpit and sound. The 737 and 747 have conventional controls; the 777 and 787 have Boeing's fly-by-wire, which a pilot can override. The variants multiply all of it. Extends "More aircraft types" above. |
+| 4 | Detailed airports: terminals with windows and insides | "Detailed airports. Instead of just gray slabs being the airports, have windows with faintly visible insides. Maybe even be able to walk inside them." | Faint insides can be faked without building rooms: interior mapping, a shader that draws rooms behind the glass, is cheap enough for every terminal. Walking inside needs real interiors and the walking mode (rows 2 and 8). |
+| 5 | UI fixes, and a new font | "Fix various UI elements. I can't change the autopilot's heading from 066, for example. Also, I can't select a point on the path we are given. The buttons and fonts for the settings pages are not my favourite. Maybe change the font for the whole game?" | **Done in v0.1.4** (2026-11-01): the heading and the path (see "Found after v0.1.0" above), and new fonts: B612, made for Airbus's cockpit screens, on the screens and the FCU, and Barlow in the menus (both under the SIL Open Font Licence, in `vendor/fonts/`), with darker buttons. More of the UI changes with v0.2.0's menus. |
+| 6 | Changing the route in flight | "Allow another path to be reset on command so you aren't stuck with what you started with." | Today the destination and its runway are fixed at setup, and only the waypoints can be dragged on the map. This lets you pick a new destination, runway or route from the map in flight; the route line, the ND, the PFD's deviation scales and the score follow. |
+| 7 | Other aircraft and ATC, without collisions | "Add other planes and ATC, and we have to be deliberately careful not to collide with those planes. This has some feasibility issues, but we will consider them later." | Extends "Air traffic control" and "Other aircraft in the air and on the taxiways" above: traffic in and out of the three airports, ATC that sequences it and you, and collisions with it (with TCAS-style alerts, for example). Feasibility to be weighed later, as Shane said. |
+| 8 | Inside the terminals: lounges | "Enter airports and go to lounges." | Shares the terminal interiors and the walking mode with rows 2 and 4. |
+| 9 | Engine shutdown, gear-up landings and every emergency | "Be able to shut off engines, land without gear, and simulate virtually every emergency scenario." | Brings in what `PLAN.md`'s decision 3 left out of the first build ("No aircraft systems (hydraulics, electrics, failures)"), and replaces the candidate "Aircraft systems" that was below. Today the fuselage, an engine or a wingtip touching the ground ends the flight, so a gear-up landing needs contact physics for them (row 11). |
+| 10 | Every kind of weather, and the night sky | "Add crosswind, rain, snow, thunder, microbursts, and almost every weather event imaginable. Also the night sky, which I sort of what to look like Satisfactory's majestic night sky." | Extends "Weather" above. Night replaces the candidate "Time of day and night" that was below, and needs runway, approach, taxiway and city lights. Satisfactory's sky is in `games/satisfactory/src/sky.js` (stars, a band of galaxy, planets and moons): read it, change nothing there. To ask: its planets and moons too, or only its stars and galaxy? |
+| 11 | Crash physics | "Realistic crash physics with thousands of pieces of physics calculations. Right now it is just a popup that says 'you crashed'." | The aircraft breaking into pieces with their own physics (thousands of rigid bodies and bits of debris), with fire and smoke. It has to fit the CPU rules: the 60 fps cap and a budget per frame (`PLAN.md` → CPU at runtime). Rewind and restart stay. |
 
 ## Not on Shane's list (candidates; ask him)
 
-- Time of day and night: runway, approach and city lights. Offered in planning and not chosen yet; today it's day only.
 - Working screens in the 3D cockpit. Today they're dark, and the working screens are drawn on the sides of the screen.
-- Aircraft systems: hydraulics, electrics, failures, autobrake.
+- Autobrake.
 - Finer terrain everywhere, for low sightseeing over Seoul and Jeju.
 - Expressways and other major roads from OpenStreetMap, which are easy to see from the air.
 - International routes from Incheon to Japan and China. They need a bigger map frame and more terrain.
@@ -65,4 +85,4 @@ Found after v0.1.0:
 ## Open decisions for Shane
 
 - Hazard stripe colours on the livery: black and yellow by default. Shane may want green and black. Asked 2026-10-31.
-- The order of the future additions: ask when M3 is done.
+- The order of the future additions. v0.1.4 (2026-11-01) took the FCU, the jumps, the three leftovers and the fonts. v0.2.0, the main menu and scenarios, is next, as an overnight Claude Code run.

@@ -17,7 +17,7 @@ export const C = {
   sky: '#1876c9', ground: '#7a4a24', bg: 'rgba(4,6,8,0.86)',
   frame: '#4b5157', dim: '#5d6c78',
 };
-export const FONT = '"Helvetica Neue", Arial, sans-serif';
+export const FONT = 'B612, "Helvetica Neue", Arial, sans-serif';   // vendor/fonts (style.css); main.js loads it before the first draw
 export const font = (px, bold = false) => `${bold ? '600 ' : ''}${Math.round(px * 10) / 10}px ${FONT}`;
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);

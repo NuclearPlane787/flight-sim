@@ -2,10 +2,16 @@
 
 Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D A321neo sim of South Korea, flown between Incheon, Gimpo and Jeju. GameDump's root `AGENTS.md` (the house rules) applies on top of this file.
 
+**Picking the game up? Read `HANDOFF.md` first:** where things stand, what's next (v0.2.0's decisions), and how the Cowork sessions checked their work (`tests/cloud/`).
+
+**Building v0.2.0 overnight? `V020.md` is the brief:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
+
 ## Files
 
 | File | What |
 |---|---|
+| `HANDOFF.md` | Where things stand, what's next, and how to work on the game from a Cowork session. Read it first. |
+| `V020.md` | The brief for v0.2.0 (the main menu and scenarios), an overnight Claude Code run. |
 | `PLAN.md` | The design: Shane's decisions (final) and how each part is built. The spec for everything. |
 | `STATUS.md` | The progress log. Append a checkpoint after every step, and read it after any context compaction. |
 | `ROADMAP.md` | Milestones M1–M3 with a Done column, and the future additions. |
@@ -25,6 +31,7 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **v0.1.1** (2026-10-31, a Cowork session): Incheon's flickering taxiways, new cockpit windows (`src/cockpit-windows.js`) and a fairer landing score. `STATUS.md` has the details.
 - **v0.1.2** (2026-10-31, the same session): a lower windshield on a reshaped nose (sections are now two half-ellipses, `fuseSection()` in `aircraft.js`), the engines under the wing (`NACELLES` in `geometry.js`; the sim's thrust still acts at `ENGINES`), and gentle touchdowns on grass.
 - **v0.1.3** (2026-10-31, the same session): a stricter landing score that counts the approach (`score.js`: 100 × e^(−cost), calibrated so Shane's described landing scores 80), a master volume slider and a performance readout bar (F3), and Jeju 31's glideslope fix (`thresholdOf()` in `ui/common.js`).
+- **v0.1.4** (2026-11-01, a second Cowork session): typing into the FCU and faster scrolling (`ui/fcu.js`), jumps picked anywhere on the bright path (`ui/map.js`), Gimpo stand 7's routes (`bridgeIslands()` in `ground/taxi.js`), pushbacks at up to 4× (`main.js`), Jeju's crossing as one surface (`runwayCrossings()` in `world/runways.js`, used by the heightfield, the terrain shader and the runway shaders), and the fonts (B612 and Barlow in `vendor/fonts/`; `fitSize()` in `ui/pfd.js`).
 - **Next: v0.2.0**, a main menu like Satisfactory's and scenarios, which Shane asked for on 2026-10-31. Both questions are answered (`ROADMAP.md`): a scenario is a save slot with the whole state, and the menu's backdrop is a still. Shane asked for them to wait until v0.2.0. The other future additions are in `ROADMAP.md` too.
 
 ## Versions, Updates.md and pushing
@@ -40,6 +47,9 @@ This is the same system as Satisfactory's.
   - log the details in `STATUS.md`.
 - **The commit's title is the version number alone** (`v0.1.1`). What changed lives in `Updates.md`.
 - **Shane commits and pushes,** with `sh tools/push.sh v0.1.1` from this folder. The repository is public: github.com/NuclearPlane787/flight-sim. Agents never run git here.
+- **Who builds a version** (Shane, 2026-11-01: "if a job is very big, it is probably better to hand it to a Claude Code agent. ... This is for when you increment the second decimal. For the third decimal, doing it directly from cowork is fine."):
+  - a patch (the third decimal, such as v0.1.4) is built directly in a Cowork session;
+  - a minor version (the second decimal, such as v0.2.0) goes to a Claude Code agent on the Mac. A Cowork session writes its brief (Shane's decisions, the scope and a definition of done) and gives Shane the starting prompt. The agent starts only once the last patch is pushed, so two agents never edit the same files.
 - **What a public repository rules out:**
   - third-party documents (the Airbus and EASA PDFs stay git-ignored);
   - absolute paths with the Mac's user name (build paths from `__file__` or `import.meta.url`);

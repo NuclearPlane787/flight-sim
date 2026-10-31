@@ -11,12 +11,13 @@
 // flattened to their published elevations, clamped at 0. Missing layers fall back to a
 // flat sea-level world, so nothing breaks while the bake is still running.
 
-import { runwayRects } from './runways.js';
+import { runwayRects, rectElev, RUNWAY_SHOULDER_M } from './runways.js';
 
 export const PATCH_BLEND = 600;      // m: patches fade in over this band inside their edge
 export const FLAT_MARGIN_U = 90;     // m beyond each runway end that's flattened
 export const FLAT_MARGIN_V = 90;     // m each side of the runway edge that's flattened
 export const FLAT_BLEND = 300;       // m over which the flattening fades out
+export const PAVE_BLEND_M = 8;       // m: off the pavements, nearby runways' surfaces blend over about this
 
 // ------------------------------------------------------------------------- loading
 
@@ -141,7 +142,8 @@ export function createHeightfield(layers, opts = {}) {
   const natC = layers.national && layers.national.cover ? layers.national : null;
   const patches = layers.patches || [];
   const coast = layers.coastPatches || [];
-  const rects = runwayRects(opts.airports || []);
+  // By rank (runways.js → runwayCrossings): where two runways cross, the longer one comes last and wins.
+  const rects = runwayRects(opts.airports || []).sort((p, q) => p.rank - q.rank);
 
   const hNat = nat ? (i, j) => nat.height[j * nat.nx + i] : null;
   const seaNat = natW ? (i, j) => natW.water[(j * natW.nx + i) * 2] : null;
@@ -163,8 +165,13 @@ export function createHeightfield(layers, opts = {}) {
     return h;
   }
 
+  // The runways pull the ground to their surfaces. On a runway's pavement (shoulders
+  // included) the ground is that runway's surface, the longer one's where two cross (the
+  // rects run by rank). Off the pavements the nearby runways' surfaces blend by distance, and
+  // the flat zone's weight takes the terrain there. glsl.js → flattenRunways is the same.
   function heightAt(x, y) {
     let h = rawHeight(x, y);
+    let W = 0, num = 0, den = 0, onPav = false, pav = 0;
     for (let k = 0; k < rects.length; k++) {
       const r = rects[k];
       const dx = x - r.cx, dy = y - r.cy;
@@ -172,11 +179,15 @@ export function createHeightfield(layers, opts = {}) {
       const u = dx * r.dx + dy * r.dy, v = -dx * r.dy + dy * r.dx;
       const w = flatWeight(r, u, v);
       if (w <= 0) continue;
-      let t = (u + r.halfLen) / (2 * r.halfLen);
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
-      const e = r.e0 + (r.e1 - r.e0) * t;
-      h += (e - h) * w;
+      const e = rectElev(r, u);
+      const cu = Math.abs(u) - r.halfLen, cv = Math.abs(v) - r.halfWid - RUNWAY_SHOULDER_M;
+      const c = Math.hypot(cu > 0 ? cu : 0, cv > 0 ? cv : 0);
+      if (c === 0) { onPav = true; pav = e; }
+      const kk = w * Math.exp(-c / PAVE_BLEND_M);
+      num += kk * e; den += kk;
+      if (w > W) W = w;
     }
+    if (den > 0) h += ((onPav ? pav : num / den) - h) * W;
     return h > 0 ? h : 0;
   }
 

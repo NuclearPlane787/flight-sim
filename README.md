@@ -51,7 +51,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | Shift+C | arm ground spoilers |
 | Z | autopilot on / off |
 | X | autothrust on / off |
-| = / − | time compression faster / slower |
+| = / − | time compression faster / slower: with the AP on and 2,000 ft up, or in a pushback (up to 4×) |
 | M | map (predicted path, jumps, skip to final) |
 | V | next view (1st person, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
@@ -60,7 +60,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | T | rewind 30 s (from the pause menu or after a crash) |
 | two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
 
-The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll over it. It also has the AP1 and A/THR buttons and the Normal/Alternate law switch.
+The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min). Esc, a click elsewhere or a flying key closes it unchanged. The strip also has the AP1 and A/THR buttons and the Normal/Alternate law switch.
 
 ## Flying tips
 
@@ -69,8 +69,8 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll ov
   2. At about 145 kt, hold S. The aircraft rotates at about 4–5°/s and lifts off near 8°.
   3. G for gear up; 6 for flaps 0 at about 210 kt.
   4. Pull the levers back to CL (F) for the autothrust.
-- **Autopilot:** scroll over the FCU's HDG and ALT windows, click ALT for a level change (OP CLB/OP DES), then Z (AP) and X (A/THR). The FCU heading starts at your heading. Time compression (=) needs the AP on and 2,000 ft above the ground.
-- **The map (M):** with the AP on, the bright line is where the aircraft will go. Click a point on it to jump there. A red cross means the path meets the terrain. "Skip to 15 nm final" puts you on the 3° path to the destination runway.
+- **Autopilot:** set HDG and ALT on the FCU (scroll, or click and type; Enter on ALT starts the level change, OP CLB/OP DES), then Z (AP) and X (A/THR). The FCU heading starts at your heading. Time compression (=) needs the AP on and 2,000 ft above the ground.
+- **The map (M):** with the AP on, the bright line is where the aircraft will go. Click a point on it to jump there. The magenta line is the route to your destination and doesn't jump: point the HDG along it first. A red cross means the path meets the terrain. "Skip to 15 nm final" puts you on the 3° path to the destination runway.
 - **Landing:**
   1. Gear down; flaps 2, 3, FULL; Shift+C to arm the ground spoilers.
   2. Disconnect the AP with Z.
@@ -83,9 +83,6 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll ov
 ## Known issues
 
 - Nobody has listened to the sound yet: the levels are measured (`tests/audio-render.mjs`), not judged by ear.
-- Gimpo stand 7 has no taxi route to 14L/32R.
-- Pushback is slow (1.5 m/s, about 100 s).
-- At Jeju, where runways 07/25 and 13/31 cross, each cuts through the other along a diagonal seam (their end elevations disagree there by about 1 m).
 - The predicted path is a straight line on the selected heading, because the autopilot has holds only (route following is on the roadmap).
 
 ## Code map
@@ -114,6 +111,7 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S: click a window or scroll ov
 | `tests/*.test.mjs` | unit tests: `node --test games/flight-sim/tests/*.test.mjs` |
 | `tests/browser-*.mjs` | Chrome checks with Playwright. `browser-e2e.mjs` is the Gimpo-to-Jeju flight: take-off, AP, time compression, a jump, skip to final, a landing, the score and the taxi-in route. `browser-gate.mjs` is a gate start, pushback and taxi to the holding point. Also: `browser-cpu.mjs` (nothing runs while paused or hidden), `browser-boot.mjs` (setup, keys, the hub player), `browser-rewind.mjs`, `browser-shots.mjs` (screenshots with fps, triangles and draw calls) and `audio-render.mjs` (the synth rendered offline and measured) |
 | `tests/e2e-controller.js` | the test-only take-off and landing controller the end-to-end flight uses |
+| `tests/cloud/` | headless checks for a cloud container without a GPU (SwiftShader): stills of the 3D view, landings with the score's parts, the HUD and the pause menu (`HANDOFF.md` says how) |
 
 Every heavy dev command runs through the guard, for example:
 
@@ -138,5 +136,6 @@ The browser scripts expect Playwright in `/tmp/flight-sim/pw` (`npm i playwright
 The baked files in `data/` keep those licences: the OpenStreetMap-derived ones (coast, water, land cover, airports) are under the ODbL, and the elevation is under the Copernicus DEM licence.
 - The A321neo's numbers come from Airbus (the A321 Aircraft Characteristics document and the A321neo page) and EASA (TCDS EASA.A.064). Sources and pages are in `src/sim/a321neo.js`.
 - three.js r186 (MIT), in `vendor/`.
+- B612 and B612 Mono (© The B612 Project Authors) and Barlow (© The Barlow Project Authors), under the SIL Open Font Licence 1.1, in `vendor/fonts/` with their licence texts.
 
 Nuclear Airlines is made up. No real airline's branding is used.

@@ -286,10 +286,32 @@ export function createMap(root, { airports, coast } = {}) {
     }
     return best;
   }
+  // The sample a click on the bright path picks: within 12 px of the line between two samples
+  // (5 s of flight apart, so zoomed in they're far apart), the nearer of the two.
   function hitSample(sx, sy) {
-    let best = null, bd = 9;
-    for (const s of ahead()) { const d = Math.hypot(X(s.x) - sx, Y(s.y) - sy); if (d < bd) { bd = d; best = s; } }
+    const a = ahead();
+    let best = null, bd = 12;
+    for (let i = 0; i < a.length; i++) {
+      const px = X(a[i].x), py = Y(a[i].y);
+      let d = Math.hypot(px - sx, py - sy), s = a[i];
+      if (i + 1 < a.length) {
+        const dx = X(a[i + 1].x) - px, dy = Y(a[i + 1].y) - py, L2 = dx * dx + dy * dy;
+        if (L2 > 0) {
+          const t = clamp(((sx - px) * dx + (sy - py) * dy) / L2, 0, 1);
+          const ds = Math.hypot(px + t * dx - sx, py + t * dy - sy);
+          if (ds < d) { d = ds; s = t < 0.5 ? a[i] : a[i + 1]; }
+        }
+      }
+      if (d < bd) { bd = d; best = s; }
+    }
     return best;
+  }
+  // A short note by the pointer, for a click that can't jump.
+  let hintTimer = 0;
+  function hint(text, sx, sy) {
+    tip.textContent = text; tip.hidden = false;
+    tip.style.left = Math.max(8, Math.min(sx + 14, W - 340)) + 'px'; tip.style.top = sy + 12 + 'px';
+    clearTimeout(hintTimer); hintTimer = setTimeout(() => { tip.hidden = true; }, 4000);
   }
 
   let drag = null;
@@ -330,6 +352,9 @@ export function createMap(root, { airports, coast } = {}) {
     e.stopPropagation();
     const d = drag; drag = null; canvas.classList.remove('drag');
     if (!d.moved && (d.kind === 'sample' || (d.kind === 'seg' && d.sample))) showConfirm(d.sample);
+    else if (!d.moved && d.kind === 'seg') hint(ahead().length
+      ? 'Jumps go along the bright path. To jump along this line, turn the HDG towards it first.'
+      : 'Turn the autopilot on (Z): its bright path is where you can jump to.', d.sx, d.sy);
     else if (!d.moved && d.kind === 'pan') hideConfirm();
   };
   canvas.addEventListener('pointerup', endDrag);

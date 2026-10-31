@@ -4,6 +4,23 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.1.4 · 2026-11-01 · Typing into the FCU, easier jumps, stand 7's routes, faster pushbacks, Jeju's crossing, new fonts
+
+- **Type values into the FCU.** Click a window (SPD, HDG, ALT or V/S), type the value and press Enter (or click the window again).
+  - Enter also pushes the knob, so a new ALT starts the climb or descent and a new V/S engages V/S. Enter with nothing typed just pushes, as a click did before.
+  - An ALT under 1,000 is a flight level (350 is FL350), and a V/S of 60 or less is in hundreds (−15 is −1,500 ft/min).
+  - Esc, a click elsewhere or any flying key closes the window unchanged, and the flying key still works. ↑ and ↓ step the value; with Shift, in big steps.
+  - While a window is open the digits go to it, so 6–0 don't move the flaps.
+- **Scrolling a window turns it faster:** a step for every 12 px of trackpad scrolling instead of 25, and a quick flick turns it in big steps (10°, 10 kt, 1,000 ft or 500 ft/min). Hovering over a window says how it works.
+  - 066 is Jeju 07's course, which the FCU takes when you start on (or skip to) a 15 nm final. The knob did turn when scrolled, but only a degree per 25 px of trackpad scrolling, and nothing said it could.
+- **Jumps on the map are easier to pick.** A click anywhere on the bright path takes the nearest point of it. It used to need to land within 9 px of one of its dots, which are 5 s of flight apart and far apart when zoomed in.
+  - A click on the magenta line now says why it doesn't jump: with the autopilot off there's no bright path, and with it on, jumps go along the bright path, so turn the heading towards the line first.
+- **Gimpo stand 7 has taxi routes again,** to all four runway ends. Its pushback ended on a piece of taxi line that passes 14 m from the rest without meeting it, so no route led anywhere. Pieces like that are joined to the rest now, which also connects two short stretches of taxiway by the runways at Gimpo and Jeju.
+- **Faster pushbacks:** = speeds a pushback up to 4×. The tug keeps its real 1.5 m/s, and the rate drops back to 1× when the pushback ends.
+- **Jeju's runway crossing is one surface.** 07/25, the longer runway, runs whole through the crossing with its markings and lights, and 13/31 meets it at its edges.
+  - Near the crossing, the ground under 07/25 used to follow 13/31's slope and sat up to 0.7 m below the drawn runway, so the wheels sank into it. The ground on every runway is now that runway's own surface.
+- **New fonts:** B612, made for Airbus's cockpit screens, on the screens and the FCU; Barlow, the menu font of Game Dump's Satisfactory, in the menus. The pause menu's buttons are darker, with Resume highlighted.
+
 ## v0.1.3 · 2026-10-31 (night) · A stricter landing score, a master volume, and a performance readout
 
 - **The landing score is stricter: 100 and 0 are both nearly out of reach.**

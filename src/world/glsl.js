@@ -6,7 +6,8 @@
 // shaders, so everything sits on the same ground.
 
 import * as THREE from '../../vendor/three.module.js';
-import { PATCH_BLEND, FLAT_MARGIN_U, FLAT_MARGIN_V, FLAT_BLEND } from './heightfield.js';
+import { PATCH_BLEND, FLAT_MARGIN_U, FLAT_MARGIN_V, FLAT_BLEND, PAVE_BLEND_M } from './heightfield.js';
+import { RUNWAY_SHOULDER_M } from './runways.js';
 import { EARTH_RADIUS } from './frame.js';
 
 export const MAX_PATCHES = 4;
@@ -109,9 +110,15 @@ export function createWorldUniforms(hf) {
 
   // Runway flattening rects (the same list heightAt uses).
   const rects = (hf.runwayRects || []).slice(0, MAX_RUNWAYS);
-  const rwyA = [], rwyB = [];
-  for (const r of rects) { rwyA.push(new THREE.Vector4(r.cx, r.cy, r.dx, r.dy)); rwyB.push(new THREE.Vector4(r.halfLen, r.halfWid, r.e0, r.e1)); }
-  while (rwyA.length < MAX_RUNWAYS) { rwyA.push(new THREE.Vector4(1e9, 1e9, 1, 0)); rwyB.push(new THREE.Vector4(0, 0, 0, 0)); }
+  // (In rank order, as heightAt runs them.) rwyC: a runway's two bends where it meets a longer one.
+  const rwyA = [], rwyB = [], rwyC = [];
+  for (const r of rects) {
+    rwyA.push(new THREE.Vector4(r.cx, r.cy, r.dx, r.dy));
+    rwyB.push(new THREE.Vector4(r.halfLen, r.halfWid, r.e0, r.e1));
+    const k = r.knots || [], k1 = k[k.length > 1 ? 1 : 0];
+    rwyC.push(k.length ? new THREE.Vector4(k[0][0], k[0][1], k1[0], k1[1]) : new THREE.Vector4(1e9, 0, 1e9, 0));
+  }
+  while (rwyA.length < MAX_RUNWAYS) { rwyA.push(new THREE.Vector4(1e9, 1e9, 1, 0)); rwyB.push(new THREE.Vector4(0, 0, 0, 0)); rwyC.push(new THREE.Vector4(1e9, 0, 1e9, 0)); }
 
   return {
     // data
@@ -136,6 +143,7 @@ export function createWorldUniforms(hf) {
     uCoastCount: { value: coast.length },
     uRwyA: { value: rwyA },
     uRwyB: { value: rwyB },
+    uRwyC: { value: rwyC },
     uRwyCount: { value: rects.length },
     // per frame
     uOrigin: { value: new THREE.Vector2() },   // map x, y of the scene origin
@@ -164,7 +172,7 @@ uniform vec4 uPatchRect[${MAX_PATCHES}], uPatchDim[${MAX_PATCHES}];
 uniform int uPatchCount;
 uniform vec4 uCoastRect[${MAX_PATCHES}], uCoastDim[${MAX_PATCHES}];
 uniform int uCoastCount;
-uniform vec4 uRwyA[${MAX_RUNWAYS}], uRwyB[${MAX_RUNWAYS}];
+uniform vec4 uRwyA[${MAX_RUNWAYS}], uRwyB[${MAX_RUNWAYS}], uRwyC[${MAX_RUNWAYS}];
 uniform int uRwyCount;
 uniform vec2 uOrigin;
 uniform vec3 uCamPos;
@@ -255,10 +263,22 @@ float rawHeight(vec2 m, out float pw) {
   return h;
 }
 
-// Runway flattening; also returns how much of the point is in a runway's flat zone (0..1)
-// and the signed distance to the nearest runway's paved edge (m, < 0 on the runway).
+// A runway's surface height at u metres along from its centre: straight between its ends, or
+// through two bends (kn: u, h, u, h; u >= 1e8 when it has none) where it meets a longer runway.
+float rwyElev(float u, vec4 b, vec4 kn) {
+  if (kn.x > 1e8) return mix(b.z, b.w, clamp((u + b.x) / (2.0 * b.x), 0.0, 1.0));
+  if (u < kn.x) return mix(b.z, kn.y, clamp((u + b.x) / max(kn.x + b.x, 1e-3), 0.0, 1.0));
+  if (u < kn.z) return mix(kn.y, kn.w, (u - kn.x) / max(kn.z - kn.x, 1e-3));
+  return mix(kn.w, b.w, clamp((u - kn.z) / max(b.x - kn.z, 1e-3), 0.0, 1.0));
+}
+
+// Runway flattening, as heightAt in heightfield.js: on a runway's pavement the ground is that
+// runway's surface (the longer one's where two cross: the uniforms run by rank); off the
+// pavements the nearby runways' surfaces blend by distance. zone: how much of the point is in
+// a runway's flat zone (0..1).
 float flattenRunways(vec2 m, float h, out float zone) {
   zone = 0.0;
+  float num = 0.0, den = 0.0, pav = 0.0, onPav = 0.0;
   for (int k = 0; k < ${MAX_RUNWAYS}; k++) {
     if (k >= uRwyCount) break;
     vec4 a = uRwyA[k], b = uRwyB[k];
@@ -268,10 +288,14 @@ float flattenRunways(vec2 m, float h, out float zone) {
     float w = 1.0 - smoothstep(0.0, ${f(FLAT_BLEND)}, max(du, dv));
     // smoothstep(0,B,x) on CPU is 1-t*t*(3-2t) with t=1-x/B; the same curve.
     if (w <= 0.0) continue;
-    float t = clamp((u + b.x) / (2.0 * b.x), 0.0, 1.0);
-    h += (mix(b.z, b.w, t) - h) * w;
+    float e = rwyElev(u, b, uRwyC[k]);
+    float c = length(max(vec2(abs(u) - b.x, abs(v) - b.y - ${f(RUNWAY_SHOULDER_M)}), 0.0));
+    if (c <= 0.0) { onPav = 1.0; pav = e; }
+    float kk = w * exp(-c / ${f(PAVE_BLEND_M)});
+    num += kk * e; den += kk;
     zone = max(zone, w);
   }
+  if (den > 0.0) h += ((onPav > 0.5 ? pav : num / den) - h) * zone;
   return h;
 }
 

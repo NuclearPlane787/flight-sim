@@ -1,5 +1,16 @@
 /* Page frame and the lead's panels. The screens' own styles are in src/ui/ui.css. */
 
+/* Fonts (v0.1.4; vendor/fonts, SIL Open Font Licence): Barlow for the menus, as in Game Dump's
+   Satisfactory; B612, made for Airbus's cockpit screens, for the screens and the FCU. */
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: block; src: url(vendor/fonts/barlow-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: block; src: url(vendor/fonts/barlow-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: block; src: url(vendor/fonts/barlow-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 700; font-display: block; src: url(vendor/fonts/barlow-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "B612"; font-weight: 400; font-display: block; src: url(vendor/fonts/b612-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "B612"; font-weight: 700; font-display: block; src: url(vendor/fonts/b612-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "B612 Mono"; font-weight: 400; font-display: block; src: url(vendor/fonts/b612-mono-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "B612 Mono"; font-weight: 700; font-display: block; src: url(vendor/fonts/b612-mono-latin-700-normal.woff2) format("woff2"); }
+
 :root {
   --bg: #05070a;
   --panel: rgba(8, 12, 18, 0.88);
@@ -9,7 +20,9 @@
   --green: #7cff3a;
   --blue: #2ea8ff;
   --amber: #ffb000;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font: Barlow, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-screen: B612, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "B612 Mono", Menlo, ui-monospace, monospace;
 }
 
 html, body {
@@ -59,11 +72,13 @@ html, body {
 
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .buttons button {
-  font: inherit; font-size: 14px; color: var(--text);
-  background: rgba(46, 168, 255, 0.12); border: 1px solid rgba(46, 168, 255, 0.5);
-  border-radius: 6px; padding: 7px 14px; cursor: pointer;
+  font: inherit; font-size: 14.5px; font-weight: 600; color: #eef3f7;
+  background: #1b2530; border: 1px solid #33414f;
+  border-radius: 6px; padding: 8px 14px; cursor: pointer;
 }
-.buttons button:hover { background: rgba(46, 168, 255, 0.28); }
+.buttons button:hover { background: #243241; border-color: #46596b; }
+.buttons button.primary { background: #0f6e86; border-color: #2fe3ff; }
+.buttons button.primary:hover { background: #148aa8; }
 
 .keys { border-collapse: collapse; font-size: 12px; color: var(--dim); }
 .keys td { padding: 2px 8px 2px 0; }
@@ -86,7 +101,7 @@ html, body {
    moves down by its height while it shows (hud.setTopInset). */
 #perf {
   position: absolute; left: 0; right: 0; top: 0; height: 22px; box-sizing: border-box;
-  margin: 0; padding: 0 12px; font: 12px/22px ui-monospace, Menlo, monospace; white-space: nowrap;
+  margin: 0; padding: 0 12px; font: 12px/22px var(--font-mono); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; background: rgba(0, 0, 0, 0.62); color: #b8f5a0;
   z-index: 40; pointer-events: none;
 }

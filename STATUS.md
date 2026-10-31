@@ -821,3 +821,143 @@ The baseline landing's numbers are in his Chrome's logbook, so I asked for them:
   - README: the controls row, the score and the volume;
   - AGENTS.md: State.
 - **Next:** Shane pushes (`sh tools/push.sh v0.1.3`), then v0.2.0.
+
+## 2026-10-31, 23:15 KST: the handoff (Cowork session)
+
+Shane: "Leave the appropriate handoff documents in the folder. This chat has gone for quite a long time."
+
+- **New `HANDOFF.md`:** where things stand (versions, what's pushed, what no agent has checked yet), v0.2.0 (his decisions word for word, what a save has to hold beyond `sim.snapshot()`, what's still to settle), the other open items, how the recent changes work, how to work from a Cowork session, the pitfalls hit, working with Shane, and a first message for a new chat.
+- **`AGENTS.md`** points to it at the top and in its files table. **README** has a row for `tests/cloud/`.
+- **New `tests/cloud/`:** this session's container tools, cleaned up so they run from their new place:
+  - `serve.py`, a static server with no caching;
+  - `snap.cjs`, pictures of the live page;
+  - `stills.cjs`, free-camera and seat stills;
+  - `land.cjs`, landings through `main.js` in the modes normal, low and short;
+  - `ui-shots.cjs`, the performance bar, the pause menu and the volume.
+- **Checked from their new place,** in the container, with its copy hashed identical to the Mac's (66 files):
+  - `stills.cjs` made a still in 36 s;
+  - `land.cjs short RKSI 33L 300` touched down on the grass 156 m short of the threshold, with no crash. It scored **F 21** under v0.1.3's score; the same kind of undershoot scored F 40 under v0.1.2's;
+  - `ui-shots.cjs` passed every check: the bar's text, the FCU at 30 px, the volume at 40% (master gain 0.32, callouts 0.4), the menu's toggle, and the settings after a reload.
+- **The project doc** lists `HANDOFF.md` among the working copies.
+- **Pushed:** Shane pushed v0.1.3 at 23:01 KST (`7bd1a6c`), before these handoff files were written. They go in with the next push.
+- **Next:** v0.2.0, when he says so.
+
+## 2026-11-01, 00:35 KST: picked up; Shane's 11 roadmap additions (Cowork session, the second agent)
+
+A new Cowork chat picked the game up from `HANDOFF.md`. Shane: "You are the second agent on the Flight Sim project in GameDump. Take a look at the handoff document there."
+
+- **Checked at pickup** (2026-10-31, 23:21 KST):
+  - `GIT_OPTIONAL_LOCKS=0 git log --oneline -5`: `7bd1a6c v0.1.3` on top, so nothing has been pushed since the handoff;
+  - `node --test tests/*.test.mjs` through the guard: **171 pass**, 3 s, peak 0.42 GB;
+  - `node --check` on all 101 `.js` and `.mjs` files: clean;
+  - the guard: `--status` shows no slots in use, and `--sweep` is clean;
+  - the project doc already had the handoff entry.
+- **Saves stay in the browser.** Shane asked whether Satisfactory's saves really live in the browser (yes: Chrome's localStorage at the page's address, not the folder). I offered to also copy each Flight Sim scenario into `games/flight-sim/saves/` through Chrome's File System Access API. Shane: "Nah its fine. Keep it browser." Recorded in ROADMAP's v0.2.0 row and in HANDOFF's decisions.
+- **Shane's 11 future additions** ("Add these to the roadmap."), in a new ROADMAP table in his words, with notes:
+  1. a parts "warehouse" (GE90s on an A321);
+  2. leaving the seat on autopilot, and walking the cabin;
+  3. the A330, B737, B747, B777 and B787, with their variants;
+  4. terminals with windows and faint insides, maybe walkable;
+  5. UI fixes, and a new font;
+  6. changing the route in flight;
+  7. other aircraft and ATC, without collisions;
+  8. the terminals' lounges;
+  9. engine shutdown, gear-up landings and every emergency;
+  10. every kind of weather, and a night sky like Satisfactory's;
+  11. crash physics.
+
+  Where they overlap the older rows (more aircraft types, ATC, other traffic, weather), each points to the other. Night and aircraft systems were candidates, so they left that list; autobrake stays on it.
+- **Two bugs in item 5**, listed as open under "Found after v0.1.0" and not reproduced yet:
+  - "I can't change the autopilot's heading from 066": the HDG knob turns only by scrolling over its window (`src/ui/fcu.js`).
+  - "I can't select a point on the path we are given": a jump is offered only for a click within 9 px of a predicted-path sample (`hitSample()` in `src/ui/map.js`), and the samples are 5 s of flight apart.
+  - Why the checks missed them: `tests/browser-ui.mjs` scrolled the FCU and confirmed a jump on the mock page `tests/dev-ui.html`, with mouse-wheel notches of 100, and the e2e flight set its heading and jumped through test hooks (`setHdg`, `jumpTo`). Nothing went through the game itself with a trackpad's small scroll steps.
+- **Who builds a version** (Shane: "if a job is very big, it is probably better to hand it to a Claude Code agent. ... This is for when you increment the second decimal. For the third decimal, doing it directly from cowork is fine."): recorded in `AGENTS.md` → Versions and in HANDOFF. So v0.1.4 can be done in Cowork, and v0.2.0 goes to a Claude Code agent.
+- **Next:** Shane chooses v0.2.0's scope, and whether v0.1.4 (the heading, the path click and the small leftovers) comes first.
+
+## 2026-11-01, 02:08 KST: v0.1.4 (Cowork session, the second agent)
+
+Shane: "Do the heading, path click, and the leftovers, and the font for 0.1.4 right now. That will be fine to do here on cowork. 0.2.0 can run overnight after that, with the whole game changes."
+
+Asked while building, with no answer by the end: how he had tried to change the heading (scroll or click), and whether the autopilot was on when he clicked the map. The fixes below cover every case.
+
+- **The FCU heading** (`src/ui/fcu.js`, rewritten; `src/ui/ui.css`):
+  - **Reproduced** in the game in headless Chromium at DPR 2 (`?start=final`, RKSS to RKPC 07): the FCU heading starts at 066, Jeju 07's course. Scrolling over HDG did turn it: +2 for 100 px of 4 px trackpad steps, +1 per wheel notch. But nothing on screen said a window scrolls, and a click only pushed the knob.
+  - **Now:**
+    - A click opens the window for typing: digits, then Enter or a second click sets the value and pushes the knob. ALT starts a level change and V/S engages V/S; Enter alone pushes, as a click did.
+    - ALT under 1,000 is a flight level; V/S of 60 or less is in hundreds.
+    - Esc, a click elsewhere or any flying key closes it unchanged, and the key goes on to the game. ↑ ↓ step it (Shift: big steps).
+    - A capturing keydown takes the digits first, so 6–0 don't move the flaps.
+    - Scrolling is 12 px a step (was 25), with big steps when more than 6 steps come in 0.3 s (10°, 10 kt, 1,000 ft, 500 ft/min).
+    - Tooltips on the windows; a row in the pause menu's keys.
+  - **Checked in the game** (`fcu-map.cjs`, scratch):
+    - fonts loaded;
+    - 60 px of slow scrolling: 66 to 71;
+    - a flick: 71 to 240;
+    - a click opens the window;
+    - typed 250 + Enter: HDG 250, and the flap lever unmoved (0 is FULL);
+    - ALT typed 120: 12,000 ft, OP CLB;
+    - V/S typed −15: −1,500, V/S;
+    - Esc: unchanged, not paused;
+    - G: closes the window and still moves the gear lever;
+    - ↑ then Shift+↑: 250 to 261.
+    - With the clock faked (`recheck.cjs`), 8 s after typing 250 the AP is banking 25° left towards it.
+- **The path pick** (`src/ui/map.js`):
+  - **Reproduced:** a click on one of the path's dots offered the jump. At the default zoom the dots are 0.6 px apart, so clicks hit. Zoomed in they're tens of px apart, and the 9 px rule missed between them. The magenta line never jumps.
+  - **Now:** `hitSample()` measures to the line between samples (12 px) and takes the nearer sample. `hint()` says why a click on the magenta line doesn't jump (AP off: no bright path; AP on: turn the HDG towards the line).
+  - **Checked:**
+    - samples 83 px apart, a click halfway (42 px from each): "Jump to +3 min, 4900 ft?";
+    - Jump moved the sim 125 s ahead and closed the map;
+    - AP off, a click on the magenta line: "Turn the autopilot on (Z): its bright path is where you can jump to."
+- **Gimpo stand 7** (`src/ground/taxi.js`):
+  - **Survey:** a gate start from every stand to every runway end at the three airports, 3,888 in all. Only RKSS 7 failed, and to all four ends, not just 14L/32R.
+  - **The cause:** the boot takes stand 7's heading from the taxi lines (136° to 46°, no lead-in). Its pushback then ends on a 7-node piece of taxi line whose bend, not an end, passes 14.3 m from the network, so neither the crossings nor the end joins linked it.
+  - **The fix:** `bridgeIslands()` links any piece within 30 m to the nearest point of the network. A link onto a runway centreline is a join (pw 0.5), and a link across a runway is marked as a crossing. `graph.bridges`: RKSS 2 (stand 7's piece and a 17-node D1 piece by a runway), RKPC 1, RKSI 0.
+  - **Checked:** unit tests (a synthetic island 14 m off is bridged, one 40 m off isn't; stand 7 with its boot heading routes to all four ends). `gate7.cjs`: "Stand 7. Pushback: P to start", a route of 2,768 m via R P P5 P G2.
+- **Pushback** (`src/main.js`, `src/ground/gate-flow.js`):
+  - **Measured** (all 612 stands): a median of 60–70 s per airport, p90 84–148 s, max 160–174 s (up to 256 m pushed).
+  - **Now:** = speeds a pushback up to 4× (`PUSH_MAX_RATE`). The tug moves by the sim time actually stepped, and the rate drops to 1× when the pushback ends or is held. The status line says "= speeds it up".
+  - **Checked** (`gate7.cjs`, clock faked): = twice gives 4×, and a third is refused ("Pushback: up to 4×"). The pushback took 39 s of sim in 98 frames of 0.1 s (4.0×), then 1× and "Pushback complete…".
+- **Jeju's crossing** (`src/world/runways.js`, `heightfield.js`, `glsl.js`, `airports.js`):
+  - **Measured on v0.1.3** (scratch `seam.mjs`):
+    - the centrelines cross 2,636 m along 07/25 (of 3,174) and 591 m along 13/31 (of 1,884), at 67°;
+    - there the two straight profiles differ by only 0.10 m (23.86 against 23.76), but the slopes differ (−0.10% and +0.64%);
+    - `heightAt` took the last rect's profile wherever both flat zones overlap, so along 07/25's centreline the ground was up to 0.69 m under its drawn surface, at 2,430 m.
+  - **Now:**
+    - `runwayCrossings()` ranks an airport's runways by length. The shorter of a crossing pair gets two knots, at the longer one's drawn edges (half width + shoulder) and at its height there, and a `cutBy`.
+    - `profileAt()`/`rectElev()` give the surface. `heightAt` and the GLSL `flattenRunways` share one rule: on a runway's pavement (shoulders included), that runway's surface, the longer one's where two cross; off the pavements, a blend weighted by exp(−distance/8 m). For a lone runway nothing changes.
+    - The runway mesh takes the knots (`uKnots`), and the shorter runway's fragments on the longer one's pavement are discarded (`uCutA`/`uCutB`), along with its lights there.
+  - **Checked:**
+    - `tests/runways.test.mjs`: the ground on every runway at the three airports is within 5 mm of its surface, the knots sit on 07/25's drawn edge at its height, and the ends keep their published elevations.
+    - Stills `v014-jeju-crossing-above/on-07/on-13`: 07/25 whole through the crossing, no seam.
+    - Landings with `land.cjs normal`:
+      - RKPC 07: B 88 (217 ft/min, 1.37 g, 161 m long);
+      - RKPC 25: B 88 (254 ft/min, 1.56 g; the touchdown 524 m past the threshold, at the crossing, no bounce);
+      - RKSI 33L: B 89 with v0.1.3's exact figures (237 ft/min, 1.47 g, 140 m long, 0.4 m off).
+- **Fonts** (`vendor/fonts/`, `style.css`, `src/ui/ui.css`, `src/ui/logbook.css`, `src/ui/common.js`, `src/main.js`, `src/ui/pfd.js`):
+  - **The choice:** a sheet of three options was sent to Shane (`v014-fonts-options.jpg`), and I went with B as no answer had come: B612 on the screens and FCU, Barlow in the menus. Switching is `--font` in style.css and `FONT` in common.js.
+  - **Vendored:** 8 woff2 files from @fontsource 5 (OFL-1.1): B612 400/700, B612 Mono 400/700, Barlow 400/500/600/700, and the three licence texts. Credited in the README.
+  - **Loading:** `main.js` loads them before the HUD is made (at most 3 s).
+  - **The PFD:** with B612 the altitude tape's three-digit labels hit the ticks, the hundreds at FL350 stuck out of their box and the drum's digits were cut. `fitSize()` sizes them to their windows; checked at FL350 and on final on `tests/dev-ui.html`, which now links `style.css` and loads the fonts.
+  - **Buttons:** darker, and Resume is primary. The two new key rows were shortened so nothing wraps.
+- **Checks:**
+  - `node --test tests/*.test.mjs` through the guard: **175 pass** (171 and 4 new);
+  - `node --check`: 106 files (`.js`, `.mjs`, `.cjs`);
+  - the guard: `--status` shows no slots in use, `--sweep` is clean;
+  - the container's copy hashes the same as the Mac's (76 files, `6426422c…`).
+- **Screenshots** in `Claude outputs/flight-sim/`: `v014-fonts-options`, `v014-fcu-typing`, `v014-hud`, `v014-map-jump`, `v014-map-ap-off`, `v014-pause-menu`, `v014-screens-fl350`, `v014-screens-approach`, `v014-setup`, `v014-jeju-crossing-above`, `v014-jeju-crossing-on-07`, `v014-jeju-crossing-on-13`.
+- **Not done:** a flight in Chrome on the Mac; listening to the sound.
+- **Written up:** `src/version.js` (`Flight Sim v0.1.4 · CL#261101`), `Updates.md`, `ROADMAP.md`, `README.md`, `AGENTS.md` (State), `HANDOFF.md` (status, open items, how the changes work, two pitfalls).
+- **Next:** Shane pushes (`sh tools/push.sh v0.1.4`), then the overnight Claude Code run for v0.2.0.
+
+## 2026-11-01, 02:10 KST: the brief for the overnight v0.2.0 run (Cowork session, the second agent)
+
+- **New `V020.md`:** the brief for a Claude Code run, per Shane's rule (a second-decimal version goes to Claude Code). It holds:
+  - his decisions, in his words: the menu like Satisfactory's, a scenario as a save slot with the whole state, a still backdrop, saves in the browser, and "the menu screen with all the scenarios saved, with general controls and all that";
+  - Claude's four defaults, which he hasn't changed;
+  - the Must list: the main menu, the scenarios (state, store, autosave, names, Load, New scenario, migration), one tagged logbook, Settings and Controls, the pause menu, the version;
+  - the stretch: changing the route in flight, row 6, not confirmed by Shane;
+  - the definition of done, with the round-trip test (positions within 1e-6 m after both sims step on) and a scripted Chrome check;
+  - the run's rules, and where things are;
+  - the starting prompt and `/goal`, with a deadline of 11:00 KST today, Sunday 1 November, which Shane can change.
+- **`AGENTS.md` and `HANDOFF.md`** point to it.
+- **Next:** Shane pushes v0.1.4, then starts the run from the GameDump folder.

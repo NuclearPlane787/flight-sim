@@ -8,6 +8,7 @@ import { createSim } from '../src/sim/sim.js';
 import { createGateFlow, standList } from '../src/ground/gate-flow.js';
 import { buildTaxiGraph, routeFromStand, snapToGraph } from '../src/ground/taxi.js';
 import { NOSE_X } from '../src/geometry.js';
+import { standHeading } from '../src/world/traffic-layout.js';
 
 const here = new URL('..', import.meta.url).pathname;
 const AP = Object.fromEntries(['RKSS', 'RKPC', 'RKSI'].map((i) => [i, JSON.parse(readFileSync(here + `data/airports/${i}.json`, 'utf8'))]));
@@ -184,4 +185,17 @@ test('after landing: a route from the exit ahead to a free stand', () => {
   const ahead = (r.exit[0] - x) * ux + (r.exit[1] - y) * uy;
   assert.ok(ahead > -10, `exit ahead (${ahead.toFixed(0)} m)`);
   console.log(`  RKPC 07 at 1400 m: exit ${ahead.toFixed(0)} m ahead → stand ${r.stand}, ${r.lengthM.toFixed(0)} m. ${r.text}`);
+});
+
+test('Gimpo stand 7, with its heading from the taxi lines as at boot, has a route to every runway end (v0.1.4)', () => {
+  const ap = structuredClone(AP.RKSS);
+  const st = ap.stands.find((s) => s.ref === '7');
+  assert.ok(!(st.leadIn && st.leadIn.length > 1), 'no lead-in line, so main.js takes its heading from the taxi lines');
+  st.hdgGridDeg = ((standHeading(ap, st) * 180) / Math.PI + 360) % 360;
+  const flow = createGateFlow({ sim: createSim(), airports: [ap] });
+  for (const rw of ap.runways) for (const end of rw.ends) {
+    const r = flow.start({ origin: 'RKSS', stand: '7', depRunway: end.ident, fuelKg: 6000, payloadKg: 15000 });
+    assert.ok(r, `stand 7 to ${end.ident}: a route`);
+  }
+  assert.ok(flow.graphFor('RKSS').bridges >= 1, 'the piece of taxi line behind stand 7 is bridged');
 });

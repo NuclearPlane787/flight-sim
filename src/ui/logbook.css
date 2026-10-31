@@ -2,13 +2,13 @@
 
 /* ---- Landing score card ---- */
 .fssc-root { position: absolute; right: 24px; bottom: 24px; z-index: 20; pointer-events: auto;
-  font-family: "Helvetica Neue", Arial, sans-serif; color: #e8e8e8; }
+  font-family: var(--font); color: #e8e8e8; }
 .fssc-root[hidden] { display: none; }
 .fssc-card { width: 372px; box-sizing: border-box; background: rgba(14, 19, 24, 0.94); border: 1px solid #36414a;
   border-radius: 10px; box-shadow: 0 8px 36px rgba(0, 0, 0, 0.6); padding: 16px 16px 12px; }
 .fssc-top { display: flex; gap: 14px; align-items: center; }
 .fssc-grade { flex: none; width: 76px; height: 76px; border: 3px solid; border-radius: 12px; display: flex;
-  align-items: center; justify-content: center; font: 700 56px/1 "Helvetica Neue", Arial, sans-serif;
+  align-items: center; justify-content: center; font: 700 56px/1 var(--font);
   background: rgba(0, 0, 0, 0.35); text-shadow: 0 0 18px currentColor; }
 .fssc-head { min-width: 0; }
 .fssc-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #2fe3ff; }
@@ -20,7 +20,7 @@
 .fssc-key > div { flex: 1; background: #0a0e11; border: 1px solid #2b3238; border-radius: 6px; padding: 5px 9px; font-size: 12px; color: #8a9097; }
 .fssc-key small { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
 .fssc-key b { font-size: 18px; color: #f2f2f2; font-variant-numeric: tabular-nums; margin-right: 3px; }
-.fssc-rw { display: block; margin: 4px 0 0; width: 100%; height: auto; font-family: "Helvetica Neue", Arial, sans-serif; }
+.fssc-rw { display: block; margin: 4px 0 0; width: 100%; height: auto; font-family: var(--font); }
 .fssc-td { font-size: 12px; color: #c9ced2; margin: 0 0 8px; }
 .fssc-parts { display: flex; flex-direction: column; gap: 3px; }
 .fssc-part { display: grid; grid-template-columns: 1fr 96px 62px 30px; gap: 8px; align-items: center; font-size: 12.5px; }
@@ -35,7 +35,7 @@
 /* ---- Logbook ---- */
 .fslb { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
   background: rgba(2, 6, 12, 0.78); pointer-events: auto; overscroll-behavior: none; outline: none;
-  font-family: "Helvetica Neue", Arial, sans-serif; color: #e8e8e8; user-select: none; -webkit-user-select: none; }
+  font-family: var(--font); color: #e8e8e8; user-select: none; -webkit-user-select: none; }
 .fslb[hidden] { display: none; }
 .fslb-dlg { width: min(1060px, calc(100vw - 32px)); height: min(760px, calc(100vh - 32px)); display: flex; flex-direction: column;
   background: #12181d; border: 1px solid #36414a; border-radius: 10px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);

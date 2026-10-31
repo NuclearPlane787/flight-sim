@@ -15,9 +15,9 @@
 // fights the terrain under it.
 
 import * as THREE from '../../vendor/three.module.js';
-import { pavementEnd } from './runways.js';
+import { pavementEnd, profileAt, RUNWAY_SHOULDER_M } from './runways.js';
 
-const SHOULDER = 7.5;     // m of paved shoulder each side, beyond the edge lines
+const SHOULDER = RUNWAY_SHOULDER_M;   // m of paved shoulder each side, beyond the edge lines
 const SEG = 40;           // m per segment along the runway (for the Earth's curvature)
 
 // ------------------------------------------------------------------ glyph atlas
@@ -72,6 +72,7 @@ const RUNWAY_VERT = /* glsl */ `
   uniform vec2 uRelC;       // runway centre minus the scene origin (map metres, computed in double)
   uniform vec2 uDir;        // unit vector end 0 -> end 1 (map)
   uniform float uLen, uWid, uE0, uE1;
+  uniform vec4 uKnots;      // two (s, h) bends where this runway meets a longer one (s >= 1e8: none)
   attribute vec2 rw;        // (u from end 0's pavement end, v to the left of uDir)
   varying vec2 vRw;
   varying vec3 vRel;
@@ -79,7 +80,11 @@ const RUNWAY_VERT = /* glsl */ `
   void main() {
     vec2 perp = vec2(-uDir.y, uDir.x);
     vec2 rel = uRelC + uDir * (rw.x - 0.5 * uLen) + perp * rw.y;
-    float h = mix(uE0, uE1, clamp(rw.x / uLen, 0.0, 1.0));
+    float s = rw.x, h;
+    if (uKnots.x > 1e8) h = mix(uE0, uE1, clamp(s / uLen, 0.0, 1.0));
+    else if (s < uKnots.x) h = mix(uE0, uKnots.y, clamp(s / max(uKnots.x, 1e-3), 0.0, 1.0));
+    else if (s < uKnots.z) h = mix(uKnots.y, uKnots.w, (s - uKnots.x) / max(uKnots.z - uKnots.x, 1e-3));
+    else h = mix(uKnots.w, uE1, clamp((s - uKnots.z) / max(uLen - uKnots.z, 1e-3), 0.0, 1.0));
     vec3 wp = vec3(rel.x, h, -rel.y);
     vec3 r = wp - uCamPos;
     wp.y -= curveDrop(r.xz);
@@ -94,6 +99,8 @@ const RUNWAY_VERT = /* glsl */ `
 
 const RUNWAY_FRAG = /* glsl */ `
   uniform float uLen, uWid;
+  uniform vec4 uCutA;             // a longer runway crossing this one: its centre (u, v) and direction here
+  uniform vec2 uCutB;             // its drawn half length and half width ((0, 0): none); this one is cut away there
   uniform vec4 uEnd0, uEnd1;      // per end: displaced m, glyph0, glyph1, letter (-1 = none)
   uniform float uStripes;
   uniform sampler2D uGlyphs;
@@ -166,6 +173,10 @@ const RUNWAY_FRAG = /* glsl */ `
   }
 
   void main() {
+    if (uCutB.x > 0.0) {
+      vec2 dc = vRw - uCutA.xy;
+      if (abs(dot(dc, uCutA.zw)) < uCutB.x && abs(-dc.x * uCutA.w + dc.y * uCutA.z) < uCutB.y) discard;
+    }
     #include <logdepthbuf_fragment>
     float u = vRw.x, v = vRw.y, hw = 0.5 * uWid;
     vec2 aa = max(fwidth(vRw) * 0.7, vec2(0.02));
@@ -225,6 +236,37 @@ function runwayGeometry(len, wid) {
   return g;
 }
 
+// The bends of a runway's profile (runways.js → runwayCrossings) for its shader: two (s, h).
+function knotsU(r) {
+  const k = r.knots || [];
+  if (!k.length) return new THREE.Vector4(1e9, 0, 1e9, 0);
+  const k1 = k[k.length > 1 ? 1 : 0];
+  return new THREE.Vector4(k[0][0], k[0][1], k1[0], k1[1]);
+}
+
+// Where a longer runway crosses this one, this one is cut away on that runway's drawn pavement:
+// its centre and direction in this runway's frame (u along from end 0's pavement end, v to the
+// left), and its drawn half length and half width.
+function cutOf(r, p0, p1, len) {
+  const P = r.cutBy && r.cutBy[0];
+  if (!P) return { a: new THREE.Vector4(0, 0, 1, 0), b: new THREE.Vector2(0, 0) };
+  const q0 = pavementEnd(P.ends[0]), q1 = pavementEnd(P.ends[1]);
+  const plen = Math.hypot(q1.x - q0.x, q1.y - q0.y);
+  const ux = (p1.x - p0.x) / len, uy = (p1.y - p0.y) / len;
+  const px = (q1.x - q0.x) / plen, py = (q1.y - q0.y) / plen;
+  const cx = (q0.x + q1.x) / 2 - p0.x, cy = (q0.y + q1.y) / 2 - p0.y;
+  return { a: new THREE.Vector4(cx * ux + cy * uy, -cx * uy + cy * ux, px * ux + py * uy, -px * uy + py * ux),
+    b: new THREE.Vector2(plen / 2, P.widthM / 2 + SHOULDER) };
+}
+
+// Is (x, y) on runway P's drawn pavement (shoulders included)?
+function onDrawnRunway(P, x, y) {
+  const q0 = pavementEnd(P.ends[0]), q1 = pavementEnd(P.ends[1]);
+  const len = Math.hypot(q1.x - q0.x, q1.y - q0.y), ux = (q1.x - q0.x) / len, uy = (q1.y - q0.y) / len;
+  const u = (x - q0.x) * ux + (y - q0.y) * uy, v = -(x - q0.x) * uy + (y - q0.y) * ux;
+  return u >= 0 && u <= len && Math.abs(v) <= P.widthM / 2 + SHOULDER;
+}
+
 // ------------------------------------------------------------------ lights
 
 // Light kinds for the shader.
@@ -235,13 +277,14 @@ function lightLayout(airport, hf) {
   const L = [];   // { x, y (map), h, colA, colB, dir: [dx, dy], kind, size, param }
   const groundAt = (x, y, e) => Math.max(e, hf ? hf.heightAt(x, y) : e) + 0.4;
   for (const r of airport.runways) {
+    const first = L.length;
     const p0 = pavementEnd(r.ends[0]), p1 = pavementEnd(r.ends[1]);
     const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
     const ux = (p1.x - p0.x) / len, uy = (p1.y - p0.y) / len;
     const hw = r.widthM / 2;
     const e0 = r.ends[0].elevM, e1 = r.ends[1].elevM;
     // Point at u along from end 0 and v to the left; on the runway's surface.
-    const at = (u, v) => [p0.x + ux * u - uy * v, p0.y + uy * u + ux * v, e0 + (e1 - e0) * Math.min(Math.max(u / len, 0), 1) + 0.15];
+    const at = (u, v) => [p0.x + ux * u - uy * v, p0.y + uy * u + ux * v, profileAt(r, u, airport.elevM ?? e0) + 0.15];
     // Edge lights, every 60 m: white; yellow in the last 600 m towards the far end.
     const ne = Math.round(len / 60);
     for (let i = 0; i <= ne; i++) {
@@ -324,6 +367,12 @@ function lightLayout(airport, hf) {
           L.push({ x, y, h: h + 0.6, colA: WHITE, colB: NONE, dir: out, kind: PAPI, size: 1.6, param: ang });
         });
       }
+    }
+    // Where a longer runway crosses this one, this one's lights stop at that runway's edges.
+    if (r.cutBy && r.cutBy.length) {
+      const keep = L.slice(first).filter((l) => !r.cutBy.some((P) => onDrawnRunway(P, l.x, l.y)));
+      L.length = first;
+      L.push(...keep);
     }
   }
   return L;
@@ -413,11 +462,13 @@ export function createRunways(scene, uniforms, chunks, airports, renderer, hf = 
         const d = designator(e.ident);
         return new THREE.Vector4(Math.hypot(e.x - p.x, e.y - p.y), d[0], d[1], d[2]);
       };
+      const cut = cutOf(r, p0, p1, len);
       const u = Object.assign({}, uniforms, {
         uRelC: { value: new THREE.Vector2() },
         uDir: { value: new THREE.Vector2((p1.x - p0.x) / len, (p1.y - p0.y) / len) },
         uLen: { value: len }, uWid: { value: r.widthM },
         uE0: { value: r.ends[0].elevM }, uE1: { value: r.ends[1].elevM },
+        uKnots: { value: knotsU(r) }, uCutA: { value: cut.a }, uCutB: { value: cut.b },
         uEnd0: { value: endU(0) }, uEnd1: { value: endU(1) },
         uStripes: { value: thresholdStripes(r.widthM) },
         uGlyphs: { value: glyphs },

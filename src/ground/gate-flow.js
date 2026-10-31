@@ -157,10 +157,10 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       phase = 'pushback';
       pb.toggle();
       sim.controls.parkingBrake = false;
-      say('Pushing back. P holds, Q/E steer the turn');
+      say('Pushing back. P holds, Q/E steer the turn, = speeds it up');
     } else if (phase === 'pushback' && pb) {
       pb.toggle();
-      say(pb.state.running ? 'Pushing back. P holds, Q/E steer the turn' : 'Pushback held: P to continue');
+      say(pb.state.running ? 'Pushing back. P holds, Q/E steer the turn, = speeds it up' : 'Pushback held: P to continue');
     } else if (phase === 'taxi') say('Pushback complete. ' + (route ? route.text : ''));
     else say('No pushback here: only at a gate start');
     return status;

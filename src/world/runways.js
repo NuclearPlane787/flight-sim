@@ -70,11 +70,82 @@ export function pavementEnd(e) {
   return e.pavementEnd ? { x: e.pavementEnd[0], y: e.pavementEnd[1] } : { x: e.x, y: e.y };
 }
 
+// Where two runways of an airport cross (Jeju's 07/25 and 13/31), one surface has to win.
+// The longer runway (the primary, the higher `rank`) keeps its straight profile and is drawn
+// whole through the crossing. The shorter one bends to meet it: two `knots` where its
+// centreline reaches the primary's drawn edges, at the primary's height there. It's cut away
+// on the primary's pavement (`cutBy`, in airports.js), with its lights. Before v0.1.4 both kept
+// straight profiles, so they cut through each other along a diagonal seam, and the ground near
+// the crossing followed whichever runway came last in the file (07/25's wheels ran up to
+// 0.69 m under its surface, 200 m before the crossing).
+export const RUNWAY_SHOULDER_M = 7.5;   // m of paved shoulder each side, beyond the edge lines (as drawn)
+
+function runwayAxis(r, elev = 0) {
+  const p0 = pavementEnd(r.ends[0]), p1 = pavementEnd(r.ends[1]);
+  const len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+  return { p0, len, ux: (p1.x - p0.x) / len, uy: (p1.y - p0.y) / len,
+    e0: r.ends[0].elevM ?? elev, e1: r.ends[1].elevM ?? elev };
+}
+
+// Runway r's surface height (m) at s metres from end 0's pavement end, clamped to the runway.
+export function profileAt(r, s, elev = 0) {
+  const ax = runwayAxis(r, elev);
+  const pts = [[0, ax.e0], ...(r.knots || []), [ax.len, ax.e1]];
+  if (s <= 0) return ax.e0;
+  for (let i = 1; i < pts.length; i++) {
+    const [s0, h0] = pts[i - 1], [s1, h1] = pts[i];
+    if (s <= s1) return s1 > s0 ? h0 + ((h1 - h0) * (s - s0)) / (s1 - s0) : h1;
+  }
+  return ax.e1;
+}
+
+// Ranks, knots and cuts for an airport's runways (once; the airport keeps them). A runway
+// bends to one longer runway at most: a second crossing is left as it was, with a warning.
+export function runwayCrossings(airport) {
+  const rws = (airport?.runways || []).filter((r) => r.ends && r.ends.length === 2);
+  if (!rws.length || rws.every((r) => r.rank !== undefined)) return;
+  const elev = airport.elevM ?? 0;
+  const ax = new Map(rws.map((r) => [r, runwayAxis(r, elev)]));
+  const order = rws.slice().sort((p, q) => (ax.get(p).len - ax.get(q).len) || ((p.widthM || 45) - (q.widthM || 45))
+    || String(p.id).localeCompare(String(q.id)));
+  order.forEach((r, i) => { r.rank = i; r.knots = []; r.cutBy = []; });
+  for (const S of order.slice().reverse()) {      // the longer ones first: their profiles are final
+    for (const P of order) {
+      if (P.rank <= S.rank) continue;
+      const a = ax.get(S), b = ax.get(P);
+      const den = a.ux * b.uy - a.uy * b.ux;      // the sine of the angle between them
+      if (Math.abs(den) < 0.05) continue;         // parallel
+      const dx = b.p0.x - a.p0.x, dy = b.p0.y - a.p0.y;
+      const sS = (dx * b.uy - dy * b.ux) / den, sP = (dx * a.uy - dy * a.ux) / den;
+      if (sS < 0 || sS > a.len || sP < 0 || sP > b.len) continue;   // the centrelines don't cross on both
+      if (S.cutBy.length) { console.warn(`Runway ${S.id} crosses more than one longer runway; only ${S.cutBy[0].id} is handled`); continue; }
+      const d = ((P.widthM || 45) / 2 + RUNWAY_SHOULDER_M) / Math.abs(den);   // along S, crossing to P's drawn edge
+      const onP = (s) => { const x = a.p0.x + a.ux * s, y = a.p0.y + a.uy * s; return profileAt(P, (x - b.p0.x) * b.ux + (y - b.p0.y) * b.uy, elev); };
+      for (const s of [sS - d, sS + d]) if (s > 1 && s < a.len - 1) S.knots.push([s, onP(s)]);
+      S.cutBy.push(P);
+    }
+  }
+}
+
+// A runway rect's surface height at u metres along from its centre (as profileAt).
+export function rectElev(r, u) {
+  let u0 = -r.halfLen, h0 = r.e0;
+  if (u <= u0) return h0;
+  const k = r.knots, n = k ? k.length : 0;
+  for (let i = 0; i <= n; i++) {
+    const u1 = i < n ? k[i][0] : r.halfLen, h1 = i < n ? k[i][1] : r.e1;
+    if (u <= u1) return u1 > u0 ? h0 + ((h1 - h0) * (u - u0)) / (u1 - u0) : h1;
+    u0 = u1; h0 = h1;
+  }
+  return r.e1;
+}
+
 // Runway rectangles (the pavement): centre, unit direction (end 0 -> end 1), half sizes,
 // end elevations.
 export function runwayRects(airports) {
   const out = [];
   for (const a of airports || []) {
+    runwayCrossings(a);
     for (const r of a.runways || []) {
       const e0 = pavementEnd(r.ends[0]), e1 = pavementEnd(r.ends[1]);
       const len = Math.hypot(e1.x - e0.x, e1.y - e0.y) || 1;
@@ -82,7 +153,8 @@ export function runwayRects(airports) {
       const halfLen = len / 2, halfWid = (r.widthM || 45) / 2;
       const reach = halfLen + halfWid + 800;
       out.push({ icao: a.icao, runway: r, cx: (e0.x + e1.x) / 2, cy: (e0.y + e1.y) / 2, dx, dy, halfLen, halfWid,
-        e0: r.ends[0].elevM ?? a.elevM ?? 0, e1: r.ends[1].elevM ?? a.elevM ?? 0, reach2: reach * reach });
+        e0: r.ends[0].elevM ?? a.elevM ?? 0, e1: r.ends[1].elevM ?? a.elevM ?? 0, reach2: reach * reach,
+        rank: r.rank ?? 0, knots: (r.knots || []).map(([s, h]) => [s - halfLen, h]) });
     }
   }
   return out;

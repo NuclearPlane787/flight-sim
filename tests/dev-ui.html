@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flight Sim: screens dev page</title>
+<link rel="stylesheet" href="../style.css">   <!-- the fonts (v0.1.4) -->
 <link rel="stylesheet" href="../src/ui/ui.css">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #000; }
@@ -37,6 +38,8 @@ const devEl = document.getElementById('dev');
 
 const { airports, source: aSrc } = await loadAirportsOrMock();
 const { coast, source: cSrc } = await loadCoastOrMock();
+// The fonts, as main.js loads them before the screens first draw.
+if (document.fonts?.load) await Promise.all(['400 16px B612', '700 16px B612', '400 16px "B612 Mono"', '700 16px "B612 Mono"', '400 16px Barlow', '600 16px Barlow'].map((f) => document.fonts.load(f))).catch(() => {});
 const hud = createHud(document.getElementById('hud'), { airports, coast });
 const map = createMap(document.getElementById('map-root'), { airports, coast });
 const setup = createSetup(document.getElementById('setup-root'), { airports, coast });
