@@ -8,6 +8,7 @@
 //   const pb = createPushback(stand, { line: { x, y, hdgGrid } });  // line optional
 //   pb.toggle();                                      // on P
 //   const { x, y, hdgGrid, done } = pb.update(dt, { steer });  // steer −1 (Q) … 1 (E)
+//   pb.setState(pb.state);                            // a scenario load
 
 const SPEED = 1.5;      // m/s, pushback speed
 const ACCEL = 0.4;      // m/s², tug pull-away and stop
@@ -101,8 +102,18 @@ export function createPushback(stand, opts = {}) {
     return { x: s.x, y: s.y, hdgGrid: s.hdgGrid, done: s.phase === 'done', phase: s.phase, speed: s.v };
   }
 
+  // A scenario load (v0.2.0): the state as `state` gave it. The plan (finalHdg, straightM,
+  // radius) comes from the stand and the line as at creation; a save may carry it too, so a
+  // pushback planned under other data still ends where it would have.
+  function setState(o = {}) {
+    for (const k of ['phase', 'running', 'x', 'y', 'hdgGrid', 'v', 'pushedM']) if (o[k] !== undefined && o[k] !== null) s[k] = o[k];
+    if (Number.isFinite(o.finalHdg)) finalHdg = o.finalHdg;
+    if (Number.isFinite(o.straightM)) straightM = o.straightM;
+    if (Number.isFinite(o.radius)) radius = o.radius;
+  }
+
   return {
-    toggle, update,
+    toggle, update, setState,
     get state() { return { ...s, finalHdg, straightM, radius }; },
     get active() { return s.phase !== 'idle' && s.phase !== 'done'; },
   };

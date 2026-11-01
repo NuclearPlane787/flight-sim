@@ -155,6 +155,15 @@ export function createWorldUniforms(hf) {
     uSunColor: { value: new THREE.Color(1, 1, 1) },
     uSkyAmb: { value: new THREE.Color(0.3, 0.4, 0.5) },
     uPxScale: { value: 1000 },                 // pixels per radian (viewport height / fov)
+    // v0.2.0, night: 0 by day, 1 at full night (the sky sets it from the sun's elevation).
+    uNight: { value: 0 },
+    // The aircraft's landing and taxi lights, for the ground's own shaders (three's lights
+    // don't reach them): the lamps' position and beam direction (scene frame), and their
+    // strengths (0 off … 1 on). aircraftLights() below turns them into light on a surface.
+    uLandPos: { value: new THREE.Vector3() },
+    uLandDir: { value: new THREE.Vector3(0, 0, -1) },
+    uLandOn: { value: 0 },
+    uTaxiOn: { value: 0 },
   };
 }
 
@@ -178,6 +187,27 @@ uniform vec2 uOrigin;
 uniform vec3 uCamPos;
 uniform float uCamAlt, uCamAgl, uTime, uPxScale;
 uniform vec3 uSunDir, uSunColor, uSkyAmb;
+uniform float uNight;
+uniform vec3 uLandPos, uLandDir;
+uniform float uLandOn, uTaxiOn;
+`;
+
+// The aircraft's landing and taxi lights on a surface at scene position p with normal n: the
+// light to add (multiply by the albedo). Landing lights: a narrow beam (about ±10°) reaching
+// ~600 m; taxi light: a wide beam (about ±30°) reaching ~150 m. Needs UNIFORMS_GLSL.
+export const AIRCRAFT_LIGHTS_GLSL = /* glsl */ `
+vec3 aircraftLights(vec3 p, vec3 n) {
+  if (uLandOn + uTaxiOn < 0.001) return vec3(0.0);
+  vec3 d = p - uLandPos;
+  float r = length(d);
+  if (r > 900.0 || r < 0.5) return vec3(0.0);
+  vec3 l = d / r;
+  float cosA = dot(l, uLandDir);
+  float facing = max(dot(-l, n), 0.0);
+  float land = uLandOn * smoothstep(0.975, 0.995, cosA) * 2.2e5 / (r * r + 400.0);
+  float taxi = uTaxiOn * smoothstep(0.82, 0.93, cosA) * 2.5e4 / (r * r + 100.0);
+  return vec3(1.0, 0.95, 0.86) * min(land + taxi, 6.0) * facing;
+}
 `;
 
 // Hashes and value noise (deterministic: the same everywhere, every run).

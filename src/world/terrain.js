@@ -91,6 +91,7 @@ export function createTerrain(scene, uniforms, chunks) {
       ${chunks.ATMOS_GLSL}
       ${chunks.WATER_GLSL}
       ${chunks.FIELDS_GLSL}
+      ${chunks.AIRCRAFT_LIGHTS_GLSL || 'vec3 aircraftLights(vec3 p, vec3 n) { return vec3(0.0); }'}
       varying vec2 vMap;
       varying vec3 vRel;
       varying float vRawH, vPw, vZone;
@@ -189,6 +190,9 @@ export function createTerrain(scene, uniforms, chunks) {
 
         float ndl = max(dot(n, uSunDir), 0.0);
         vec3 light = uSunColor * ndl * 2.4 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1;
+        // The A321's landing and taxi lamps (glsl.js), a pool on the grass and fields; lost in
+        // daylight, so it fades in with the night.
+        light += aircraftLights(uCamPos + rel, n);   // main.js already scales the lamps by uNight
         vec3 col = alb * light;
 
         float wSea = 1.0 - smoothstep(-aa, aa, sea);

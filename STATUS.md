@@ -961,3 +961,273 @@ Asked while building, with no answer by the end: how he had tried to change the 
   - the starting prompt and `/goal`, with a deadline of 11:00 KST today, Sunday 1 November, which Shane can change.
 - **`AGENTS.md` and `HANDOFF.md`** point to it.
 - **Next:** Shane pushes v0.1.4, then starts the run from the GameDump folder.
+
+## 2026-11-01, 04:06 KST: night added to the v0.2.0 brief (Cowork session, the second agent)
+
+- **Shane:** "Should we add the adding the Satisfactory-like night thing to the list as well, with the city gaining point-source lights like looking out from a plane window, with runways appropriate lit up?" Of the menu and scenarios alone, he said: "I don't think that will take anywhere near 7 hours."
+- **His answers:**
+  - **the sky:** Earth's, in Satisfactory's look: real stars, the Milky Way and one Moon with its phases (not Satisfactory's gas giant, cracked planet and dwarf star);
+  - **the clock:** "Satisfactory has an adjustable clock that can be opened via Cmd+L. Maybe have an adjustable thing similar to that?"
+- **`V020.md`** now has two parts. Part 2 starts once Part 1 (the menu and scenarios) is done and verified, and the game stays pushable if it isn't finished. Part 2, in order:
+  1. a clock in KST with a date, running with the sim, and a Sky window like Satisfactory's (its sky view, a 24-hour track, play and pause, speed, jumps, the date). It opens on L and on Cmd/Ctrl+L;
+  2. Earth's night sky;
+  3. city lights from the urban cover;
+  4. the airports at night;
+  5. the A321's lights by phase of flight;
+  6. the cockpit at night.
+- **Decided here:**
+  - **Cmd/Ctrl+L** is the one exception to PLAN.md's no-Ctrl rule, which is about Ctrl+W closing the tab. If a browser keeps the shortcut, its address bar just takes the focus. L alone works too. The overnight agent notes the exception in PLAN.md.
+  - **A new flight starts at Now** (the real time in Korea, as in MSFS) unless another time is picked. A migrated Scenario 1 starts in the afternoon.
+  - **The done list:**
+    - sunrise, sunset and noon elevation in Seoul on 21 June and 21 December 2026, and the Moon full on 24 November and new on 9 November, all computed with PyEphem for the brief;
+    - night screenshots;
+    - 60 fps at night over Seoul, within the game's budget of about 1 M triangles and 300 draw calls.
+- **Removed from the brief:** the stretch, changing the route in flight. It stays as ROADMAP row 6.
+- **Updated:**
+  - the starting prompt and `/goal` for both parts (the deadline is still 11:00 KST);
+  - ROADMAP: row 10 and the open decisions;
+  - AGENTS.md (the files table and Next);
+  - HANDOFF.md: night as decision 4, the clock in the save, and the four defaults marked settled instead of "still to settle".
+
+## 2026-11-01, 04:10 KST: v0.2.0 run started (Claude Code, overnight)
+
+- **Read:** root `AGENTS.md`, `AGENTS.md`, `HANDOFF.md`, `V020.md`, the newest STATUS entries, `ROADMAP.md`. Deadline 11:00 KST; wrap-up from 10:30.
+- **Baseline:** `python3 tools/cpu-guard.py --minutes 10 -- bash -c 'node --test tests/*.test.mjs'`: 175 pass, 0 fail. Guard `--status`: no slots in use; `--sweep`: clean.
+- **Servers:** Shane's `http.server` on 8001 (pid 52374, not mine, left alone). Mine: `tests/cloud/serve.py` on 8014 (pid 42575, in `/tmp/flight-sim/pids`).
+
+## v0.2.0 interfaces (the contract between tonight's jobs)
+
+**Scenario store** (`src/scenarios.js`, job "store"):
+- `NAME_MIN = 3, NAME_MAX = 40`, `cleanName(s)`, `nameOk(s)` (as Satisfactory's).
+- `INDEX_KEY = 'gamedump:flight-sim:scenarios'` → `[{ id, name, created, savedAt, summary: { route, where }, legacy? }]`; `SCEN_PREFIX = 'gamedump:flight-sim:scenario:'` + id → `{ v: 1, id, name, savedAt, state }`.
+- `new ScenarioStore(storage)` (a Storage-like object: getItem/setItem/removeItem; a Map wrapper in tests):
+  - `list()` newest `savedAt` first; `get(id)` → the record or null; `newest()`;
+  - `create(name, state, summary)` → `{ ok, id, entry, error }`; `write(id, state, summary)` → `{ ok, error }` (refused write: `ok: false, error: 'quota'`, nothing in the index changes); `rename(id, name)` → `{ ok, error }`; `remove(id)` → bool;
+  - `defaultName()` → "Scenario N", the lowest N not taken;
+  - `migrate()`: no index yet and a `lastflight` → "Scenario 1" with `legacy: true` and `state = { v: 1, fresh: true, plan: lastflight, clock: afternoon }`; returns the entry or null. Never deletes or rewrites `lastflight`, `logbook`, `settings`.
+- `whereText({ onGround, altFt, distNm, destIcao, phase, icao, stand, crashed })` → "FL350, 120 nm to RKPC" / "4,500 ft, 30 nm to RKPC" / "Parked at RKPC stand 12" / "Taxiing at RKSS" / "On the runway at RKSS".
+- `savedText(ms, now)` → "just now", "5 min ago", "Sun 1 Nov 14:05".
+
+**A scenario's state** (`state`, built and applied by `main.js`): `{ v: 1, plan, sim: sim.snapshot(), gate: gate.serialize(), flight: { landed, arrivalStand, liftoffT, fuelAtStart, lever, crashed: false }, scorer: scorer.serialize(), camera: rig.serialize(), clock: clock.serialize() }`. Not saved: time compression, the rewind ring, the callouts' armed state.
+
+**Serializers** (job "state"):
+- `scorer.serialize()` → plain object (the runway ends by ident and airport icao, the touchdown, peak g, bounces, airborneSince, the track rounded); `scorer.load(obj, resolveEnd)` where `resolveEnd(icao, ident)` → `{ end, other }`.
+- `gate.serialize()` → `{ phase, icao, stand, depIdent, wasAirborne, pb: { phase, running, x, y, hdgGrid, v, pushedM } | null, route (points rounded to 0.01 m) | null }`; `gate.deserialize(obj, plan)`: called **before** `sim.restore()` (it may call `sim.reset()` via `start(plan)`); `gate.afterLoad()` called after `sim.restore()` (re-shows the route line).
+- `pushback.setState(s)` restores `{ phase, running, x, y, hdgGrid, v, pushedM }`.
+- `rig.serialize()` → `{ viewId, looks }`; `rig.load(obj)`.
+
+**Menu and pages** (`src/ui/menu.js`, `src/ui/menu.css`, job "menu"):
+- `createMenu(root, { version, backdrops, scenarios, onContinue(id), onNew(), onLoad(id), onLogbook(), onSettings(), onControls() })` → `{ show(), hide(), refresh(), isOpen }`. `scenarios` is the store (list/rename/remove). Load scenario is a page inside it (rename, delete with an in-panel confirm).
+- `createSettingsPage(root, { get(), onVolume(v), onCallouts(on), onPerf(on), onSky? })` and `createControlsPage(root)` → `{ open(), close(), isOpen, onclose }`, usable over the main menu and over the pause menu.
+- `setup.show(defaults, { title, name, nameField: true, cancel: true })` → plan with `name`, or `null` on Cancel.
+
+**Logbook** (`src/ui/logbook.js`, job "logbook"): entries gain `scenarioId`, `scenarioName`. `logbook.open({ scenarioId?, scenarios: [{ id, name }], legacyId })`: with `scenarioId`, that scenario's flights only; without, all with a filter select. Untagged entries count as `legacyId`'s (Scenario 1).
+
+**Clock and astronomy** (job "astro", Part 2 groundwork, not wired in until Part 1 is verified): `src/astro.js` (sun, Moon, sidereal time; pure), `src/clock.js` (`createClock({ ms?, running?, speed? })` → `{ ms, running, speed, step(dtSimS), set(ms), serialize(), load(o) }`, KST helpers).
+
+### Checkpoint 04:16 KST: jobs dispatched; the store done
+
+- **Five subagents** started at 04:13: store (`src/scenarios.js`), state (serializers in score/gate-flow/pushback/camera + round-trip tests), menu (`src/ui/menu.js`, `menu.css`, setup's name field), logbook (tagging and filter), astro (`src/astro.js`, `src/clock.js`, stars; Part 2 groundwork, kept out of the game until Part 1 is verified).
+- **Store: done.** `node --test tests/scenarios.test.mjs` 16/16 (also with TZ=America/New_York); whole suite through the guard 191/191. Refused writes leave the index and the old record as they were; migration runs once (the index key then exists) and never writes `lastflight`, `logbook` or `settings`.
+- **main.js (mine), written against the interfaces, not yet run:** boots into the main menu (no render loop behind it), `captureState()`/`applyState()`, `saveNow()` (timed, never a crashed state) on autosave every 60 s in the frame loop, on pause, on hide, on `pagehide`, on Exit to menu and on Save; New scenario / Load / Continue; New flight inside a scenario (from an arrival stand when parked); log entries tagged with the scenario; the pause menu's new buttons; Settings and Controls pages. `index.html`: the new pause menu, Exit to menu on the crash panel, `#menu-root`, `#pages-root`.
+
+### Checkpoint 04:38 KST: Part 1 integrated and verified in Chrome
+
+- **The jobs' reports** (all done by 04:30):
+  - **state:** `scorer.serialize(identify)`/`load(o, resolve)` with `runwayEndRefs(airports)` (score.js), `gate.serialize/deserialize/afterLoad` (gate-flow.js), `pb.setState` (pushback.js), `rig.serialize/load` (camera.js). `tests/scenario-state.test.mjs` 9/9: an AP flight mid-turn and mid-climb through JSON into a fresh sim, both flown 120 s: identical snapshots (deepEqual, within 1e-6); a take-off roll saved and flown through lift-off: identical; on final at Jeju 07 both scorers give 93 (A) with the approach parts; a pushback saved after 25 s ends 77 s later at the same pose (<1e-6 m) with identical taxi routes (save 4.4 KB); held pushback, taxi, taxi-in and arrived at RKPC all come back. **The sim needed no change: it is deterministic across JSON.**
+  - **menu:** `src/ui/menu.js` (main menu, Load, Settings, Controls), `menu.css`, setup's Name field and Cancel; `tests/browser-menu.mjs` 72 checks ok on `tests/dev-menu.html`, screenshots `v020-menu-dev-*.png`.
+  - **logbook:** scenario tags, the filter, "Clear these flights"; `tests/logbook.test.mjs` 11/11; `tests/browser-logbook-filter.mjs` 26 checks ok; `v020-logbook-dev-*.png`.
+  - **astro:** `src/astro.js`, `src/clock.js`, `data/stars.json` (BSC5, 8,404 stars, 188 KB); 20 tests. Not wired in yet.
+- **The stills:** `tests/render-stills.mjs` on the Mac's GPU (Chrome, 1600×1000, JPEG q80): `assets/menu/gimpo-gate.jpg` (114 KB), `jeju-final.jpg` (130 KB), `seoul.jpg` (229 KB). Looked at: the A321 at Gimpo stand 3 with parked traffic and the city behind; on final to Jeju over the coast; over Seoul by the Han.
+- **Fix found by looking:** the logbook opened from the main menu sat under it (z-index 40 against 50); `#logbook-root .fslb` now 70 (style.css).
+- **The Chrome check** (`python3 tools/cpu-guard.py --minutes 15 -- node tests/browser-scenarios.mjs`, Chrome on the GPU, a fresh Playwright context): **23/23 pass**:
+  1. menu with a still (`assets/menu/*.jpg`), **0 frames rendered in 3 s** behind it (the renderer's frame counter stays at 1), no console errors;
+  2. "Test A" from RKSS 14R: take-off, AP climb, Exit to menu saved it (**0.30 ms** for the save);
+  3. "Test B" at Jeju stand 12: pushback 6.2 m in when saved;
+  4. Load "Test A": **Δt 0.0000 s, position 0 m off**, AP HDG 200 ALT 10000, fuel 3801.08 → 3801.08; flew on 3 s; skip to final, saved at 1,800 ft and loaded again: the approach track 622 → 622 samples; landed **B 88** with Approach path and Sink rate swings among the parts; the logbook entry tagged `Test A`;
+  5. Load "Test B": pushback 6.23 → 6.23 m, then on to 12.2 m;
+  6. Continue = Test B (newest); rename to "Test B renamed" and delete Test A (asked first); a reload keeps both; Continue loads Test B renamed; the main menu's logbook offers "Test A (deleted) (1)";
+  7. only v0.1.4's keys (lastflight RKSS 32L → RKSI 33L, two log entries, settings): "Scenario 1" appears, the logbook key is byte-identical, its flights show as "Scenario 1 (2)", and Continue starts it on RKSS 32L.
+- **Screenshots looked at:** `v020-main-menu.png`, `v020-main-menu-empty.png`, `v020-load.png`, `v020-load-rename.png`, `v020-load-delete-confirm.png`, `v020-settings.png` (over the pause menu), `v020-controls.png`, `v020-pause-menu.png`, `v020-logbook-filtered.png`, `v020-test-a-landed.png`.
+- **Unit tests:** `python3 tools/cpu-guard.py --minutes 10 -- bash -c 'node --test tests/*.test.mjs'`: **224 pass, 0 fail**. `node --check` on every `.js`/`.mjs` in src, tests, tools: clean. Guard `--status`: no slots in use; `--sweep`: clean.
+- **Version:** `src/version.js` is v0.2.0 · CL#261101.
+- **Part 1 is done and verified**, apart from the reviewer, which runs now alongside Part 2.
+
+### Decisions made overnight (v0.2.0)
+
+- **Part 2's pure groundwork ran beside Part 1.** The astro job wrote only new files (`src/astro.js`, `src/clock.js`, stars), and nothing of it reached the game until Part 1 was verified at 04:38. That keeps V020.md's order for the game itself while using the time.
+- **A loaded scenario resumes at once** (as Satisfactory's Load does), not paused.
+- **The scorer's approach track is saved as arrays** `[t, x, y, z, vs, gs]`, at 0.01 m: a full 5-minute track is about 70 KB, under 2% of the origin's ~5 MB.
+- **Test starts (`?test&origin=…`) are not scenarios:** no autosave, Save says so. The old browser checks keep working.
+- **The pause menu's volume, callouts and readout moved to Settings**, and its keys table to Controls (V020 item 5 lists the pause menu's buttons without them). The volume blip now plays 250 ms after the slider stops.
+- **Duplicate scenario names are allowed** (as in Satisfactory); a name under 3 characters is refused.
+- **The migrated Scenario 1** keeps its flights even if deleted (the logbook shows "Scenario 1 (deleted)"), and the migration never runs twice.
+
+## v0.2.0 Part 2 interfaces (night), 04:45 KST
+
+Shared, written by the lead (in `src/world/glsl.js`, read-only for the jobs):
+- **`uNight`** (float): 0 by day, 1 at full night. The sky job sets it from the sun's elevation; every night light fades in with it.
+- **`uLandPos`, `uLandDir`** (vec3, scene frame), **`uLandOn`, `uTaxiOn`** (0..1): the aircraft's landing and taxi lamps. The lead sets them each frame from the aircraft. **`AIRCRAFT_LIGHTS_GLSL`** (`chunks.AIRCRAFT_LIGHTS_GLSL`): `vec3 aircraftLights(vec3 scenePos, vec3 normal)`, the light to add (× albedo) on ground surfaces.
+- Scene frame: X east, Y up, Z south (−map y); the camera is the scene origin horizontally. `uSunColor`, `uSkyAmb`, `uSunDir` already light every world shader, so darkening comes through them.
+
+Jobs:
+- **sky** (`src/world/sky.js`, plus `tests/sky.test.mjs`): `sky.setTime(ms, latDeg, lonDeg)` (cheap; the lead calls it every frame) uses `src/astro.js` and sets `uSunDir`, `uSunColor`, `uSkyAmb`, `uNight`, the DirectionalLight, HemisphereLight and fog, and the sky's own stars, Milky Way, Moon and twilight; `sky.state` → `{ sunAltDeg, sunAzDeg, moonAltDeg, moonAzDeg, moonIllum, night, exposure }`; pure `lightingAt(sunAltDeg, moonAltDeg, moonIllum)` for the tests. With the sun at 230°/35° the day looks as v0.1.4.
+- **skywin** (`src/ui/sky-window.js`, `src/ui/sky-window.css`, setup.js's start time): `createSkyWindow(root, { clock, place: () => ({ lat, lon }) })` → `{ open(), close(), toggle(), isOpen, update() }`; setup returns `plan.time = { mode: 'now' | 'set', ms }`.
+- **citylights** (new `src/world/citylights.js`, `src/world/cities.js` for lit windows): `createCityLights(scene, uniforms, chunks, { heightfield, airports })` → `{ update({ camMap, origin, camScene, agl }) → { drawCalls, tris, lights } }`.
+- **airportlights** (`src/world/airports.js` light shaders, new `src/world/taxilights.js`, `src/world/apron.js` floods and terminal windows, `tests/taxilights.test.mjs`): `createTaxiLights(scene, uniforms, chunks, airports, hf)` → `{ update({ camMap, origin, camScene }) → { drawCalls, tris, lights } }`; pure `taxiLightLayout(airport)` → `[{ x, y, z?, color: 'green'|'blue'|'red'|'amber', kind: 'centre'|'edge'|'stopbar' }]`. The runway and apron shaders also add `aircraftLights()`.
+- **aclights** (`src/aircraft.js`, new `src/aircraft-lights.js`, `src/cockpit.js`, `src/world/terrain.js` for the light pools, `tests/aircraft-lights.test.mjs`): pure `lightsFor(...)` by phase → `{ nav, beacon, strobe, landing, taxi, logo }`; `aircraft.setLights(lights)`, `aircraft.setNight(n)`, `aircraft.lampPose()` (landing lamp position and beam, body frame) for the lead's uniforms; `cockpit.setNight(n)`; terrain adds `aircraftLights()`.
+- **The lead:** `main.js` (the clock from `src/clock.js`, `sky.setTime`, L and Cmd/Ctrl+L, setup's time, the lamp uniforms), `world.js` (creating the city and taxi lights), `input.js`, `index.html`, `style.css`.
+
+### Checkpoint 04:53 KST: Part 2 under way; the Sky window and the city lights in
+
+- **Lead wiring (main.js, world.js, glsl.js, index.html):** `uNight`, `uLandPos/uLandDir/uLandOn/uTaxiOn` and `AIRCRAFT_LIGHTS_GLSL` in glsl.js; the clock is `createClock()` (src/clock.js), set at each new flight from `plan.time` (Now by default), stepped by the sim time stepped (`clock.step(done * STEP)`), saved and loaded with the scenario; `world.sky.setTime(clock.ms, lat, lon)` each rendered frame with the exposure; L and Cmd/Ctrl+L (a capture keydown that ignores text fields and the menu) toggle the Sky window; "Time of day (L)" in the pause menu and Settings; the city and taxi lights created in world.js (dynamic imports, optional); the aircraft lights from `lightsFor()` each frame with the lamp uniforms. Every Part 2 piece is optional, so a missing one leaves the game working.
+- **skywin: done.** `src/ui/sky-window.js`/`.css`, setup's Time (Now / Set, KST). `tests/sky-window.test.mjs` 8/8; `tests/browser-sky-window.mjs` all ok (track click and drag, the jumps on 21 Dec 2026: sunset 17:17, sunrise 07:42, noon 12:29; play/pause, ±; W/A/S/D/R/F/Space still reach the game; Esc closes it first). Looked at: `v020-night-skywin-game.png` (bottom-left over the real HUD at 17:40 dusk, clear of the PFD and engine panel), `-day`, `-night`, `-dusk`, `-720`, `-setup-time`.
+- **citylights: done.** `src/world/citylights.js` (5 instanced Points draws, ~690k slots placed on the GPU from the urban cover, off water and runways, ≥2 px, sodium/LED by district, whiter cores, a slight twinkle) and lit windows in `cities.js`. `tests/citylights.test.mjs` 4/4. At night over Seoul at 3,000 ft: 38 draws, 748k triangles, 59.7 fps (capped), p95 10.6 ms. Looked at: `v020-night-city-3000ft.png` (dense grids, the Han dark, warm windows, stars and the Milky Way above), `-fl100`, `-windows`, `-day` (unchanged).
+- **Found:** `traffic.js` declares `uPxScale` twice (a compile error in the game since the aclights job's edit); sent back to that job.
+- **Reviewer for Part 1** started at 04:52. Sweep: only pid 52229, macOS's Virtualization VM (521 CPU-min, older than this run, probably the Cowork VM): not mine, left alone. Running: sky, airportlights, aclights.
+
+### Checkpoint 05:00 KST: all of Part 2 in; the night checks
+
+- **sky: done.** `src/world/sky.js`: `setTime` (astronomy rerun when the clock moves 250 ms or the place 0.01°; **0.70 µs per frame at 1×** in Chrome, 3.6 µs at 600×), `lightingAt()` tables by sun altitude (uNight = 1 − smoothstep(−10°, 4°)), twilight (glow, the Earth's shadow, the Belt of Venus), the Moon by phase with a glow, the Milky Way with the rift, 8,404 BSC5 stars in one Points draw turned by `j2000ToEnuMatrix`. Exposure 1 + 0.45 × night. `tests/sky.test.mjs` 7/7 (35° gives v0.1.4's colours exactly; monotonic darkening +10° → −18°; the moonless ambient 2–5% of the day's; a full Moon high is brighter than none; Betelgeuse and Dubhe within 1e-6 rad of astro.js). Its `v020-night-sky-*.png` looked at (Orion rising in the east at 23:00 KST on 9 Nov, the summer Milky Way setting in the west, the Moon by the Pleiades on 24 Nov, dusk, dawn, 14:00 as v0.1.4).
+- **aclights: done.** `src/aircraft-lights.js` (`lightsFor` by phase, flashing), 11 lamps on the A321 with glows in one Points draw, the logo light, a faint night fill; the cockpit's warm flood and its screens lit; terrain pools; the parked aircraft's nav lights (`traffic.js`, and its duplicate `uPxScale` declaration fixed). `tests/aircraft-lights.test.mjs` 12/12. **Its two findings fixed in main.js:** `onRunway` now uses `rw.onRunway()` (`groundKind()` says 'runway' for any pavement, which lit the landing lights at the gate), and the lamp pools are scaled by `uNight` (they showed by day on the runway). Looked at: `v020-night-aircraft-runway.png` (red left, green right, landing pool), `-air`, `-gate`, `-cockpit`, `-landing-pool`, `-day-runway`.
+- **airportlights: done.** Night halos and minimum sizes in `airports.js`'s light shader (by day unchanged), the rabbit's glow, centreline lights only where the data has them, the rabbit at Gimpo 32L's ALSF-I; `src/world/taxilights.js` (green centrelines every 30/15 m, blue edges, red stop bars at the painted holds plus each departure hold; Incheon 11,176 lights, Gimpo 2,588, Jeju 1,141; one draw per airport within 30 km, at night only); apron floodlight pools from a baked light texture and lit terminal windows (`apron.js`). `tests/taxilights.test.mjs` 7/7. Looked at: `v020-night-airport-jeju07-2nm-zoom.png` (far-end red, yellow edges, red centreline end, touchdown zone, green threshold, the approach lights with their crossbars and the rabbit, the PAPI two white two red, stop bars), `-jeju07-15nm-zoom`, `-gimpo14R-4nm`, `-incheon-taxi` (green centrelines, a red stop bar ahead, blue edges), `-incheon-apron`, and the day ones unchanged.
+- **Fixed:** `newId()` in `src/scenarios.js` had 4 random base-36 characters: 500 ids in one millisecond collided ~7% of the time (the store test failed now and then). Now 6.
+- **The night checks** (`python3 tools/cpu-guard.py --minutes 15 -- node tests/browser-night.mjs`, Chrome on the GPU, the clock set and stopped): **3/3 pass**:
+  - **60 fps at night over Seoul at 3,000 ft** (captain's seat, AP, 23:00 KST on a new Moon, 10 one-second samples after 5 s): **avg 60.0, min 59.9 fps**; **max 45 draw calls, 0.75 M triangles** (the readout: "60 fps · 0.5 ms/frame (sim 0.0, draw 0.3) · 45 draws · 747k tris · … 1440×900"); 675,468 city light slots;
+  - no console errors.
+  - Screenshots looked at: `v020-night-seoul-fl100.png` (Seoul a sea of points from the captain's seat, the Han dark, stars), `v020-night-seoul-3000ft.png`, `v020-night-final-gimpo-14r.png` (full Moon), `v020-night-final-jeju-07-far.png`, `v020-night-a321-outside.png`, `v020-night-dusk.png` (sun −3.2°: violet sky, the city coming on, the A321's nav lights), `v020-night-dawn.png` (−3.7°), `v020-night-sky-up.png` (August 22:00: the Milky Way overhead), `v020-night-sky-moon.png`, `v020-night-sky-window.png`, `v020-night-fps-seoul-3000ft.png`. My own close-final-Jeju and Incheon-taxi shots were poor (my setup put the aircraft on a runway), so I deleted them; the airport job's are the evidence for those two.
+- **A night still for the menu:** `assets/menu/seoul-night.jpg` (252 KB; 23:00 KST, the A321 over lit Seoul), now one of four in `MENU_STILLS`. The day stills are re-rendered at a fixed 15:00 KST (the clock now runs, so "Now" would have put them at 05:00).
+- **Unit tests:** 262 pass, 0 fail (through the guard).
+- **Docs written:** README (the menu, scenarios, night, the Sky window's keys, storage keys, the star credit, the new test scripts), Updates.md (v0.2.0), ROADMAP (both rows done), PLAN.md (the Cmd/Ctrl+L exception).
+- **Reviewers:** Part 1's still running; Part 2's started.
+
+### Checkpoint 05:29 KST: both reviews in, every correctness finding fixed and checked
+
+- **Part 1 reviewer** (262/262 unit tests; its own Chrome probe): no blocking bug. Fixed:
+  1. *(medium)* a crash, then New flight → Cancel, left a frozen flight with no crash panel: the `setup` button no longer clears `crashed`, and Cancel after a crash shows the crash panel again; Save after a crash says "Crashed: the last good save is kept".
+  2. *(low–medium)* a landing could be scored and logged twice if the game crashed or the tab died before the next autosave: `saveNow('landed')` right after the logbook entry.
+  3. *(low)* a fresh scenario record carried the clock from before `startFlight`: the record has no clock now, and a fresh load takes the stored clock only for the migrated Scenario 1 (no `plan.time`).
+  4. *(low)* flights flown without a scenario (storage off, a refused create, test starts) counted as Scenario 1's: they're tagged `unsaved` / "Unsaved flights" (not shown as deleted).
+  5. *(low)* storage-off messages: "Browser storage is off: flying without saving".
+  6. *(low)* the stand: the origin stand stays reserved after a load until the flight lands (as in live play), and `gate.stand.ref` is used for the summary.
+  - Not changed: an autosave just before a crash (item 7, a design note); a rewind after a scored landing can score again (v0.1.x behaviour).
+- **Part 2 reviewer** (262/262; 18 programs compiled at all three airports by day and at night; draw calls by day back to the day count: RKSS 38 → 47 → 38, RKSI 41 → 50, RKPC 33 → 41; exposure 1.0/1.45; 0 frames behind the menu). Fixed:
+  1. *(medium)* the Sky window's changes while paused didn't reach the 3D view: `skyWin.onchange` (from set, play, ±) renders once when paused.
+  2. *(medium)* a Sky window left open behind the main menu swallowed the menu's Esc: `showMenu()` and `newFlight()` close it, and its Esc handler ignores `body.in-menu`.
+  3. *(low)* the fresh record's clock (same as Part 1's 3).
+  4. *(low)* the lamp pools were faded by uNight twice on the terrain: dropped in `terrain.js`.
+  5. *(low)* Restart the flight now keeps the clock (`startFlight(plan, { keepClock: true })`), and a rewind takes the clock back (each rewind snapshot holds `clockMs`).
+  6. *(low)* the pause menu's and Settings' "Time of day" buttons open the window instead of toggling it.
+- **Found while fixing:** an edit of mine broke an `if … else` in main.js, and `node --check src/main.js` didn't catch it (a .js file is checked as a script); a page-error probe did. **Every .js/.mjs in src and tests is now checked as a module** (copied to .mjs): clean.
+- **Checks after the fixes (Chrome on the GPU, through the guard):**
+  - `tests/browser-review-fixes.mjs` (new): **7/7**: Restart keeps the clock; Noon in the Sky window while paused takes uNight 1.00 → 0.00 in one frame; the window closes on Exit to menu and one Esc leaves Load; crash → New flight → Cancel shows the crash panel; a rewind takes the clock back (weak: the clock was stopped, so 0 s); a landing is saved at once (`reason: 'landed'`, 0.5 ms); no console errors.
+  - `tests/browser-scenarios.mjs`: **23/23** again (a save 0.20 ms; Test A loads with 0 m position error).
+  - `tests/browser-night.mjs fps`: **3/3**: 59.9 avg, 59.5 min fps; 45 draws, 0.75 M triangles.
+  - `tests/browser-e2e.mjs` (v0.1's Gimpo → Jeju flight, `E2E_URL` on 8014): **12/12**, B 88, taxi-in to stand 15, callouts incl. RETARD, no console errors.
+  - `tests/browser-cpu.mjs`: **6/6**: paused 0 rAF/s and 0% main-thread CPU, hidden tab the same, prediction 43 ms CPU.
+  - Unit tests: **262/262**.
+
+## Final entry: 05:31 KST, Sunday 1 November 2026 (the v0.2.0 run)
+
+**v0.2.0 is done and verified, both parts,** against V020.md's definition of done, by 05:30 (the deadline was 11:00). The game is pushable: `sh tools/push.sh v0.2.0`, then a hard reload (Cmd+Shift+R).
+
+### Done, with the evidence (details in the checkpoints above)
+
+**Part 1, the main menu and scenarios:**
+- [x] **Unit tests:** 262 pass, 0 fail (`python3 tools/cpu-guard.py --minutes 10 -- bash -c 'node --test tests/*.test.mjs'`), including:
+  - the store (`tests/scenarios.test.mjs`: create, write, list, rename, delete, a refused write, the migration from v0.1.4's `lastflight` and logbook, the logbook byte-identical);
+  - the round trip (`tests/scenario-state.test.mjs`: an AP flight through JSON into a fresh sim, both flown 120 s, within 1e-6 m and identical snapshots);
+  - on final (the approach track survives; both score 93 with the approach parts);
+  - at the gate (a pushback saved mid-way ends at the same pose within 1e-6 m).
+- [x] **In Chrome on the GPU** (`tests/browser-scenarios.mjs`, a fresh Playwright profile, never Shane's): 23/23, all seven scripted steps. The menu with a still and 0 frames rendered behind it; Test A from RKSS 14R loaded 0 m off, landed B 88 with the approach parts and tagged "Test A"; Test B's pushback carries on; Continue, rename, delete and reload; Scenario 1 from v0.1.4's keys.
+- [x] **Screenshots looked at:** `v020-main-menu`, `-load`, `-load-rename`, `-load-delete-confirm`, `-settings`, `-controls`, `-pause-menu`, `-logbook-filtered`, `-test-a-landed`, plus the jobs' `v020-menu-dev-*` and `v020-logbook-dev-*`.
+
+**Part 2, night:**
+- [x] **Unit tests:**
+  - the sun in Seoul: 21 Jun 05:10:59 / 19:56 / 75.87°; 21 Dec 07:42:57 / 17:17 / 29.00° (all within 2 min and 0.3° of PyEphem);
+  - the Moon: 0.998 lit at the full Moon of 24 Nov 23:53 KST, 0.002 at the new Moon of 9 Nov 16:02;
+  - the clock: stop, set, speed, time compression, save and restore;
+  - the taxiway lights: colours, and stop bars at every runway's holds at the three airports;
+  - the sky's light: 35° gives v0.1.4's colours exactly, and the night is never black.
+- [x] **Screenshots on the GPU, looked at:**
+  - `v020-night-seoul-fl100`, `-seoul-3000ft`;
+  - `-final-gimpo-14r`;
+  - Jeju 07 at night: `v020-night-airport-jeju07-2nm-zoom` (approach lights, the rabbit, the PAPI), `-jeju07-8nm`, `-jeju07-15nm-zoom`, `v020-night-final-jeju-07-far`;
+  - taxiing at Incheon: `v020-night-airport-incheon-taxi`, `-incheon-apron`;
+  - the A321 outside: `v020-night-a321-outside`, `v020-night-aircraft-*`;
+  - `v020-night-dusk`, `-dawn` (and the sky job's `v020-night-sky-dusk-*`, `-dawn-east`);
+  - the sky looking up: `v020-night-sky-up`, `-sky-moon`, `v020-night-sky-newmoon-*`;
+  - the Sky window: `v020-night-sky-window`, `v020-night-skywin-*`.
+- [x] **Frame rate** (`tests/browser-night.mjs fps`): 60 fps at night over Seoul at 3,000 ft (avg 59.9–60.0, min 59.5–59.9 over two runs), at most 45 draw calls and 0.75 M triangles.
+
+**Both:**
+- [x] **CPU at runtime:**
+  - 0 frames behind the menu;
+  - an autosave takes 0.20–0.5 ms (measured in the game);
+  - `tests/browser-cpu.mjs` 6/6 (paused or hidden: 0 rAF/s, 0% main-thread CPU);
+  - setTime 0.7 µs per frame;
+  - the Sky window redraws only on a new minute.
+- [x] **Reviewers:** one for Part 1, one for Part 2. Every correctness finding is fixed, and `tests/browser-review-fixes.mjs` checks them (7/7). See the 05:29 checkpoint.
+- [x] **Regression:** v0.1's `tests/browser-e2e.mjs` 12/12 (Gimpo → Jeju, B 88, taxi-in, callouts).
+- [x] **Nothing left running:**
+  - my no-cache server on 8014 (pid 42575) is stopped;
+  - guard `--status`: no slots in use; `--sweep`: clean.
+  - Not mine, left alone: Shane's `http.server` on 8001; macOS's Virtualization VM; and, at 05:30, a Playwright Chrome (pid 944) started by another game's agent (`/tmp/anemoia/ride2/bench.mjs`).
+- [x] **Written:**
+  - `src/version.js` v0.2.0 · CL#261101;
+  - `Updates.md`, `ROADMAP.md` (both rows done), `README.md` (menu, scenarios, night, keys, storage, star credit, test scripts);
+  - `PLAN.md` (the Cmd/Ctrl+L exception), `HANDOFF.md`, `AGENTS.md` (State, storage keys).
+
+### Not done, or weak
+
+- **Not done:** nobody has listened to the sound (as before). No agent has flown a whole evening from the menu with the clock running through dusk: the checks set the clock and stop it.
+- **Weak, by the jobs' own judgement and mine:**
+  - the cockpit at night is plain (no panel backlighting);
+  - terminal windows look a little like a checkerboard close up;
+  - distant taxiway lights merge green and blue into cyan;
+  - stop bars are always lit;
+  - a moonless night away from the cities is very dark from cruise;
+  - the Moon is drawn 2.4× its size;
+  - city streets don't line up with the terrain's road texture, and there are no lights on bridges;
+  - an autosave can catch a moment just before a crash, though never the crash itself;
+  - the rewind-clock check ran with the clock stopped, so it shows nothing.
+- `tests/browser-boot.mjs` (v0.1) expects the setup screen on load and fails now by design; `browser-scenarios.mjs` replaces it.
+
+### Decisions made overnight
+
+These are in addition to the list under "Decisions made overnight (v0.2.0)" in the 04:38 checkpoint.
+
+- **New flights start at the real time in Korea** (Now), as the brief says. So Shane's first flight after the push shows the real time of day. The menu's stills are fixed at 15:00 KST, plus one at night.
+- **Restart the flight keeps the clock** (a night the player set stays night), and a rewind takes the clock back with the aircraft. New flight takes the setup's time (Now by default).
+- **The Sky window opens from the pause menu by resuming the flight**, since V020 says the flight goes on beside it.
+- **The light, city, taxi and aircraft lights are all optional modules:** a missing or failing one leaves the game running by day.
+- **Flights flown without a scenario** (storage off, test starts) are logged as "Unsaved flights", not as Scenario 1's.
+- **Star data:** BSC5 from NASA HEASARC, judged public domain (`data/STARS-CREDIT.md`); 8,404 stars to V 6.5, 188 KB.
+
+### How Shane can check it
+
+1. `sh tools/push.sh v0.2.0` (or play first), then open `http://localhost:8001/games/flight-sim/` with a hard reload (Cmd+Shift+R): the main menu.
+2. Continue loads "Scenario 1", made from his last v0.1.4 flight. It starts at its route's start in the afternoon, and his logbook is under it (Logbook → the filter).
+3. New scenario: a name and the setup (Time: Now or Set). Fly, Esc → Exit to menu, then Load: it's exactly where it was.
+4. In flight, L (or Cmd+L) for the Sky window. Sunset, then Midnight, shows the night: the city lights, the stars and the airport lights.
+
+**Row for GameDump's root `AGENTS.md` "Current games" table** (his file; not edited):
+`| flight-sim | games/flight-sim/ | gamedump:flight-sim:settings, …:logbook, …:lastflight, …:scenarios, …:scenario:<id> | Claude outputs/flight-sim/ | claude/flight-sim-prototype.md |`
+
+### Addendum 05:33 KST: the night screenshots retaken on the final build
+
+Several night shots predated the last fixes: Gimpo 14R had been taken before the airport lights landed. So all of them were retaken on the final build, through the guard, with the no-cache server on 8014 (pid in `/tmp/flight-sim/pids`, stopped afterwards).
+
+- **`tests/browser-night.mjs`** (all shots and fps): **3/3**. 59.9 avg / 59.5 min fps at night over Seoul at 3,000 ft; max 45 draws, 0.75 M triangles; no console errors.
+- **`tests/dev-airportlights.mjs`**: all 12 shots retaken.
+  - Night calls 23–54 and triangles 0.27–0.92 M.
+  - Taxi lights at night only near their airport: Incheon 11,176, Gimpo 2,588, Jeju 1,141.
+  - By day the taxi lights are off and exposure is 1.00.
+- **Looked at again:**
+  - `v020-night-final-gimpo-14r.png` and `v020-night-airport-gimpo14R-4nm.png` (4 nm out, full Moon): 14R's runway and approach lights bright ahead in the sea of Seoul's lights, lit apartment blocks below, stars above;
+  - `v020-night-sky-window.png`: the window at 21:30 KST on 24 Nov, "Full moon · 100%", NIGHT, sunrise 07:21 and sunset 17:17, on the runway at night with its edge and centreline lights;
+  - `v020-night-dawn.png` (sun −3.7°): a violet-blue dawn sky over lit Seoul, the A321's nav lights, landing lights and logo light;
+  - `v020-night-sky-up.png`: stars and the Milky Way overhead;
+  - `v020-night-airport-incheon-taxi.png`: green centrelines, blue edges, a red stop bar ahead, lit terminals;
+  - the rest re-rendered with no visible change.
+- **Guard:** `--status` shows no slots in use; `--sweep` is clean.

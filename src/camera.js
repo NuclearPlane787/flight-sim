@@ -94,10 +94,31 @@ export function createCameraRig(dom) {
     return out;
   }
 
+  // A scenario save (v0.2.0): the view and each view's look (yaw, pitch, fov, orbit dist).
+  function serialize() {
+    return { viewId: VIEWS[index].id, looks: JSON.parse(JSON.stringify(looks)) };
+  }
+  // Back from serialize(). Unknown view ids and non-numbers are ignored; missing fields keep
+  // their defaults.
+  function load(o) {
+    if (!o) return;
+    for (const id of Object.keys(DEFAULTS)) {
+      const src = o.looks?.[id];
+      if (!src) continue;
+      const look = { ...DEFAULTS[id] };
+      for (const k of Object.keys(DEFAULTS[id])) if (Number.isFinite(src[k])) look[k] = src[k];
+      looks[id] = look;
+    }
+    const i = VIEWS.findIndex((w) => w.id === o.viewId);
+    if (i >= 0) index = i;
+  }
+
   return {
     camera,
     update,
     recentre,
+    serialize,
+    load,
     get view() { return VIEWS[index]; },
     set viewId(id) { index = Math.max(0, VIEWS.findIndex((w) => w.id === id)); },
     next() { index = (index + 1) % VIEWS.length; return VIEWS[index]; },

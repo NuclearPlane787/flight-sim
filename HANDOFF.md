@@ -1,6 +1,6 @@
 # Flight Sim: handoff
 
-Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, and updated on 2026-11-01 by the second Cowork session, which made v0.1.4. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
+Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, updated on 2026-11-01 by the second Cowork session, which made v0.1.4, and again on 2026-11-01 (about 05:30 KST) by the overnight Claude Code run that made v0.2.0. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
 
 ## Where things stand
 
@@ -10,56 +10,40 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | v0.1.1 | Incheon's flickering taxiways, new cockpit windows, a fairer landing score | yes (`a4df7a4`) |
 | v0.1.2 | A lower windshield, the engines under the wing, gentle touchdowns on grass | yes (`7d6edc4`) |
 | v0.1.3 | A stricter landing score that counts the approach, a master volume slider, a performance readout bar, Jeju 31's glideslope fix | yes (`7bd1a6c`, 23:01 KST) |
-| v0.1.4 | Typing into the FCU, jumps picked anywhere on the bright path, Gimpo stand 7's routes, pushbacks at up to 4×, Jeju's crossing as one surface, the B612 and Barlow fonts | not yet (2026-11-01) |
+| v0.1.4 | Typing into the FCU, jumps picked anywhere on the bright path, Gimpo stand 7's routes, pushbacks at up to 4×, Jeju's crossing as one surface, the B612 and Barlow fonts | yes (`f4482a4`) |
+| v0.2.0 | The main menu, scenarios (save slots with the whole state), one logbook tagged by scenario, Settings and Controls; night: the KST clock and the Sky window, Earth's sky with real stars and the Moon, the light following the sun, city, airport, taxiway and aircraft lights | not yet (built 2026-11-01, 04:10–05:30 KST) |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
-- **Not in any commit yet:** v0.1.4, with this file, `tests/cloud/` and the docs written after v0.1.3. Shane pushes them together: `sh tools/push.sh v0.1.4`.
-- **Passing at hand-off:**
-  - 175 unit tests (`node --test tests/*.test.mjs`, about 3 s in the Mac's Linux VM);
-  - `node --check` on all 102 `.js` and `.mjs` files.
+- **Not in any commit yet:** v0.2.0. Shane pushes it: `sh tools/push.sh v0.2.0`, then a hard reload (Cmd+Shift+R) in Chrome.
+- **Passing at hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers):
+  - 262 unit tests in 34 files (`node --test tests/*.test.mjs`);
+  - every `.js`/`.mjs` in `src/` and `tests/` checked **as a module** (copy to `.mjs`, then `node --check`; a plain `node --check file.js` checks it as a script and missed a broken `if … else` once);
+  - `tests/browser-scenarios.mjs` 23/23, `browser-night.mjs` 3/3 (60 fps at night over Seoul, 45 draws, 0.75 M triangles), `browser-review-fixes.mjs` 7/7, `browser-e2e.mjs` 12/12, `browser-cpu.mjs` 6/6.
 - **No agent has yet:**
-  - flown v0.1.2, v0.1.3 or v0.1.4 in Chrome on the Mac's GPU (their visual checks were all in the cloud container, with SwiftShader);
-  - listened to the synth, or to the volume slider's preview.
+  - listened to the synth, or to the volume slider's preview;
+  - played v0.2.0 the way Shane will: a whole evening flight from the menu with the clock running through dusk (the checks set the clock and stop it).
 
-## Next: v0.2.0, a main menu and scenarios
+## v0.2.0: what it is, and what's next
 
-**Shane's request (2026-10-31):** "I do also want to add a menu screen like Satisfactory, and since I probably don't want to have everything in just one scenario, so let the current scenario be 'Scenario 1', and you can create more and choose where to begin and where to land."
+`V020.md` was the brief; `STATUS.md` (from "2026-11-01, 04:10 KST: v0.2.0 run started") has the log, the decisions made overnight and the evidence. In short:
 
-**Decided (2026-10-31):**
+- **The main menu** (`src/ui/menu.js`): shown on load over one of four stills from the game (`assets/menu/`, rendered by `tests/render-stills.mjs`); nothing renders behind it.
+- **Scenarios** (`src/scenarios.js`, `captureState()`/`applyState()` in `main.js`): `gamedump:flight-sim:scenarios` (the index) and `…:scenario:<id>`. A save holds `sim.snapshot()`, the plan (with the map's waypoints), `gate.serialize()`, the flight's flags, `scorer.serialize()` (the approach track as arrays), `rig.serialize()` and `clock.serialize()`. Autosave every 60 s in flight, on pause, hide, `pagehide`, Exit to menu, after a landing, and Save; never a crashed state. v0.1.x's `lastflight` became "Scenario 1" (`legacy: true`); its keys are untouched.
+- **The logbook** tags each flight with `scenarioId`/`scenarioName` (`unsaved` for flights without a scenario); untagged v0.1 flights count as the legacy Scenario 1's.
+- **Night:** `src/clock.js` (KST, stepped by the sim time stepped), `src/astro.js` (Meeus), `src/world/sky.js` (`setTime`, `lightingAt`, stars from `data/stars.json`, BSC5), `uNight` and the lamp uniforms in `glsl.js`, `citylights.js`, `taxilights.js`, the light shaders in `airports.js`, floods and windows in `apron.js`, `aircraft-lights.js` (`lightsFor` by phase), the cockpit's `setNight`, and the Sky window (`src/ui/sky-window.js`, L or Cmd/Ctrl+L, the one Ctrl binding).
 
-1. **A scenario is a save slot:** "the saved state including the plane's location, speed, roll, everything, so that when you reload a scenario after doing a another, it is exactly where it was before."
-2. **The menu's backdrop is a still:** "I'd say stick with a still picture."
-3. **Saves stay in the browser** (2026-11-01). Asked whether each scenario should also be copied into the folder (Chrome's File System Access API), Shane said: "Nah its fine. Keep it browser."
-
-**It's next (2026-11-01):** an overnight Claude Code run, once v0.1.4 is pushed (Shane: "0.2.0 can run overnight after that, with the whole game changes"). `V020.md` is the brief, with the starting prompt.
-
-**What a save has to hold ("everything"), from the code as it stands:**
-
-- **`sim.snapshot()`** (`src/sim/sim.js`) holds the core state (97 fields), the controls, the autopilot and FCU (`AP_FIELDS` in `src/sim/autopilot.js`) and the wheels' contact. That's about 2 KB as JSON, and `sim.restore()` rebuilds the rest.
-- **Not in the snapshot** (all in `src/main.js` unless noted):
-  - **the plan:** `plan` (origin, runways, destination, gate, start type, waypoints, payload, fuel);
-  - **the ground flow:** `gate` (`src/ground/gate-flow.js`: pushback, taxi-out and taxi-in), which `afterJump()` notes isn't in the snapshots;
-  - **the flight:** `landed`, `arrivalStand`, `liftoffT`, `fuelAtStart`, and the keyboard's thrust lever (`input.lever`);
-  - **the scorer** (`src/score.js`): the touchdown and the approach track. A save made on final has to keep the track, or the approach parts will be missing from the score;
-  - **the camera:** the view and its looks (`src/camera.js`);
-  - **probably not saved:** time compression (back to ×1), the rewind ring, and the callouts' armed state (`reset()` re-arms them).
-- **Storage:**
-  - localStorage, about 5 MB per origin in Chrome, under `gamedump:flight-sim:`: a list key, and one key per scenario.
-  - Today's `lastflight` and `logbook` become Scenario 1.
-- **Still to settle** (ask Shane, or decide and log it under STATUS's decisions):
-  - Does each scenario keep its own logbook? The option he said yes to included "its own logbook".
-  - When does it save: automatically (on pause, on leaving, every so often), by hand, or both?
-  - How many slots, and are they named? Satisfactory's New game asks for 3–40 characters.
-  - What does New scenario ask? The flight setup screen already picks the origin, destination, runways, gate and start.
-- **The menu:**
-  - Satisfactory's title screen is a full-screen grid: the title on the left, the buttons on the right, and a gradient over a backdrop image. See `.screen--title` in its `style.css` and `pickBackdrop()` in its `src/ui.js`; read them, change nothing there.
-  - For the still: render one from the game and ship it as a JPG in this folder. `tests/cloud/stills.cjs` can, but a shot on the Mac's GPU will look better.
-  - Claude's default buttons, which Shane didn't object to: Continue, New scenario, Load scenario, Logbook, Settings (the volume and the readout), Controls, Exit to Game Dump.
+**Next:** nothing is decided. ROADMAP's 2026-11-01 table is the list; weather (row 10's other half) pairs naturally with the night.
 
 ## Other open items
 
 - **From `ROADMAP.md`:**
   - nobody has listened to the synth.
+- **From v0.2.0** (STATUS's final entry lists them all):
+  - the cockpit at night is plain (a warm flood and lit screens, no panel backlighting); the terminal windows read a little like a checkerboard close up; distant taxiway lights merge green and blue into cyan; stop bars are always lit;
+  - a moonless night away from the cities is very dark, especially from cruise (the ambient is at the top of the brief's 2–5% of day);
+  - the Moon is drawn 2.4× its size so it reads on screen;
+  - an autosave can catch a moment just before a crash (it never saves the crash itself);
+  - the old `tests/browser-boot.mjs` expects the setup screen on load; the main menu replaced that, and `browser-scenarios.mjs` covers the boot now.
   - (Jeju's runway seam, Gimpo stand 7's routes, the slow pushback, and Shane's FCU heading and path-pick bugs of 2026-11-01 were all fixed in v0.1.4.)
 - **His 11 future additions of 2026-11-01** are in ROADMAP's newest table: parts swaps, walking the cabin, five more types, detailed terminals, the UI and a font, changing the route in flight, traffic and ATC, lounges, emergencies, all weather and the night sky, crash physics.
 - **The score's calibration:**
@@ -134,6 +118,9 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
   - a rewind calls `scorer.reset(true)`, which keeps the approach flown before it;
   - a new flight or a skip to final calls `reset()`;
   - a lift-off or a go-around clears it by itself.
+- **Saves must stay deterministic.** `sim.snapshot()` round-trips through JSON exactly (`tests/scenario-state.test.mjs` flies a restored sim 120 s against the original, within 1e-6 m). New sim state that a step reads must go in the snapshot, or a loaded scenario will drift.
+- **Night needs every ground shader:** new ground surfaces take `uSunColor`/`uSkyAmb` (the light), `uNight` (their own lights) and `aircraftLights()` (the lamp pools; `main.js` already scales the lamps by `uNight`, so don't multiply again).
+- **Night-only objects hide by day** (`visible = false` under uNight 0.01): the day's draw calls must equal the day's before night existed.
 - **The sim's touchdown g follows the sink rate** (about 1.3 g at 200 ft/min, 2.0 g at 360). That's why g weighs little in the score.
 
 ## Working with Shane on this game

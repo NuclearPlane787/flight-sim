@@ -1,0 +1,112 @@
+/* The main menu, Load scenario, and the Settings and Controls pages (fsm-*). Buttons reuse
+   ui.css's .fsui-b and .fsui-seg; the look is v0.1.4's: Barlow, dark buttons, cyan primary. */
+
+/* ---- The main menu: title left, buttons right, a gradient over the still ---- */
+.fsm { position: fixed; inset: 0; z-index: 50; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 40px; padding: 6vh 7vw 9vh; box-sizing: border-box; outline: none;
+  font-family: var(--font); color: #eef3f7; pointer-events: auto; overscroll-behavior: none;
+  user-select: none; -webkit-user-select: none;
+  background:
+    linear-gradient(90deg, rgba(4, 7, 11, 0.88) 0%, rgba(4, 7, 11, 0.5) 34%, rgba(4, 7, 11, 0.18) 56%, rgba(4, 7, 11, 0.62) 78%, rgba(4, 7, 11, 0.9) 100%),
+    linear-gradient(0deg, rgba(4, 7, 11, 0.7) 0%, rgba(4, 7, 11, 0) 30%),
+    var(--backdrop, radial-gradient(ellipse at 30% 40%, #1d3550 0%, #0b1726 55%, #05070a 100%)) center / cover no-repeat,
+    #05070a; }
+.fsm[hidden] { display: none; }
+.fsm-left { align-self: center; min-width: 0; container-type: inline-size; }
+.fsm-eyebrow { margin: 0; font: 700 15px var(--font); text-transform: uppercase; letter-spacing: 0.24em; color: #2fe3ff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
+.fsm-title { margin: 6px 0 0; font: 700 clamp(56px, 8vw, 118px)/0.88 var(--font); letter-spacing: 0.02em; text-transform: uppercase;
+  color: #f4f8fb; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55); }
+@supports (font-size: 1cqi) { .fsm-title { font-size: clamp(44px, 16cqi, 118px); } }
+.fsm-sub { margin: 12px 0 0; font: 600 20px var(--font); text-transform: uppercase; letter-spacing: 0.18em; color: #b9c7d3;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
+.fsm-version { position: absolute; left: 7vw; bottom: 3.6vh; margin: 0; font: 600 13px/1 var(--font); letter-spacing: 0.12em;
+  text-transform: uppercase; color: rgba(232, 238, 244, 0.6); }
+.fsm-right { align-self: center; min-width: 0; }
+
+/* The buttons: the game's dark buttons, larger */
+.fsm-nav { width: 360px; display: flex; flex-direction: column; gap: 6px; }
+.fsm-nav[hidden] { display: none; }
+.fsm-nav button, .fsm-nav a { display: block; box-sizing: border-box; width: 100%; padding: 12px 18px; text-align: left; text-decoration: none;
+  font: 600 19px/1.1 var(--font); letter-spacing: 0.03em; color: #eef3f7; background: rgba(22, 31, 41, 0.9);
+  border: 1px solid #33414f; border-radius: 6px; cursor: pointer; }
+.fsm-nav button[hidden] { display: none; }
+.fsm-nav button:hover, .fsm-nav a:hover { background: rgba(36, 50, 65, 0.95); border-color: #46596b; }
+.fsm-nav .primary { background: rgba(15, 110, 134, 0.95); border-color: #2fe3ff; }
+.fsm-nav .primary:hover { background: #148aa8; border-color: #2fe3ff; }
+.fsm-nav small { display: block; margin-top: 5px; font: 500 14px/1.2 var(--font); letter-spacing: 0.01em; color: #c4e9f2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsm-nav a { margin-top: 10px; color: #c9ced2; }
+.fsm :focus-visible, .fsm-page :focus-visible { outline: 2px solid #2fe3ff; outline-offset: 2px; }
+.fsm-nav :focus-visible { outline-offset: 3px; }
+
+/* ---- Load scenario ---- */
+.fsm-load { width: min(620px, 48vw); display: flex; flex-direction: column; max-height: 82vh; box-sizing: border-box;
+  background: rgba(18, 24, 29, 0.96); border: 1px solid #36414a; border-radius: 10px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  padding: 16px 18px 10px; }
+.fsm-load[hidden] { display: none; }
+.fsm-load-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.fsm-load-bar h2 { margin: 0 auto 0 0; font-size: 20px; font-weight: 600; }
+.fsm-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.fsm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main when" "main act"; gap: 6px 12px;
+  padding: 10px 12px; background: #0b1014; border: 1px solid #2b3238; border-radius: 8px; cursor: pointer; outline: none; }
+.fsm-row:hover { background: #141c22; border-color: #3a4652; }
+.fsm-row:focus-visible { border-color: #2fe3ff; box-shadow: 0 0 0 1px #2fe3ff; outline: none; }
+.fsm-row.asking { border-color: #ff5a5a; background: #1d1214; cursor: default; }
+.fsm-row-main { grid-area: main; min-width: 0; }
+.fsm-row-main b { display: block; font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsm-row-main small { display: block; margin-top: 3px; font-size: 13.5px; color: #a9b4bd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsm-when { grid-area: when; align-self: start; justify-self: end; font-size: 13px; color: #8a9097; white-space: nowrap; padding-top: 2px; }
+.fsm-row-act { grid-area: act; display: flex; gap: 6px; justify-content: flex-end; align-self: end; }
+.fsm-row-act .fsui-b, .fsm-confirm .fsui-b, .fsm-rename .fsui-b { padding: 5px 12px; font-size: 13px; }
+.fsm-rename { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; cursor: default; }
+.fsm-input { flex: 1; min-width: 160px; font: 600 15px var(--font); color: #f0f0f0; background: #0a0e11; border: 1px solid #2fe3ff;
+  border-radius: 5px; padding: 6px 8px; outline: none; user-select: text; -webkit-user-select: text; }
+.fsm-err { flex-basis: 100%; min-height: 0; font-size: 13px; color: #ff6b6b; }
+.fsm-err:empty { display: none; }
+.fsm-confirm { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.fsm-confirm span { margin-right: auto; }
+.fsm-empty { padding: 40px 20px; text-align: center; color: #8a9097; font-size: 14px; }
+.fsm-help { margin: 8px 0 0; font-size: 12px; color: #8a9097; }
+.fsui-b.danger { background: #6e1a1a; border-color: #ff5a5a; }
+.fsui-b.danger:hover { background: #8a2222; }
+
+/* ---- Settings and Controls: a card over the menu or the pause menu ---- */
+.fsm-page { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 6, 12, 0.6); pointer-events: auto; outline: none; overscroll-behavior: none;
+  font-family: var(--font); color: #e8e8e8; user-select: none; -webkit-user-select: none; }
+.fsm-page[hidden] { display: none; }
+.fsm-card { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box;
+  background: #12181d; border: 1px solid #36414a; border-radius: 10px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6); padding: 18px 22px 14px; }
+.fsm-controls .fsm-card { width: min(920px, calc(100vw - 32px)); }
+.fsm-card-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.fsm-card-bar h2 { margin: 0 auto 0 0; font-size: 20px; font-weight: 600; }
+.fsm-set { display: flex; flex-direction: column; gap: 4px; }
+.fsm-set-row { display: flex; align-items: center; gap: 16px; padding: 10px 12px; background: #0b1014; border: 1px solid #2b3238; border-radius: 8px; }
+.fsm-set-row .lab { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; }
+.fsm-set-row .lab small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; color: #8a9097; }
+.fsm-set-row .ctl { display: flex; align-items: center; gap: 10px; flex: none; }
+.fsm-set-row input[type=range] { width: 200px; accent-color: #2fe3ff; cursor: pointer; }
+.fsm-set-row output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; color: #c9ced2; font-size: 14px; }
+.fsm-keys { width: 100%; font-size: 13.5px; color: #a9b4bd; }
+.fsm-keys td { padding: 4px 12px 4px 0; vertical-align: top; }
+.fsm-keys tr + tr td { border-top: 1px solid #1c2329; }
+.fsm-keys td:nth-child(odd) { color: #eef3f7; }
+.fsm-notes { margin-top: 12px; font-size: 13.5px; line-height: 1.5; color: #a9b4bd; }
+.fsm-notes p { margin: 0 0 8px; }
+.fsm-notes b { color: #2fe3ff; font-weight: 600; }
+
+/* ---- Small windows ---- */
+@media (max-width: 900px) {
+  .fsm { grid-template-columns: 1fr; align-content: center; gap: 24px; padding: 4vh 16px 10vh; }
+  .fsm-nav, .fsm-load { width: 100%; }
+  .fsm.on-load .fsm-left { display: none; }
+}
+@media (max-height: 760px) {
+  .fsm-nav button, .fsm-nav a { padding: 10px 16px; font-size: 17px; }
+}
+
+/* ---- The flight setup's Name field (setup.js; ui.css styles the other inputs) ---- */
+.fsui-dlg .fsui-name { flex: 1; max-width: 360px; font: 600 15px var(--font); color: #f0f0f0; background: #0a0e11;
+  border: 1px solid #44505a; border-radius: 5px; padding: 6px 8px; outline: none; user-select: text; -webkit-user-select: text; }
+.fsui-dlg .fsui-name:focus { border-color: #2fe3ff; }

@@ -4,7 +4,11 @@
 //   each rendered frame:  traffic.update({ camera, origin, dt })  → { drawCalls, triangles }
 //   traffic.setPlayerStand('RKSS', '12')   frees that stand (and any overlapping one); null clears
 //
-// Ten instanced draws in all: per airliner type (narrowbody, widebody) a near model, a
+// At night (uNight > 0) each type adds one instanced Points draw: the parked aircraft's
+// navigation lights (red left wingtip, green right, white tail), sharing the shadow's
+// instance buffers; beacons, strobes and logo lights are off, as on a parked aircraft.
+//
+// Ten instanced draws in all (by day): per airliner type (narrowbody, widebody) a near model, a
 // ~200-triangle far model (beyond FAR_DIST) and the blob shadow, and one per vehicle kind
 // (tug, bus, baggage cart, fuel truck), shared by the three airports. Each
 // instance stores its position relative to its airport's origin (small numbers, so
@@ -251,6 +255,54 @@ const VEHICLE_FRAG = /* glsl */ `
     #include <colorspace_fragment>
   }`;
 
+// The parked aircraft's nav lights: a point per lamp, at least a few pixels at night.
+const NAVLIGHT_VERT = /* glsl */ `
+  uniform vec2 uAirRel[${MAX_AIRPORTS}];
+  attribute vec4 iPos, iData;
+  attribute vec3 color;
+  varying vec3 vCol;
+  #include <logdepthbuf_pars_vertex>
+  void main() {
+    float h = iPos.w;
+    vec2 f = vec2(sin(h), cos(h)), l = vec2(-cos(h), sin(h));
+    vec3 p = position;
+    p.x *= iData.z;
+    vec2 rel = uAirRel[int(iData.x + 0.5)] + iPos.xy + f * p.x + l * p.y;
+    vec3 wp = vec3(rel.x, iPos.z + p.z, -rel.y);
+    wp.y -= curveDrop((wp - uCamPos).xz);
+    vec4 mv = viewMatrix * vec4(wp, 1.0);
+    float d = max(-mv.z, 0.1);
+    float px = max(2.6 * uPxScale / d, mix(1.5, 6.0, uNight));
+    gl_PointSize = iData.w * uNight > 0.01 ? min(px, 96.0) : 0.0;
+    vCol = color * uNight * iData.w * mix(1.0, 0.45, smoothstep(2000.0, 15000.0, d));
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }`;
+const NAVLIGHT_FRAG = /* glsl */ `
+  varying vec3 vCol;
+  #include <logdepthbuf_pars_fragment>
+  void main() {
+    #include <logdepthbuf_fragment>
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    float core = 1.0 - smoothstep(0.15, 0.32, d);
+    float halo = exp(-d * d * 5.0) * (1.0 - d);
+    gl_FragColor = vec4((vCol * halo * 0.8 + mix(vCol, vec3(1.0), 0.5) * core * 1.5), 1.0);
+    #include <colorspace_fragment>
+  }`;
+
+// Model-frame lamp positions for a type (x forward from the nose, y left, z above the ground).
+function navLamps(T) {
+  const R = T.radius, half = T.span / 2 - R * 0.85;
+  const tanS = Math.tan(T.sweepDeg * Math.PI / 180), dih = Math.tan(T.dihedralDeg * Math.PI / 180);
+  const tx = -(T.wingRootX + half * tanS) - T.tipChord * 0.4, tz = T.zc + T.wingZ + half * dih + 0.1;
+  return [
+    [tx, T.span / 2 + 0.05, tz, 1.0, 0.03, 0.02],      // red, left
+    [tx, -T.span / 2 - 0.05, tz, 0.02, 1.0, 0.08],     // green, right
+    [-T.length - 0.1, 0, T.zc + R * 0.35, 1.0, 1.0, 1.0], // white, tail
+  ];
+}
+
 // ------------------------------------------------------------------ helpers
 
 function instancedGeometry(model, capacity) {
@@ -355,7 +407,26 @@ export function createTraffic(scene, uniforms, chunks, airports, heightfield = n
     shadow.visible = false;
     shadow.renderOrder = 1;
     group.add(shadow);
-    return { T, ti, mesh, geo, tris: model.triangles, far, fgeo, ftris: farModel.triangles, shadow, sgeo, stris: sm.triangles };
+    // Its nav lights at night: three points per instance, on the shadow's instance buffers.
+    const lamps = navLamps(T);
+    const lgeo = new THREE.InstancedBufferGeometry();
+    lgeo.setAttribute('position', new THREE.Float32BufferAttribute(lamps.flatMap((q) => q.slice(0, 3)), 3));
+    lgeo.setAttribute('color', new THREE.Float32BufferAttribute(lamps.flatMap((q) => q.slice(3)), 3));
+    lgeo.setAttribute('iPos', sPos);
+    lgeo.setAttribute('iData', sDat);
+    lgeo.instanceCount = 0;
+    const lu = common({});   // uPxScale: the world's (pixels per radian), set each frame
+    const lmat = new THREE.ShaderMaterial({
+      uniforms: lu, vertexShader: vert(NAVLIGHT_VERT), fragmentShader: NAVLIGHT_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const navLights = new THREE.Points(lgeo, lmat);
+    navLights.frustumCulled = false;
+    navLights.name = `traffic-${T.name}-navlights`;
+    navLights.visible = false;
+    navLights.renderOrder = 2;
+    group.add(navLights);
+    return { T, ti, mesh, geo, tris: model.triangles, far, fgeo, ftris: farModel.triangles, shadow, sgeo, stris: sm.triangles, navLights, lgeo };
   });
 
   // Vehicles: one mesh per kind; filled from the one active airport.
@@ -414,6 +485,7 @@ export function createTraffic(scene, uniforms, chunks, airports, heightfield = n
       A.mesh.visible = outs[0].n > 0;
       A.far.visible = outs[1].n > 0;
       A.shadow.visible = outs[2].n > 0;
+      A.lgeo.instanceCount = outs[2].n;
     }
   }
 
@@ -475,7 +547,10 @@ export function createTraffic(scene, uniforms, chunks, airports, heightfield = n
       }
 
       let calls = 0, tris = 0, parked = 0, vcount = 0;
+      const lit = (uniforms.uNight?.value || 0) > 0.02;
       for (const A of airliners) {
+        A.navLights.visible = lit && A.shadow.visible;
+        if (A.navLights.visible) calls++;
         if (A.mesh.visible) { calls++; tris += A.tris * A.geo.instanceCount; }
         if (A.far.visible) { calls++; tris += A.ftris * A.fgeo.instanceCount; }
         if (A.shadow.visible) { calls++; tris += A.stris * A.sgeo.instanceCount; parked += A.sgeo.instanceCount; }

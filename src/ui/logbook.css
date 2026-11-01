@@ -42,6 +42,12 @@
   padding: 18px 22px 12px; box-sizing: border-box; }
 .fslb-bar { display: flex; align-items: center; gap: 8px; }
 .fslb-bar h2 { margin: 0 auto 0 0; font-size: 20px; font-weight: 600; }
+.fslb-filter { display: flex; align-items: center; gap: 8px; margin-right: 6px; font-size: 12px; color: #8a9097;
+  text-transform: uppercase; letter-spacing: 0.08em; }
+.fslb-filter[hidden] { display: none; }
+.fslb-filter select { font: 14px var(--font); color: #f0f0f0; background: #0a0e11; border: 1px solid #44505a; border-radius: 5px;
+  padding: 6px 8px; max-width: 280px; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.fslb-filter select:focus-visible { outline: 2px solid #2fe3ff; outline-offset: 1px; }
 .fsui-b.danger { background: #6e1a1a; border-color: #ff5a5a; }
 .fsui-b.danger:hover { background: #8a2222; }
 .fslb-confirm { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; font-size: 14px;
@@ -64,6 +70,8 @@
   text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; padding-top: 7px; padding-bottom: 7px; }
 .fslb-row small { display: block; font-size: 12px; color: #8a9097; }
 .fslb-row .route { font-weight: 600; letter-spacing: 0.03em; }
+.fslb-row .route small.sc { font-weight: 400; letter-spacing: 0; color: #2fe3ff; opacity: 0.85;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fslb-row .num { text-align: right; font-variant-numeric: tabular-nums; }
 .fslb-row .grade { text-align: right; }
 .fslb-badge { display: inline-block; min-width: 52px; text-align: center; border: 1.5px solid; border-radius: 6px; padding: 2px 8px;

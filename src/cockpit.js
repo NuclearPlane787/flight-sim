@@ -3,7 +3,12 @@
 // the view where the real ones do), the glare shield and FCU, the main panel with six dark
 // screens, the pedestal with its levers, two seats, two sidesticks and the overhead panel.
 //
-//   createCockpit() → { object, update(state, controls?) }
+//   createCockpit() → { object, update(state, controls?), setNight(0..1) }
+//
+// Light: three's sun and hemisphere lights (sky.js), plus each material's emissive standing in
+// for the light bouncing round the flight deck. At night setNight() swaps that bounce for a dim,
+// warm panel flood that follows the surfaces' own colours (stronger low down, on the panels and
+// pedestal, as the flood and integral lights are), and the six screens glow faintly as lit LCDs.
 
 import * as THREE from '../vendor/three.module.js';
 import { NOSE_X } from './geometry.js';
@@ -27,9 +32,28 @@ const PANEL_X = 19.14;
 // Main instrument panel surface: x at height z (body), just aft of the panel.
 const panelX = (z) => PANEL_X - (z - 0.12) * Math.tan(PANEL_TILT) - 0.03;
 
+// Night flood: replaces the emissive by the surface colour × a warm flood (× uNightK).
+const FLOOD = new THREE.Color(1.0, 0.74, 0.48);
+function withFlood(mat, nightU, strength) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uNightK = nightU;
+    sh.uniforms.uFlood = { value: FLOOD.clone().multiplyScalar(strength) };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vBodyZ;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBodyZ = (modelMatrix * vec4(position, 1.0)).y - (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).y;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vBodyZ;\nuniform float uNightK;\nuniform vec3 uFlood;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float floodH = 1.0 - 0.55 * smoothstep(0.3, 1.4, vBodyZ);   // brightest at panel height
+        totalEmissiveRadiance = mix(totalEmissiveRadiance, diffuseColor.rgb * uFlood * floodH, uNightK);`);
+  };
+  return mat;
+}
+
 export function createCockpit() {
   const object = new THREE.Group();
   object.name = 'cockpit';
+  const nightU = { value: 0 };
 
   // Shell: the nose's inner skin, with the windows cut out by an alpha map.
   {
@@ -53,6 +77,7 @@ export function createCockpit() {
       emissive: '#27313b', // stands in for the light bouncing round the flight deck
       alphaMap: createCockpitAlpha(windowOutlines()), alphaTest: 0.5, alphaToCoverage: true,
     });
+    withFlood(mat, nightU, 0.3);
     const m = new THREE.Mesh(b.build(), mat);
     m.name = 'cockpit-shell';
     object.add(m);
@@ -72,10 +97,17 @@ export function createCockpit() {
   add(boxAt(PANEL_X, 0, 0.12, 0.05, 2.0, 0.68).applyMatrix4(tiltAbout(PANEL_X, 0.12)), C.panel);
   // Six screens: Captain PFD and ND, E/WD and SD in the centre, FO ND and PFD.
   const screens = [[0.72, 0.2], [0.47, 0.2], [0, 0.26], [0, 0.0], [-0.47, 0.2], [-0.72, 0.2]];
+  const sb = new Builder();
   for (const [y, z] of screens) {
     add(boxAt(panelX(z), y, z, 0.012, 0.215, 0.215).applyMatrix4(tiltAbout(panelX(z), z)), C.bezel);
-    add(boxAt(panelX(z) - 0.008, y, z, 0.006, 0.185, 0.185).applyMatrix4(tiltAbout(panelX(z) - 0.008, z)), C.screen);
+    sb.add(boxAt(panelX(z) - 0.008, y, z, 0.006, 0.185, 0.185).applyMatrix4(tiltAbout(panelX(z) - 0.008, z)), 0, C.screen);
   }
+  // The screens: their own unlit material, a lit LCD's dark glow at night.
+  const screenMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: 0xffffff });
+  screenMat.color.setRGB(4, 4, 4);
+  const screenMesh = new THREE.Mesh(sb.build(), screenMat);
+  screenMesh.name = 'cockpit-screens';
+  object.add(screenMesh);
   // Pedestal and side consoles.
   add(boxAt(18.6, 0, -0.12, 1.06, 0.44, 0.5), C.console);
   add(boxAt(18.96, 0, 0.04, 0.4, 0.44, 0.3).applyMatrix4(tiltAbout(18.96, 0.04, -30 * DEG)), C.console);
@@ -92,12 +124,12 @@ export function createCockpit() {
   // Overhead panel.
   add(boxAt(17.85, 0, 1.6, 0.9, 0.8, 0.1).applyMatrix4(tiltAbout(17.85, 1.6, 14 * DEG)), C.overhead);
 
-  const stat = new THREE.Mesh(b.build(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.05, emissive: '#161b21' }));
+  const stat = new THREE.Mesh(b.build(), withFlood(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.05, emissive: '#161b21' }), nightU, 1.2));
   stat.name = 'cockpit-interior';
   object.add(stat);
 
   // Moving parts: each a mesh whose origin is its pivot.
-  const levMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2, emissive: '#161b21' });
+  const levMat = withFlood(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2, emissive: '#161b21' }), nightU, 1.2);
   function part(pivot, build) {
     const pb = new Builder();
     build((g, color) => pb.add(g.translate(-pivot.x, -pivot.y, -pivot.z), 0, color));
@@ -152,8 +184,14 @@ export function createCockpit() {
     const p = controls?.pitch ?? 0, r = controls?.roll ?? 0;
     for (const st of sticks) setRot(st, -p * 16 * DEG, r * 16 * DEG);
   }
+  // n: 0 by day … 1 at night.
+  const SCREEN_DAY = new THREE.Color(4, 4, 4), SCREEN_NIGHT = new THREE.Color(6, 8, 11);
+  function setNight(n) {
+    nightU.value = clamp(n || 0, 0, 1);
+    screenMat.color.copy(SCREEN_DAY).lerp(SCREEN_NIGHT, nightU.value);
+  }
   update();
-  return { object, update };
+  return { object, update, setNight };
 }
 
 // Rotation by `a` about the body y axis through (x, z): tilts panels back.

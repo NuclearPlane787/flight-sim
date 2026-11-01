@@ -4,6 +4,25 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.2.0 · 2026-11-01 · A main menu, scenarios, and night
+
+- **A main menu, like Satisfactory's.** The game opens on a title screen over a still from the game (Gimpo's apron, the approach to Jeju, or Seoul from the air): Continue, New scenario, Load scenario, Logbook, Settings, Controls, and Exit to Game Dump. Nothing runs behind it.
+- **Scenarios: save slots with the whole flight.** Each one keeps everything: where the aircraft is, its speed and attitude, the autopilot and FCU, the fuel, a pushback under way and the taxi route, the approach flown so far (so a landing after a reload still scores the approach), the view and the time of day. Load one and it's exactly where you left it, and it flies on.
+  - **Continue** picks up the newest. **Load scenario** lists them newest first, with the route, where the aircraft is ("FL350, 120 nm to RKPC", "Parked at RKPC stand 12") and when it was saved, and they can be renamed or deleted (it asks first).
+  - **New scenario** is the flight setup with a name ("Scenario 2" by default, 3–40 characters).
+  - **Saving is automatic,** as in Satisfactory: every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu. The pause menu has Save too. A crash never overwrites the last good save.
+  - **Your last v0.1 flight is "Scenario 1",** and your logbook is kept as it was, under it.
+- **The pause menu** is a column: Resume, Save, Logbook, Rewind 30 s, Restart the flight, New flight, Settings, Controls, Time of day, and Exit to menu. New flight replaces the scenario's flight; parked at a stand after landing, it starts from that stand.
+- **The logbook knows the scenarios.** From the pause menu it shows this scenario's flights; from the main menu all of them, with a filter. A deleted scenario's flights stay, under its name.
+- **Settings and Controls pages,** from both menus: the master volume, the callouts, the performance readout, and the keys.
+- **Night.** The time of day is a clock in Korean time that runs with the flight (time compression speeds it up). A new flight starts at the real time in Korea, or at a date and time you pick in the setup.
+  - **The sky is Earth's:** the sun and the Moon where they really are, the Moon with its phase and a glow, the 8,400 brightest real stars in their constellations, and the Milky Way with its dark rift, all turning with the Earth. Sunsets and sunrises go through golden hour and twilight, with the Earth's shadow and the pink band opposite the sun, and the stars come out as it gets dark. At cruise the sky is darker and the stars sharper.
+  - **The light follows the sun,** down to a moonlit or starlit night that is never pitch black: under a full Moon the land is readable.
+  - **The cities light up:** streetlights in sodium orange and white, brighter centres, and lit apartment windows close up. From cruise, Seoul and the coast are a sea of points.
+  - **The airports are lit:** runway edge and centreline lights, thresholds and ends, touchdown zones, the approach lights with the rabbit, the PAPI, green and blue taxiway lights, red stop bars at the holding points, floodlit aprons and lit terminals.
+  - **The A321's own lights** come on as pilots use them: nav lights, the red beacons while the engines run, strobes on the runway and in the air, landing and taxi lights with pools of light on the ground, and the logo light on the tail. Parked aircraft show their nav lights. The cockpit is dimly lit at night, with the screens readable.
+- **The Sky window** (L, or Cmd+L as in Satisfactory) stands at the bottom left while you fly: a little sky with the sun's and the Moon's paths and the Moon's phase, a 24-hour track to click or drag, play and pause, the clock's speed, jumps to sunrise, noon, sunset, midnight and now, and the date. It's also in the pause menu and Settings.
+
 ## v0.1.4 · 2026-11-01 · Typing into the FCU, easier jumps, stand 7's routes, faster pushbacks, Jeju's crossing, new fonts
 
 - **Type values into the FCU.** Click a window (SPD, HDG, ALT or V/S), type the value and press Enter (or click the window again).

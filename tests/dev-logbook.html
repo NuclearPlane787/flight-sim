@@ -10,11 +10,13 @@
   <style> #app { background: linear-gradient(#3a6fa8, #9cc3e3 60%, #5b6b4a 60%); } </style>
 </head>
 <body>
-  <!-- ?scene=logbook | empty | score-a | score-d. Fake entries and results; storage in memory only. -->
+  <!-- ?scene=logbook | empty | score-a | score-d (v0.1.x: open() with no args, 6 entries), or the v0.2.0
+       scenes: all (the main menu's logbook, with the filter) | filtered (the same, filtered to "Test A")
+       | pause (the pause menu's, scoped to "Test A"). Fake entries and results; storage in memory only. -->
   <div id="app">
     <div id="pause" class="panel center">
       <h2>Paused</h2>
-      <div class="buttons"><button data-act="resume">Resume</button><button data-act="logbook">Logbook</button></div>
+      <div class="buttons"><button data-act="resume">Resume</button><button data-act="logbook">Logbook</button><button data-act="menu-logbook">Menu logbook</button></div>
     </div>
     <div id="score" hidden></div>
     <div id="logbook-root"></div>
@@ -42,14 +44,22 @@
     const RES_C = { points: 70, grade: 'C', parts: P([350, 14], [1.41, 0], [320, 11], [2.1, 0], [3.0, 4], [6.2, 0], 0) };
     const day = (d, h, m) => new Date(2026, 9, d, h, m).toISOString();
     const LOG = [
+      // v0.1.x flights carry no scenario: they're Scenario 1's ("s1", the migrated one).
       { date: day(24, 9, 12), route: 'RKSS–RKPC', depRunway: '14R', arrRunway: '07', gate: null, airTimeS: 3420, fuelUsedKg: 3612, score: RES_C },
       { date: day(25, 20, 41), route: 'RKPC–RKSS', depRunway: '25', arrRunway: '32L', gate: null, airTimeS: 3780, fuelUsedKg: 3920, score: RES_F },
-      { date: day(27, 7, 3), route: 'RKSI–RKPC', depRunway: '33L', arrRunway: '07', gate: '112', airTimeS: 3960, fuelUsedKg: 4105, score: RES_B },
-      { date: day(29, 13, 55), route: 'RKPC–RKPC', depRunway: null, arrRunway: '07', gate: null, airTimeS: null, fuelUsedKg: 140, score: RES_A },
-      { date: day(30, 18, 20), route: 'RKSS–RKPC', depRunway: '14R', arrRunway: '25', gate: '7', airTimeS: 3510, fuelUsedKg: 3550, score: RES_D },
-      { date: day(31, 1, 47), route: 'RKSS–RKSI', depRunway: '32R', arrRunway: '34R', gate: null, airTimeS: 1860, fuelUsedKg: 1712, score: null },
+      { date: day(27, 7, 3), route: 'RKSI–RKPC', depRunway: '33L', arrRunway: '07', gate: '112', airTimeS: 3960, fuelUsedKg: 4105, score: RES_B, scenarioId: 'a', scenarioName: 'Test A' },
+      { date: day(29, 13, 55), route: 'RKPC–RKPC', depRunway: null, arrRunway: '07', gate: null, airTimeS: null, fuelUsedKg: 140, score: RES_A, scenarioId: 'a', scenarioName: 'Test A' },
+      { date: day(30, 18, 20), route: 'RKSS–RKPC', depRunway: '14R', arrRunway: '25', gate: '7', airTimeS: 3510, fuelUsedKg: 3550, score: RES_D, scenarioId: 'gone', scenarioName: 'Busan hop' }, // since deleted
+      { date: day(31, 1, 47), route: 'RKSS–RKSI', depRunway: '32R', arrRunway: '34R', gate: null, airTimeS: 1860, fuelUsedKg: 1712, score: null, scenarioId: 's1', scenarioName: 'Scenario 1' },
     ];
-    const mem = { logbook: scene === 'empty' ? [] : LOG };
+    // The v0.2.0 scenes add a few more, and the store's live scenarios ("Busan hop" was deleted).
+    const MORE = [
+      { date: day(31, 22, 10), route: 'RKPC–RKSI', depRunway: '07', arrRunway: '15L', gate: '23', airTimeS: 4020, fuelUsedKg: 4210, score: RES_A, scenarioId: 'a', scenarioName: 'Test A' },
+      { date: new Date(2026, 10, 1, 1, 30).toISOString(), route: 'RKSI–RKSS', depRunway: '33R', arrRunway: '14L', gate: null, airTimeS: 1500, fuelUsedKg: 1380, score: RES_B, scenarioId: 'b', scenarioName: 'Night shuttle' },
+    ];
+    const SCENARIOS = [{ id: 's1', name: 'Scenario 1' }, { id: 'a', name: 'Test A' }, { id: 'b', name: 'Night shuttle' }, { id: 'c', name: 'Not flown yet' }];
+    const v020 = ['all', 'filtered', 'pause'].includes(scene);
+    const mem = { logbook: scene === 'empty' ? [] : v020 ? [...LOG, ...MORE] : LOG };
     const load = (k, f) => (k in mem ? structuredClone(mem[k]) : f);
     const save = (k, v) => { mem[k] = structuredClone(v); return true; };
 
@@ -57,12 +67,23 @@
     window.addEventListener('keydown', (e) => keys.push(e.key)); // what the "game" would see
     const logbook = createLogbook(document.getElementById('logbook-root'), { load, save, onclose: () => { window.__closed = (window.__closed || 0) + 1; } });
     const card = createScorePanel(document.getElementById('score'), { onnewflight: () => { window.__newflight = true; } });
-    document.querySelector('[data-act="logbook"]').onclick = () => logbook.open();
+    const menuOpts = { scenarios: SCENARIOS, legacyId: 's1' };
+    const pauseOpts = { scenarioId: 'a', scenarios: SCENARIOS, legacyId: 's1' };
+    // v0.1.x scenes open it as v0.1.x did; the v0.2.0 ones as main.js will.
+    document.querySelector('[data-act="logbook"]').onclick = () => logbook.open(v020 ? pauseOpts : undefined);
+    document.querySelector('[data-act="menu-logbook"]').onclick = () => logbook.open(menuOpts);
 
     if (scene === 'logbook' || scene === 'empty') logbook.open();
+    if (scene === 'all' || scene === 'filtered') logbook.open(menuOpts);
+    if (scene === 'filtered') {
+      const f = document.querySelector('.fslb-filter select');
+      f.value = [...f.options].find((o) => o.text.startsWith('Test A')).value;
+      f.dispatchEvent(new Event('change'));
+    }
+    if (scene === 'pause') logbook.open(pauseOpts);
     if (scene === 'score-a') card.show(RES_A, { route: 'RKSS–RKPC', runway: '07', runwayLengthM: 3180, runwayWidthM: 45, aimM: 400 });
     if (scene === 'score-d') card.show(RES_D, { route: 'RKPC–RKSS', runway: '32L', runwayLengthM: 3600, runwayWidthM: 45, aimM: 400 });
-    Object.assign(window, { __logbook: logbook, __card: card, __mem: mem, __keys: keys, __ready: true });
+    Object.assign(window, { __SCENARIOS: SCENARIOS, __logbook: logbook, __card: card, __mem: mem, __keys: keys, __ready: true });
   </script>
 </body>
 </html>

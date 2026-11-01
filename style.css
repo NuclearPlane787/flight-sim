@@ -94,7 +94,7 @@ html, body {
 #toast {
   position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%);
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 8px 16px; font-size: 14px; z-index: 30; pointer-events: none;
+  padding: 8px 16px; font-size: 14px; z-index: 90; pointer-events: none;
 }
 
 /* The performance readout (F3 or `): one line across the top, as in Satisfactory. The HUD
@@ -107,9 +107,19 @@ html, body {
 }
 body.perf-on .fsui-map-bar { top: 34px; }
 
-/* The pause menu's master volume. */
+/* The pause menu (v0.2.0): one column of buttons, as in a game's pause menu. */
+#pause { min-width: 280px; }
+#pause #pause-scenario { margin: -4px 0 4px; color: var(--dim); }
+.pause-buttons { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+.pause-buttons button { text-align: left; }
+/* Behind the main menu nothing shows (and nothing renders). */
+body.in-menu #view, body.in-menu #hud, body.in-menu #map-root, body.in-menu #perf { visibility: hidden; }
+
+/* The master volume (the Settings page since v0.2.0). */
 .volume { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 14px; color: var(--text); }
 .volume input { flex: 1; max-width: 280px; accent-color: var(--blue); cursor: pointer; }
 .volume output { min-width: 3.2em; font-variant-numeric: tabular-nums; color: var(--dim); }
 
 #loading { text-align: center; min-width: 260px; }
+/* Over the main menu (z-index 50), the logbook and the setup screen come on top. */
+#logbook-root .fslb { z-index: 70; }

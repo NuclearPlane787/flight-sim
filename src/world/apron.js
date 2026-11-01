@@ -17,16 +17,25 @@
 // (renderOrder 1), each piece over the ones before it, in this order: concrete taxilanes,
 // asphalt taxiways, aprons and stand pads. Overlapping pieces lie in the same plane, so
 // with depth writes they flickered against each other (v0.1.0, at Incheon's taxilanes).
+//
+// Night (v0.2.0): the floodlight masts (taxilights.js floodMasts) light warm pools on the
+// pavement and the paint, from a small baked light texture per airport (uFlood, 6 m
+// texels over the stands), scaled by uNight; the terminals' glass and the other
+// buildings' windows glow warm; and the aircraft's landing and taxi lights
+// (aircraftLights() in glsl.js) light the pavement and the paint.
 
 import * as THREE from '../../vendor/three.module.js';
 import {
   TAXI_W, DOOR_SILL, openRing, signedArea, densify, dedupePolys, segmentIndex,
   holdShortSites, taxiwayEdges, standMarks, jetBridge, strokeTriangles, subdivideSoup, hdgVec,
 } from './apron-geom.js';
+import { floodMasts } from './taxilights.js';
 
 export const APRON_RANGE = 25000;          // m from the airport's bounds
 export const APRON_MAX_ALT = 15000 * 0.3048;
 
+const FLOOD_CELL = 6;         // m per texel of the floodlight texture
+const FLOOD_MAX = 2.0;        // the texture's 1.0 (pools add up where masts are close)
 const LINE_HW = 0.18;        // taxiway centreline / lead-in half width (m): 0.36 m, a little over ICAO's 0.15
 const EDGE_HW = 0.38;        // taxiway edge double line half width
 const HOLD_DEPTH = 2.1;      // four 0.3 m lines with 0.3 m gaps (twice ICAO's, to read from the cockpit)
@@ -59,6 +68,19 @@ const COMMON_VERT = /* glsl */ `
 
 const LIGHT_GLSL = /* glsl */ `
   vec3 groundLight(vec3 col) { return col * (uSunColor * max(uSunDir.y, 0.0) * 2.4 + uSkyAmb * 1.1); }
+  // Night light on the pavement at loc (map m from the airport origin), scene position p:
+  // the floodlights' pools and the aircraft's lamps (multiply by the albedo).
+  uniform sampler2D uFlood;
+  uniform vec4 uFloodBox;             // texture's corner (x, y from the airport origin), size (m)
+  vec3 nightLight(vec2 loc, vec3 p) {
+    vec3 c = aircraftLights(p, vec3(0.0, 1.0, 0.0));
+    if (uNight > 0.001) {
+      vec2 t = (loc - uFloodBox.xy) / uFloodBox.zw;
+      float f = texture(uFlood, t).r * ${FLOOD_MAX.toFixed(1)};
+      c += vec3(1.0, 0.74, 0.45) * f * 0.55 * uNight;
+    }
+    return c;
+  }
   // Box-filtered coverage of the band lo..hi at x for a footprint fw.
   float band(float x, float lo, float hi, float fw) {
     fw = max(fw, 1e-4);
@@ -99,7 +121,7 @@ const PAVE_FRAG = /* glsl */ `
     // Oil and rubber stains.
     conc *= 1.0 - 0.10 * smoothstep(0.6, 0.9, vnoise(vLoc * 0.12 + 7.0));
     vec3 col = mix(asphalt, conc, vMat);
-    vec3 c = groundLight(col);
+    vec3 c = groundLight(col) + col * nightLight(vLoc, vRel + uCamPos);
     gl_FragColor = vec4(applyHaze(c, vRel), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -110,7 +132,7 @@ const PAINT_VERT = /* glsl */ `
   attribute vec2 lc;                  // local coordinates (m, or glyph cell 0..1)
   attribute vec4 kp;                  // kind, half width / pattern, glyph index, colour
   varying vec3 vRel;
-  varying vec2 vLc;
+  varying vec2 vLc, vLoc;
   varying vec4 vKp;
   #include <logdepthbuf_pars_vertex>
   void main() {
@@ -125,6 +147,7 @@ const PAINT_VERT = /* glsl */ `
       vLc.y = side.z * half_;
     }
     vRel = wp - uCamPos;
+    vLoc = vec2(wp.x - uRelA.x, -wp.z - uRelA.y);
     vKp = kp;
     gl_Position = projectPulled(wp, vec2(${PULL.paint[0]}, ${PULL.paint[1]}));
     #include <logdepthbuf_vertex>
@@ -133,7 +156,7 @@ const PAINT_VERT = /* glsl */ `
 const PAINT_FRAG = (nGlyphs) => /* glsl */ `
   uniform sampler2D uGlyphs;
   varying vec3 vRel;
-  varying vec2 vLc;
+  varying vec2 vLc, vLoc;
   varying vec4 vKp;
   #include <logdepthbuf_pars_fragment>
   void main() {
@@ -167,7 +190,7 @@ const PAINT_FRAG = (nGlyphs) => /* glsl */ `
     cov *= 1.0 - smoothstep(7000.0, 12000.0, dist);
     if (cov < 0.004) discard;
     vec3 alb = vKp.w < 0.5 ? vec3(0.62, 0.43, 0.05) : vKp.w < 1.5 ? vec3(0.52, 0.52, 0.50) : vec3(0.012, 0.012, 0.012);
-    vec3 c = groundLight(alb);
+    vec3 c = groundLight(alb) + alb * nightLight(vLoc, vRel + uCamPos);
     gl_FragColor = vec4(applyHaze(c, vRel), cov);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -201,11 +224,15 @@ const BLDG_FRAG = /* glsl */ `
     float fine = 1.0 - smoothstep(0.3, 1.2, max(fw.x, fw.y));   // fade patterns that would shimmer
     vec3 alb;
     float glass = 0.0;
+    float lit = 0.0;                         // night: how much of this spot is a lit window
     if (kind < 0.5) {                        // terminal: glass curtain wall with mullions
       float mull = max(band(fract(along / 3.0), 0.0, 0.05, fw.x / 3.0), band(fract(y / 4.5), 0.0, 0.06, fw.y / 4.5));
       mull = mix(mull, 0.12, 1.0 - fine);
       glass = (1.0 - mull) * step(0.6, y);
       alb = mix(vec3(0.30, 0.32, 0.34), vec3(0.10, 0.14, 0.18), glass);
+      // Most of a terminal's panes are lit at night, some brighter (shops, gates).
+      float h = ihash(ivec2(floor(along / 3.0), floor(y / 4.5)), 7u);
+      lit = glass * (0.6 + 0.4 * h) * step(0.1, h);
       if (roof > 0.5) alb = vec3(0.30, 0.31, 0.32);
     } else if (kind < 1.5) {                 // hangar: corrugated metal
       float rib = 0.5 + 0.5 * cos(along * 6.2832 / 0.8);
@@ -214,11 +241,14 @@ const BLDG_FRAG = /* glsl */ `
     } else if (kind < 2.5) {                 // concrete, rows of windows
       float fl = fract(y / 3.6);
       float win = band(fl, 0.35, 0.75, fw.y / 3.6) * band(fract(along / 3.0), 0.15, 0.85, fw.x / 3.0) * step(1.0, y);
+      float h = ihash(ivec2(floor(along / 3.0), floor(y / 3.6)), 11u);
+      lit = mix(win * step(0.6, h) * (0.6 + 0.4 * h), 0.1, 1.0 - fine);
       win = mix(win, 0.25, 1.0 - fine);
       alb = mix(vec3(0.40, 0.38, 0.35), vec3(0.08, 0.10, 0.12), win);
       if (roof > 0.5) alb = vec3(0.27, 0.27, 0.26);
     } else {                                 // jet bridge: white-grey panels, a glass strip
       glass = step(1.5, bandF) * (1.0 - roof);
+      lit = glass * 0.5;
       alb = mix(vec3(0.52, 0.53, 0.54), vec3(0.10, 0.13, 0.16), glass);
       if (roof > 0.5) alb = vec3(0.40, 0.40, 0.40);
       bandF = 0.0;
@@ -229,7 +259,9 @@ const BLDG_FRAG = /* glsl */ `
     // Glass reflects the sky.
     vec3 vd = vRel / max(dist, 1e-3);
     float fres = 0.15 + 0.6 * pow(1.0 - max(dot(-vd, n), 0.0), 4.0);
-    col += glass * fres * hazeColor(reflect(vd, n)) * 0.55;
+    col += glass * fres * hazeColor(reflect(vd, n)) * 0.55 * (1.0 - 0.8 * uNight);
+    // Lit windows at night (warm, not on roofs).
+    col += vec3(1.0, 0.72, 0.42) * lit * (1.0 - roof) * 0.32 * uNight;
     gl_FragColor = vec4(applyHaze(col, vRel), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -539,6 +571,47 @@ function buildBuildings(a, ox, oy, groundAt) {
   return { geo: g, bridges, buildings: (a.buildings || []).length };
 }
 
+// ------------------------------------------------------------------ floodlights
+
+// The floodlights' pools as a light texture (R8, FLOOD_CELL m texels) over the masts, with
+// a blank border so the clamped edge reads as dark. Each pool: 1 / (1 + (r / 28 m)^2),
+// fading out by 120 m; the sum is clamped to FLOOD_MAX.
+function floodTexture(a, ox, oy) {
+  const masts = floodMasts(a);
+  if (!masts.length) {
+    const t = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
+    t.needsUpdate = true;
+    return { tex: t, box: new THREE.Vector4(0, 0, 1, 1), masts };
+  }
+  const R = 120, pad = R + 2 * FLOOD_CELL;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const m of masts) { x0 = Math.min(x0, m.x); y0 = Math.min(y0, m.y); x1 = Math.max(x1, m.x); y1 = Math.max(y1, m.y); }
+  x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  const nx = Math.ceil((x1 - x0) / FLOOD_CELL), ny = Math.ceil((y1 - y0) / FLOOD_CELL);
+  const acc = new Float32Array(nx * ny);
+  const rc = Math.ceil(R / FLOOD_CELL);
+  for (const m of masts) {
+    const ci = Math.floor((m.x - x0) / FLOOD_CELL), cj = Math.floor((m.y - y0) / FLOOD_CELL);
+    for (let j = Math.max(0, cj - rc); j <= Math.min(ny - 1, cj + rc); j++) {
+      for (let i = Math.max(0, ci - rc); i <= Math.min(nx - 1, ci + rc); i++) {
+        const r = Math.hypot(x0 + (i + 0.5) * FLOOD_CELL - m.x, y0 + (j + 0.5) * FLOOD_CELL - m.y);
+        if (r >= R) continue;
+        const fade = r < 80 ? 1 : 1 - (r - 80) / (R - 80);
+        acc[j * nx + i] += fade / (1 + (r / 28) ** 2);
+      }
+    }
+  }
+  const data = new Uint8Array(nx * ny);
+  for (let k = 0; k < acc.length; k++) data[k] = Math.round(Math.min(acc[k] / FLOOD_MAX, 1) * 255);
+  const t = new THREE.DataTexture(data, nx, ny, THREE.RedFormat, THREE.UnsignedByteType);
+  t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter;
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.generateMipmaps = false; t.flipY = false; t.unpackAlignment = 1;
+  t.needsUpdate = true;
+  // Texel centres: map x0 + (i + 0.5) * cell, and uv = (loc - corner) / size.
+  return { tex: t, box: new THREE.Vector4(x0 - ox, y0 - oy, nx * FLOOD_CELL, ny * FLOOD_CELL), masts };
+}
+
 // ------------------------------------------------------------------ public
 
 export function createAprons(scene, uniforms, chunks, airports, heightfield = null) {
@@ -551,7 +624,7 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
   const glyphs = glyphAtlas(chars);
 
   const vhead = `${chunks.UNIFORMS_GLSL}\n${chunks.HEIGHT_GLSL}\n${COMMON_VERT}\n`;
-  const fhead = `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.ATMOS_GLSL}\n${LIGHT_GLSL}\n`;
+  const fhead = `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.ATMOS_GLSL}\n${chunks.AIRCRAFT_LIGHTS_GLSL}\n${LIGHT_GLSL}\n`;
   const sites = [];
   let tris = 0;
 
@@ -560,7 +633,9 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
     const ox = a.origin ? a.origin[0] : 0, oy = a.origin ? a.origin[1] : 0;
     const groundAt = (x, y) => (heightfield ? heightfield.heightAt(x, y) : a.elevM || 0);
     const aprons = dedupePolys(a.aprons || []);
-    const u = Object.assign({}, uniforms, { uRelA: { value: new THREE.Vector2() }, uGlyphs: { value: glyphs } });
+    const flood = floodTexture(a, ox, oy);
+    const u = Object.assign({}, uniforms, { uRelA: { value: new THREE.Vector2() }, uGlyphs: { value: glyphs },
+      uFlood: { value: flood.tex }, uFloodBox: { value: flood.box } });
 
     const meshes = [];
     const pave = buildPavement(a, ox, oy, groundAt, aprons);

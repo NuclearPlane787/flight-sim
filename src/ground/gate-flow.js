@@ -7,6 +7,9 @@
 //   gate.afterLanding(state)    // every frame after touchdown: below 30 kt, a route to a stand
 //   gate.clear()                // runway and final starts: no route
 //   gate.route, gate.status, gate.phase, gate.points; gate.onstatus = (text) => toast(text)
+//   gate.serialize()            // a scenario save: plain JSON-safe data
+//   gate.deserialize(o, plan)   // a scenario load, BEFORE sim.restore() (it may sim.reset())
+//   gate.afterLoad()            // after sim.restore()
 //
 // The phases: 'none' → 'parked' → 'pushback' → 'taxi' → 'departed' (lined up or airborne);
 // after landing 'taxi-in' → 'arrived'.
@@ -42,7 +45,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
 
   const flow = {
     onstatus: null,
-    start, onKey, update, afterLanding, afterRestore, clear,
+    start, onKey, update, afterLanding, afterRestore, clear, serialize, deserialize, afterLoad,
     get phase() { return phase; },
     get status() { return status; },
     get route() { return route; },
@@ -242,6 +245,66 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     }
   }
 
+  // ---- scenario saves (v0.2.0) ----
+  // Everything the flow keeps, by reference (airport icao, stand ref, runway ident). The
+  // pushback's own numbers are kept exact (it must end where it would have); the route's are
+  // rounded to 0.01 m.
+  function serialize() {
+    return {
+      v: 1, phase,
+      icao: airport?.icao ?? null, stand: stand?.ref ?? null, depIdent: depEnd?.ident ?? null,
+      wasAirborne,
+      pb: pb ? { ...pb.state } : null,
+      route: route ? roundDeep(route) : null,
+      status,
+      lastTry: lastTry ? roundDeep(lastTry) : null,
+    };
+  }
+
+  // Back from serialize(). Called before sim.restore(): a gate start still at the stand is
+  // planned again with start(plan) (which resets the sim, so the snapshot comes after), so
+  // its pushback is the one it had. Nothing is said: the status comes back silently.
+  function deserialize(o, plan = null) {
+    const quiet = flow.onstatus;
+    flow.onstatus = null;
+    try {
+      clear();
+      if (!o || !o.phase || o.phase === 'none') { wasAirborne = !!o?.wasAirborne; return; }
+      const ap = o.icao ? byIcao.get(o.icao) : null;
+      const out = o.phase === 'parked' || o.phase === 'pushback' || o.phase === 'taxi' || o.phase === 'departed';
+      if (out && plan && ap && plan.origin === o.icao && (o.phase === 'parked' || o.phase === 'pushback' || o.pb)) {
+        // The departure: plan the stand and pushback again, as the flight began.
+        start({ ...plan, stand: o.stand ?? plan.stand, depRunway: o.depIdent ?? plan.depRunway });
+        if (pb && o.pb) pb.setState(o.pb);
+        if (o.phase !== 'parked' && o.phase !== 'pushback' && !o.pb) pb = null;
+      } else if (ap) {
+        airport = ap;
+        stand = o.stand != null ? (ap.stands || []).find((st) => st.ref === o.stand) || null : null;
+        depEnd = o.depIdent ? endOf(ap, o.depIdent) : null;
+        depRect = depEnd ? graphFor(ap).rects.find((r) => r.idents.includes(depEnd.ident)) : null;
+        if (o.pb && stand) {
+          pb = createPushback({ x: o.pb.x, y: o.pb.y, hdgGridDeg: stand.hdgGridDeg });
+          pb.setState(o.pb);
+        }
+      }
+      phase = o.phase;
+      wasAirborne = !!o.wasAirborne;
+      lastTry = o.lastTry || null;
+      status = o.status || '';
+      // Lined up / airborne and at the stand the line is gone but the route is kept (the ND).
+      if (o.phase === 'departed' || o.phase === 'arrived') { route = o.route || null; line?.clear(); }
+      else show(o.route || null);
+    } finally {
+      flow.onstatus = quiet;
+    }
+  }
+
+  // After sim.restore(): the pose is the saved one, so nothing has to move. The route line
+  // is drawn again (it's drawn from the route alone, so this only makes sure).
+  function afterLoad() {
+    if (line) { if (route && phase !== 'departed' && phase !== 'arrived') show(route); else line.clear(); }
+  }
+
   // ---- after landing ----
   function afterLanding(state = sim.state) {
     if (phase === 'taxi-in' || phase === 'arrived') return route;
@@ -314,6 +377,14 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   }
 
   return flow;
+}
+
+// A JSON-safe copy with every number rounded to 0.01 (routes and points).
+function roundDeep(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+  if (Array.isArray(v)) return v.map(roundDeep);
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) if (v[k] !== undefined) o[k] = roundDeep(v[k]); return o; }
+  return v;
 }
 
 function endOf(airport, ident) {

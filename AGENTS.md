@@ -11,7 +11,7 @@ Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D A321neo sim of South
 | File | What |
 |---|---|
 | `HANDOFF.md` | Where things stand, what's next, and how to work on the game from a Cowork session. Read it first. |
-| `V020.md` | The brief for v0.2.0 (the main menu and scenarios), an overnight Claude Code run. |
+| `V020.md` | The brief for v0.2.0 (the main menu and scenarios, then night), an overnight Claude Code run. |
 | `PLAN.md` | The design: Shane's decisions (final) and how each part is built. The spec for everything. |
 | `STATUS.md` | The progress log. Append a checkpoint after every step, and read it after any context compaction. |
 | `ROADMAP.md` | Milestones M1–M3 with a Done column, and the future additions. |
@@ -32,7 +32,8 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **v0.1.2** (2026-10-31, the same session): a lower windshield on a reshaped nose (sections are now two half-ellipses, `fuseSection()` in `aircraft.js`), the engines under the wing (`NACELLES` in `geometry.js`; the sim's thrust still acts at `ENGINES`), and gentle touchdowns on grass.
 - **v0.1.3** (2026-10-31, the same session): a stricter landing score that counts the approach (`score.js`: 100 × e^(−cost), calibrated so Shane's described landing scores 80), a master volume slider and a performance readout bar (F3), and Jeju 31's glideslope fix (`thresholdOf()` in `ui/common.js`).
 - **v0.1.4** (2026-11-01, a second Cowork session): typing into the FCU and faster scrolling (`ui/fcu.js`), jumps picked anywhere on the bright path (`ui/map.js`), Gimpo stand 7's routes (`bridgeIslands()` in `ground/taxi.js`), pushbacks at up to 4× (`main.js`), Jeju's crossing as one surface (`runwayCrossings()` in `world/runways.js`, used by the heightfield, the terrain shader and the runway shaders), and the fonts (B612 and Barlow in `vendor/fonts/`; `fitSize()` in `ui/pfd.js`).
-- **Next: v0.2.0**, a main menu like Satisfactory's and scenarios, which Shane asked for on 2026-10-31. Both questions are answered (`ROADMAP.md`): a scenario is a save slot with the whole state, and the menu's backdrop is a still. Shane asked for them to wait until v0.2.0. The other future additions are in `ROADMAP.md` too.
+- **v0.2.0** (2026-11-01, an overnight Claude Code run, 04:10–05:30 KST): the main menu and scenarios (`src/scenarios.js`, `src/ui/menu.js`; a scenario is a save slot with the whole state), one logbook tagged by scenario, then night: the KST clock and the Sky window (`src/clock.js`, `src/ui/sky-window.js`, L or Cmd/Ctrl+L), Earth's sky (`src/astro.js`, `src/world/sky.js`, BSC5 stars), and city, airport and aircraft lights. `V020.md` was the brief; `STATUS.md` has the evidence.
+- **Next:** not decided; the future additions are in `ROADMAP.md`.
 
 ## Versions, Updates.md and pushing
 
@@ -64,7 +65,7 @@ This is the same system as Satisfactory's.
 
   Don't touch the hub, the other games or the root files. If something outside is in the way, note it in `STATUS.md`.
 - **Scratch outside GameDump:** put Python venvs, Playwright's install and temp files in `/tmp/flight-sim/`. Test scripts themselves go in `tests/`.
-- **Browser storage keys** start with `gamedump:flight-sim:` (`settings`, `logbook`, `lastflight`). No service workers.
+- **Browser storage keys** start with `gamedump:flight-sim:` (`settings`, `logbook`, `lastflight`, and since v0.2.0 `scenarios` and `scenario:<id>`). No service workers.
 - **No network at runtime.** The game loads only files in its own folder; downloads happen in the bake scripts.
 - **No build step:** vanilla ES modules. Copy `three.module.js`, `three.core.js` and `THREE-LICENSE.txt` (r186) from `games/satisfactory/vendor/` into `games/flight-sim/vendor/`. That's a read-only copy: change nothing in Satisfactory.
 

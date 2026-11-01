@@ -1,11 +1,18 @@
 // Flight setup: a modal for origin and runway, destination and runway, the start
 // (runway, 15 nm final, or a gate with pushback and taxi), passengers, cargo and fuel, with weight checks.
-// createSetup(root, { airports, coast?, limits? }) -> { show(defaults) -> Promise<plan>, hide() }
-// plan = { origin, depRunway, dest, arrRunway, start, stand?, pax, cargoKg, fuelKg, waypoints, payloadKg }
+// createSetup(root, { airports, coast?, limits? }) -> { show(defaults, opts?) -> Promise<plan | null>, hide() }
+// plan = { origin, depRunway, dest, arrRunway, start, stand?, pax, cargoKg, fuelKg, waypoints, payloadKg, name? }
 // (stand: the origin stand's ref, for start 'gate')
+// plan.time = { mode: 'now' } (the real time in Korea, the default) | { mode: 'set', ms } (a date and a
+// KST time picked here, KST whatever the Mac's timezone); defaults.time sets the start.
+// opts = { title, name, nameField, cancel }: the dialog's title ("New scenario", "New flight"), a Name
+// field at the top (3–40 characters; the plan gets `name`, cleaned), and a Cancel button (resolves null).
 // The last plan is kept in localStorage['gamedump:flight-sim:settings'].lastPlan.
 
 import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints } from './common.js';
+import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
+import { fmtKst, fmtKstDate } from '../clock.js';
+import { kstFieldValues, kstFromFields } from './sky-window.js';
 
 const KEY = 'gamedump:flight-sim:settings';
 
@@ -41,8 +48,11 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   el.className = 'fsui-setup'; el.hidden = true;
   el.innerHTML = `
   <div class="fsui-dlg" role="dialog" aria-label="Flight setup">
-    <h2>Flight setup</h2>
+    <h2 data-o="title">Flight setup</h2>
     <p class="sub">A321neo · Nuclear Airlines · HL8787</p>
+    <div class="fsui-sec" data-o="nameRow" hidden><div class="fsui-row"><label for="fsui-setup-name">Name</label>
+      <input type="text" id="fsui-setup-name" class="fsui-name" data-f="name" maxlength="${NAME_MAX + 10}" spellcheck="false" autocomplete="off">
+      <span class="fsui-note">${NAME_MIN}–${NAME_MAX} characters</span></div></div>
     <div class="fsui-grid">
       <div>
         <div class="fsui-sec"><h3>Route</h3>
@@ -70,21 +80,48 @@ export function createSetup(root, { airports, coast, limits } = {}) {
           <canvas class="fsui-mini"></canvas>
           <div class="fsui-mini-help">Click an airport to set it. Runways are listed on the left.</div>
         </div>
+        <div class="fsui-sec"><h3>Time</h3>
+          <div class="fsui-row"><div class="fsui-seg" data-seg="time">
+            <button data-v="now" title="The real time in Korea">Now</button><button data-v="set" title="A date and a time (KST)">Set</button>
+          </div><span class="fsui-note" data-o="timeNote"></span></div>
+          <div class="fsui-row" data-o="timeRow" hidden><input type="date" data-t="date" class="fsui-date"><input type="time" data-t="time" step="60" class="fsui-time"><span class="fsui-note">KST</span></div>
+        </div>
       </div>
     </div>
-    <div class="fsui-foot"><span class="msg" data-o="msg"></span><button class="fsui-b primary" data-a="fly">Fly</button></div>
+    <div class="fsui-foot"><span class="msg" data-o="msg"></span><button class="fsui-b" data-a="cancel" hidden>Cancel</button><button class="fsui-b primary" data-a="fly">Fly</button></div>
   </div>`;
   root.appendChild(el);
   const $ = (s) => el.querySelector(s);
   const f = (n) => el.querySelector(`[data-f="${n}"]`);
   const o = (n) => el.querySelector(`[data-o="${n}"]`);
   const mini = $('.fsui-mini');
-  let plan = null, pick = 'dest', resolver = null;
+  let plan = null, pick = 'dest', resolver = null, opts = {};
+  // The start time: 'now' or 'set' (from the date and time fields, read as KST).
+  let timeMode = 'now';
+  const tf = (n) => el.querySelector(`[data-t="${n}"]`);
+  function setTimeMode(mode, ms) {
+    timeMode = mode === 'set' ? 'set' : 'now';
+    if (Number.isFinite(ms) || (timeMode === 'set' && !tf('date').value)) {
+      const v = kstFieldValues(Number.isFinite(ms) ? ms : Date.now());
+      tf('date').value = v.date; tf('time').value = v.time;
+    }
+    seg('time', timeMode);
+    o('timeRow').hidden = timeMode !== 'set';
+    const now = Date.now();
+    o('timeNote').textContent = timeMode === 'now' ? `${fmtKst(now)} KST, ${fmtKstDate(now)}` : '';
+  }
 
-  // Keys typed here never reach the game; Enter flies.
+  // Keys typed here never reach the game (the name field included); Enter flies, Esc cancels.
   el.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); fly(); }
+    else if (e.key === 'Escape' && opts.cancel) { e.preventDefault(); cancel(); }
+  });
+  // The name field stops its keys itself (so no game key fires while typing), with the same Enter and Esc.
+  f('name').addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); fly(); }
+    else if (e.key === 'Escape' && opts.cancel) { e.preventDefault(); cancel(); }
   });
   el.addEventListener('keyup', (e) => e.stopPropagation());
   for (const t of ['pointerdown', 'mousedown', 'click', 'dblclick', 'contextmenu']) el.addEventListener(t, (e) => e.stopPropagation());
@@ -177,6 +214,8 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   }
 
   el.addEventListener('input', (e) => {
+    if (e.target === f('name')) { refresh(); return; }
+    if (e.target.dataset.t) return;   // the start time's fields are read on Fly
     if (e.target.matches('input')) { readInputs(e.target); refresh(); }
   });
   el.addEventListener('change', (e) => {
@@ -185,6 +224,7 @@ export function createSetup(root, { airports, coast, limits } = {}) {
     else if (n === 'stand') { plan.stand = e.target.value; }
     else if (n === 'dest') { plan.dest = e.target.value; plan.arrRunway = ''; fill(); }
     else if (n === 'depRunway' || n === 'arrRunway') { plan[n] = e.target.value; refresh(); }
+    else if (e.target === f('name') || e.target.dataset.t) { /* read on Fly */ }
     else if (e.target.matches('input')) { readInputs(e.target); fill(); }
   });
   el.addEventListener('click', (e) => {
@@ -192,11 +232,13 @@ export function createSetup(root, { airports, coast, limits } = {}) {
     if (!b) return;
     const sg = b.closest('[data-seg]');
     if (sg && !b.disabled) {
+      if (sg.dataset.seg === 'time') { setTimeMode(b.dataset.v); return; }
       if (sg.dataset.seg === 'start') plan.start = b.dataset.v; else pick = b.dataset.v;
       seg(sg.dataset.seg, b.dataset.v); refresh();
     } else if (b.dataset.a === 'enough') {
       plan.fuelKg = Math.min(L.FUEL_MAX, fuelEstimate(distNm()).total); f('fuelKg').value = plan.fuelKg; refresh();
     } else if (b.dataset.a === 'fly') fly();
+    else if (b.dataset.a === 'cancel') cancel();
   });
 
   // The small map: airports, the route line, click an airport to pick it.
@@ -251,26 +293,53 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   function fly() {
     readInputs();
     if (refresh()) return;
+    if (opts.nameField && !nameOk(f('name').value)) {
+      o('msg').textContent = `Give the scenario a name of ${NAME_MIN}–${NAME_MAX} characters.`; o('msg').style.color = C.red;
+      f('name').focus(); return;
+    }
+    let startMs = null;
+    if (timeMode === 'set') {
+      startMs = kstFromFields(tf('date').value, tf('time').value);
+      if (startMs === null) { o('msg').textContent = 'Pick a date and a time for the start, or choose Now.'; o('msg').style.color = C.red; tf('date').focus(); return; }
+    }
     if (plan.start === 'gate' && !plan.stand) { o('msg').textContent = 'No stands mapped at this airport: start on the runway.'; o('msg').style.color = C.red; return; }
     const out = { origin: plan.origin, depRunway: plan.depRunway, dest: plan.dest, arrRunway: plan.arrRunway, start: plan.start,
       pax: plan.pax, cargoKg: plan.cargoKg, fuelKg: plan.fuelKg, waypoints: (plan.waypoints || []).map((p) => [p[0], p[1]]),
       payloadKg: plan.pax * L.PAX_KG + plan.cargoKg };
     if (plan.start === 'gate') out.stand = plan.stand;
     saveStored(out);
+    if (opts.nameField) out.name = cleanName(f('name').value);
+    out.time = timeMode === 'set' ? { mode: 'set', ms: startMs } : { mode: 'now' };
     setWaypoints(out.waypoints);
     hide();
     const r = resolver; resolver = null; r?.(out);
   }
-  function hide() { el.hidden = true; }
+  function cancel() {
+    hide();
+    const r = resolver; resolver = null; r?.(null);
+  }
+  function hide() { if (el.contains(document.activeElement)) document.activeElement.blur(); el.hidden = true; }
 
-  // show(defaults): the built-in plan, then the last plan, then the given defaults.
-  function show(defaults = {}) {
+  // show(defaults, opts): the built-in plan, then the last plan, then the given defaults.
+  function show(defaults = {}, options = {}) {
+    opts = options || {};
     plan = { ...BASE, ...(loadStored().lastPlan || {}), ...(defaults || {}) };
+    delete plan.name;
+    const t = defaults?.time;
+    delete plan.time;
+    tf('date').value = ''; tf('time').value = '';
+    setTimeMode(t?.mode === 'set' && Number.isFinite(t.ms) ? 'set' : 'now', t?.mode === 'set' ? t.ms : undefined);
     if (!plan.fuelKg) { plan.fuelKg = 0; }
+    $('[data-o="title"]').textContent = opts.title || 'Flight setup';
+    el.querySelector('.fsui-dlg').setAttribute('aria-label', opts.title || 'Flight setup');
+    o('nameRow').hidden = !opts.nameField;
+    f('name').value = opts.nameField ? (opts.name || '') : '';
+    $('[data-a="cancel"]').hidden = !opts.cancel;
     el.hidden = false;
     fill();
     if (!plan.fuelKg) { plan.fuelKg = Math.min(L.FUEL_MAX, fuelEstimate(distNm()).total); f('fuelKg').value = plan.fuelKg; refresh(); }
-    $('[data-a="fly"]').focus({ preventScroll: true });
+    if (opts.nameField) { f('name').focus({ preventScroll: true }); f('name').select(); }
+    else $('[data-a="fly"]').focus({ preventScroll: true });
     return new Promise((res) => { resolver = res; });
   }
 

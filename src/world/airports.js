@@ -10,6 +10,9 @@
 // (ALSF-II, SSALF, SALS) with sequenced flashers, and PAPIs (red/white by the viewer's
 // elevation angle: two white, two red on the 3° path).
 //
+// Night (v0.2.0): the lights grow halos and carry further as uNight rises (by day they
+// look as before); the pavement takes the aircraft's landing and taxi lights.
+//
 // The runway sits exactly at its end elevations (the terrain is flattened to the same
 // values) and is pulled a little towards the camera along the view ray, so it never
 // fights the terrain under it.
@@ -209,7 +212,7 @@ const RUNWAY_FRAG = /* glsl */ `
     col = mix(col, vec3(0.50, 0.50, 0.48) * (0.85 + 0.2 * g), p * (1.0 - 0.6 * rubber));
     vec3 n = vec3(0.0, 1.0, 0.0);
     vec3 light = uSunColor * max(uSunDir.y, 0.0) * 2.4 + uSkyAmb * 1.1;
-    vec3 c = col * light;
+    vec3 c = col * light + col * aircraftLights(vRel + uCamPos, n);
     // A little sheen at grazing angles towards the sun.
     vec3 vd = vRel / max(dist, 1e-3);
     c += uSunColor * 0.08 * pow(max(dot(reflect(vd, n), uSunDir), 0.0), 12.0);
@@ -273,7 +276,7 @@ function onDrawnRunway(P, x, y) {
 const OMNI = 0, DIR = 1, PAPI = 2, FLASH = 3;
 const WHITE = [1.0, 0.95, 0.85], YELLOW = [1.0, 0.72, 0.18], RED = [1.0, 0.08, 0.04], GREEN = [0.15, 1.0, 0.35], NONE = [0, 0, 0];
 
-function lightLayout(airport, hf) {
+export function lightLayout(airport, hf) {
   const L = [];   // { x, y (map), h, colA, colB, dir: [dx, dy], kind, size, param }
   const groundAt = (x, y, e) => Math.max(e, hf ? hf.heightAt(x, y) : e) + 0.4;
   for (const r of airport.runways) {
@@ -296,7 +299,9 @@ function lightLayout(airport, hf) {
       }
     }
     // Centreline lights every 15 m: red/white alternate 900-300 m from the end you're heading to, red in the last 300.
-    const nc = Math.floor(len / 15);
+    // (Only where the data says the runway has them: Gimpo 14L/32R and Jeju 13/31 don't.)
+    const hasCl = r.ends.some((e) => e.centrelineLights !== false);
+    const nc = hasCl ? Math.floor(len / 15) : 0;
     for (let i = 1; i < nc; i++) {
       const u = i * 15;
       const [x, y, h] = at(u, 0.6);
@@ -340,7 +345,7 @@ function lightLayout(airport, hf) {
         for (let t = step; t <= reach + 0.1; t += step) {
           for (const s of [-2, -1, 0, 1, 2]) { const [x, y, h] = ground(t, s); L.push({ x, y, h, colA: WHITE, colB: NONE, dir: out, kind: DIR, size: 0.9 }); }
           // Sequenced flashers (the rabbit), running towards the runway.
-          const flashFrom = type === 'ALSF-II' ? 300 : type === 'SSALF' ? 240 : 1e9;
+          const flashFrom = type === 'ALSF-II' || type === 'ALSF-I' ? 300 : type === 'SSALF' ? 240 : 1e9;
           if (t > flashFrom) { const [x, y, h] = ground(t, 0); L.push({ x, y, h: h + 0.8, colA: [1, 1, 1], colB: NONE, dir: out, kind: FLASH, size: 2.0, param: t / reach }); }
         }
         // The 300 m (1,000 ft) crossbar.
@@ -383,7 +388,7 @@ const LIGHT_VERT = /* glsl */ `
   attribute vec4 colA, colB;   // rgb + kind (in colA.a), colB.a = size (m)
   attribute vec3 dirParam;     // map direction of side A (x, y), param
   varying vec3 vCol;
-  varying float vAlpha;
+  varying float vAlpha, vCore, vHalo;
   #include <logdepthbuf_pars_vertex>
   void main() {
     vec2 rel = uRelA + position.xy;            // position: (map dx, map dy, height)
@@ -407,17 +412,27 @@ const LIGHT_VERT = /* glsl */ `
     if (kind > 2.5) {
       // Sequenced flasher: twice a second, from the outer light in.
       float ph = fract(uTime * 2.0) - (1.0 - dirParam.z) * 0.6;
-      I *= exp(-ph * ph * 900.0) * 3.0;
+      I *= exp(-ph * ph * 500.0) * 3.0;
     }
     // Haze dims the light (no in-scatter: it's an emitter).
     float od = 2.6e-5 * dist * exp(-max(min(uCamAlt, wp.y + 0.5 * r.y), 0.0) / 1500.0);
     I *= exp(-od);
+    float n = uNight;
     float px = size * uPxScale / max(dist, 1.0);
-    float minPx = kind > 1.5 && kind < 2.5 ? 3.0 : 2.0;
+    float minPx = (kind > 1.5 && kind < 2.5 ? 3.0 : 2.0) + 0.5 * n;
     float sz = px > minPx ? minPx + (px - minPx) * 0.4 : minPx; // small daytime fixtures up close
-    // Below the minimum size the light gets dimmer rather than smaller.
-    I *= clamp(px / minPx, 0.06, 1.0);
-    gl_PointSize = min(sz, 12.0) * step(0.001, I);
+    sz = min(sz, 12.0);
+    // Below the minimum size the light gets dimmer rather than smaller. By day it fades
+    // fast; at night it carries (readable from 15 nm), and it's brighter against the dark.
+    float dimDay = clamp(px / minPx, 0.06, 1.0);
+    float dimNight = clamp(pow(px / minPx, 0.35), 0.3, 1.0);
+    I *= mix(dimDay, dimNight, n) * (1.0 + 0.4 * n);
+    // At night the sprite grows a halo around the same core (small: hundreds overlap).
+    float S = min(sz * (1.0 + 1.6 * n), 12.0 + 14.0 * n);
+    if (kind > 2.5) S = min(S * (1.0 + 1.5 * n), 48.0);        // the rabbit's flash: a big glow
+    gl_PointSize = S * step(0.001, I);
+    vCore = sz / S;
+    vHalo = n;
     vCol = c * I;
     vAlpha = I;
     vec4 mv = viewMatrix * vec4(wp, 1.0);
@@ -429,15 +444,18 @@ const LIGHT_VERT = /* glsl */ `
 
 const LIGHT_FRAG = /* glsl */ `
   varying vec3 vCol;
-  varying float vAlpha;
+  varying float vAlpha, vCore, vHalo;
   #include <logdepthbuf_pars_fragment>
   void main() {
     #include <logdepthbuf_fragment>
     vec2 q = gl_PointCoord * 2.0 - 1.0;
     float r2 = dot(q, q);
     if (r2 > 1.0) discard;
-    float core = exp(-r2 * 6.0), halo = exp(-r2 * 2.0) * 0.35;
-    gl_FragColor = vec4(vCol * (core * 1.4 + halo * 0.5), 1.0);
+    // The fixture (as by day, within vCore of the sprite), then the night halo around it.
+    float rc2 = r2 / (vCore * vCore);
+    float core = exp(-rc2 * 6.0), glow = exp(-rc2 * 2.0) * 0.35 * step(rc2, 1.0);
+    float halo = vHalo * 0.16 * exp(-r2 * 4.0) * (1.0 - r2);
+    gl_FragColor = vec4(vCol * (core * 1.4 + glow * 0.5 + halo), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
@@ -476,7 +494,7 @@ export function createRunways(scene, uniforms, chunks, airports, renderer, hf = 
       const mat = new THREE.ShaderMaterial({
         uniforms: u,
         vertexShader: `${chunks.UNIFORMS_GLSL}\n${chunks.HEIGHT_GLSL}\n${RUNWAY_VERT}`,
-        fragmentShader: `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.ATMOS_GLSL}\n${RUNWAY_FRAG}`,
+        fragmentShader: `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.ATMOS_GLSL}\n${chunks.AIRCRAFT_LIGHTS_GLSL}\n${RUNWAY_FRAG}`,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;

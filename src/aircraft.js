@@ -4,15 +4,20 @@
 // Everything is built in the body frame of geometry.js (+x forward, +y left, +z up, metres)
 // and converted once to the model frame (X = −y, Y = z, Z = −x). The whole airframe is one
 // SkinnedMesh with one material: each moving part is skinned rigidly to its own bone, so the
-// aircraft costs one draw call (plus two for the light glows).
+// aircraft costs one draw call (plus one for the light glows, src/aircraft-lights.js).
 //
-//   createAircraft(opts?) → { object, update(state, dt), setCockpitView(bool), mesh, triangles }
+//   createAircraft(opts?) → { object, update(state, dt), setCockpitView(bool), mesh, triangles,
+//     setLights({ nav, beacon, strobe, landing, taxi, logo }), setNight(0..1),
+//     lampPose() → { pos, dir } }
+// lampPose() is in the model frame of `object` (X = −body y, i.e. right; Y up; Z = −body x, aft):
+// the landing lamps' midpoint and beam while they're on, else the nose gear's taxi lamp.
 
 import * as THREE from '../vendor/three.module.js';
 import { TAIL_X, NOSE_X, GEAR, NACELLES, WING, GROUND_Z } from './geometry.js';
 import { createLiveryTextures, UV, FIN_BOX } from './livery.js';
 import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
+import { createLampGlows, flashAt } from './aircraft-lights.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -300,6 +305,8 @@ function stabSec(y, side) {
   };
 }
 const FIN_TIP_Z = 11.76 - GROUND_Z; // overall height 11.76 m on the ground
+// The landing lights: span (m from the centreline) and chord fraction on the wing's underside.
+const LAND_Y = 3.6, LAND_F = 0.12;
 function finSec(z) {
   const xle = -15.0 - (z - 1.9) * Math.tan(36 * DEG);
   const xte = -21.2 - (z - 1.9) * ((21.9 - 21.2) / (FIN_TIP_Z - 1.9));
@@ -575,6 +582,8 @@ export function createAircraft(opts = {}) {
 
     // Lights: navigation (red left, green right) and strobe at the sharklet root.
     b.add(sphereAt(V(-3.0, side * 17.3, 0.42), 0.08), ROOT, side > 0 ? C.red : C.green);
+    // Retractable landing light, under the inner wing between the fuselage and the engine.
+    b.add(sphereAt(foilPoint(wingSec(LAND_Y, side), LAND_F, -1).add(V(0, 0, 0.02)), 0.11), ROOT, C.lamp);
   }
 
   // Horizontal stabiliser (trimmable) with elevators.
@@ -663,39 +672,60 @@ export function createAircraft(opts = {}) {
   mesh.bind(new THREE.Skeleton(bones));
   mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 26);
 
-  // Light glows: steady navigation lights, and the flashing beacons and strobes.
-  const glowTex = (() => {
-    const c = document.createElement('canvas'); c.width = c.height = 64;
-    const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-  })();
-  const pointsOf = (list, size) => {
-    const pos = [], col = [];
-    for (const [p, c] of list) { const m = toModel(p.x, p.y, p.z); pos.push(m.x, m.y, m.z); const cc = new THREE.Color(c); col.push(cc.r, cc.g, cc.b); }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    const pts = new THREE.Points(g, new THREE.PointsMaterial({
-      size, map: glowTex, vertexColors: true, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false,
-    }));
-    pts.userData.base = col.slice();
-    pts.frustumCulled = false;
-    return pts;
+  // The logo lights (on the stabiliser, aimed up at the fin): the fin and fillet take a pool
+  // of light, brightest at the root. The mask uses the bind-pose (model frame) position.
+  // At night, a faint fill (uFill) stands for the light of the ramp floods, the city and the
+  // sky glow that three's sun and hemisphere lights no longer give, so the airframe never
+  // goes pitch black.
+  const logoU = { value: 0 }, fillU = { value: 0 };
+  material.onBeforeCompile = (sh) => {
+    sh.uniforms.uLogo = logoU;
+    sh.uniforms.uFill = fillU;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBindPos = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;\nuniform float uLogo, uFill;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance += diffuseColor.rgb * uFill;
+        if (uLogo > 0.001) {
+          float fin = (1.0 - smoothstep(0.6, 0.9, abs(vBindPos.x))) * smoothstep(${(14.6).toFixed(1)}, 15.6, vBindPos.z)
+            * smoothstep(1.55, 2.0, vBindPos.y);
+          float fall = exp(-max(vBindPos.y - 1.9, 0.0) / 3.2);
+          totalEmissiveRadiance += uLogo * fin * fall * (diffuseColor.rgb + 0.04) * vec3(1.0, 0.95, 0.86) * 2.2;
+        }`);
   };
-  const nav = pointsOf([
-    [V(-3.0, 17.3, 0.42), C.red], [V(-3.0, -17.3, 0.42), C.green], [V(TAIL_X - 0.05, 0, 0.85), '#ffffff'],
-  ], 1.4);
-  const flash = pointsOf([
-    [V(-1.5, 0, fuseTop(-1.5) + 0.1), C.red], [V(1.5, 0, -2.45), C.red],
-    [V(-3.15, 17.35, 0.42), '#ffffff'], [V(-3.15, -17.35, 0.42), '#ffffff'], [V(TAIL_X - 0.08, 0, 0.75), '#ffffff'],
-  ], 3.2);
+
+  // Light glows (src/aircraft-lights.js): one Points draw. Positions in the model frame.
+  const M = (v) => toModel(v.x, v.y, v.z).toArray();
+  const Md = (x, y, z) => toModel(x, y, z).normalize().toArray();
+  const landP = [1, -1].map((side) => foilPoint(wingSec(LAND_Y, side), LAND_F, -1).add(V(0, 0, -0.08)));
+  const landDirBody = [Math.cos(8 * DEG), 0, -Math.sin(8 * DEG)];   // aimed 8° down: the ground ahead on final
+  const taxiP = nPivot.clone().lerp(nAxle, 0.5).add(V(0.22, 0, 0));
+  const taxiDirBody = [Math.cos(9 * DEG), 0, -Math.sin(9 * DEG)];
+  const LAMPS = [
+    { key: 'navL', pos: M(V(-3.0, 17.35, 0.42)), color: C.red, size: 3.0, px: [2.5, 9] },
+    { key: 'navR', pos: M(V(-3.0, -17.35, 0.42)), color: C.green, size: 3.0, px: [2.5, 9] },
+    { key: 'tail', pos: M(V(TAIL_X - 0.1, 0, 0.85)), color: '#ffffff', size: 2.4, px: [2, 7] },
+    { key: 'beaconTop', pos: M(V(-1.5, 0, fuseTop(-1.5) + 0.12)), color: C.red, size: 5.0, px: [4, 14] },
+    { key: 'beaconBottom', pos: M(V(1.5, 0, -2.47)), color: C.red, size: 5.0, px: [4, 14] },
+    { key: 'strobe', pos: M(V(-3.2, 17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
+    { key: 'strobe', pos: M(V(-3.2, -17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
+    { key: 'strobe', pos: M(V(TAIL_X - 0.15, 0, 0.75)), color: '#ffffff', size: 7.0, px: [6, 20] },
+    ...landP.map((p) => ({ key: 'landing', pos: M(p), color: '#fff4e0', size: 7.0, px: [4, 22], dir: Md(...landDirBody) })),
+    { key: 'taxi', pos: M(taxiP), color: '#fff4e0', size: 4.5, px: [3, 16], dir: Md(...taxiDirBody) },
+  ];
+  const glows = createLampGlows(LAMPS);
+  const levels = new Array(LAMPS.length).fill(0);
+  // Until setLights is called: nav, beacon and strobes, as before v0.2.0.
+  let lights = { nav: 1, beacon: 1, strobe: 1, landing: 0, taxi: 0, logo: 0 };
+  let night = 0, gearNow = 1;
+  const landMid = toModel((landP[0].x + landP[1].x) / 2, 0, (landP[0].z + landP[1].z) / 2).toArray();
+  const pose = { land: { pos: landMid, dir: Md(...landDirBody) }, taxi: { pos: M(taxiP), dir: Md(...taxiDirBody) } };
 
   const object = new THREE.Group();
   object.name = 'aircraft';
-  object.add(mesh, nav, flash);
+  object.add(mesh, glows.object);
 
   // --- Animation ---
   const qa = new THREE.Quaternion();
@@ -705,7 +735,7 @@ export function createAircraft(opts = {}) {
   };
   const slide = (name, d) => { const bn = B[name]; bn.position.copy(bn.userData.rest).addScaledVector(bn.userData.axis, d); };
   void qa;
-  let fanL = 0, fanR = 0, wheelMain = 0, wheelNose = 0, clock = 0;
+  let fanL = 0, fanR = 0, wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
 
   function update(state = {}, dt = 0) {
     clock += dt;
@@ -759,16 +789,41 @@ export function createAircraft(opts = {}) {
     move('revL', -0.6 * clamp(en[0]?.rev || 0, 0, 1), 0, 0);
     move('revR', -0.6 * clamp(en[1]?.rev || 0, 0, 1), 0, 0);
 
-    // Lights: beacons ~1 Hz alternating, strobes double-flash every 1.3 s.
-    const fc = flash.geometry.attributes.color, base = flash.userData.base;
-    const tb = clock % 1.0, ts = clock % 1.3;
-    const on = [tb < 0.12, tb > 0.5 && tb < 0.62, ts < 0.05 || (ts > 0.16 && ts < 0.21)];
-    const lit = [on[0], on[1], on[2], on[2], on[2]];
-    for (let i = 0; i < 5; i++) for (let k = 0; k < 3; k++) fc.array[i * 3 + k] = lit[i] ? base[i * 3 + k] : 0;
-    fc.needsUpdate = true;
+    // Lights: steady nav, flashing beacons and strobes (aircraft-lights.js), the lamps.
+    gearNow = gp;
+    const f = flashAt(clock), L = lights, gearLamp = gp > 0.97 ? 1 : 0;
+    // From the seats the nose is hidden, so the lamps under it would show through: hide them
+    // (the pilots never see these lamps, only their light on the ground).
+    const seen = cockpitView ? 0 : 1;
+    for (let i = 0; i < LAMPS.length; i++) {
+      const k = LAMPS[i].key;
+      levels[i] = k === 'navL' || k === 'navR' || k === 'tail' ? L.nav
+        : k === 'beaconTop' ? L.beacon * f.beaconTop
+          : k === 'beaconBottom' ? L.beacon * f.beaconBottom
+            : k === 'strobe' ? L.strobe * f.strobe
+              : k === 'landing' ? L.landing * seen
+                : L.taxi * gearLamp * seen;
+    }
+    glows.setLevels(levels);
   }
 
-  let cockpitView = false;
+  function setLights(l) {
+    lights = { nav: l.nav ?? 0, beacon: l.beacon ?? 0, strobe: l.strobe ?? 0, landing: l.landing ?? 0, taxi: l.taxi ?? 0, logo: l.logo ?? 0 };
+    logoU.value = lights.logo * night;
+  }
+  // n: 0 by day … 1 at night. Bigger halos and the logo light at night.
+  function setNight(n) {
+    night = clamp(n || 0, 0, 1);
+    glows.setNight(night);
+    fillU.value = 0.035 * night;
+    logoU.value = lights.logo * night;
+  }
+  // The landing lamps' midpoint and beam (model frame), or the taxi lamp's when only it is on.
+  function lampPose() {
+    const p = lights.landing > 0 || !(lights.taxi > 0 && gearNow > 0.97) ? pose.land : pose.taxi;
+    return { pos: p.pos.slice(), dir: p.dir.slice() };
+  }
+
   function setCockpitView(on) {
     if (on === cockpitView) return;
     cockpitView = on;
@@ -776,5 +831,5 @@ export function createAircraft(opts = {}) {
   }
 
   update({}, 0);
-  return { object, update, setCockpitView, mesh, bones: B, triangles: geometry.index.count / 3 };
+  return { object, update, setCockpitView, setLights, setNight, lampPose, mesh, bones: B, triangles: geometry.index.count / 3 };
 }

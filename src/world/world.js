@@ -10,7 +10,7 @@
 import * as THREE from '../../vendor/three.module.js';
 import { loadHeightfield } from './heightfield.js';
 import { loadAirports, createAirports } from './runways.js';
-import { createWorldUniforms, UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, MAX_PATCHES, MAX_RUNWAYS } from './glsl.js';
+import { createWorldUniforms, UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, AIRCRAFT_LIGHTS_GLSL, MAX_PATCHES, MAX_RUNWAYS } from './glsl.js';
 import { ATMOS_GLSL, createSky } from './sky.js';
 import { WATER_GLSL } from './water.js';
 import { FIELDS_GLSL, createTrees } from './detail.js';
@@ -29,7 +29,7 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
 
   maskAirportCover(hf, ap.airports); // before the cover texture is made
   const uniforms = createWorldUniforms(hf);
-  const chunks = { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, ATMOS_GLSL, WATER_GLSL, FIELDS_GLSL, MAX_PATCHES, MAX_RUNWAYS };
+  const chunks = { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, ATMOS_GLSL, WATER_GLSL, FIELDS_GLSL, AIRCRAFT_LIGHTS_GLSL, MAX_PATCHES, MAX_RUNWAYS };
 
   const sky = createSky(scene, uniforms, chunks);
   const terrain = createTerrain(scene, uniforms, chunks);
@@ -41,6 +41,10 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
   const optional = (name, make) => { try { return make(); } catch (e) { console.warn(`world: ${name} off:`, e); return null; } };
   const aprons = optional('aprons', () => createAprons(scene, uniforms, chunks, ap.airports, hf));
   const traffic = optional('traffic', () => createTraffic(scene, uniforms, chunks, ap.airports, hf));
+  // v0.2.0, night: the city lights and the taxiway lights (optional too).
+  const [clMod, tlMod] = await Promise.all([import('./citylights.js').catch(() => null), import('./taxilights.js').catch(() => null)]);
+  const cityLights = clMod?.createCityLights ? optional('city lights', () => clMod.createCityLights(scene, uniforms, chunks, { heightfield: hf, airports: ap.airports })) : null;
+  const taxiLights = tlMod?.createTaxiLights ? optional('taxi lights', () => tlMod.createTaxiLights(scene, uniforms, chunks, ap.airports, hf)) : null;
 
   const camMap = { x: 0, y: 0 };
   const camScene = new THREE.Vector3();
@@ -48,7 +52,7 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
   const stats = { drawCalls: 0, triangles: 0, terrainLevels: 0, finestStep: 0, trees: 0, buildings: 0, lights: 0, agl: 0 };
 
   const world = {
-    heightfield: hf, airports: ap, uniforms, sun: sky.sun.clone(), sky, terrain, trees, cities, runways, aprons, traffic, stats,
+    heightfield: hf, airports: ap, uniforms, sun: sky.sun.clone(), sky, terrain, trees, cities, runways, aprons, traffic, cityLights, taxiLights, stats,
 
     update({ camera, origin, dt = 1 / 60, paused = false }) {
       time += dt;
@@ -75,15 +79,18 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       const r = runways.update(camMap, origin, camScene);
       const a = aprons ? aprons.update({ camMap, origin }) : NONE;
       const tr = traffic ? traffic.update({ camera, origin, camMap }, paused ? 0 : dt) : NONE;
+      const cl = cityLights ? cityLights.update({ camMap, origin, camScene, agl }) || NONE : NONE;
+      const tl = taxiLights ? taxiLights.update({ camMap, origin, camScene }) || NONE : NONE;
 
       stats.agl = agl;
       stats.terrainLevels = t.drawCalls - 1;
       stats.finestStep = 2 * 2 ** terrain.finest;
       stats.trees = treeTris;
       stats.buildings = c.instances;
-      stats.lights = r.lights;
-      stats.drawCalls = 1 + t.drawCalls + trees.drawCalls + c.drawCalls + r.drawCalls + a.drawCalls + tr.drawCalls;
-      stats.triangles = 960 * 2 + t.tris + treeTris + c.tris + r.tris + a.triangles + tr.triangles;
+      stats.lights = r.lights + (tl.lights || 0);
+      stats.cityLights = cl.lights || 0;
+      stats.drawCalls = (sky.drawCalls ?? 1) + t.drawCalls + trees.drawCalls + c.drawCalls + r.drawCalls + a.drawCalls + tr.drawCalls + (cl.drawCalls || 0) + (tl.drawCalls || 0);
+      stats.triangles = 960 * 2 + t.tris + treeTris + c.tris + r.tris + a.triangles + tr.triangles + (cl.tris || 0) + (tl.tris || 0);
     },
 
     // Ground height and kind for anything that needs it (same as the sim's).

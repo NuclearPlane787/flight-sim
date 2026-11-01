@@ -173,6 +173,39 @@ export function sharePoints(parts, points) {
   return parts;
 }
 
+// Rounding and a JSON-safe deep copy for serialize().
+const r2 = (v) => Math.round(v * 100) / 100;
+const r3 = (v) => Math.round(v * 1000) / 1000;
+const jsonSafe = (o) => JSON.parse(JSON.stringify(o));
+
+// Runway ends by reference, for scorer.serialize() and scorer.load(): identify(end) →
+// { icao, ident } (by identity, else the nearest end with that ident), and resolve(icao,
+// ident, near) → { runway, end, other } with the airports' own objects, or null. Without
+// an icao, resolve takes the end with that ident nearest `near`.
+export function runwayEndRefs(airports) {
+  const list = Array.isArray(airports) ? airports : Object.values(airports || {});
+  const all = [];
+  for (const a of list) for (const r of a.runways || []) r.ends.forEach((e, i) => all.push({ icao: a.icao, runway: r, end: e, other: r.ends[1 - i] }));
+  const same = (a, b) => String(a).toUpperCase() === String(b).toUpperCase();
+  const nearest = (cands, near) => {
+    if (!near || !Number.isFinite(near.x)) return cands[0] || null;
+    let best = null, bd = Infinity;
+    for (const c of cands) { const d = Math.hypot(c.end.x - near.x, c.end.y - near.y); if (d < bd) { bd = d; best = c; } }
+    return best;
+  };
+  return {
+    identify(end) {
+      const hit = all.find((c) => c.end === end) || nearest(all.filter((c) => same(c.end.ident, end.ident)), end);
+      return hit ? { icao: hit.icao, ident: hit.end.ident } : { icao: null, ident: end.ident };
+    },
+    resolve(icao, ident, near) {
+      const cands = all.filter((c) => same(c.end.ident, ident) && (!icao || c.icao === icao));
+      const hit = icao ? cands[0] : nearest(cands, near);
+      return hit ? { runway: hit.runway, end: hit.end, other: hit.other } : null;
+    },
+  };
+}
+
 export function createScorer() {
   let rf = null;
   let landing = null;  // { runway, end, other } of the touchdown, or null (off the runway)
@@ -206,6 +239,50 @@ export function createScorer() {
     reset(keepTrack = false) {
       td = null; result = null; bounces = 0; peakG = 0; airborneSince = null;
       if (!keepTrack) clearTrack();
+    },
+
+    // ---- scenario saves (v0.2.0) ----
+    // A plain, JSON-safe copy of everything above. The runway end is saved by reference:
+    // identify(end) → { icao, ident } (runwayEndRefs(airports).identify does that); without
+    // it only the ident is kept, with the threshold's x/y so a resolver can find it nearest.
+    // `from` says whether it's still the planned runway ('plan') or the touchdown's
+    // ('touchdown', after setLanding). The track is rounded (0.01 m, 0.001 m/s): 5 minutes of
+    // it (1,200 samples) is about 70 KB.
+    serialize(identify = null) {
+      const ref = (e) => {
+        const id = identify ? identify(e) : null;
+        return { icao: id?.icao ?? e.icao ?? null, ident: id?.ident ?? e.ident, x: r2(e.x), y: r2(e.y) };
+      };
+      return {
+        v: 1,
+        landing: landing ? { ...ref(landing.end), from: landing.runway || td ? 'touchdown' : 'plan' } : null,
+        td: td ? jsonSafe(td) : null,
+        peakG, bounces, airborneSince,
+        result: result ? jsonSafe({ ...result, touchdown: null }) : null,
+        // [t, x, y, z, vs, gs] per sample (t exact: the 0.25 s spacing and the 5-minute window use it)
+        track: track.map((p) => [p.t, r2(p.x), r2(p.y), r2(p.z), r3(p.vs), r3(p.gs)]),
+        lastSampleT: Number.isFinite(lastSampleT) ? lastSampleT : null,
+      };
+    },
+    // Back from serialize(): resolveEnd(icao, ident, { x, y }) → { end, other, runway? } (the
+    // airports' own end objects), or null, which leaves no runway (and so no approach parts).
+    load(o, resolveEnd) {
+      rf = null; landing = null; td = null; result = null; peakG = 0; bounces = 0; airborneSince = null;
+      clearTrack();
+      if (!o) return;
+      if (o.landing && resolveEnd) {
+        const r = resolveEnd(o.landing.icao, o.landing.ident, { x: o.landing.x, y: o.landing.y });
+        if (r && r.end && r.other) {
+          landing = { runway: o.landing.from === 'touchdown' ? r.runway || null : null, end: r.end, other: r.other };
+          rf = runwayFrame(r.end, r.other);
+        }
+      }
+      td = o.td ? { ...o.td, along: o.td.along ?? NaN, cross: o.td.cross ?? NaN } : null;
+      peakG = o.peakG ?? 0; bounces = o.bounces ?? 0; airborneSince = o.airborneSince ?? null;
+      result = o.result ? { ...o.result, touchdown: td } : null;
+      track = (o.track || []).map((p) => (Array.isArray(p) ? { t: p[0], x: p[1], y: p[2], z: p[3], vs: p[4], gs: p[5] }
+        : { t: p.t, x: p.x, y: p.y, z: p.z, vs: p.vs, gs: p.gs }));
+      lastSampleT = o.lastSampleT ?? -Infinity;
     },
 
     // Feed sim events and the state every frame. Returns the result once, when it's done.

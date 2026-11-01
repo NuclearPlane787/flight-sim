@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flight Sim: menu dev page</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../src/ui/ui.css">
+  <link rel="stylesheet" href="../src/ui/logbook.css">
+  <link rel="stylesheet" href="../src/ui/menu.css">
+  <style>
+    #app { background: linear-gradient(#3a6fa8, #9cc3e3 60%, #5b6b4a 60%); }
+    #devlog { position: fixed; left: 8px; top: 4px; z-index: 100; font: 11px var(--font-mono); color: #9fb; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <!-- The main menu and its pages without WebGL, over a store kept in memory.
+       ?scene=main | load | empty | settings | controls | setup | pause   &bg=none (the dark gradient)
+       &sky=1 (the Sky rows). window.__calls lists what the menu asked the game to do;
+       window.__keys what reached the game's window listener. -->
+  <div id="app">
+    <div id="pause" class="panel center" hidden>
+      <h2>Paused</h2>
+      <div class="buttons"><button data-act="resume" class="primary">Resume</button><button data-act="settings">Settings</button><button data-act="controls">Controls</button></div>
+    </div>
+    <div id="setup-root"></div>
+    <div id="menu-root"></div>
+  </div>
+  <div id="devlog"></div>
+  <script type="module">
+    import { ScenarioStore } from '../src/scenarios.js';
+    import { createMenu, createSettingsPage, createControlsPage } from '../src/ui/menu.js';
+    import { createSetup } from '../src/ui/setup.js';
+    import { loadAirportsOrMock, loadCoastOrMock } from './dev-ui-mock.js';
+
+    const qs = new URLSearchParams(location.search);
+    const scene = qs.get('scene') || 'main';
+    const sky = qs.get('sky') === '1';
+
+    // A Storage over a Map, so nothing touches the browser's real storage.
+    const map = new Map();
+    const mem = { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => { map.set(k, String(v)); }, removeItem: (k) => { map.delete(k); } };
+    const store = new ScenarioStore(mem);
+    if (scene !== 'empty') {
+      const now = Date.now(), min = 60e3, h = 3600e3;
+      const add = (name, route, where, ago) => {
+        const r = store.create(name, { v: 1 }, { route, where }, { now: now - ago });
+        if (!r.ok) throw new Error('mock create: ' + r.error);
+      };
+      add('Scenario 1', 'RKSS 14R → RKPC 07', 'Parked at RKPC stand 12', 2 * 24 * h);
+      add('Jeju shuttle, evening', 'RKPC 25 → RKSS 32L', '4,500 ft, 30 nm to RKSS', 26 * h);
+      add('Incheon gate practice with a very long name', 'RKSI 33L → RKPC 07', 'Taxiing at RKSI', 3 * h);
+      add('Test A', 'RKSS 14R → RKPC 07', 'FL350, 120 nm to RKPC', 7 * min);
+      add('Test B', 'RKPC 07 → RKSS 14R', 'On the runway at RKPC', 20e3);
+    }
+
+    const calls = [], keys = [];
+    const log = (s) => { calls.push(s); document.getElementById('devlog').textContent = calls.slice(-4).join(' · '); };
+    window.addEventListener('keydown', (e) => keys.push(e.key)); // what the game would see
+
+    const root = document.getElementById('menu-root');
+    const backdrops = qs.get('bg') === 'none' ? [] : ['../assets/menu/gimpo-gate.jpg', '../assets/menu/jeju-final.jpg', '../assets/menu/seoul.jpg'];
+    const settingsState = { volume: 0.8, callouts: true, showPerf: false };
+    const settings = createSettingsPage(root, {
+      get: () => ({ ...settingsState }),
+      onVolume: (v) => { settingsState.volume = v; log('volume ' + v); },
+      onCallouts: (on) => { settingsState.callouts = on; log('callouts ' + on); },
+      onPerf: (on) => { settingsState.showPerf = on; log('perf ' + on); },
+      ...(sky ? { onSky: () => log('sky') } : {}),
+    });
+    const controls = createControlsPage(root, { sky });
+
+    const { airports } = await loadAirportsOrMock();
+    const { coast } = await loadCoastOrMock().catch(() => ({ coast: null }));
+    const setup = createSetup(document.getElementById('setup-root'), { airports, coast });
+
+    const menu = createMenu(root, {
+      version: 'Flight Sim v0.2.0 · CL#261101',
+      backdrops,
+      scenarios: store,
+      onContinue: (id) => log('continue ' + id),
+      onNew: () => newScenario(),
+      onLoad: (id) => log('load ' + id),
+      onLogbook: () => log('logbook'),
+      onSettings: () => settings.open(),
+      onControls: () => controls.open(),
+    });
+
+    async function newScenario() {
+      log('new');
+      menu.hide();
+      const plan = await setup.show({}, { title: 'New scenario', name: store.defaultName(), nameField: true, cancel: true });
+      window.__plan = plan;
+      log('plan ' + (plan ? plan.name : 'null'));
+      menu.show();
+    }
+
+    document.querySelector('[data-act="settings"]').onclick = () => settings.open();
+    document.querySelector('[data-act="controls"]').onclick = () => controls.open();
+
+    if (scene === 'pause') document.getElementById('pause').hidden = false;
+    else if (scene === 'setup') newScenario();
+    else menu.show();
+    if (scene === 'load') menu.showPage('load');
+    if (scene === 'settings') settings.open();
+    if (scene === 'controls') controls.open();
+    Object.assign(window, { __menu: menu, __settings: settings, __controls: controls, __setup: setup, __store: store, __settingsState: settingsState, __calls: calls, __keys: keys, __ready: true });
+  </script>
+</body>
+</html>

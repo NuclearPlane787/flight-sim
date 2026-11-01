@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="src/ui/ui.css">
   <link rel="stylesheet" href="src/ui/logbook.css">
+  <link rel="stylesheet" href="src/ui/menu.css">
+  <link rel="stylesheet" href="src/ui/sky-window.css">
 </head>
 <body>
   <div id="app">
@@ -28,29 +30,20 @@
 
     <div id="pause" class="panel center" hidden>
       <h2>Paused</h2>
-      <div class="buttons">
+      <p class="small" id="pause-scenario"></p>
+      <div class="buttons pause-buttons">
         <button data-act="resume" class="primary">Resume</button>
+        <button data-act="save">Save</button>
         <button data-act="logbook">Logbook</button>
         <button data-act="rewind">Rewind 30 s</button>
         <button data-act="restart">Restart the flight</button>
         <button data-act="setup">New flight</button>
-        <button data-act="mute">Callouts: on</button>
-        <button data-act="perf">Performance readout: off</button>
+        <button data-act="settings">Settings</button>
+        <button data-act="controls">Controls</button>
+        <button data-act="sky" data-sky>Time of day (L)</button>
+        <button data-act="menu">Exit to menu</button>
       </div>
-      <label class="volume"><span>Master volume</span><input id="volume" type="range" min="0" max="100" step="5" value="100"><output id="volume-out">100%</output></label>
-      <table class="keys">
-        <tr><td>W / S</td><td>pitch down / up</td><td>R / F</td><td>thrust levers (hold F at idle on the ground: reverse)</td></tr>
-        <tr><td>A / D</td><td>roll left / right</td><td>Space</td><td>wheel brakes (hold)</td></tr>
-        <tr><td>Q / E</td><td>yaw / steer</td><td>B</td><td>parking brake</td></tr>
-        <tr><td>6 7 8 9 0</td><td>flaps 0, 1, 2, 3, FULL</td><td>G</td><td>gear</td></tr>
-        <tr><td>C / Shift+C</td><td>speed brakes / arm ground spoilers</td><td>Z / X</td><td>autopilot / autothrust</td></tr>
-        <tr><td>= / −</td><td>time compression</td><td>M</td><td>map, jumps, skip to final</td></tr>
-        <tr><td>V</td><td>next view</td><td>F3 or `</td><td>performance readout</td></tr>
-        <tr><td>swipe / pinch</td><td>look or orbit / zoom</td><td>double-click</td><td>recentre</td></tr>
-        <tr><td>T</td><td>rewind 30 s (paused or crashed)</td><td>P</td><td>pushback (= speeds it up)</td></tr>
-        <tr><td>FCU window</td><td>scroll it, or click, type, Enter</td><td>map</td><td>click the bright path (AP on) to jump</td></tr>
-      </table>
-      <p class="small"><a href="../../index.html">Back to Game Dump</a> · <span data-version></span></p>
+      <p class="small"><span data-version></span></p>
     </div>
 
     <div id="crash" class="panel center" hidden>
@@ -60,11 +53,15 @@
         <button data-act="rewind">Rewind 30 s</button>
         <button data-act="restart">Restart the flight</button>
         <button data-act="setup">New flight</button>
+        <button data-act="menu">Exit to menu</button>
       </div>
     </div>
 
     <div id="score" hidden></div>
+    <div id="menu-root"></div>
     <div id="logbook-root"></div>
+    <div id="pages-root"></div>
+    <div id="skywin-root"></div>
   </div>
   <script type="module" src="src/main.js"></script>
 </body>

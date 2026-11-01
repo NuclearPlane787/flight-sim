@@ -1,7 +1,7 @@
 // The logbook's and score card's pure helpers: formatting, totals, ordering, the verdict.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtDuration, fmtDate, fmtKg, totals, newestFirst } from '../src/ui/logbook.js';
+import { fmtDuration, fmtDate, fmtKg, totals, newestFirst, scenarioOf, filterByScenario, removeScenario, scenarioOptions, UNTAGGED } from '../src/ui/logbook.js';
 import { verdict, penaltyFrac, touchdownText, gradeColor, esc, runwaySvg } from '../src/ui/score-panel.js';
 
 const parts = (vs, g, bounces = 0) => [
@@ -90,4 +90,80 @@ test('penalty bars, touchdown text, colours, escaping', () => {
   assert.equal(esc('<a href="x">&'), '&lt;a href=&quot;x&quot;&gt;&amp;');
   assert.match(runwaySvg({ along: 400, cross: 0 }), /^<svg[\s\S]*<circle[\s\S]*<\/svg>$/);
   assert.doesNotMatch(runwaySvg({ along: NaN, cross: 0 }), /<circle/);
+});
+
+// ---- v0.2.0: one logbook, tagged by scenario ----
+const D = (d) => `2026-10-${String(d).padStart(2, '0')}T00:00:00Z`;
+const LOG = [
+  { date: D(1), route: 'RKSS–RKPC' }, // v0.1.x: untagged, Scenario 1's
+  { date: D(2), route: 'RKPC–RKSS' }, // v0.1.x
+  { date: D(3), scenarioId: 's1', scenarioName: 'Scenario 1' }, // the migrated scenario, tagged
+  { date: D(4), scenarioId: 'a', scenarioName: 'Test A' },
+  { date: D(5), scenarioId: 'gone', scenarioName: 'Old name' }, // deleted later
+  { date: D(6), scenarioId: 'gone', scenarioName: 'Renamed then deleted' },
+  { date: D(7), scenarioId: 'a', scenarioName: 'Test A' },
+];
+const SC = [{ id: 's1', name: 'Scenario 1' }, { id: 'a', name: 'Test A' }, { id: 'b', name: 'Empty one' }];
+
+test('scenarioOf: the tag, or the legacy scenario for untagged flights', () => {
+  assert.equal(scenarioOf(LOG[3], 's1'), 'a');
+  assert.equal(scenarioOf(LOG[0], 's1'), 's1');
+  assert.equal(scenarioOf(LOG[0], null), UNTAGGED);
+  assert.equal(scenarioOf(LOG[0]), UNTAGGED);
+  assert.equal(scenarioOf({ scenarioId: '' }, 's1'), 's1');
+  assert.equal(scenarioOf(null, 's1'), 's1');
+});
+
+test('filterByScenario: one scenario, all, untagged counted as the legacy one', () => {
+  assert.equal(filterByScenario(LOG, null, 's1').length, 7);
+  assert.equal(filterByScenario(LOG, '', 's1').length, 7);
+  assert.deepEqual(filterByScenario(LOG, 's1', 's1'), [LOG[0], LOG[1], LOG[2]]);
+  assert.deepEqual(filterByScenario(LOG, 'a', 's1'), [LOG[3], LOG[6]]);
+  assert.deepEqual(filterByScenario(LOG, 'gone', 's1'), [LOG[4], LOG[5]]); // a deleted scenario still filters by id
+  assert.deepEqual(filterByScenario(LOG, UNTAGGED, null), [LOG[0], LOG[1]]);
+  assert.deepEqual(filterByScenario(LOG, 'b', 's1'), []);
+  assert.deepEqual(filterByScenario([null, LOG[3]], 'a'), [LOG[3]]);
+  assert.deepEqual(filterByScenario(undefined, 'a'), []);
+  // the totals follow the filter
+  assert.equal(totals(filterByScenario(LOG, 'a', 's1')).flights, 2);
+});
+
+test('scenarioOptions: live ones in order, then deleted ones by their newest carried name', () => {
+  const o = scenarioOptions(LOG, SC, 's1');
+  assert.deepEqual(o.map((x) => [x.id, x.name, x.count, x.deleted]), [
+    ['s1', 'Scenario 1', 3, false],
+    ['a', 'Test A', 2, false],
+    ['b', 'Empty one', 0, false],
+    ['gone', 'Renamed then deleted', 2, true],
+  ]);
+  // A renamed legacy scenario takes its live name, untagged flights included.
+  assert.equal(scenarioOptions(LOG, [{ id: 's1', name: 'Jeju runs' }], 's1')[0].name, 'Jeju runs');
+  // No legacy scenario (deleted, or never made): the untagged flights still show, as "Scenario 1".
+  const n = scenarioOptions(LOG, SC.slice(1), null);
+  const u = n.find((x) => x.id === UNTAGGED);
+  assert.deepEqual([u.name, u.count, u.deleted], ['Scenario 1', 2, false]);
+  assert.deepEqual(n.find((x) => x.id === 's1'), { id: 's1', name: 'Scenario 1', count: 1, deleted: true });
+  // The legacy scenario deleted but its id given: tagged and untagged flights stay together.
+  const d = scenarioOptions(LOG, SC.slice(1), 's1').find((x) => x.id === 's1');
+  assert.deepEqual([d.name, d.count, d.deleted], ['Scenario 1', 3, true]);
+  // open() with no args: names from the entries, nothing marked deleted.
+  const bare = scenarioOptions(LOG, undefined, null);
+  assert.deepEqual(bare.map((x) => [x.name, x.count, x.deleted]), [
+    ['Test A', 2, false], ['Renamed then deleted', 2, false], ['Scenario 1', 1, false], ['Scenario 1', 2, false]]);
+  assert.deepEqual(scenarioOptions([], SC, 's1').map((x) => x.count), [0, 0, 0]);
+  assert.deepEqual(scenarioOptions(null, null, null), []);
+  // An entry tagged with no name, for a scenario that's gone.
+  assert.equal(scenarioOptions([{ scenarioId: 'x' }], [], null)[0].name, 'Deleted scenario');
+});
+
+test('removeScenario: only that scenario\'s entries go', () => {
+  assert.deepEqual(removeScenario(LOG, 'a', 's1'), [LOG[0], LOG[1], LOG[2], LOG[4], LOG[5]]);
+  assert.deepEqual(removeScenario(LOG, 's1', 's1'), [LOG[3], LOG[4], LOG[5], LOG[6]]); // untagged go with the legacy one
+  assert.deepEqual(removeScenario(LOG, 'b', 's1'), LOG);
+  assert.notEqual(removeScenario(LOG, 'b', 's1'), LOG); // a copy, never the stored array
+  // A null or empty id removes nothing (clearing everything is the caller's explicit choice).
+  assert.deepEqual(removeScenario(LOG, null, 's1'), LOG);
+  assert.deepEqual(removeScenario(LOG, '', 's1'), LOG);
+  assert.deepEqual(removeScenario([null, LOG[3]], 'a'), [null]);
+  assert.deepEqual(removeScenario(undefined, 'a'), []);
 });

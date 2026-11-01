@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flight Sim: Sky window dev page</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../src/ui/ui.css">
+  <link rel="stylesheet" href="../src/ui/sky-window.css">
+  <style>
+    #app { background: linear-gradient(#3a6fa8, #9cc3e3 55%, #5b6b4a 55%, #2f3a26); }
+    /* the HUD's boxes where hud.js puts them, to check the window stands clear of them */
+    .mock { position: absolute; background: rgba(3, 5, 7, 0.84); border: 1px solid #2b3238; border-radius: 6px;
+      color: #5d6c78; font: 12px var(--font-mono); display: grid; place-items: center; }
+    #devlog { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); z-index: 100; font: 12px var(--font-mono);
+      color: #dfe; background: rgba(0, 0, 0, 0.5); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <!-- The Sky window without WebGL, with a real clock (src/clock.js) stepped every frame.
+       ?t=2026-11-24T23:00 (KST; default now) &speed=600 &run=0 (stopped) &lat=..&lon=.. (default Seoul)
+       window.__win is the window, window.__clock the clock, window.__keys the keys that
+       reached the game's window listener, window.__redraws how many times it redrew. -->
+  <div id="app">
+    <div class="mock" data-m="pfd">PFD</div><div class="mock" data-m="nd">ND</div><div class="mock" data-m="eng">ENG</div>
+    <div class="mock" data-m="fcu">FCU</div>
+    <div id="skywin-root"></div>
+  </div>
+  <div id="devlog"></div>
+  <script type="module">
+    import { createClock, kstMs, fmtKst, fmtKstDate } from '../src/clock.js';
+    import { createSkyWindow } from '../src/ui/sky-window.js';
+
+    const qs = new URLSearchParams(location.search);
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(qs.get('t') || '');
+    const ms = m ? kstMs(+m[1], +m[2], +m[3], +m[4], +m[5]) : Date.now();
+    const clock = createClock({ ms, speed: Number(qs.get('speed') || 600), running: qs.get('run') !== '0' });
+    const place = { lat: Number(qs.get('lat') || 37.5665), lon: Number(qs.get('lon') || 126.978) };
+
+    // hud.js's layout, as boxes
+    function layout() {
+      const W = innerWidth, H = innerHeight, fcuH = Math.max(38, Math.min(56, H * 0.052)), top = fcuH + 16, pad = 12;
+      const s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560)), sr = Math.min(s, (H - fcuH - 16 - pad * 2 - 8) / 1.62);
+      const put = (n, x, y, w, h) => Object.assign(document.querySelector(`[data-m="${n}"]`).style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      put('pfd', pad, top, s, s); put('nd', W - sr - pad, top, sr, sr); put('eng', W - sr - pad, top + sr + 8, sr, sr * 0.62);
+      put('fcu', W / 2 - 350, 8, 700, fcuH);
+    }
+    layout(); addEventListener('resize', layout);
+
+    const win = createSkyWindow(document.getElementById('skywin-root'), { clock, place: () => place });
+    window.__win = win; window.__clock = clock; window.__place = place;
+    window.__keys = [];
+    window.__closed = 0;
+    win.onclose = () => window.__closed++;
+    // the game's own key listeners: the lead's L toggle (capture), and input.js's (bubble)
+    addEventListener('keydown', (e) => { if (e.code === 'KeyL' && !e.repeat) { e.preventDefault(); win.toggle(); } }, true);
+    addEventListener('keydown', (e) => window.__keys.push(e.code));
+    win.open();
+
+    let last = performance.now(), frame = 0;
+    const log = document.getElementById('devlog');
+    function tick(now) {
+      clock.step(Math.min(0.1, (now - last) / 1000)); last = now;
+      if (++frame % 6 === 0) { win.update(); log.textContent = `${fmtKst(clock.ms)} KST ${fmtKstDate(clock.ms)} · ${clock.running ? 'running' : 'stopped'} ${clock.speed}× · keys ${window.__keys.length}`; }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+    await document.fonts.ready;
+    window.__ready = true;
+  </script>
+</body>
+</html>

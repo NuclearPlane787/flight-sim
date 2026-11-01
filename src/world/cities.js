@@ -102,7 +102,7 @@ export function createCities(scene, uniforms, chunks) {
       uniform vec2 uGridBase, uGridCell;
       attribute vec3 slot;            // block i, j (relative to the snapped grid), slot index
       varying vec3 vRel, vN, vLocal, vTint, vRoof;
-      varying float vKind, vDist, vApt;
+      varying float vKind, vDist, vApt, vSeed, vFace;
       #include <logdepthbuf_pars_vertex>
       const float BLOCK = ${BLOCK.toFixed(1)};
       void main() {
@@ -200,19 +200,24 @@ export function createCities(scene, uniforms, chunks) {
               : rr < 0.88 ? vec3(0.20, 0.10, 0.07)            // terracotta / red
               : vec3(0.26, 0.26, 0.25);                       // pale concrete
         vApt = kind == 0.0 ? 1.0 : 0.0;
+        // Night windows: a seed per building, and which face (so opposite faces differ).
+        vSeed = ihash(bc * 16 + ivec2(si, 0), 36u);
+        vFace = normal.x + 2.0 * normal.z;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
         #include <logdepthbuf_vertex>
       }`,
     fragmentShader: /* glsl */ `
       ${chunks.UNIFORMS_GLSL}
       ${chunks.ATMOS_GLSL}
+      ${chunks.NOISE_GLSL}
       varying vec3 vRel, vN, vLocal, vTint, vRoof;
-      varying float vKind, vDist, vApt;
+      varying float vKind, vDist, vApt, vSeed, vFace;
       #include <logdepthbuf_pars_fragment>
       void main() {
         #include <logdepthbuf_fragment>
         vec3 n = normalize(vN);
         vec3 alb = vTint;
+        vec3 glow = vec3(0.0);     // lit windows at night (emitted, not lit by the sun)
         float fade = 1.0 - smoothstep(1500.0, 5000.0, vDist);
         if (vKind > 0.5) {
           // Floors every 2.9 m: a band of windows (and balconies on the long faces).
@@ -240,13 +245,31 @@ export function createCities(scene, uniforms, chunks) {
           }
           vec3 glass = vec3(0.045, 0.055, 0.065);
           alb = mix(alb, glass, w * mix(0.75, 0.95, fade));
+          if (uNight > 0.01 && y > 1.5) {
+            // Lit windows: one cell per flat (9.6 m) or per two window bays (6.4 m) on each
+            // floor; each building has its own share lit (late evening: about a third), most
+            // warm, some cool white (LED, a television). Far away the cells average out to that
+            // share, so no moire.
+            float cellW = vApt > 0.5 && vKind < 1.5 ? 9.6 : 6.4;
+            vec2 cid = vec2(floor(along / cellW), floor(y / 2.9));
+            float hs = hash12(cid + vec2(vSeed * 913.0 + vFace * 57.0, vSeed * 371.0));
+            float share = 0.12 + 0.26 * vSeed;
+            float lit = step(hs, share);
+            float hk = hash12(cid * 1.37 + vSeed * 77.0 + 3.1);
+            vec3 wc = hk < 0.7 ? vec3(1.0, 0.56, 0.24) : (hk < 0.9 ? vec3(0.8, 0.84, 0.95) : vec3(0.45, 0.6, 1.0));
+            float dimmer = 0.45 + 0.55 * hash12(cid + 11.7 + vSeed * 19.0);
+            float avg = smoothstep(0.5, 1.6, max(fw / 2.9, fwidth(along) / cellW));
+            vec3 cellCol = wc * lit * dimmer;
+            vec3 meanCol = vec3(1.0, 0.6, 0.3) * share * 0.2;   // dimmer than the true mean: far off, a few bright points read darker than an even wash
+            glow = mix(cellCol, meanCol, avg) * w * uNight * 0.9;
+          }
           // Ground floor darker; a little weathering towards the base.
           alb *= (0.75 + 0.25 * step(3.0, y)) * (0.85 + 0.15 * smoothstep(0.0, 25.0, y));
         } else {
           alb = vRoof;
         }
         float ndl = max(dot(n, uSunDir), 0.0);
-        vec3 col = alb * (uSunColor * ndl * 2.2 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1);
+        vec3 col = alb * (uSunColor * ndl * 2.2 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1) + glow;
         gl_FragColor = vec4(applyHaze(col, vRel), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

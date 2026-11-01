@@ -320,7 +320,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 | F3 or \` | performance overlay (fps, CPU ms, triangles, draw calls) |
 | two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
 
-No Ctrl keys, because Ctrl+W closes the tab on Windows. Handle keydown and keyup state, ignore auto-repeat, and drop all held keys when the window loses focus.
+No Ctrl keys, because Ctrl+W closes the tab on Windows. The one exception (v0.2.0, decided 2026-11-01): Cmd+L or Ctrl+L opens the Sky window, as in Satisfactory, with the browser's default prevented; it can't lose anything (if a browser keeps the shortcut, its address bar just takes the focus), and L alone works too. Handle keydown and keyup state, ignore auto-repeat, and drop all held keys when the window loses focus.
 
 ## CPU at runtime
 

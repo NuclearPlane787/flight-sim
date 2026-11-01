@@ -23,7 +23,13 @@ python3 -m http.server 8001
 
 It also runs from the hub's player (`play.html?game=flight-sim`). There's no build step: these are plain ES modules, three.js r186 is in `vendor/`, and the baked world is in `data/`. Chrome on a Mac is the target.
 
-The flight setup screen picks the origin, destination, runways, load and fuel, and the start: lined up on the runway, on a 15 nm final, or at a gate.
+The game opens on the main menu, over a still rendered from the game: Continue (the newest scenario), New scenario, Load scenario, Logbook, Settings, Controls, and Exit to Game Dump.
+
+**Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the pause menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename and delete. v0.1.x's last flight becomes "Scenario 1", with its logbook.
+
+New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the pause menu replaces the scenario's flight, starting from the stand when parked after arriving.
+
+**Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
 From a gate:
 
@@ -31,9 +37,9 @@ From a gate:
 2. Release the parking brake (B).
 3. Follow the green-yellow line to the holding point.
 
-After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and the pause menu opens the logbook. The score is strict: 100 takes a landing that's perfect in every part.
+After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and logged with its scenario: the pause menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. The score is strict: 100 takes a landing that's perfect in every part.
 
-Sound starts with the first click or key, because browsers don't play audio before then. The pause menu has a master volume slider.
+Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout.
 
 ## Controls
 
@@ -55,7 +61,8 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | M | map (predicted path, jumps, skip to final) |
 | V | next view (1st person, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
-| Esc | pause menu |
+| Esc | pause menu (Resume, Save, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Exit to menu) |
+| L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory) |
 | F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the pause menu) |
 | T | rewind 30 s (from the pause menu or after a crash) |
 | two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
@@ -101,6 +108,12 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to tur
 | `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`, `src/cockpit-windows.js` | the procedural A321neo in Nuclear Airlines colours, the simple cockpit, and the six cockpit windows (shared by the outside, the livery and the cockpit) |
 | `src/ui/` | PFD, ND, engine panel, FCU, map, flight setup, logbook, landing score card |
 | `src/audio/` | `synth.js` (WebAudio engine, wind and warnings), `callouts.js` (radio-altitude callouts and RETARD) |
+| `src/scenarios.js` | the scenario store (save slots over localStorage), names, the migration from v0.1.x, the menu's texts |
+| `src/ui/menu.js`, `src/ui/menu.css`, `assets/menu/` | the main menu, Load scenario, Settings and Controls pages; the stills (rendered from the game by `tests/render-stills.mjs`) |
+| `src/clock.js`, `src/astro.js` | the KST clock; the sun, the Moon and its phase, sidereal time and the stars (Meeus's low-precision formulas) |
+| `src/ui/sky-window.js` | the Sky window |
+| `src/world/sky.js` | the sky by day, twilight and night (stars, Milky Way, Moon), and the light, haze and fog following the sun |
+| `src/world/citylights.js`, `src/world/taxilights.js`, `src/aircraft-lights.js` | the city lights, the taxiway lights and stop bars, the A321's lights by phase |
 | `src/score.js`, `src/store.js` | the landing score (100 × e^(−cost), the approach included); localStorage under `gamedump:flight-sim:` |
 | `src/ground/` | the taxi graph and routing, pushback, the gate flow (gate starts, routes out and in) |
 | `src/world/apron*.js`, `src/world/traffic*.js`, `src/world/liveries-other.js` | taxiways, aprons, stands, jet bridges and terminals; parked aircraft (made-up airlines) and ground vehicles |
@@ -120,11 +133,15 @@ python3 games/flight-sim/tools/cpu-guard.py --minutes 15 -- node games/flight-si
 python3 games/flight-sim/tools/cpu-guard.py --minutes 5 -- bash -c 'node --test games/flight-sim/tests/*.test.mjs'
 ```
 
-The browser scripts expect Playwright in `/tmp/flight-sim/pw` (`npm i playwright` there) and the GameDump server on port 8001.
+The browser scripts expect Playwright in `/tmp/flight-sim/pw` (`npm i playwright` there) and the GameDump server on port 8001 (v0.2.0's on a no-cache server on 8014: `python3 games/flight-sim/tests/cloud/serve.py <GameDump> 8014`). v0.2.0 added `browser-scenarios.mjs` (the menu and scenarios, end to end), `browser-night.mjs` (the night screenshots and the frame rate at night), `render-stills.mjs` (the menu's stills), `browser-menu.mjs`, `browser-sky-window.mjs` and `browser-logbook-filter.mjs`. `browser-boot.mjs` predates the main menu and expects the setup on load.
 
 ## Storage
 
-`gamedump:flight-sim:settings`, `gamedump:flight-sim:logbook` and `gamedump:flight-sim:lastflight`, all in localStorage.
+All in localStorage, under `gamedump:flight-sim:`:
+
+- `scenarios`: the scenario index (id, name, created, savedAt, a summary); `scenario:<id>`: each scenario's whole state (a few KB, up to about 70 KB with a long approach track);
+- `logbook`: every flight, tagged with its scenario's id and name (v0.1.x's untagged flights count as Scenario 1's);
+- `settings` (volume, callouts, the readout, the setup's last plan) and `lastflight` (the last flight's plan).
 
 ## Data credits
 
@@ -135,6 +152,7 @@ The browser scripts expect Playwright in `/tmp/flight-sim/pw` (`npm i playwright
 
 The baked files in `data/` keep those licences: the OpenStreetMap-derived ones (coast, water, land cover, airports) are under the ODbL, and the elevation is under the Copernicus DEM licence.
 - The A321neo's numbers come from Airbus (the A321 Aircraft Characteristics document and the A321neo page) and EASA (TCDS EASA.A.064). Sources and pages are in `src/sim/a321neo.js`.
+- The stars: the Yale Bright Star Catalogue, 5th revised edition (Hoffleit and Warren 1991), from NASA's HEASARC, public domain (`data/STARS-CREDIT.md`). The sun and Moon follow Jean Meeus, *Astronomical Algorithms*.
 - three.js r186 (MIT), in `vendor/`.
 - B612 and B612 Mono (© The B612 Project Authors) and Barlow (© The Barlow Project Authors), under the SIL Open Font Licence 1.1, in `vendor/fonts/` with their licence texts.
 
