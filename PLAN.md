@@ -134,6 +134,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 
   The flight mode annunciator on the PFD shows what's active.
 - **Autothrust** works up to the thrust lever position, normally the CL detent, as on the real aircraft.
+  - **Changed in v0.2.2** (Shane: "When autothrottle is on, the blue dot on the engine power view doesn't move. So when I press R or F slightly, the engines change power significantly. Have autothrottle move this blue dot as well."): while it's active, the A/THR moves the thrust lever itself, as a Boeing's autothrottle does, up to climb thrust; the panel's ring follows. Moving the lever (R or F) takes the thrust from there and disconnects it. Armed (on the ground, or with the lever above CL in flight) it leaves the lever alone; brought back to CL or below in flight, the lever is the A/THR's again.
 - **Disconnect:** on Z, on a firm stick input, or when a protection takes over, with the disconnect warning.
 
 ### Time compression, the path map and jumps
@@ -271,7 +272,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 ## Sound
 
 - **Synthesised in WebAudio, no audio files:**
-  - engines: fan whine and combustion rumble following N1, mixed differently inside and outside;
+  - engines: fan whine and combustion rumble following N1, mixed differently inside and outside. **Rebuilt in v0.2.2** (Shane: "The current engine sounds don't sound accurate to a real A321.") from the LEAP-1A's real frequencies (FAA TCDS E00089EN; 18 fan blades): the fan's blade-passing tone and harmonics, the buzz-saw above ~75 % N1, the core's whine, the fan's broadband, the jet's roar and the combustion rumble; the tones waver and the two engines beat; outside, the direction (ahead: fan and buzz-saw; behind: jet) and 3rd person's distance change the mix (`src/audio/synth.js`'s header);
   - wind with airspeed;
   - gear and flap motors, and spoilers;
   - touchdown and tyres, reversers and brakes.
@@ -314,7 +315,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 | X | autothrust on / off |
 | = / − | time compression faster / slower |
 | M | map (predicted path, jumps, skip to final) |
-| 1 / 2 / 3 | cockpit, nose, 3rd person (v0.2.1, with the view switch at the top right; in the cockpit, 1 again moves to the other seat) |
+| 1 / 2 / 3 | cockpit (the captain's seat), nose, 3rd person (v0.2.1, with the view switch at the top right; since v0.2.2 pressing 1 in the cockpit does nothing) |
 | V | next view (nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
 | Esc | pause menu |

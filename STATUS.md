@@ -1327,3 +1327,52 @@ Shane, before v0.2.1 was pushed: "Group these in with 0.2.1: 1. For steering the
 - **Screenshots** in `Claude outputs/flight-sim/`: `v021-night-stars-before-after` (the west and FL350 views), `v021-night-stars-orbit`.
 - **Written up:** `Updates.md` (the v0.2.1 entry and its title), `README.md`, `PLAN.md`, `ROADMAP.md` (found after v0.2.0), `HANDOFF.md` (the table, how it works, the cloud tools), `AGENTS.md` (State), the Controls page and the 3rd person tooltip.
 - **Next:** Shane pushes: `sh tools/push.sh v0.2.1`, then a hard reload (Cmd+Shift+R).
+
+## 2026-11-04, 04:10 KST: v0.2.2 (Cowork session, the second agent)
+
+Shane (after pushing v0.2.1, `0c22ce4`): "For v0.2.2, let's fix these: 1. The current engine sounds don't sound accurate to a real A321. Let's fix that if possible. 2. When you are in cockpit view, you can transfer to the first officer's seat by pressing the button again. 3. When autothrottle is on, the blue dot on the engine power view doesn't move. So when I press R or F slightly, the engines change power significantly. Have autothrottle move this blue dot as well."
+
+Read item 2 as "pressing Cockpit again shouldn't move me" (it was v0.2.1's seat swap), and said so in the reply.
+
+**1. The engine sound** (`src/audio/synth.js`; `main.js` passes `aft` and `dist`):
+
+- **Before:** each engine was a triangle at 60 + 1,100 × N1 Hz with a sine above it, through one band-pass, over brown noise: one steady tone and a rumble, the same in both engines (spectrograms in scratch).
+- **Now**, each LEAP-1A from its real numbers (FAA TCDS E00089EN: N1 3,894 rpm = 101 %, N2 19,391 rpm = 116.5 %; 18 fan blades):
+  - the fan's tones: one oscillator at the N1 shaft's frequency (0.643 Hz per %) with a custom waveform: the blade-passing order (18: 237 Hz at idle, 1.1 kHz at TOGA) and its harmonics, with sidebands, and the shaft's first orders;
+  - the buzz-saw: every shaft order, uneven, strongest from the 6th to the 12th, coming in from 72 to 95 % N1 (the fan's tips going supersonic), mostly ahead of the engine;
+  - the core's whine (12 × the N2 shaft, N2 ≈ 60 + 0.4 × N1 %: 2.3 kHz at idle, 3.3 kHz at TOGA);
+  - the fan's broadband (white noise round 1.4 × the blade-passing frequency), the jet's roar (pink noise to 160–860 Hz, growing with power^2.2, mostly behind), the combustion rumble;
+  - the tones waver slowly (±4 cents, ±15 % fan, ±20 % buzz-saw; measured tones do, and listeners rate that as more like recordings); engine 2 runs 0.15 % fast with its tones at 0.65, so they beat gently;
+  - outside: ahead (the nose) the fan and the buzz-saw, behind the jet; 3rd person's orbit beyond 75 m is quieter (1.5 km: −20 dB) and duller (to 3.5 kHz);
+  - `set()` skips unchanged targets, so update() stays cheap: 0.021–0.023 ms on average with all the voices (v0.2.1's: 0.041 ms in the same browser).
+- **Measured** (the container's Chromium, `FS_CLOUD=1 node tests/audio-render.mjs`):
+  - **30/30 in five runs in a row** at the end. v0.2.1's synth gave 28/30 in this Chromium (the cockpit-duller-in-cruise check and the reverser door clunk; the clunk check also failed now and then while tuning: it's this browser).
+  - The fan tone where it should be, every second of the spool-up: 280 Hz 31 dB over its neighbourhood, 388 Hz 28, 496 Hz 28, 603 Hz 26, 711 Hz 25, 819 Hz 22, 926 Hz 25, 1,034 Hz 21.
+  - Levels kept close to v0.2.1's, so the master volume still suits: idle outside −35.6 dB (was −34.8), in the cockpit −43.6 (−43.5); TOGA outside −18.0 (−16.7), in the cockpit −24.4 (−25.1); cruise in the cockpit: engines −34.0, wind −30.1. A-weighted, over the listening clips: take-off from the cockpit −33.6 dBA (was −36.5), from 3rd person −23.1 (−21.9), idle at the nose −39.8 (−44.6), cruise in the cockpit −30.2 (−30.3), approach in 3rd person −33.2 (−29.6).
+- **The checks that changed** (`tests/audio-render.mjs`, `tests/dev-audio-render.html`):
+  - "fan whine pitch rises with N1" (the strongest tone from 250 Hz up) became "the fan tone tracks N1": a peak 10+ dB over its neighbourhood at 18 × the shaft frequency, in the best of seven 85 ms windows round each second. The buzz-saw's tones can be the strongest at high N1, the two engines' beat dips the tone, and 237 Hz at idle is below 250.
+  - The spool-up allows 1.5 dB (1 s windows, was 0.5) and 2 dB (300 ms, was 1.5): the tones waver and beat on purpose.
+  - `tests/audio-synth.test.mjs`'s mock context gained `createPeriodicWave`, `setPeriodicWave`, `detune` and a buffer's `duration`.
+- **New tools:** `tests/audio-clips.mjs` renders eight flight phases (idle at the nose and in the cockpit, take-off from the cockpit and 3rd person, cruise, approach from the cockpit and 3rd person, landing) as WAV and MP3; `audio-render.mjs` and `audio-clips.mjs` run in the cloud container (`FS_CLOUD=1`) and can render an older synth to compare (`SYNTH=<url>`).
+- **Not done:** listening. No agent can; it rests on Shane's ears. Before/after clips: `Claude outputs/flight-sim/v022-sound-*-before-after.mp3` (takeoff from the cockpit and 3rd person, approach in 3rd person, idle at the nose: the old sound first, then 1.5 s of silence, then the new).
+
+**2. The Cockpit button** (`src/main.js` `selectView()`, `src/ui/hud.js`, `src/ui/menu.js`): in a seat, Cockpit (or 1) does nothing; from the other views it's the captain's seat. V still steps through all four. Tooltip, Controls page, README and PLAN say so.
+
+**3. The A/THR moves the thrust lever** (`src/sim/autopilot.js` `athrStep()`, `src/sim/sim.js`, `src/sim/engines.js` `leverForPhi()`, `src/input.js`, `src/ui/engines-panel.js`, `src/main.js`):
+
+- **The cause:** an Airbus's A/THR leaves the levers in CL, and the game did the same; the ring (the "blue dot") showed CL's N1 (about 89 %) while the A/THR ran the engines lower. A tap of R moved the lever out of CL into MAN FLX: manual thrust from the lever's position, a jump of about 30 % N1.
+- **Now**, as a Boeing's autothrottle: while active (in flight, the lever at CL or below when it took over) the A/THR puts the lever where its thrust is (`X.athrLever`, written to `controls.thrust` each step; up to climb thrust, the limit it had in CL). The ring is at the N1 the lever asks for at the current altitude and Mach (`state.leverN1`), so the needle settles on it, with "A/THR" between the dials.
+  - A lever moved by the pilot while it drives takes the thrust from there: A/THR disconnects (event `athrDisconnect`; reason `lever`: a toast, "A/THR off: the thrust levers are yours (X turns it back on)"; `idle`, the RETARD: quiet, as before).
+  - The keyboard follows the lever while the A/THR drives it; a fresh press of R or F takes it over; a press that began before (pulling back to CL after take-off) is ignored until released.
+  - Armed (on the ground, or above CL in flight: MAN TOGA, FLX) it leaves the lever alone; brought to CL or below, the lever is the A/THR's again. X at idle in flight engages it and it takes the lever (before, the idle rule disconnected it at once). THR IDLE puts the lever at idle and stays engaged. Alpha floor drives the lever to TOGA and can't be overridden while it's triggered.
+  - Skip to final starts the lever at the trim thrust (it was CL).
+- **Measured** (`tests/cloud/athr-lever.cjs`, new, the real game on a 15 nm final, a tap of R one frame long, 0.1 s): v0.2.1: lever 0.56 → 0.61, N1 58.7 → 91.5 % (+32.8), 180 → 201 kt in 8 s, A/THR still on (MAN FLX). v0.2.2: lever 0.15 → 0.21, N1 58.7 → 64.5 % (+5.8), 180 → 183 kt, A/THR off with the toast; X gives the lever back to the A/THR. The ring on the target N1 (58.71 / 58.71). All pass.
+
+**Checks:**
+
+- **Unit tests: 279 pass** (275 and 4 new in `tests/sim-ap.test.mjs`: the lever and the ring follow the A/THR, and `leverForPhi()` inverts `leverToPhi()`; R/F take over with a small change, about +5 % N1 where v0.2.1's tap gave +29 %; engaged at idle it takes the lever, THR IDLE stays engaged at idle; armed above CL, the A/THR's again at CL). The idle-disconnect test now steps first (the A/THR has the lever before the pilot pulls it). In the container, and on the Mac through the guard (below).
+- **Every changed `.js`/`.mjs`** checked as a module.
+- **Cloud:** `route-views.cjs` all pass (the view switch with the new expectations; the landing at RKSI 33L by the e2e controller: B 88, as in v0.2.1), `camera-drag.cjs` 23/23, `athr-lever.cjs` all pass, `audio-render.mjs` 30/30 five times.
+- **Screenshot:** `v022-athr-lever-before-after.jpg` (the engine panel on final: v0.2.1's ring at CL, v0.2.2's on the needle with "A/THR").
+- **Written up:** `src/version.js` (`Flight Sim v0.2.2 · CL#261104`), `Updates.md`, `README.md` (controls, autothrust, the sound), `PLAN.md` (autothrust, sound, keys), `ROADMAP.md` (found after v0.2.1), `HANDOFF.md` (the table, how it works, two pitfalls, the cloud tools), `AGENTS.md` (State).
+- **Next:** Shane listens to the clips, pushes (`sh tools/push.sh v0.2.2`), then a hard reload (Cmd+Shift+R).

@@ -16,11 +16,12 @@ function mockContext() {
   };
   const node = () => {
     stats.nodes++;
-    return { connect() {}, start() {}, gain: P(), frequency: P(), Q: P(), pan: P(), threshold: P(), knee: P(), ratio: P(), attack: P(), release: P() };
+    return { connect() {}, start() {}, setPeriodicWave() {}, gain: P(), frequency: P(), detune: P(), Q: P(), pan: P(), threshold: P(), knee: P(), ratio: P(), attack: P(), release: P() };
   };
   const ctx = {
     currentTime: 0, sampleRate: 48000, state: 'running', destination: {},
-    createBuffer: (c, l) => { const d = new Float32Array(l); return { getChannelData: () => d }; },
+    createBuffer: (c, l, sr) => { const d = new Float32Array(l); return { getChannelData: () => d, duration: l / sr }; },
+    createPeriodicWave: () => ({}),   // v0.2.2: the engines' fan and buzz-saw waveforms
   };
   for (const k of ['createBufferSource', 'createOscillator', 'createGain', 'createBiquadFilter', 'createStereoPanner', 'createDynamicsCompressor']) ctx[k] = node;
   return { ctx, stats };

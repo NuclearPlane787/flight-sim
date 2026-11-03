@@ -1,10 +1,11 @@
 // AP1 and A/THR, holds only: HDG (bank ≤ 25°), ALT with ALT* capture, V/S, OP CLB / OP DES
-// (speed on the elevator, THR CLB / THR IDLE) and A/THR SPEED up to the lever position.
+// (speed on the elevator, THR CLB / THR IDLE) and A/THR SPEED up to climb thrust. Since
+// v0.2.2 the A/THR moves the thrust lever while it's active (athrStep).
 // The AP drives the fly-by-wire's demands (a flight-path angle and a bank angle), never the
 // surfaces. Allocation free in the step.
 
 import * as A from './a321neo.js';
-import { LEVER_CL, leverToPhi } from './engines.js';
+import { LEVER_CL, leverToPhi, leverForPhi } from './engines.js';
 import { magToGrid } from '../world/frame.js';
 
 const G = 9.80665;
@@ -126,9 +127,25 @@ export function apStep(X, ap, E, S, dt) {
   E.apGamma = Math.asin(clamp(vsCmd / V, -0.3, 0.3));
 }
 
-// Autothrust and the thrust demand. Returns the forward demand phi (0..1) given the lever.
-// Also handles alpha floor (TOGA LK) and the disconnect when the levers go to idle.
+// Autothrust and the thrust demand. Returns the forward demand phi (0..1) for the lever.
+// v0.2.2 (Shane: "When autothrottle is on, the blue dot on the engine power view doesn't
+// move. So when I press R or F slightly, the engines change power significantly. Have
+// autothrottle move this blue dot as well."): while A/THR is active it moves the thrust lever
+// itself, as a Boeing's autothrottle does (an Airbus's levers stay in CL). X.athrLever is where
+// it puts the lever (sim.js writes it to the controls) and X.athrDriving says that it does.
+// A pilot who moves the lever while it drives takes the thrust from where it was, and A/THR
+// disconnects (X.athrOffBy: 'idle' if the lever went to idle, the usual way and the RETARD at
+// landing, else 'lever'). Armed, on the ground or with the lever above CL in flight (MAN TOGA,
+// FLX), it doesn't move the lever; brought back to CL or below in flight, the lever is the
+// A/THR's again. Alpha floor puts the lever at TOGA, and can't be overridden while it's on.
 export function athrStep(X, ap, E, lever, dt) {
+  if (X.athrDriving && lever !== X.athrLever && !(X.alphaFloorLock && X.alphaFloorTrig)) {
+    X.athrDriving = false;
+    if (ap.athr) {
+      ap.athr = false; ap.thrustMode = ''; X.alphaFloorLock = false;
+      X.athrOffBy = lever <= 0.02 ? 'idle' : 'lever';
+    }
+  }
   const leverPhi = leverToPhi(lever);
   if (X.alphaFloorTrig && !X.alphaFloorLock && !E.onGround) {
     X.alphaFloorLock = true;
@@ -137,19 +154,19 @@ export function athrStep(X, ap, E, lever, dt) {
   }
   if (X.alphaFloorLock) {
     if (ap.thrustMode === 'A.FLOOR' && !X.alphaFloorTrig) ap.thrustMode = 'TOGA LK';
+    X.athrDriving = true; X.athrLever = 1;
     return 1;
   }
-  if (!ap.athr) return leverPhi;
-  // Levers at idle in flight disconnect A/THR (the usual way, and the RETARD at landing).
-  if (lever <= 0.02 && !E.onGround) { ap.athr = false; ap.thrustMode = ''; return 0; }
-  if (E.onGround || lever > LEVER_CL + 0.02) {
+  if (!ap.athr) { X.athrDriving = false; return leverPhi; }
+  if (E.onGround || (!X.athrDriving && lever > LEVER_CL + 0.02)) {
     // Armed only: manual thrust per the lever (MAN TOGA / MAN FLX).
+    X.athrDriving = false;
     X.athrPhi = leverPhi;
     ap.thrustMode = lever >= 0.98 ? 'MAN TOGA' : lever > LEVER_CL + 0.02 ? 'MAN FLX' : 'A/THR ARMED';
     return leverPhi;
   }
   ap.thrustMode = ap.ap ? modeThrust(ap) : 'SPEED';
-  const limit = leverPhi;
+  const limit = A.RATING.CL;   // climb thrust (before v0.2.2: the lever's, which sat in CL)
   let phi;
   if (ap.thrustMode === 'THR CLB') phi = limit;
   else if (ap.thrustMode === 'THR IDLE') phi = 0;
@@ -161,5 +178,7 @@ export function athrStep(X, ap, E, lever, dt) {
     X.athrPhi = clamp(X.athrPhi + 0.12 * aErr * dt, 0, limit);
     phi = clamp(X.athrPhi + 0.08 * aErr, 0, limit);
   }
+  X.athrDriving = true;
+  X.athrLever = leverForPhi(phi);
   return phi;
 }

@@ -1,6 +1,6 @@
 # Flight Sim: handoff
 
-Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, updated on 2026-11-01 by the second Cowork session, which made v0.1.4, again on 2026-11-01 (about 05:30 KST) by the overnight Claude Code run that made v0.2.0, and on 2026-11-03 by the Cowork session that made v0.2.1. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
+Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, updated on 2026-11-01 by the second Cowork session, which made v0.1.4, again on 2026-11-01 (about 05:30 KST) by the overnight Claude Code run that made v0.2.0, on 2026-11-03 by the Cowork session that made v0.2.1, and on 2026-11-04 by the same session, which made v0.2.2. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
 
 ## Where things stand
 
@@ -12,16 +12,17 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | v0.1.3 | A stricter landing score that counts the approach, a master volume slider, a performance readout bar, Jeju 31's glideslope fix | yes (`7bd1a6c`, 23:01 KST) |
 | v0.1.4 | Typing into the FCU, jumps picked anywhere on the bright path, Gimpo stand 7's routes, pushbacks at up to 4×, Jeju's crossing as one surface, the B612 and Barlow fonts | yes (`f4482a4`) |
 | v0.2.0 | The main menu, scenarios (save slots with the whole state), one logbook tagged by scenario, Settings and Controls; night: the KST clock and the Sky window, Earth's sky with real stars and the Moon, the light following the sun, city, airport, taxiway and aircraft lights | yes (`73b7776`) |
-| v0.2.1 | Taxiways that stop at the runways' edges (no more clipping), changing the route in flight from the map, dragged waypoints that show, the view switch (Cockpit, Nose, 3rd person; 1, 2, 3), one-finger drag to look around or orbit, more stars | not yet (built 2026-11-03 in Cowork) |
+| v0.2.1 | Taxiways that stop at the runways' edges (no more clipping), changing the route in flight from the map, dragged waypoints that show, the view switch (Cockpit, Nose, 3rd person; 1, 2, 3), one-finger drag to look around or orbit, more stars | yes (`0c22ce4`) |
+| v0.2.2 | The engine sound rebuilt from the LEAP-1A's real tones; the A/THR moving the thrust lever (and the N1 ring), R/F taking it over smoothly; Cockpit (1) no longer swaps seats | not yet (built 2026-11-04 in Cowork) |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
-- **Not in any commit yet:** v0.2.1. Shane pushes it: `sh tools/push.sh v0.2.1`, then a hard reload (Cmd+Shift+R) in Chrome.
-- **Passing at v0.2.0's hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers; v0.2.1's checks are in its STATUS entry):
+- **Not in any commit yet:** v0.2.2. Shane pushes it: `sh tools/push.sh v0.2.2`, then a hard reload (Cmd+Shift+R) in Chrome.
+- **Passing at v0.2.0's hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers; v0.2.1's and v0.2.2's checks are in their STATUS entries):
   - 262 unit tests in 34 files (`node --test tests/*.test.mjs`);
   - every `.js`/`.mjs` in `src/` and `tests/` checked **as a module** (copy to `.mjs`, then `node --check`; a plain `node --check file.js` checks it as a script and missed a broken `if … else` once);
   - `tests/browser-scenarios.mjs` 23/23, `browser-night.mjs` 3/3 (60 fps at night over Seoul, 45 draws, 0.75 M triangles), `browser-review-fixes.mjs` 7/7, `browser-e2e.mjs` 12/12, `browser-cpu.mjs` 6/6.
 - **No agent has yet:**
-  - listened to the synth, or to the volume slider's preview;
+  - listened to the synth, or to the volume slider's preview (v0.2.2's engines were built from the LEAP-1A's numbers and checked by measurement; `tests/audio-clips.mjs` renders clips for Shane to judge);
   - played v0.2.0 the way Shane will: a whole evening flight from the menu with the clock running through dusk (the checks set the clock and stop it).
 
 ## v0.2.0: what it is, and what's next
@@ -75,6 +76,9 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | `src/ui/hud.js`, `src/main.js`, `src/input.js`, `src/camera.js` | v0.2.1: the view switch (`VIEW_BUTTONS`, `showView()`, placed in `resize()` to match the FCU's box: compact, then at the bottom centre, if it would touch the FCU). `hud.onview` → `selectView()` in main.js (Cockpit takes the last seat, and swaps seats when in one); Digit1–3 → `viewCockpit`/`viewNose`/`viewOrbit`. |
 | `src/camera.js`, `style.css` | v0.2.1: one-finger drag. Pointer events on the canvas (`onDown`/`onMove`/`onUp`, captured from the press, so a drag carries on over the HUD); it turns after `DRAG_PX` (4 px), so clicks stay clicks. The view follows the finger, as the swipe does (`turn()`, shared with the wheel): per screen height, `DRAG_LOOK` (2.5) × the field of view, or `DRAG_ORBIT` (3.2 rad) in 3rd person. A double-click whose second press dragged doesn't recentre. `#view` has `cursor: grab` (`.drag`: grabbing). `tests/cloud/camera-drag.cjs` checks it all. |
 | `src/world/sky.js` | v0.2.1: more stars. `starBrightness()` (`STAR_GAMMA` 0.55, was 0.72) for the catalogue; `fillStars()` gives each lit cell a magnitude from 6.5 to `FILL_FAINT` (8.0), three times as many per magnitude, with the same brightness, on about one cell in ten (7% at the galactic poles, 12% at its plane, up to 30% in the Milky Way's band). Moonlight (`uMoonGlow.r × 100`) fades the fill (gone at full Moon) and the catalogue's stars fainter than about 5.5. The counts and stills are in STATUS. |
+| `src/sim/autopilot.js` (`athrStep`), `src/sim/sim.js`, `src/sim/engines.js`, `src/input.js`, `src/ui/engines-panel.js` | v0.2.2: the A/THR moves the thrust lever. While active (in flight, the lever at CL or below when it took over) it sets `X.athrLever = leverForPhi(phi)` and `X.athrDriving`; sim.js writes it to `controls.thrust` each step, and `state.athrActive`/`state.leverN1` (the N1 the lever asks for here and now: the panel's ring) go out. A `controls.thrust` that differs from what it wrote is the pilot's: A/THR disconnects (event `athrDisconnect`, reason `idle` or `lever`; main.js toasts `lever`). The keyboard (`input.update(…, athrDriving)`) follows the lever while it drives; a fresh R/F press takes it over; a press that began before (pulling back to CL after take-off) is ignored until released. Alpha floor drives the lever to TOGA and can't be overridden while it's triggered. Its limit is climb thrust (`A.RATING.CL`), as with the lever in CL before. |
+| `src/audio/synth.js` | v0.2.2: the engines, per engine: `fanOsc` and `buzzOsc` (custom `PeriodicWave`s at the N1 shaft's frequency: `fanAmps()`, the blade-passing order 18 and its harmonics with sidebands; `buzzAmps()`, every order, uneven), wavering through `wanderBuffer()` (±4 cents, ±15/20 % level); `whineOsc` from N2 (≈ 60 + 0.4 N1); white noise round 1.4 × the BPF (`fanNoise`), pink noise low-passed 160–860 Hz (`jet`), brown noise (`core`). `ENG` holds each voice's gain, `MIX` the cockpit/outside balance; `SPLIT`/`TONE2` the second engine's offset (the beat). `opts.aft`/`opts.dist` (main.js: the nose is −1; 3rd person `cos(yaw)·cos(pitch)` and its orbit distance) weight fan and buzz-saw ahead, jet behind, and lower and dull the sound beyond 75 m. `set()` skips unchanged targets. |
+| `src/main.js`, `src/ui/hud.js`, `src/ui/menu.js` | v0.2.2: `selectView('cockpit')` keeps the seat you're in, else the captain's (no swap, no `lastSeat`). |
 
 ## Working from a Cowork session
 
@@ -100,6 +104,8 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
      - `ui-shots.cjs`: the performance bar, the pause menu, the volume slider and both settings surviving a reload. About 3 minutes.
      - `route-views.cjs` (v0.2.1): the view switch, a dragged waypoint, Change route, then a landing at the new destination. About 15 minutes.
      - `camera-drag.cjs` (v0.2.1): the one-finger camera with the real mouse: each view, the limits, clicks, double-clicks, drags over the HUD and the map, the swipe and the pinch. About 2 minutes.
+     - `athr-lever.cjs` (v0.2.2): on a 15 nm final with A/THR on, the lever and the ring at its thrust, a one-frame tap of R (the frame clock held and stepped), A/THR off with the toast, X giving it back. About 2 minutes.
+     - The sound: `FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ NODE_PATH=$(npm root -g) node tests/audio-render.mjs` (the measured checks; 30 of them) and `… node tests/audio-clips.mjs outDir` (the flight phases as WAV and MP3 to listen to; `SYNTH=<url>` renders another copy of the synth, to compare).
   4. **Re-stage every file you change** on the Mac before the next run. Then compare the two copies (the same hash on both sides):
      ```
      find src index.html style.css tests/e2e-controller.js tests/cloud -type f ! -path '*/__pycache__/*' | LC_ALL=C sort | xargs md5sum | md5sum
@@ -123,6 +129,8 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
 - **Flat triangles don't follow curving ground.** Pavement 8 cm up dipped under the terrain wherever a long triangle spanned a bend in it (v0.2.0: −0.58 m on Jeju's taxiway P). Anything new laid on the ground goes through `refineSoup()` (or `refineLine()`), and `tests/apron-ground.test.mjs` checks it on the real terrain.
 - **Nothing lifted off the ground may overlap a runway.** The runway lies on its surface and wins by its pull towards the camera, which beats a few centimetres of lift only when seen from above; at the cockpit's grazing angles the lifted thing wins. That was v0.2.0's taxiway clipping. Clip ground pieces to `drawnRunwayRects()`, and put paint meant to show on a runway on its surface with `PULL.lead`.
 - **The route's waypoints are the map's** (`map.waypoints`), not `plan.waypoints`, which is only what a flight started or loaded with. `captureState()` saves the map's.
+- **While the A/THR drives the thrust lever, the sim writes `controls.thrust`** (v0.2.2). Anything else that sets it then is a pilot's move and disconnects the A/THR: a test or a tool that wants to move it should toggle the A/THR off first (as `tests/e2e-controller.js` does at the retard), or mean the takeover.
+- **The engines' sound isn't steady on purpose** (v0.2.2): their tones waver and the two engines beat. `tests/audio-render.mjs`'s spool-up checks allow for that (1.5 dB a second, 2 dB in 300 ms); the fan tone is checked where it should be (18 × the shaft frequency), not as the strongest tone, which the buzz-saw can beat at high N1.
 - **The fuselage isn't one ellipse per section any more.** Use `fuseSection()` and `fusePoint()`. After any change to the nose, check that the cockpit's interior stays inside the skin: v0.1.2's worst corner was at 0.993.
 - **A runway end's x, y is its landing threshold:** the bake already applies `displacedM`. Applying it again put Jeju 31's glideslope 411 m down the runway until v0.1.3.
 - **The thrust acts at `ENGINES`, not `NACELLES`.** Moving it changes the pitch moment from thrust and would need the sim recalibrated.

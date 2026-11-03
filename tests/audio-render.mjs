@@ -3,23 +3,29 @@
 // pitch tracking, clipping, clicks, NaN, pause / time-compression muting, update() cost.
 //
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/audio-render.mjs [--json out.json]
+//
+// In the cloud container (v0.2.2): FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ node tests/audio-render.mjs
+// (its preinstalled Playwright and headless Chromium; NODE_PATH=$(npm root -g)). SYNTH=<url
+// relative to tests/> renders another copy of the synth (an older one, to compare).
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
+const CLOUD = !!process.env.FS_CLOUD;
+const { chromium } = CLOUD ? createRequire(import.meta.url)('playwright') : await import('/tmp/flight-sim/pw/node_modules/playwright/index.mjs');
 const ROOT = process.env.E2E_ROOT || 'http://localhost:8001/';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
 let r;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html');
+  await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html' + (process.env.SYNTH ? '?synth=' + encodeURIComponent(process.env.SYNTH) : ''));
   await page.waitForFunction(() => typeof window.runAudio === 'function', null, { timeout: 30000 });
   r = await page.evaluate(() => window.runAudio());
   check('no page errors', errors.length === 0, errors.join(' | '));
@@ -58,13 +64,20 @@ check('inside quieter than outside at idle', S.idleIn.rms < S.idleOut.rms, `${f1
 // Duller compared source by source: the mix differs on purpose (wind is louder in the cockpit).
 check('cruise engines: inside duller than outside (centroid lower)', S.cruiseInEng.centroid < S.cruiseOutEng.centroid * 0.8, `${Math.round(S.cruiseInEng.centroid)} vs ${Math.round(S.cruiseOutEng.centroid)} Hz`);
 check('cruise wind: inside duller than outside (centroid lower)', S.cruiseInWind.centroid < S.cruiseOutWind.centroid * 0.8, `${Math.round(S.cruiseInWind.centroid)} vs ${Math.round(S.cruiseOutWind.centroid)} Hz`);
+// Since v0.2.2 the engines' tones waver (±15 %) and the two engines beat, as real ones do, so
+// the level isn't steady from one window to the next any more: these allow 1.5 dB (1 s) and
+// 2 dB (300 ms) where v0.2.1's steady tones allowed 0.5 and 1.5. A step or a click still shows.
 const sp = S.spool, steps = sp.slice(1).map((v, k) => v.rms - sp[k].rms);
-check('spool-up level rises steadily (no 1 s step drops > 0.5 dB, total 10+ dB)', steps.every((d) => d > -0.5) && sp.at(-1).rms - sp[0].rms > 10, steps.map(f1).join(' '));
+check('spool-up level rises steadily (no 1 s step drops > 1.5 dB, total 10+ dB)', steps.every((d) => d > -1.5) && sp.at(-1).rms - sp[0].rms > 10, steps.map(f1).join(' '));
 // 300 ms moving average of the 100 ms windows (single 100 ms windows of rumble noise wander ±1 dB).
 const w0 = r.scen['spoolup-out'].win, winSp = w0.slice(5, 85).map((_, k) => (w0[k + 4] + w0[k + 5] + w0[k + 6]) / 3);
 const wsteps = winSp.slice(1).map((v, k) => v - winSp[k]);
-check('spool-up smooth (300 ms average never steps > 1.5 dB)', wsteps.every((d) => Math.abs(d) < 1.5), `max |step| ${f1(Math.max(...wsteps.map(Math.abs)))} dB`);
-check('fan whine pitch rises with N1', sp.at(-1).tone > sp[0].tone * 2 && sp.slice(1).every((v, k) => v.tone >= sp[k].tone - 30), sp.map((v) => Math.round(v.tone)).join(' '));
+check('spool-up smooth (300 ms average never steps > 2 dB)', wsteps.every((d) => Math.abs(d) < 2), `max |step| ${f1(Math.max(...wsteps.map(Math.abs)))} dB`);
+// v0.2.2: the fan's tone is checked where it should be (18 × the N1 shaft's frequency), every
+// second of the spool-up. (Before, the strongest tone from 250 Hz up had to rise; now the
+// buzz-saw's tones can be stronger than the fan's at high N1, and 237 Hz at idle is below 250.)
+check('the fan tone tracks N1 (10+ dB over its neighbourhood at 18 × the shaft frequency, every second)', S.bpf.every((v) => v.db > 10),
+  S.bpf.map((v) => `${Math.round(v.f)} Hz ${f1(v.db)}`).join(', '));
 check('cruise inside: engines and wind balanced (within 6 dB of each other)', Math.abs(S.cruiseInEng.rms - S.cruiseInWind.rms) < 6, `engines ${f1(S.cruiseInEng.rms)}, wind ${f1(S.cruiseInWind.rms)}`);
 check('cruise inside a little quieter than TOGA inside (0–8 dB)', S.togaIn.rms - S.cruiseIn.rms > 0 && S.togaIn.rms - S.cruiseIn.rms < 8, `${f1(S.cruiseIn.rms)} vs ${f1(S.togaIn.rms)}`);
 check('flap motor audible while moving (+1.5 dB)', S.flapRun.rms - S.motorsBase.rms > 1.5, `${f1(S.flapRun.rms - S.motorsBase.rms)} dB`);

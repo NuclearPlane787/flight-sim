@@ -12,7 +12,7 @@
 import * as A from './a321neo.js';
 import { isaInto, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
 import { coefficients, liftCurve, machLift, clOfAlpha, alphaOfCl } from './flightmodel.js';
-import { engineStep, togaThrust, idleN1, detentName, leverToPhi } from './engines.js';
+import { engineStep, togaThrust, idleN1, detentName, leverToPhi, leverForPhi, n1ForPhi, LEVER_CL } from './engines.js';
 import { legStep } from './gear.js';
 import { fbwStep } from './fbw.js';
 import { createAp, apStep, athrStep, AP_FIELDS } from './autopilot.js';
@@ -56,6 +56,8 @@ function newCore() {
     thsTakeoff: 0, elevCmd: 0, uRoll: 0, rudCmd: 0, thsRate: 0,
     protAlpha: false, protSpeed: false, alphaFloorTrig: false, alphaFloorLock: false,
     athrPhi: 0, phiNow: 0, opGamma: 0, opInt: 0, capVs: 0, hdgGridTgt: 0, hdgTimer: 0,
+    // v0.2.2: the A/THR moves the thrust lever (autopilot.js athrStep); the lever's N1 for the panel.
+    athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE,
     airTime: 0, groundTime: 0, everAirborne: false,
     tdArmed: false, tdPending: false, tdT: 0, tdVs: 0, tdPeakG: 0, tdX: 0, tdY: 0, tdBank: 0, tdPitch: 0, tdSurf: 'runway',
     grassRun: 0,
@@ -89,6 +91,9 @@ export function createSim({ ground } = {}) {
       { n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0 },
     ],
     thrustLever: 0, detent: 'IDLE',
+    // v0.2.2: the A/THR is moving the lever; the N1 the lever asks for, here and now (the
+    // engine panel's cyan ring).
+    athrActive: false, leverN1: 0,
     flapLever: 0, config: '0', slatDeg: 0, flapDeg: 0, gearPos: 1, gearDoors: 0,
     gearCompression: { nose: 0, left: 0, right: 0 }, steerAngle: 0, wheelRate: { nose: 0, main: 0 },
     surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },
@@ -264,10 +269,14 @@ export function createSim({ ground } = {}) {
     }
     apStep(X, ap, E, state, dt);
 
-    // Thrust demand (A/THR or manual) and the engines.
+    // Thrust demand (A/THR or manual) and the engines. While the A/THR drives the lever
+    // (v0.2.2) it writes it back to the controls, so the keyboard's lever, the cockpit's levers
+    // and the engine panel follow it.
+    const phiFwd = athrStep(X, ap, E, Math.max(0, controls.thrust), dt);
+    if (X.athrDriving) controls.thrust = X.athrLever;
+    if (X.athrOffBy) { events.push({ type: 'athrDisconnect', reason: X.athrOffBy }); X.athrOffBy = ''; }
     const lever = controls.thrust;
     const revSel = lever < -0.02 && mainsWow;
-    const phiFwd = athrStep(X, ap, E, Math.max(0, lever), dt);
     X.phiNow = phiFwd;
     const revCmd = revSel ? clamp(-lever, 0, 1) : 0;
     const fuelTotal = X.fuelL + X.fuelR + X.fuelC;
@@ -278,6 +287,8 @@ export function createSim({ ground } = {}) {
     X.n1L = eng[0].n1; X.n1R = eng[1].n1; X.revL = eng[0].rev; X.revR = eng[1].rev;
     X.n1tL = eng[0].n1Target; X.n1tR = eng[1].n1Target; X.thrL = eng[0].thrustN; X.thrR = eng[1].thrustN;
     X.ffL = eng[0].ffKgS; X.ffR = eng[1].ffKgS;
+    // The N1 the lever asks for here and now (the panel's ring): where the needle settles.
+    X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigma, mach)) : X.n1tL;
 
     // Spoilers: speed brakes (inhibited in FULL, α prot, TOGA/MCT), ground spoilers.
     const leverIdle = lever <= 0.02;
@@ -541,6 +552,7 @@ export function createSim({ ground } = {}) {
     e1.n1 = X.n1R; e1.n1Target = X.n1tR; e1.ffKgS = X.ffR; e1.thrustN = X.thrR; e1.rev = X.revR;
     S.fuelFlowKgS = X.ffL + X.ffR;
     S.thrustLever = controls.thrust; S.detent = detentName(controls.thrust);
+    S.athrActive = X.athrDriving; S.leverN1 = X.leverN1;
     S.flapLever = controls.flapLever; S.config = X.cfg; S.slatDeg = X.slat; S.flapDeg = X.flap;
     S.gearPos = X.gearPos; S.gearDoors = X.gearDoors;
     S.gearCompression.nose = legs[0].comp; S.gearCompression.left = legs[1].comp; S.gearCompression.right = legs[2].comp;
@@ -723,21 +735,17 @@ export function createSim({ ground } = {}) {
     X.ffL = X.ffR = Math.max(A.FF_IDLE * (0.55 + 0.45 * sigma), (A.TSFC_C0 + A.TSFC_C1 * Mn) * Math.sqrt(atm.T / T0) * per);
     const phi = fr * fr;
     X.phiNow = phi; X.athrPhi = phi;
-    // Lever: CL (A/THR normally on); without A/THR the lever sits at the trim thrust.
-    controls.thrust = ic.ap && ic.ap.athr ? 25 / 45 : phiToLever(phi);
+    // Lever: at the trim thrust. With A/THR on it's the A/THR's from the first step (v0.2.2: it
+    // moves the lever), so it starts at CL or below, where the A/THR drives it rather than arms.
+    const lv = leverForPhi(phi);
+    controls.thrust = ic.ap && ic.ap.athr ? Math.min(lv, LEVER_CL) : lv;
+    X.leverN1 = n1ForPhi(leverToPhi(controls.thrust), n1i);
     controls.parkingBrake = false;
     X.flt = 1; X.everAirborne = true; X.airTime = 100; X.groundTime = 0;
     X.holdLatched = true; X.gammaRef = 0; X.rollLatched = true; X.phiRef = 0;
     X.prevAlpha = alpha; X.prevIas = ias; X.nzPrev = 1;
     X.fAlong = 0;
     wowN = wowL = wowR = false;
-  }
-
-  function phiToLever(phi) {
-    // Inverse of leverToPhi on IDLE..CL..MCT..TOGA.
-    if (phi <= A.RATING.CL) return phi / A.RATING.CL * (25 / 45);
-    if (phi <= A.RATING.MCT) return 25 / 45 + (phi - A.RATING.CL) / (A.RATING.MCT - A.RATING.CL) * (10 / 45);
-    return 35 / 45 + (phi - A.RATING.MCT) / (A.RATING.TOGA - A.RATING.MCT) * (10 / 45);
   }
 
   // ---- snapshots ----
@@ -747,7 +755,8 @@ export function createSim({ ground } = {}) {
     return { v: 1, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
   }
   function restore(snap) {
-    Object.assign(X, snap.core);
+    // A save from before v0.2.2 has no A/THR lever fields: it starts not driving.
+    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE }, snap.core);
     Object.assign(controls, snap.controls);
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
     [wowN, wowL, wowR] = snap.wow;

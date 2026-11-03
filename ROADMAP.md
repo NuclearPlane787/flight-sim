@@ -44,6 +44,12 @@ Found after v0.2.0:
 - **Steering the camera with one finger** (Shane, 2026-11-03: "For steering the camera, I have to use two finders, but I am not used to that, so change it to clicking and dragging with one finger."). **Done in v0.2.1**: press and drag on the view. The two-finger swipe still works too.
 - **More stars** (Shane, 2026-11-03: "Add some more stars to the night sky."). **Done in v0.2.1**: the fill of stars past the catalogue's 6.5 is brighter and denser, and the catalogue's faint stars are brighter; a bright Moon washes the faint ones out.
 
+Found after v0.2.1 (Shane, 2026-11-04, "For v0.2.2, let's fix these"):
+
+- **The engine sound** ("The current engine sounds don't sound accurate to a real A321. Let's fix that if possible."). **Done in v0.2.2**: rebuilt from the LEAP-1A's real tones and checked by measurement; no agent can listen, so it rests on Shane's ears (before/after clips in `Claude outputs/flight-sim/`).
+- **The Cockpit button swapping seats** ("When you are in cockpit view, you can transfer to the first officer's seat by pressing the button again."). **Fixed in v0.2.2**: in the cockpit it does nothing; V reaches the first officer's seat.
+- **The A/THR and the thrust levers** ("When autothrottle is on, the blue dot on the engine power view doesn't move. So when I press R or F slightly, the engines change power significantly. Have autothrottle move this blue dot as well."). **Done in v0.2.2**: the A/THR moves the lever (as a Boeing's does; an Airbus's stay in CL), and R/F take it from there and disconnect it.
+
 
 ## Future additions Shane named (2026-10-31)
 
@@ -96,4 +102,4 @@ Shane: "Add these to the roadmap." Numbered as he sent them.
 ## Open decisions for Shane
 
 - Hazard stripe colours on the livery: black and yellow by default. Shane may want green and black. Asked 2026-10-31.
-- The order of the future additions. v0.1.4 (2026-11-01) took the FCU, the jumps, the three leftovers and the fonts. v0.2.0 is next, as an overnight Claude Code run: the main menu and scenarios, then night (row 10's night sky, with the time of day and the lights). Changing the route in flight (row 6) isn't in it. **v0.2.0 is done** (2026-11-01). v0.2.1 (2026-11-03, Cowork) took Shane's three fixes: the taxiways at the runways, changing the route in flight (row 6), and the view switch; then two more he grouped in with it: one-finger camera dragging and more stars. The next is open.
+- The order of the future additions. v0.1.4 (2026-11-01) took the FCU, the jumps, the three leftovers and the fonts. v0.2.0 is next, as an overnight Claude Code run: the main menu and scenarios, then night (row 10's night sky, with the time of day and the lights). Changing the route in flight (row 6) isn't in it. **v0.2.0 is done** (2026-11-01). v0.2.1 (2026-11-03, Cowork) took Shane's three fixes: the taxiways at the runways, changing the route in flight (row 6), and the view switch; then two more he grouped in with it: one-finger camera dragging and more stars. v0.2.2 (2026-11-04, Cowork): the engine sound, the A/THR moving the levers, and the Cockpit button. The next is open.

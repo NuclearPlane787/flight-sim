@@ -15,7 +15,7 @@ const MIN_DT = 1000 / 30;
 // The view switch (v0.2.1). Shane: "Have an easy way to transfer between a cockpit view, a
 // nose view, and a third person view, maybe a switch somewhere." [view, key, label, tooltip]
 const VIEW_BUTTONS = [
-  ['cockpit', '1', 'Cockpit', 'Cockpit (1). In the cockpit, click again for the other seat'],
+  ['cockpit', '1', 'Cockpit', "Cockpit (1): the captain's seat. V also reaches the first officer's"],
   ['nose', '2', 'Nose', 'Nose (2)'],
   ['orbit', '3', '3rd person', '3rd person (3): drag to orbit, pinch to zoom'],
 ];
@@ -43,7 +43,7 @@ export function createHud(root, { airports, coast } = {}) {
   const fcu = createFcu(el, hud);
 
   // The view switch, level with the FCU at the top right. In a seat, Cockpit shows which one
-  // (CPT or F/O), and clicking it again swaps them (main.js → selectView).
+  // (CPT or F/O; V reaches the first officer's). Clicks go to main.js → selectView.
   const views = document.createElement('div');
   views.className = 'fsui-views fsui-panel';
   views.innerHTML = VIEW_BUTTONS.map(([v, key, label, tip]) =>
@@ -109,6 +109,7 @@ export function createHud(root, { airports, coast } = {}) {
     const e0 = st.engines?.[0] || {}, e1 = st.engines?.[1] || {};
     const sE = [r(e0.n1, 10), r(e1.n1, 10), r(e0.n1Target), r(e1.n1Target), r(e0.ffKgS, 360), r(e1.ffKgS, 360), r(e0.rev, 50), r(e1.rev, 50),
       r(st.fuelKg, 0.1), r(st.mass, 0.1), r(st.cgMac, 1000), r(st.thrustLever, 100), st.detent, st.config, r(st.slatDeg, 2), r(st.flapDeg, 2),
+      st.athrActive ? 1 : 0, r(st.leverN1, 5),
       r(st.gearPos, 50), r(st.speedbrake, 50), r(st.groundSpoilers, 50), r(st.brakes?.left, 20), r(st.brakes?.right, 20), st.parkingBrake,
       (sp.spoilersL || []).map((x) => r(x, 20)).join(), (sp.spoilersR || []).map((x) => r(x, 20)).join(),
       v.timeScale, r(v.timeScaleActual, 10), v.paused, v.controls?.spoilersArmed];

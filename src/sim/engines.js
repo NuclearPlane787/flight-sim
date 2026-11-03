@@ -15,6 +15,15 @@ export function leverToPhi(lever) {
   return A.RATING.MCT + (A.RATING.TOGA - A.RATING.MCT) * Math.min(1, (lever - LEVER_MCT) / (1 - LEVER_MCT));
 }
 
+// The lever position for a forward demand phi: the inverse of leverToPhi. The autothrust moves
+// the lever there (v0.2.2).
+export function leverForPhi(phi) {
+  if (phi <= 0) return 0;
+  if (phi <= A.RATING.CL) return phi / A.RATING.CL * LEVER_CL;
+  if (phi <= A.RATING.MCT) return LEVER_CL + (phi - A.RATING.CL) / (A.RATING.MCT - A.RATING.CL) * (LEVER_MCT - LEVER_CL);
+  return Math.min(1, LEVER_MCT + (phi - A.RATING.MCT) / (A.RATING.TOGA - A.RATING.MCT) * (1 - LEVER_MCT));
+}
+
 export function detentName(lever) {
   if (lever < -0.02) return 'REV';
   if (Math.abs(lever) <= 0.02) return 'IDLE';

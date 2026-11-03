@@ -7,7 +7,7 @@ An A321neo over South Korea, flown between Incheon, Gimpo and Jeju, over real co
 - a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
 - gate starts with pushback and a taxi route drawn on the ground;
 - parked aircraft and ground vehicles at the airports;
-- synthesised engine and warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
+- synthesised engine sound built from the LEAP-1A's real tones (the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
 `Updates.md` lists what each version added; the game shows its version in the pause menu.
 
@@ -59,7 +59,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | X | autothrust on / off |
 | = / − | time compression faster / slower: with the AP on and 2,000 ft up, or in a pushback (up to 4×) |
 | M | map (predicted path, jumps, waypoints, Change route, skip to final) |
-| 1 / 2 / 3 | cockpit, nose, 3rd person view, as the switch at the top right does; in the cockpit, 1 again moves to the other seat |
+| 1 / 2 / 3 | cockpit (the captain's seat), nose, 3rd person view, as the switch at the top right does |
 | V | next view (Nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
 | Esc | pause menu (Resume, Save, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Exit to menu) |
@@ -78,6 +78,7 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to tur
   3. G for gear up; 6 for flaps 0 at about 210 kt.
   4. Pull the levers back to CL (F) for the autothrust.
 - **Autopilot:** set HDG and ALT on the FCU (scroll, or click and type; Enter on ALT starts the level change, OP CLB/OP DES), then Z (AP) and X (A/THR). The FCU heading starts at your heading. Time compression (=) needs the AP on and 2,000 ft above the ground.
+- **Autothrust:** while A/THR is on it moves the thrust levers, and the blue ring on the N1 dials with them ("A/THR" between the dials). R or F takes the levers from where it left them and turns A/THR off; X turns it back on.
 - **The map (M):** with the AP on, the bright line is where the aircraft will go. Click a point on it to jump there. The magenta line is the route to your destination and doesn't jump: point the HDG along it first. A red cross means the path meets the terrain. "Skip to 15 nm final" puts you on the 3° path to the destination runway.
   - **Waypoints:** drag the magenta line to add one; double-click a waypoint to remove it.
   - **Change route** (or a click on an airport) picks a new destination and runway in flight, with the distance, bearing and fuel needed direct from where you are. The line then goes direct from where you are.
@@ -92,7 +93,7 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to tur
 
 ## Known issues
 
-- Nobody has listened to the sound yet: the levels are measured (`tests/audio-render.mjs`), not judged by ear.
+- No agent has listened to the sound: the levels and the engines' frequencies are measured (`tests/audio-render.mjs`), not judged by ear. `tests/audio-clips.mjs` renders flight phases to listen to.
 - The predicted path is a straight line on the selected heading, because the autopilot has holds only (route following is on the roadmap).
 
 ## Code map

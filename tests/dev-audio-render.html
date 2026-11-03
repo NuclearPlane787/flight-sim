@@ -13,7 +13,8 @@ OfflineAudioContext and measures the PCM. Driven by <code>tests/audio-render.mjs
 call <code>runAll()</code> in the console to see the numbers.</p>
 <pre id="out"></pre>
 <script type="module">
-import { createSynth } from '../src/audio/synth.js';
+// ?synth=<url> renders another copy of the synth (v0.2.2: an older one, to compare).
+const { createSynth } = await import(new URLSearchParams(location.search).get('synth') || '../src/audio/synth.js');
 
 const SR = 48000;
 const FPS = 60;
@@ -86,6 +87,52 @@ const SCEN = {
   } },
 };
 SCEN['landing-in'] = { dur: 14, step(s, t, o) { SCEN['landing-out'].step(s, t, o); o.inside = true; } };
+
+// ---- listening clips (v0.2.2): longer flight phases, to hear (window.renderClip → WAV) ----
+// N1 spools as the sim's engines do (engines.js: a lag of 2.6 s near idle, 0.9 s at the top).
+function spooler() {
+  let n = 20.5;
+  return (target) => {
+    const f = Math.max(0, Math.min(1, (n - 20) / 76)), tau = 2.6 + (0.9 - 2.6) * f;
+    n += (target - n) * Math.min(1, (1 / FPS) / tau);
+    return n;
+  };
+}
+// The views: the cockpit (inside); the nose camera (outside, in front of the engines: aft −1,
+// 20 m); 3rd person at its default 75 m, from behind and to the side (aft 0.5) or abeam (0).
+const VIEW = { cockpit: { inside: true }, nose: { inside: false, aft: -1, dist: 20 },
+  orbitBehind: { inside: false, aft: 0.5, dist: 75 }, orbitSide: { inside: false, aft: 0, dist: 75 } };
+function takeoff(view) {
+  let sp;
+  return { dur: 34, step(s, t, o) {
+    if (t === 0) sp = spooler();
+    Object.assign(o, VIEW[view]);
+    n1(s, sp(t < 3 ? 20.5 : 95));
+    const v = t < 4 ? 0 : Math.min(160, (t - 4) * 2.6 / KT * 1);   // 2.6 m/s² from 4 s
+    s.ias = s.gs = Math.min(v, 160) * KT;
+    s.onGround = t < 31; s.vs = t < 31 ? 0 : 4; s.gearPos = t < 33 ? 1 : 1 - (t - 33) / 6;
+  } };
+}
+function steady(view, n1v, kt, extra = {}) {
+  return { dur: 12, step(s, t, o) {
+    Object.assign(o, VIEW[view]);
+    s.onGround = false; s.gearPos = extra.gear ?? 0; s.flapDeg = extra.flap ?? 0; s.slatDeg = extra.slat ?? 0;
+    // A/THR hunting a little about the mean, as on an approach.
+    n1(s, n1v + (extra.hunt ? 2.5 * Math.sin(t * 0.7) + 1.2 * Math.sin(t * 1.9 + 1) : 0));
+    s.ias = s.gs = kt * KT;
+  } };
+}
+const CLIPS = {
+  'clip-idle-nose': { dur: 8, step(s, t, o) { Object.assign(o, VIEW.nose); n1(s, 20.5); } },
+  'clip-idle-cockpit': { dur: 8, step(s, t, o) { Object.assign(o, VIEW.cockpit); n1(s, 20.5); } },
+  'clip-takeoff-cockpit': takeoff('cockpit'),
+  'clip-takeoff-3rd': takeoff('orbitBehind'),
+  'clip-cruise-cockpit': steady('cockpit', 84, 280),
+  'clip-approach-cockpit': steady('cockpit', 56, 140, { gear: 1, flap: 25, slat: 27, hunt: true }),
+  'clip-approach-3rd': steady('orbitSide', 56, 140, { gear: 1, flap: 25, slat: 27, hunt: true }),
+  'clip-landing-cockpit': SCEN['landing-in'],
+};
+Object.assign(SCEN, CLIPS);
 
 // ---- rendering ----
 
@@ -171,6 +218,23 @@ function measure([L, R], t0, t1, lo = 250, hi = 4000) {
     bandDb: 10 * Math.log10(Math.max(1e-30, den ? band / den : 0)), nan };
 }
 
+// v0.2.2: how far a tone at f Hz stands out at time t: the strongest bin within ±4 % of f in
+// one 4096-sample window (85 ms) centred on t, over the median of the bins from 0.7 f to 1.4 f
+// (dB). Short, so a tone that is sweeping (a spool-up) stays in its bin.
+function toneProminence([L, R], t, f) {
+  const N = 4096, a = Math.max(0, Math.round(t * SR) - N / 2);
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let i = 0; i < N; i++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); re[i] = ((L[a + i] + R[a + i]) / 2 || 0) * w; }
+  fft(re, im);
+  const bin = (hz) => Math.round(hz * N / SR), pw = (k) => re[k] * re[k] + im[k] * im[k];
+  let best = 0;
+  for (let k = bin(f * 0.96); k <= bin(f * 1.04); k++) best = Math.max(best, pw(k));
+  const around = [];
+  for (let k = bin(f * 0.7); k <= bin(f * 1.4); k++) around.push(pw(k));
+  around.sort((x, y) => x - y);
+  return 10 * Math.log10(best / Math.max(1e-30, around[around.length >> 1]));
+}
+
 // RMS (dB) per 100 ms window.
 function windows([L, R], ms = 100) {
   const w = Math.round(SR * ms / 1000), out = [];
@@ -204,7 +268,7 @@ function clicks([L, R]) {
   return { ratio: Math.round(worst * 10) / 10, at: Math.round(at * 1000) / 1000 };
 }
 
-async function runAll(names = Object.keys(SCEN)) {
+async function runAll(names = Object.keys(SCEN).filter((k) => !k.startsWith('clip-'))) {
   const res = {};
   for (const name of names) {
     const pcm = await render(name);
@@ -225,7 +289,19 @@ window.runAudio = async () => {
   seg.togaOut = m('toga-out', 1, 3); seg.togaIn = m('toga-in', 1, 3);
   seg.cruiseOut = m('cruise-out', 1, 3); seg.cruiseIn = m('cruise-in', 1, 3);
   seg.spool = [];
-  for (let t = 0.5; t < 8.5; t += 1) seg.spool.push(m('spoolup-out', t, t + 1, 250, 2500));
+  // From 150 Hz (v0.2.2): the fan's blade-passing tone is 237 Hz at idle (18 blades).
+  for (let t = 0.5; t < 8.5; t += 1) seg.spool.push(m('spoolup-out', t, t + 1, 150, 2500));
+  // v0.2.2: the blade-passing tone where it should be (18 × the N1 shaft's 0.6426 Hz per %),
+  // about the middle of each second of the spool-up (N1 20.5 → 95 % from 0.5 to 8.5 s; the
+  // synth follows 0.1 s behind). The best of seven windows 0.1 s apart: the two engines' tones
+  // beat (at 1 kHz, 1.5 times a second), and at a trough the tone dips.
+  const bpfAt = (t) => 18 * 3894 / 101 / 60 * (20.5 + (95 - 20.5) * Math.min(1, Math.max(0, (t - 0.6) / 8)));
+  seg.bpf = [];
+  for (let t = 1; t < 8.5; t += 1) {
+    let db = -99;
+    for (let d = -0.3; d < 0.31; d += 0.1) db = Math.max(db, toneProminence(r['spoolup-out'].pcm, t + d, bpfAt(t + d)));
+    seg.bpf.push({ t, f: bpfAt(t), db });
+  }
   seg.motorsBase = m('motors-in', 0.3, 0.9); seg.flapRun = m('motors-in', 2, 3.8); seg.gearRun = m('motors-in', 7, 10.5);
   seg.preTouch = m('landing-out', 0.5, 0.95); seg.touch = m('landing-out', 1.0, 1.3);
   seg.revOut = m('landing-out', 4, 6); seg.revIn = m('landing-in', 4, 6);
@@ -249,6 +325,27 @@ window.runAudio = async () => {
   return out;
 };
 window.runAll = runAll;
+
+// A scenario or clip as a 16-bit stereo WAV file, base64 (tests/audio-clips.mjs saves them),
+// with its level and peak.
+window.renderClip = async (name) => {
+  const pcm = await render(name);
+  const [L, R] = pcm, n = L.length;
+  const bytes = new Uint8Array(44 + n * 4), dv = new DataView(bytes.buffer);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) bytes[o + i] = s.charCodeAt(i); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true); dv.setUint32(24, SR, true);
+  dv.setUint32(28, SR * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, n * 4, true);
+  for (let i = 0; i < n; i++) {
+    dv.setInt16(44 + i * 4, Math.max(-1, Math.min(1, L[i] || 0)) * 32767, true);
+    dv.setInt16(46 + i * 4, Math.max(-1, Math.min(1, R[i] || 0)) * 32767, true);
+  }
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  const w = measure(pcm, 0, SCEN[name].dur);
+  return { wav: btoa(bin), rms: w.rms, peak: w.peak, dur: SCEN[name].dur };
+};
+window.clipNames = () => Object.keys(CLIPS);
 document.getElementById('out').textContent = 'ready';
 </script>
 </body>

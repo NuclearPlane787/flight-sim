@@ -221,7 +221,9 @@ async function boot() {
     sim.controls.flapLever = 1;
     sim.controls.gearDown = false;
     sim.controls.speedbrake = 0;
-    input.lever = sim.controls.thrust = 25 / 45; // CL, so the autothrust has its full range
+    // The lever at the trim thrust (sim.reset puts it there), at most CL: the A/THR takes it
+    // from there and moves it (v0.2.2; before, it sat in CL).
+    input.lever = sim.controls.thrust = Math.min(sim.controls.thrust, 25 / 45);
     ap.setHdg(Math.round(gridToMag(ax.hdg, x, y) / DEG) % 360 || 360);
     ap.setAlt(Math.round((z * FT) / 100) * 100);
     ap.setSpd(180);
@@ -492,14 +494,14 @@ async function boot() {
   }
 
   // ---- Views (v0.2.1): the switch at the top right, and 1, 2, 3 ----
-  // Cockpit picks the last seat used (the captain's at first); in a seat, it swaps them.
-  let lastSeat = 'captain';
+  // Cockpit is the captain's seat. In a seat it does nothing (v0.2.2: it used to swap seats;
+  // Shane: "When you are in cockpit view, you can transfer to the first officer's seat by
+  // pressing the button again."). V still steps through all four views, the first officer's too.
   const isSeat = (id) => id === 'captain' || id === 'fo';
   function selectView(which) {
     const cur = rig.view.id;
     let id = which;
-    if (which === 'cockpit') id = isSeat(cur) ? (cur === 'captain' ? 'fo' : 'captain') : lastSeat;
-    if (isSeat(id)) lastSeat = id;
+    if (which === 'cockpit') id = isSeat(cur) ? cur : 'captain';
     if (id === cur) return;
     rig.viewId = id;
     toast(rig.view.name, 1000);
@@ -597,7 +599,7 @@ async function boot() {
       case 'faster': changeRate(1); break;
       case 'slower': changeRate(-1); break;
       case 'map': map.toggle(); if (map.isOpen) apKey = ''; else predictor.cancel(); break;
-      case 'view': { const v = rig.next(); if (v.id === 'captain' || v.id === 'fo') lastSeat = v.id; toast(v.name, 1000); break; }
+      case 'view': { const v = rig.next(); toast(v.name, 1000); break; }
       case 'viewCockpit': selectView('cockpit'); break;
       case 'viewNose': selectView('nose'); break;
       case 'viewOrbit': selectView('orbit'); break;
@@ -722,6 +724,12 @@ async function boot() {
         callouts.reset();
       }
       if (e.type === 'apDisconnect') { setTimeScale(1); clearPrediction(); }
+      // v0.2.2: R or F while the A/THR moved the lever took it over (to idle, at the RETARD,
+      // it goes quietly, as before).
+      if (e.type === 'athrDisconnect') {
+        clearPrediction();
+        if (e.reason === 'lever') toast('A/THR off: the thrust levers are yours (X turns it back on)', 2500);
+      }
     }
     const res = scorer.update(sim.state, evs);
     evs.length = 0;
@@ -798,7 +806,7 @@ async function boot() {
     last = now;
 
     const s = sim.state;
-    input.update(dt, sim.controls, s.onGround);
+    input.update(dt, sim.controls, s.onGround, s.athrActive);   // the A/THR moves the lever (v0.2.2)
     if (window.__fsController) window.__fsController(sim, dt); // test-only landing controller
     if (crashed) { render(dt); cancelAnimationFrame(raf); raf = 0; return; } // the crash panel waits; rewind/restart restart the loop
 
@@ -922,6 +930,11 @@ async function boot() {
     hud.update(view);
     if (map.isOpen) map.update(view);
     synthOpts.inside = seat; synthOpts.timeScale = timeScale; synthOpts.paused = paused;
+    // Outside, where the listener is (v0.2.2): the nose camera is ahead of the engines; 3rd
+    // person goes round (yaw 0 = behind) at its orbit's distance.
+    const orbit = rig.view.id === 'orbit', lk = rig.looks.orbit;
+    synthOpts.aft = orbit ? Math.cos(lk.yaw) * Math.cos(lk.pitch) : -1;
+    synthOpts.dist = orbit ? lk.dist : 0;
     synth?.update(s, synthOpts);
 
     fpsFrames++;

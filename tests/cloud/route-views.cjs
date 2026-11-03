@@ -1,5 +1,6 @@
 // v0.2.1's checks in headless Chromium, through the real game loop (main.js), in the cloud
-// container: the view switch (its place, clicks, 1 2 3, the seat swap), a waypoint dragged
+// container: the view switch (its place, clicks, 1 2 3; since v0.2.2 Cockpit in a seat stays
+// put, and V reaches the first officer's seat), a waypoint dragged
 // onto the magenta line, Change route on the map (to RKSI 33L, and a click on Jeju), then skip
 // to final at the new destination and a landing there by tests/e2e-controller.js, the logbook,
 // and Change route refused after landing. Pictures go to outDir as v021-*.png.
@@ -56,7 +57,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
     `top right, level with the FCU and clear of it (${sw && Math.round(sw.left)} > ${sw && Math.round(sw.fcuRight)}), class "${sw && sw.cls}"`);
   const vid = () => page.evaluate(() => ({ id: window.__fs.rig.view.id, on: document.querySelector('.fsui-views .on')?.dataset.v, seat: document.querySelector('.fsui-views [data-v="cockpit"] .fsui-seat').textContent }));
   const steps = [];
-  for (const [how, what] of [['click', 'nose'], ['click', 'cockpit'], ['click', 'cockpit'], ['click', 'orbit'], ['key', '1'], ['key', '1'], ['key', '2'], ['key', '3'], ['key', 'v']]) {
+  for (const [how, what] of [['click', 'nose'], ['click', 'cockpit'], ['click', 'cockpit'], ['click', 'orbit'], ['key', '1'], ['key', '1'], ['key', '2'], ['key', '3'], ['key', 'v'], ['key', 'v'], ['key', '1'], ['click', 'cockpit']]) {
     if (how === 'click') await page.click(`.fsui-views [data-v="${what}"]`); else await page.keyboard.press(what);
     await page.waitForTimeout(250);
     const v = await vid();
@@ -64,11 +65,11 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   }
   console.log('  ' + steps.join('\n  '));
   ok(steps.join('|') === [
-    'nose → nose [on: nose]', 'cockpit → captain (CPT) [on: cockpit]', 'cockpit → fo (F/O) [on: cockpit]', 'orbit → orbit [on: orbit]',
-    'key 1 → fo (F/O) [on: cockpit]', 'key 1 → captain (CPT) [on: cockpit]', 'key 2 → nose [on: nose]', 'key 3 → orbit [on: orbit]', 'key v → captain (CPT) [on: cockpit]',
-  ].join('|'), 'clicks and keys pick the views; Cockpit again swaps the seat; the lit button follows V too');
-  await page.click('.fsui-views [data-v="cockpit"]');   // from the captain's seat: the first officer's
-  await page.waitForTimeout(250);
+    'nose → nose [on: nose]', 'cockpit → captain (CPT) [on: cockpit]', 'cockpit → captain (CPT) [on: cockpit]', 'orbit → orbit [on: orbit]',
+    'key 1 → captain (CPT) [on: cockpit]', 'key 1 → captain (CPT) [on: cockpit]', 'key 2 → nose [on: nose]', 'key 3 → orbit [on: orbit]',
+    'key v → captain (CPT) [on: cockpit]', 'key v → fo (F/O) [on: cockpit]', 'key 1 → fo (F/O) [on: cockpit]', 'cockpit → fo (F/O) [on: cockpit]',
+  ].join('|'), 'clicks and keys pick the views; Cockpit in a seat stays put (v0.2.2); V reaches the first officer\'s seat; the lit button follows V too');
+  // In the first officer's seat (from V).
   await shot('v021-view-switch-cockpit');
   await page.click('.fsui-views [data-v="orbit"]');
   await page.waitForTimeout(250);

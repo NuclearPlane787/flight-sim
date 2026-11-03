@@ -33,6 +33,9 @@ export function createInput(target = window) {
   let lever = 0;          // -1 … 1
   let detentTimer = 0;    // time left paused at a detent
   let reverseTimer = 0;
+  // R/F: 0 not held; 1 held since a moment the lever was the pilot's; 2 held since a moment the
+  // A/THR was moving it (that press takes the lever over, and the sim disconnects the A/THR).
+  let press = 0;
   const listeners = [];
   let enabled = true;
 
@@ -73,7 +76,8 @@ export function createInput(target = window) {
   const pair = (neg, pos) => (down.has(pos) ? 1 : 0) - (down.has(neg) ? 1 : 0);
 
   // Advance the ramps by dt (real seconds) and write them into the sim's controls.
-  function update(dt, controls, onGround) {
+  // athrDriving: the A/THR is moving the thrust lever (the sim's state.athrActive, v0.2.2).
+  function update(dt, controls, onGround, athrDriving = false) {
     axes.pitch = approach(axes.pitch, pair('KeyW', 'KeyS'), dt);
     axes.roll = approach(axes.roll, pair('KeyA', 'KeyD'), dt);
     axes.yaw = approach(axes.yaw, pair('KeyQ', 'KeyE'), dt);
@@ -83,7 +87,16 @@ export function createInput(target = window) {
 
     // The thrust lever moves while R or F is held and pauses at each detent it crosses.
     const dir = pair('KeyF', 'KeyR');
-    if (dir === 0) {
+    if (dir === 0) press = 0;
+    else if (press === 0) press = athrDriving ? 2 : 1;
+    if (athrDriving && press !== 2) {
+      // The A/THR moves the lever: follow it. A press that began before it took the lever
+      // (pulling back into CL after take-off) does nothing more until the key is let go; a
+      // new press takes the lever from where it is.
+      lever = controls.thrust;
+      detentTimer = 0;
+      reverseTimer = 0;
+    } else if (dir === 0) {
       detentTimer = 0;
       reverseTimer = 0;
     } else if (detentTimer > 0) {

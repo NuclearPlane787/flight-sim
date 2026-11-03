@@ -2,19 +2,47 @@
 // motors, spoilers, touchdown, tyres, brakes and reversers, the cockpit air-conditioning
 // bed, plus the AP-disconnect cavalry charge, the overspeed chime and the stall cricket.
 //
+// The engines (v0.2.2; Shane: "The current engine sounds don't sound accurate to a real
+// A321."). Before, each was one steady tone and a low rumble. Now each CFM LEAP-1A is made of
+// what makes the real one's sound, at its real frequencies (FAA TCDS E00089EN: N1 3,894 rpm =
+// 101 %, N2 19,391 rpm = 116.5 %; 18 fan blades):
+//   - the fan's tones: the blade-passing frequency (18 × the N1 shaft's, ~1.16 kHz at 100 %)
+//     and its harmonics, with sidebands and the shaft's own low orders: one oscillator with a
+//     custom waveform, at the shaft's frequency;
+//   - the buzz-saw: above about 75 % N1 the fan's tips go supersonic and every shaft order
+//     sounds (a rasp at ~60 Hz with uneven harmonics), mostly ahead of the engine;
+//   - the core's whine, from N2 (an approximation: N2 ≈ 60 + 0.4 × N1 %);
+//   - broadband: the fan's (a band round its tones), the jet's roar (low, rising steeply with
+//     thrust, mostly behind), and the combustion rumble.
+// The tones waver a little, slowly, in level and pitch (as measured tones do), and the two
+// engines run 0.15 % apart, so they beat. Outside, where you hear from changes the mix: ahead
+// (the nose) the fan and the buzz-saw, behind the jet; and 3rd person's distance lowers and
+// dulls it all (opts.aft, opts.dist).
+//
 // Every node is made once in start(); update() only moves parameters with setTargetAtTime
 // (or schedules short envelopes on existing gain nodes), so nothing is allocated per frame.
 // A limiter (DynamicsCompressor) before the master volume keeps everything-at-once from clipping.
-// Levels were tuned offline by measuring rendered PCM: tests/audio-render.mjs.
+// Levels were tuned offline by measuring rendered PCM: tests/audio-render.mjs; tests/audio-clips.mjs
+// renders flight phases to listen to.
 //
 //   const synth = createSynth();                    // or createSynth({ context }) in tests
 //   button.onclick = () => synth.start();          // needs a user gesture
-//   synth.update(sim.state, { inside, timeScale, paused });  // every frame
+//   synth.update(sim.state, { inside, timeScale, paused, aft, dist });  // every frame
 //   synth.volume = 0.8;
+// aft: where the listener is, outside: −1 ahead of the engines, 0 abeam, 1 behind. dist: metres
+// from the aircraft (3rd person's orbit; 0 for the nose).
 
 const KT = 1.943844; // m/s → kt
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+// The LEAP-1A (see above): shaft frequency per % of N1 and of N2, and the fan's blades.
+const N1_HZ = 3894 / 101 / 60, N2_HZ = 19391 / 116.5 / 60, FAN_BLADES = 18;
+const N2_OF_N1 = (n1Pct) => 60 + 0.4 * n1Pct;
+// Engine 2 runs this much faster, and its tones are a little quieter (TONE2): the two beat,
+// gently, as unsynchronised engines do.
+const SPLIT = 1.0015, TONE2 = 0.65;
 
 // Overall levels (tuned by measurement): PRE feeds the limiter; the warnings' peaks.
 const PRE = 0.7;
@@ -22,8 +50,12 @@ const CAV_PEAK = 0.3, CHIME = 0.4, CRICKET = 0.3, STALL_TONE = 0.2;
 
 // How loud each source is in the cockpit vs outside (before the shared low-pass).
 const MIX = {
-  whine: { in: 0.10, out: 0.55 },
-  rumble: { in: 0.20, out: 0.90 },
+  fan: { in: 0.22, out: 1.00 },       // the fan's tones
+  buzz: { in: 0.38, out: 1.00 },      // the buzz-saw
+  whine: { in: 0.04, out: 0.50 },     // the core's whine
+  fanNoise: { in: 0.25, out: 1.00 },  // the fan's broadband
+  jet: { in: 0.25, out: 1.00 },       // the jet's roar
+  core: { in: 0.38, out: 0.70 },      // combustion rumble
   reverser: { in: 0.35, out: 1.00 },
   wind: { in: 0.55, out: 0.25 },
   spoiler: { in: 0.45, out: 0.35 },
@@ -59,18 +91,76 @@ export function createSynth({ context = null } = {}) {
 
   // 2 s of noise that loops without a seam: generated 2 s + F long, and the tail past 2 s
   // is cross-faded into the head (otherwise brown noise ticks at every loop point).
-  function noiseBuffer(brown) {
+  // kind: true or 'brown', 'pink' (−3 dB an octave, Paul Kellet's filter), else white.
+  function noiseBuffer(kind) {
     const len = ctx.sampleRate * 2, F = 4096;
     const x = new Float32Array(len + F);
-    let last = 0;
+    let last = 0, b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
     for (let i = 0; i < len + F; i++) {
       const w = Math.random() * 2 - 1;
-      if (brown) { last = (last + 0.02 * w) / 1.02; x[i] = last * 3.5; } else x[i] = w;
+      if (kind === true || kind === 'brown') { last = (last + 0.02 * w) / 1.02; x[i] = last * 3.5; }
+      else if (kind === 'pink') {
+        b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.96900 * b2 + w * 0.1538520;
+        b3 = 0.86650 * b3 + w * 0.3104856; b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
+        x[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+      } else x[i] = w;
     }
     for (let i = 0; i < F; i++) x[i] = x[i] * (i / F) + x[len + i] * (1 - i / F);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     buf.getChannelData(0).set(x.subarray(0, len));
     return buf;
+  }
+
+  // A slow wander for the tones' level and pitch: values −1…1 every 0.6 s, eased between,
+  // 25 s long and looping without a seam (at a low sample rate: it's only a control signal).
+  function wanderBuffer() {
+    const sr = 4000, step = 0.6, n = 42, len = Math.round(n * step * sr);
+    const pts = Array.from({ length: n }, () => Math.random() * 2 - 1);
+    const buf = ctx.createBuffer(1, len, sr), x = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const u = i / sr / step, k = Math.floor(u), f = u - k;
+      const a = pts[k % n], b = pts[(k + 1) % n];
+      x[i] = a + (b - a) * (1 - Math.cos(Math.PI * f)) / 2;
+    }
+    return buf;
+  }
+
+  // A waveform from harmonic amplitudes (index = harmonic), with random but fixed phases (so it
+  // isn't peaky); not normalised, so the amplitudes are what they say.
+  function harmonicWave(amps, seed) {
+    let s = seed >>> 0;
+    const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+    const re = new Float32Array(amps.length), im = new Float32Array(amps.length);
+    for (let k = 1; k < amps.length; k++) {
+      const ph = rnd() * 2 * Math.PI;
+      re[k] = amps[k] * Math.cos(ph); im[k] = amps[k] * Math.sin(ph);
+    }
+    return ctx.createPeriodicWave(re, im, { disableNormalization: true });
+  }
+
+  // The fan's tones, at the N1 shaft's frequency: the blade-passing frequency (18) and its
+  // harmonics, each with sidebands, and the shaft's own first orders.
+  function fanAmps() {
+    const a = new Float32Array(73);
+    a[1] = 0.10; a[2] = 0.06; a[3] = 0.04;
+    a[18] = 1.0; a[17] = a[19] = 0.18; a[16] = a[20] = 0.07;
+    a[36] = 0.45; a[35] = a[37] = 0.08;
+    a[54] = 0.20; a[72] = 0.08;
+    return a;
+  }
+  // The buzz-saw: every shaft order, uneven (each blade a little different), strongest from
+  // the 6th to the 12th (a third to two thirds of the blade-passing frequency), weak at the
+  // first few, fading above.
+  function buzzAmps() {
+    const a = new Float32Array(61);
+    let s = 7;
+    const rnd = () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return s / 4294967296; };
+    for (let k = 1; k <= 60; k++) {
+      const env = k < 6 ? 0.15 + 0.85 * (k / 6) * (k / 6) : k <= 12 ? 1 : 12 / k;
+      a[k] = env * (0.25 + 0.75 * rnd());
+    }
+    a[18] = Math.max(a[18], 0.6);
+    return a;
   }
 
   function noise(buf) {
@@ -106,6 +196,9 @@ export function createSynth({ context = null } = {}) {
   function build() {
     const white = noiseBuffer(false);
     const brown = noiseBuffer(true);
+    const pink = noiseBuffer('pink');
+    const wander = wanderBuffer();
+    const fanWave = harmonicWave(fanAmps(), 11), buzzWave = harmonicWave(buzzAmps(), 23);
     const master = gain(vol);
     master.connect(ctx.destination);
     // Limiter: transparent at normal levels, catches everything-at-once. (Chrome adds its own
@@ -120,22 +213,41 @@ export function createSynth({ context = null } = {}) {
     const muffle = filter('lowpass', 1200); // cockpit: low; outside: wide open
     chain(worldBus, muffle, pre);
 
-    // Engines: fan whine (two partials) and combustion rumble, each engine panned.
+    // Engines (see the top): per engine, the fan's tones and the buzz-saw (custom waveforms at
+    // the N1 shaft's frequency, wavering a little in level and pitch), the core's whine, and
+    // the fan's broadband, the jet's roar and the combustion rumble; panned left and right.
+    const wanderAt = (depth) => {
+      const s = ctx.createBufferSource(); s.buffer = wander; s.loop = true;
+      s.start(0, Math.random() * wander.duration);   // each one somewhere else in it
+      const g = gain(depth); s.connect(g); return g;
+    };
     const engines = [-0.6, 0.6].map((pan) => {
       const p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(worldBus);
-      const fan = osc('triangle', 300);
-      const comp = osc('sine', 900);
-      const whine = gain(0); const compG = gain(0.35);
-      fan.connect(whine); chain(comp, compG, whine);
-      const whineBp = filter('bandpass', 1000, 0.8); // softens the triangle's edge
-      chain(whine, whineBp, p);
-      const rumbleLp = filter('lowpass', 200, 0.5);
-      const rumble = gain(0);
-      chain(noise(brown), rumbleLp, rumble, p);
+      const fanOsc = ctx.createOscillator(); fanOsc.setPeriodicWave(fanWave); fanOsc.frequency.value = 13; fanOsc.start();
+      const buzzOsc = ctx.createOscillator(); buzzOsc.setPeriodicWave(buzzWave); buzzOsc.frequency.value = 13; buzzOsc.start();
+      // Pitch: ±4 cents (measured fan tones wander under 0.5 %); level: ±15 % (fan), ±20 % (buzz).
+      const pitch = wanderAt(4); pitch.connect(fanOsc.detune); pitch.connect(buzzOsc.detune);
+      const fanAm = gain(1), buzzAm = gain(1);
+      wanderAt(0.15).connect(fanAm.gain); wanderAt(0.20).connect(buzzAm.gain);
+      const fan = gain(0), buzz = gain(0);
+      chain(fanOsc, fanAm, fan, p);
+      chain(buzzOsc, buzzAm, filter('lowpass', 2400, 0.5), buzz, p);   // its top orders soften
+      const whineOsc = osc('triangle', 2200);
+      const whine = gain(0);
+      chain(whineOsc, filter('lowpass', 5000, 0.5), whine, p);
+      const fanBp = filter('bandpass', 1000, 0.55);
+      const fanNoise = gain(0);
+      chain(noise(white), fanBp, fanNoise, p);
+      const jetLp = filter('lowpass', 300, 0.6);
+      const jet = gain(0);
+      chain(noise(pink), filter('highpass', 35, 0.7), jetLp, jet, p);
+      const coreLp = filter('lowpass', 150, 0.5);
+      const core = gain(0);
+      chain(noise(brown), coreLp, core, p);
       const revBp = filter('bandpass', 700, 0.6);
       const rev = gain(0);
       chain(noise(white), revBp, rev, p);
-      return { fan, comp, whine, rumbleLp, rumble, revBp, rev };
+      return { p, fanOsc, buzzOsc, fan, buzz, whineOsc, whine, fanBp, fanNoise, jetLp, jet, coreLp, core, revBp, rev };
     });
 
     const windBp = filter('bandpass', 500, 0.6);
@@ -213,7 +325,13 @@ export function createSynth({ context = null } = {}) {
 
   // ---- helpers ----
 
-  const set = (param, v, tc = 0.08) => param.setTargetAtTime(v, ctx.currentTime, tc);
+  // A parameter's new target; skipped when it's the one it already has (most, in a steady
+  // state: update() stays cheap with the engines' many voices).
+  const set = (param, v, tc = 0.08) => {
+    if (param._v === v) return;
+    param._v = v;
+    param.setTargetAtTime(v, ctx.currentTime, tc);
+  };
   const mix = (k) => (inside ? MIX[k].in : MIX[k].out);
 
   // A short pluck on an existing gain: fast attack, exponential-ish decay.
@@ -248,9 +366,11 @@ export function createSynth({ context = null } = {}) {
 
   const NO_OPTS = {};
 
-  // Engine level against N1 (0…1): a floor while the engine runs (idle is clearly audible),
-  // rising with N1 squared to TOGA.
+  // An engine is heard while it runs (N1 above 8 %).
   const running = (n1) => (n1 > 0.08 ? 1 : n1 / 0.08);
+
+  // The engines' voices at full strength (tuned by measurement, tests/audio-render.mjs).
+  const ENG = { fan: 0.070, buzz: 0.050, whine: 0.030, fanNoise: 0.22, jet: 0.95, core: 0.12 };
 
   function update(s, opts = NO_OPTS) {
     if (!ctx || !n || !s) return;
@@ -258,26 +378,45 @@ export function createSynth({ context = null } = {}) {
     const paused = !!opts.paused;
     const fast = (opts.timeScale ?? 1) > 1;
     inside = opts.inside ?? true;
+    // Outside: where from (−1 ahead … 1 behind) and how far (3rd person's orbit).
+    const aft = inside ? 0 : Math.max(-1, Math.min(1, opts.aft ?? 0));
+    const dist = inside ? 0 : Math.max(0, opts.dist ?? 0);
+    const ahead = (1 - aft) / 2, behind = (1 + aft) / 2;
+    const near = 1 / (1 + Math.max(0, dist - 75) / 150);   // 3rd person's 75 m: 1; 300 m: 0.4; 1.5 km: 0.1
 
-    set(n.worldBus.gain, paused || fast ? 0 : 1, 0.05);
+    set(n.worldBus.gain, paused || fast ? 0 : near, 0.05);
     set(n.warnBus.gain, paused ? 0 : fast ? 0.25 : 1, 0.05);
-    set(n.muffle.frequency, inside ? 900 : 16000, 0.1);
+    // The cockpit's walls; outside, the air dulls a distant aircraft.
+    set(n.muffle.frequency, inside ? 900 : Math.max(3500, 16000 * Math.min(1, 120 / Math.max(dist, 1))), 0.1);
     set(n.packs.gain, mix('packs') * 0.035, 0.2);
 
     const ias = s.ias || 0;
     const iasKt = ias * KT;
 
-    // Engines.
+    // Engines (see the top).
     const engines = s.engines;
     for (let i = 0; i < 2; i++) {
       const e = engines && engines[i], E = n.engines[i];
-      const n1 = e ? clamp01((e.n1 || 0) / 100) : 0;
-      const on = running(n1);
-      set(E.fan.frequency, 60 + n1 * 1100, 0.15); // fan blade passing ~1.1 kHz at 100 %
-      set(E.comp.frequency, 200 + n1 * 3200, 0.15);
-      set(E.whine.gain, mix('whine') * on * (0.05 + 0.95 * Math.pow(n1, 1.5)) * 0.2);
-      set(E.rumbleLp.frequency, inside ? 70 + n1 * 260 : 90 + n1 * 500, 0.15); // the hull eats the top
-      set(E.rumble.gain, mix('rumble') * on * (0.12 + 0.88 * n1 * n1) * 0.75);
+      const pct = e ? Math.max(0, e.n1 || 0) : 0;
+      const n1 = clamp01(pct / 100), on = running(n1);
+      const pw = clamp01((n1 - 0.2) / 0.765);             // power, idle 0 … TOGA 1
+      const shaft = Math.max(1, pct) * N1_HZ * (i ? SPLIT : 1);
+      set(E.p.pan, (i ? 1 : -1) * (inside ? 0.35 : 0.6), 0.2);
+      set(E.fanOsc.frequency, shaft, 0.1);
+      set(E.buzzOsc.frequency, shaft, 0.1);
+      set(E.whineOsc.frequency, 12 * N2_OF_N1(pct) * N2_HZ * (i ? SPLIT : 1), 0.1);
+      set(E.fanBp.frequency, Math.max(300, 1.4 * FAN_BLADES * shaft), 0.1);
+      set(E.jetLp.frequency, 160 + 700 * pw, 0.15);
+      set(E.coreLp.frequency, 110 + 200 * pw, 0.15);
+      // Levels: the fan's tones grow with its tip speed; the buzz-saw comes in as the tips
+      // go supersonic (72–95 % N1), ahead of the engine; the jet's roar steeply with power,
+      // behind it.
+      set(E.fan.gain, ENG.fan * (i ? TONE2 : 1) * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
+      set(E.buzz.gain, ENG.buzz * (i ? TONE2 : 1) * mix('buzz') * on * smooth(0.72, 0.95, n1) * (0.2 + 0.8 * ahead));
+      set(E.whine.gain, ENG.whine * mix('whine') * on * (0.6 + 0.4 * n1) * (0.5 + 0.5 * ahead));
+      set(E.fanNoise.gain, ENG.fanNoise * mix('fanNoise') * on * (0.1 + 0.9 * n1 * n1 * n1));
+      set(E.jet.gain, ENG.jet * mix('jet') * on * Math.pow(pw, 2.2) * (0.35 + 0.65 * behind));
+      set(E.core.gain, ENG.core * mix('core') * on * (0.3 + 0.7 * Math.pow(pw, 1.5)) * (0.6 + 0.4 * behind));
       const rev = e ? clamp01(e.rev || 0) : 0;
       set(E.rev.gain, mix('reverser') * rev * (0.15 + n1 * n1) * 0.7);
       set(E.revBp.frequency, 400 + n1 * 600, 0.15);
@@ -376,6 +515,7 @@ export function createSynth({ context = null } = {}) {
       if (context) return Promise.resolve(true); // offline: rendering drives it
       n.master.gain.cancelScheduledValues(ctx.currentTime);
       n.master.gain.setTargetAtTime(vol, ctx.currentTime, 0.05);
+      n.master.gain._v = vol;
       return ctx.resume().then(() => true, () => false);
     },
     update,
@@ -383,6 +523,7 @@ export function createSynth({ context = null } = {}) {
     stop() {
       if (!ctx) return Promise.resolve();
       n.master.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+      n.master.gain._v = 0;
       return new Promise((r) => setTimeout(r, 150)).then(() => ctx.suspend());
     },
     set volume(v) { vol = clamp01(v); if (ctx) set(n.master.gain, vol, 0.05); },

@@ -2,11 +2,16 @@
 // marker, fuel flow, fuel on board and per tank, flaps and slats with the config,
 // gear, speed brakes and ground spoilers, brakes, and the time-compression rate.
 // Canvas 2D, width s, height 0.62 s.
+//
+// The lever marker (the cyan ring) is at the N1 the lever asks for here and now (the sim's
+// state.leverN1), so the needle settles on it. Since v0.2.2 the A/THR moves the lever, and the
+// ring with it; "A/THR" shows between the dials while it does.
 
 import { C, font, DEG, clamp } from './common.js';
 
-// Thrust lever position (−1…1) to the N1 it commands, for the cyan lever marker.
-// Rough LEAP-1A values at take-off conditions: IDLE ~20 %, CL ~89 %, FLX/MCT ~95 %, TOGA ~101 %.
+// Thrust lever position (−1…1) to the N1 it commands at take-off conditions, for a state
+// without leverN1 (the dev pages' mocks). Rough LEAP-1A values: IDLE ~20 %, CL ~89 %,
+// FLX/MCT ~95 %, TOGA ~101 %.
 function tlaN1(l) {
   if (l <= 0) return 20;
   const pts = [[0, 20], [25 / 45, 89], [35 / 45, 95], [1, 101]];
@@ -32,9 +37,9 @@ export function createEnginesPanel(cv) {
     for (let i = 0; i < 2; i++) dial(s, 0.135 * s + i * 0.25 * s, 0.135 * s, 0.095 * s, eng[i] || {}, st, i);
     ctx.fillStyle = C.white; ctx.font = font(s * 0.032); ctx.textAlign = 'center';
     ctx.fillText('N1', 0.26 * s, 0.13 * s); ctx.fillStyle = C.cyan; ctx.font = font(s * 0.026); ctx.fillText('%', 0.26 * s, 0.165 * s);
-    // Thrust lever detent (cyan) between the dials.
+    // Thrust lever detent (cyan) between the dials, or A/THR while it moves the lever.
     ctx.fillStyle = C.cyan; ctx.font = font(s * 0.034, true);
-    ctx.fillText(st.detent || '', 0.26 * s, 0.03 * s);
+    ctx.fillText(st.athrActive ? 'A/THR' : st.detent || '', 0.26 * s, 0.03 * s);
     // Fuel flow under the dials.
     ctx.font = font(s * 0.04); ctx.fillStyle = C.green;
     for (let i = 0; i < 2; i++) ctx.fillText(String(Math.round(((eng[i]?.ffKgS) || 0) * 3600 / 20) * 20), 0.135 * s + i * 0.25 * s, 0.29 * s);
@@ -89,8 +94,8 @@ export function createEnginesPanel(cv) {
       ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(2, s * 0.006);
       ctx.beginPath(); ctx.arc(x, y, r * 0.93, Math.min(A(n1), A(e.n1Target)), Math.max(A(n1), A(e.n1Target))); ctx.stroke();
     }
-    // Thrust lever marker: a cyan ring on the scale.
-    const tl = A(tlaN1(st.thrustLever ?? 0));
+    // Thrust lever marker: a cyan ring on the scale, at the N1 the lever asks for.
+    const tl = A(st.leverN1 > 0 ? st.leverN1 : tlaN1(st.thrustLever ?? 0));
     ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(1.5, s * 0.004);
     ctx.beginPath(); ctx.arc(x + Math.cos(tl) * r * 1.09, y + Math.sin(tl) * r * 1.09, s * 0.009, 0, Math.PI * 2); ctx.stroke();
     // Needle and readout.

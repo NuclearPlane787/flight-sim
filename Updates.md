@@ -4,6 +4,21 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.2.2 · 2026-11-04 · Engines that sound like the A321's, the autothrust moving the thrust levers, the Cockpit button
+
+- **New engine sound.** Each engine was one steady tone over a low rumble. Now it's built from what makes a real LEAP-1A's sound, at its real frequencies:
+  - the fan's tone (18 blades, so about 240 Hz at idle and 1.1 kHz at take-off thrust) with its harmonics;
+  - the buzz-saw rasp that comes in as the fan's tips go supersonic, from about 75 % N1;
+  - the core's whine, broadband fan noise, the jet's roar (which grows steeply with thrust), and the combustion rumble.
+  - The tones waver a little, as real ones do, and the two engines run a hair apart, so they beat gently.
+  - Outside, where you're listening from matters: from the nose you hear the fan and the buzz-saw, from behind the jet's roar, and in 3rd person a far-off aircraft is quieter and duller.
+  - In the cockpit the engines are muffled, and in cruise the air outside drowns them.
+- **The autothrust moves the thrust levers.** While A/THR is on, the levers (and the blue ring on the N1 dials) follow the thrust it sets, as in a Boeing; "A/THR" shows between the dials.
+  - Before, the levers stayed in CL, so a tap of R jumped the engines to climb thrust: from 59 % to 91 % N1 on a final. Now the same tap takes the thrust from where the autothrust had it, a few percent more (59 % to 64 %), and turns A/THR off, with a message. X turns it back on.
+  - Pulling the levers to idle at the RETARD still turns it off quietly, as before.
+  - The blue ring now sits at the N1 the lever asks for at your altitude and speed, so the needle settles on it.
+- **The Cockpit button (and 1) no longer moves you to the other seat** when you're already in the cockpit: there it does nothing. From the other views it takes you to the captain's seat. V still steps through all four views, the first officer's seat too.
+
 ## v0.2.1 · 2026-11-03 · Clean runway junctions, changing the route in flight, a view switch, one-finger looking, more stars
 
 - **Taxiways no longer cut into the runways.** Where a taxiway joined a runway (at Jeju, and at Gimpo and Incheon too), its asphalt lay a few centimetres above the runway and was drawn over it whenever you saw it from low down. From the cockpit or a low orbit it showed as jagged dark patches across the runway and its edge lines.
