@@ -4,7 +4,7 @@ An A321neo over South Korea, flown between Incheon, Gimpo and Jeju, over real co
 
 - realistic physics with fly-by-wire;
 - a holds-only autopilot with up to 16× time compression;
-- a path map that lets you jump ahead along the predicted path, and a "skip to 15 nm final" button;
+- a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
 - gate starts with pushback and a taxi route drawn on the ground;
 - parked aircraft and ground vehicles at the airports;
 - synthesised engine and warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
@@ -29,7 +29,7 @@ The game opens on the main menu, over a still rendered from the game: Continue (
 
 New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the pause menu replaces the scenario's flight, starting from the stand when parked after arriving.
 
-**Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
+**Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
 From a gate:
 
@@ -58,14 +58,15 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | Z | autopilot on / off |
 | X | autothrust on / off |
 | = / − | time compression faster / slower: with the AP on and 2,000 ft up, or in a pushback (up to 4×) |
-| M | map (predicted path, jumps, skip to final) |
-| V | next view (1st person, 3rd person, Captain, First Officer) |
+| M | map (predicted path, jumps, waypoints, Change route, skip to final) |
+| 1 / 2 / 3 | cockpit, nose, 3rd person view, as the switch at the top right does; in the cockpit, 1 again moves to the other seat |
+| V | next view (Nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
 | Esc | pause menu (Resume, Save, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Exit to menu) |
 | L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory) |
 | F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the pause menu) |
 | T | rewind 30 s (from the pause menu or after a crash) |
-| two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
+| drag on the view (one finger) / pinch / double-click | look around, or orbit in 3rd person / zoom / recentre; a two-finger swipe also looks or orbits |
 
 The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min). Esc, a click elsewhere or a flying key closes it unchanged. The strip also has the AP1 and A/THR buttons and the Normal/Alternate law switch.
 
@@ -78,6 +79,8 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to tur
   4. Pull the levers back to CL (F) for the autothrust.
 - **Autopilot:** set HDG and ALT on the FCU (scroll, or click and type; Enter on ALT starts the level change, OP CLB/OP DES), then Z (AP) and X (A/THR). The FCU heading starts at your heading. Time compression (=) needs the AP on and 2,000 ft above the ground.
 - **The map (M):** with the AP on, the bright line is where the aircraft will go. Click a point on it to jump there. The magenta line is the route to your destination and doesn't jump: point the HDG along it first. A red cross means the path meets the terrain. "Skip to 15 nm final" puts you on the 3° path to the destination runway.
+  - **Waypoints:** drag the magenta line to add one; double-click a waypoint to remove it.
+  - **Change route** (or a click on an airport) picks a new destination and runway in flight, with the distance, bearing and fuel needed direct from where you are. The line then goes direct from where you are.
 - **Landing:**
   1. Gear down; flaps 2, 3, FULL; Shift+C to arm the ground spoilers.
   2. Disconnect the AP with Z.

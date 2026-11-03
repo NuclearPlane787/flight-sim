@@ -40,6 +40,21 @@
   border-radius: 3px; cursor: pointer; white-space: nowrap; }
 .fsui-law.altn { color: #ffa515; border-color: #ffa515; }
 
+/* The view switch (v0.2.1): Cockpit, Nose, 3rd person, top right, level with the FCU (hud.js places it). */
+.fsui-views { position: absolute; display: flex; align-items: stretch; gap: 0.35em;
+  background: rgba(38, 44, 50, 0.92); border: 1px solid #4a535b; border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+.fsui-views button { display: flex; align-items: center; gap: 0.45em; padding: 0 0.75em; font: 600 1em var(--font);
+  color: #d8dde1; background: #1b2530; border: 1px solid #33414f; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.fsui-views button:hover { background: #243241; border-color: #46596b; }
+.fsui-views button.on { background: #0f6e86; border-color: #2fe3ff; color: #fff; }
+.fsui-views kbd { font: 700 0.78em var(--font-mono); color: #9aa3aa; border: 1px solid #4a535b; border-radius: 3px; padding: 0.05em 0.35em; }
+.fsui-views button.on kbd { color: #dff9ff; border-color: #7fe9ff; }
+.fsui-views .fsui-seat { font: 700 0.72em var(--font-mono); color: #9ff1ff; }
+.fsui-views .fsui-seat:empty { display: none; }
+.fsui-views.compact kbd { display: none; }
+.fsui-views.compact button { padding: 0 0.55em; }
+.fsui-views.low { top: auto !important; right: auto !important; bottom: 12px; left: 50%; transform: translateX(-50%); }
+
 /* The path map */
 .fsui-map { position: absolute; inset: 0; background: rgba(2, 6, 12, 0.9); pointer-events: auto; overscroll-behavior: none;
   touch-action: none; font-family: var(--font); color: #e8e8e8; user-select: none; -webkit-user-select: none; }
@@ -65,6 +80,21 @@
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6); font-size: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
 .fsui-confirm[hidden] { display: none; }
 .fsui-confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+/* Change route (v0.2.1): a panel under the map's bar. */
+.fsui-route { position: absolute; top: 58px; right: 12px; width: min(420px, calc(100% - 24px)); box-sizing: border-box;
+  background: #10161b; border: 1px solid #2fe3ff; border-radius: 8px; padding: 12px 14px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+  font-size: 14px; display: flex; flex-direction: column; gap: 10px; }
+.fsui-route[hidden] { display: none; }
+.fsui-route-h { font-size: 15px; font-weight: 600; }
+.fsui-route-row { display: flex; align-items: center; gap: 10px; }
+.fsui-route-row .lab { flex: none; width: 54px; font-size: 13px; color: #c9ced2; }
+.fsui-route .fsui-seg { flex-wrap: wrap; }
+.fsui-route-note { font-size: 13px; line-height: 1.6; color: #c9ced2; }
+.fsui-route-note b { color: #3cff4e; font-weight: 600; }
+.fsui-route-note .warn { color: #ffa515; }
+.fsui-route-note .bad { color: #ff4d4d; }
+.fsui-route-note .dim { color: #8a9097; }
+.fsui-route .row { display: flex; gap: 8px; justify-content: flex-end; }
 .fsui-tip { position: absolute; pointer-events: none; background: rgba(0, 0, 0, 0.8); color: #fff; font-size: 12px;
   padding: 3px 7px; border-radius: 4px; white-space: nowrap; }
 .fsui-tip[hidden] { display: none; }

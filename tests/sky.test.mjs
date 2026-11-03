@@ -104,3 +104,20 @@ test('the stars are where they are: Betelgeuse and Dubhe through the sky\'s matr
     console.log(`RA ${ra} Dec ${dec}: az ${h.azDeg.toFixed(1)}°, alt ${h.altDeg.toFixed(1)}°`);
   }
 });
+
+test('v0.2.1: the faint stars are brighter, first magnitude as before, and the fill carries on', async () => {
+  const { starBrightness, starGeometry, STAR_GAMMA, FILL_FAINT } = await import('../src/world/sky.js');
+  const v020 = (m) => 1.4 * Math.pow(10, -0.4 * (m - 1) * 0.72);
+  assert.ok(STAR_GAMMA < 0.72);
+  assert.ok(Math.abs(starBrightness(1) - v020(1)) < 1e-12, 'first magnitude unchanged');
+  for (const m of [4, 5, 6.5]) assert.ok(starBrightness(m) > 1.5 * v020(m), `mag ${m}: ${starBrightness(m)} vs ${v020(m)}`);
+  // Brighter stars stay brighter.
+  for (let m = -1.5; m < FILL_FAINT; m += 0.5) assert.ok(starBrightness(m) > starBrightness(m + 0.5));
+  // The fill runs on past the catalogue's 6.5.
+  assert.ok(FILL_FAINT > 6.5 && FILL_FAINT <= 9);
+  // starGeometry's colours use it (a white B−V 0.3 star: its brightest channel is 1).
+  const g = starGeometry({ stars: [10, 20, 6.5, 0.3, 30, -40, 2.0, 0.3] });
+  const c = g.attributes.aCol.array;
+  assert.ok(Math.abs(Math.max(c[0], c[1], c[2]) - starBrightness(6.5)) < 1e-6);
+  assert.ok(Math.abs(Math.max(c[3], c[4], c[5]) - starBrightness(2.0)) < 1e-6);
+});

@@ -1,15 +1,17 @@
-// The four views and the touchpad camera. Two-finger swipe (wheel) looks around or orbits,
-// pinch (wheel with ctrlKey, as Chrome on macOS reports it) zooms, double-click recentres.
+// The four views and the camera controls. Press and drag on the view (one finger, v0.2.1) or a
+// two-finger swipe (wheel) looks around or orbits, pinch (wheel with ctrlKey, as Chrome on
+// macOS reports it) zooms, double-click recentres.
 // Positions are worked out in map metres; main.js makes the camera the scene origin.
 
 import * as THREE from '../vendor/three.module.js';
 import { EYES } from './geometry.js';
 
+// The names match the view switch (v0.2.1: Cockpit, Nose, 3rd person; ui/hud.js).
 export const VIEWS = [
-  { id: 'nose', name: '1st person' },
+  { id: 'nose', name: 'Nose' },
   { id: 'orbit', name: '3rd person' },
-  { id: 'captain', name: "Captain's seat" },
-  { id: 'fo', name: "First Officer's seat" },
+  { id: 'captain', name: "Cockpit: captain's seat" },
+  { id: 'fo', name: "Cockpit: first officer's seat" },
 ];
 
 const DEG = Math.PI / 180;
@@ -30,6 +32,18 @@ export function createCameraRig(dom) {
   const euler = new THREE.Euler(0, 0, 0, 'YXZ');
   const v = new THREE.Vector3();
 
+  // Turn the current view's look by (dyaw, dpitch) radians. +yaw turns the view left (orbit:
+  // the camera goes round to its left), +pitch up (orbit: the camera climbs). In the nose and
+  // the seats you can look up to 80° up or down and 170° either way.
+  function turn(dyaw, dpitch) {
+    const look = looks[VIEWS[index].id];
+    look.yaw += dyaw;
+    look.pitch += dpitch;
+    const lim = look.dist !== undefined ? 85 * DEG : 80 * DEG;
+    look.pitch = Math.max(-lim, Math.min(lim, look.pitch));
+    if (look.dist === undefined) look.yaw = Math.max(-170 * DEG, Math.min(170 * DEG, look.yaw));
+  }
+
   function onWheel(e) {
     e.preventDefault();
     const look = looks[VIEWS[index].id];
@@ -40,12 +54,42 @@ export function createCameraRig(dom) {
       else look.fov = Math.min(90, Math.max(15, look.fov * f));
     } else {
       const k = 0.0035 * (look.fov / 60);
-      look.yaw -= e.deltaX * k;
-      look.pitch -= e.deltaY * k;
-      const lim = look.dist !== undefined ? 85 * DEG : 80 * DEG;
-      look.pitch = Math.max(-lim, Math.min(lim, look.pitch));
-      if (look.dist === undefined) look.yaw = Math.max(-170 * DEG, Math.min(170 * DEG, look.yaw));
+      turn(-e.deltaX * k, -e.deltaY * k);
     }
+  }
+
+  // Drag (v0.2.1). Shane: "For steering the camera, I have to use two fingers, but I am not used
+  // to that, so change it to clicking and dragging with one finger." Press on the view and drag:
+  // the view follows the finger, as the swipe does (drag right and the scene moves right). A
+  // press that moves less than DRAG_PX is a click (two still recentre). Speeds per screen
+  // height: looking, DRAG_LOOK × the field of view (so finer when zoomed in); orbiting,
+  // DRAG_ORBIT radians.
+  const DRAG_PX = 4, DRAG_LOOK = 2.5, DRAG_ORBIT = 3.2;
+  let drag = null, dragged = false;
+  function onDown(e) {
+    if (e.button !== 0 || !e.isPrimary) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false };
+    dragged = false;
+    try { dom.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
+  }
+  function onMove(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.on) {
+      if (Math.hypot(dx, dy) < DRAG_PX) return;
+      drag.on = dragged = true;
+      dom.classList.add('drag');
+    }
+    drag.x = e.clientX; drag.y = e.clientY;
+    const look = looks[VIEWS[index].id];
+    const h = dom.clientHeight || window.innerHeight || 800;
+    const k = (look.dist !== undefined ? DRAG_ORBIT : DRAG_LOOK * look.fov * DEG) / h;
+    turn(dx * k, dy * k);
+  }
+  function onUp(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    dom.classList.remove('drag');
   }
   function recentre() {
     const id = VIEWS[index].id;
@@ -54,7 +98,13 @@ export function createCameraRig(dom) {
     if (keepDist !== undefined) looks[id].dist = keepDist;
   }
   dom.addEventListener('wheel', onWheel, { passive: false });
-  dom.addEventListener('dblclick', recentre);
+  dom.addEventListener('pointerdown', onDown);
+  dom.addEventListener('pointermove', onMove);
+  dom.addEventListener('pointerup', onUp);
+  dom.addEventListener('pointercancel', onUp);
+  dom.addEventListener('lostpointercapture', onUp);
+  // A double-click recentres; not one whose second press was a drag.
+  dom.addEventListener('dblclick', () => { if (!dragged) recentre(); });
 
   // Camera map position {x, y, z} for this frame; sets camera.quaternion and fov.
   function update(s, out = { x: 0, y: 0, z: 0 }) {

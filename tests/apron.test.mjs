@@ -117,3 +117,108 @@ test('real data: every airport gets hold-shorts; Jeju\'s are all synthetic at 90
     assert.ok(G.dedupePolys(a.aprons).length <= a.aprons.length);
   }
 });
+
+// v0.2.1: Shane, 2026-11-03: "Some taxiways at Jeju airport still clip strangely with the
+// runway." The taxiways' pavement lay 8 cm over the runways and was drawn over them from low
+// angles; now it stops at the runway's drawn edge (its shoulders included: 22.5 + 7.5 m).
+test('a taxiway joining a runway loses exactly the part on the runway', () => {
+  const a = fake();
+  const rects = G.drawnRunwayRects(a);
+  assert.equal(rects[0].hw, 30);
+  const soup = G.strokeTriangles(a.taxiways[0].points, 11.5, [], 4);
+  const capArea = (soupArea(soup) - 23 * 400) / 2;            // each round cap
+  const clipped = G.clipSoupOutside(soup, rects);
+  assert.ok(Math.abs(soupArea(clipped) - (23 * 370 + capArea)) < 0.01, `left ${soupArea(clipped)}`);
+  for (let i = 0; i < clipped.length; i += 2) assert.ok(clipped[i + 1] >= 30 - 1e-9, `a vertex at y ${clipped[i + 1]}`);
+  // Away from the runway, triangles pass through untouched.
+  const far = G.strokeTriangles([[0, 100], [0, 300]], 11.5, [], 4);
+  assert.deepEqual(G.clipSoupOutside(far, rects), far);
+});
+
+test('a taxiway crossing a runway at an angle keeps both sides, and nothing in between', () => {
+  const a = fake();
+  const rects = G.drawnRunwayRects(a);
+  const soup = G.strokeTriangles([[-300, 300], [300, -300]], 11.5, [], 4);
+  const clipped = G.clipSoupOutside(soup, rects);
+  let north = 0, south = 0;
+  for (let i = 0; i < clipped.length; i += 6) {
+    const cy = (clipped[i + 1] + clipped[i + 3] + clipped[i + 5]) / 3;
+    assert.ok(Math.abs(cy) > 30, `a piece centred at y ${cy.toFixed(2)}`);
+    if (cy > 0) north++; else south++;
+  }
+  assert.ok(north > 0 && south > 0);
+  // The band |y| <= 30 across a 23 m wide stroke at 45°: 60 m tall, 23·√2 wide.
+  const removed = soupArea(soup) - soupArea(clipped);
+  assert.ok(Math.abs(removed - 60 * 23 * Math.SQRT2) < 0.5, `removed ${removed.toFixed(1)} m²`);
+});
+
+test('a centreline is split where it crosses the runway: outside, on it, outside', () => {
+  const rects = G.drawnRunwayRects(fake());
+  const runs = G.splitPolyline([[0, 400], [0, 100], [0, -100], [0, -400]], rects);
+  assert.deepEqual(runs.map((r) => r.inside), [false, true, false]);
+  assert.deepEqual(runs[0].pts, [[0, 400], [0, 100], [0, 30]]);
+  assert.deepEqual(runs[1].pts, [[0, 30], [0, -30]]);
+  assert.deepEqual(runs[2].pts, [[0, -30], [0, -100], [0, -400]]);
+  // One that ends on the centreline ends inside; one that never reaches it is one run.
+  assert.deepEqual(G.splitPolyline([[0, 400], [0, 0]], rects).map((r) => r.inside), [false, true]);
+  assert.deepEqual(G.splitPolyline([[0, 400], [0, 31]], rects).map((r) => r.inside), [false]);
+});
+
+test("real data: no taxiway pavement is left on a runway, and the lead lines are on them", () => {
+  for (const id of ['RKSS', 'RKPC', 'RKSI']) {
+    const a = JSON.parse(readFileSync(new URL(`../data/airports/${id}.json`, import.meta.url)));
+    const rects = G.drawnRunwayRects(a, 0.05), exact = G.drawnRunwayRects(a);
+    let pieces = 0, onRunway = 0, lead = 0;
+    for (const tw of a.taxiways) {
+      const c = G.clipSoupOutside(G.strokeTriangles(G.densify(tw.points, 50), (tw.widthM || 23) / 2, [], 4), rects);
+      for (let i = 0; i < c.length; i += 6) {
+        pieces++;
+        const cx = (c[i] + c[i + 2] + c[i + 4]) / 3, cy = (c[i + 1] + c[i + 3] + c[i + 5]) / 3;
+        if (rects.some((r) => G.inRect(r, cx, cy))) onRunway++;
+      }
+      for (const run of G.splitPolyline(tw.points, exact)) {
+        if (!run.inside) continue;
+        lead++;
+        for (const [x, y] of run.pts) assert.ok(exact.some((r) => G.inRect({ ...r, u0: r.u0 - 1e-6, u1: r.u1 + 1e-6, hw: r.hw + 1e-6 }, x, y)));
+      }
+    }
+    assert.ok(pieces > 4000, `${id}: ${pieces} pieces`);
+    assert.equal(onRunway, 0, `${id}: ${onRunway} pieces of taxiway on a runway`);
+    assert.ok(lead >= 30, `${id}: ${lead} lead lines`);
+  }
+});
+
+// v0.2.1: pavement only 8 cm up has to follow curving ground, or the terrain shows through it.
+test('refineSoup splits only where the ground curves away from a flat triangle', () => {
+  const tri = [0, 0, 60, 0, 0, 60];
+  // Planar ground: nothing to split.
+  assert.deepEqual(G.refineSoup(tri, (x, y) => 3 + 0.01 * x - 0.02 * y), tri);
+  // A bowl: split until the flat pieces stay within 3 cm, or the edges reach 3 m.
+  const bowl = (x, y) => ((x - 20) ** 2 + (y - 20) ** 2) / 400;
+  const out = G.refineSoup(tri, bowl);
+  assert.ok(out.length / 6 > 8, `${out.length / 6} triangles`);
+  assert.ok(Math.abs(soupArea(out) - soupArea(tri)) < 1e-6, 'the same area');
+  let worst = 0;
+  for (let i = 0; i < out.length; i += 6) {
+    const P = [[out[i], out[i + 1]], [out[i + 2], out[i + 3]], [out[i + 4], out[i + 5]]], H = P.map(([x, y]) => bowl(x, y));
+    const big = Math.max(...[0, 1, 2].map((k) => Math.hypot(P[k][0] - P[(k + 1) % 3][0], P[k][1] - P[(k + 1) % 3][1])));
+    if (big <= 3) continue;
+    for (let u = 0; u <= 4; u++) for (let v = 0; v <= 4 - u; v++) {
+      const w = 4 - u - v, x = (P[0][0] * u + P[1][0] * v + P[2][0] * w) / 4, y = (P[0][1] * u + P[1][1] * v + P[2][1] * w) / 4;
+      worst = Math.max(worst, Math.abs((H[0] * u + H[1] * v + H[2] * w) / 4 - bowl(x, y)));
+    }
+  }
+  // A bowl's flat triangle is furthest off inside it, where it isn't tested; a little over tol is fine.
+  assert.ok(worst < 0.06, `worst ${worst.toFixed(3)} m off`);
+});
+
+test('refineLine adds points only where the ground bends under the line', () => {
+  assert.deepEqual(G.refineLine([[0, 0], [100, 0]], (x) => 2 + 0.05 * x), [[0, 0], [100, 0]]);
+  const hump = (x) => 3 * Math.sin((x / 100) * Math.PI);
+  const pts = G.refineLine([[0, 0], [100, 0]], hump);
+  assert.ok(pts.length > 5, `${pts.length} points`);
+  for (let i = 1; i < pts.length; i++) {
+    const m = (pts[i - 1][0] + pts[i][0]) / 2;
+    if (pts[i][0] - pts[i - 1][0] > 3) assert.ok(Math.abs((hump(pts[i - 1][0]) + hump(pts[i][0])) / 2 - hump(m)) <= 0.03 + 1e-9);
+  }
+});

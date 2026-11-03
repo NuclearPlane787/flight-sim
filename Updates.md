@@ -4,6 +4,23 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.2.1 · 2026-11-03 · Clean runway junctions, changing the route in flight, a view switch, one-finger looking, more stars
+
+- **Taxiways no longer cut into the runways.** Where a taxiway joined a runway (at Jeju, and at Gimpo and Incheon too), its asphalt lay a few centimetres above the runway and was drawn over it whenever you saw it from low down. From the cockpit or a low orbit it showed as jagged dark patches across the runway and its edge lines.
+  - The taxiways now stop at the runway's edge.
+  - Their yellow centrelines carry on across the runway as lead-on and lead-off lines, painted on it from any angle.
+  - The grass no longer shows through the taxiways where the ground curves, as it did on Jeju's parallel taxiway, where the flattened ground by the runway meets the slope. The taxiways and their paint follow the ground there.
+- **Change the route in flight.** On the map (M), **Change route**, or a click on an airport, picks a new destination and runway.
+  - It opens on the runway you'd fly straight in to, with the distance and bearing direct from where you are, and whether the fuel on board is enough.
+  - **Fly there** turns everything to the new runway: the magenta line, the ND, the PFD's approach scales, Skip to 15 nm final and the landing score. The scenario saves it.
+  - The departure stays as it was. After landing there's nothing to change: a new flight does that.
+- **Dragging the magenta line works in flight.** A waypoint dragged onto the line on the map was kept but never drawn or counted: the map, the ND and the distance still followed the route from the setup screen. Now the line bends through it, and Clear waypoints straightens it again.
+- **A view switch** at the top right, next to the FCU: Cockpit, Nose and 3rd person, also on 1, 2 and 3.
+  - In the cockpit, Cockpit (or 1) again moves you to the other seat.
+  - V still steps through all four views.
+- **Look around with one finger.** Press on the view and drag: from the cockpit or the nose it looks around, in 3rd person it goes round the aircraft. The view follows your finger, the same way round as the two-finger swipe, which still works, as do pinch to zoom and double-click to recentre. A plain click does nothing, and a drag that starts on the panels or the map doesn't move the camera.
+- **More stars.** On a dark night the sky is full of them: about eight times as many stand out as before, thicker along the Milky Way, and the real stars of the constellations are brighter. Under a bright Moon the faint ones fade, as they do outside.
+
 ## v0.2.0 · 2026-11-01 · A main menu, scenarios, and night
 
 - **A main menu, like Satisfactory's.** The game opens on a title screen over a still from the game (Gimpo's apron, the approach to Jeju, or Seoul from the air): Continue, New scenario, Load scenario, Logbook, Settings, Controls, and Exit to Game Dump. Nothing runs behind it.

@@ -22,6 +22,8 @@ const ACTIONS = {
   KeyM: 'map', KeyV: 'view', KeyP: 'pushback', Escape: 'pause', F3: 'perf', Backquote: 'perf',
   Digit6: 'flap0', Digit7: 'flap1', Digit8: 'flap2', Digit9: 'flap3', Digit0: 'flap4',
   KeyT: 'rewind',
+  // The view switch's keys (v0.2.1): cockpit, nose, 3rd person.
+  Digit1: 'viewCockpit', Digit2: 'viewNose', Digit3: 'viewOrbit',
 };
 const HELD = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'Space']);
 

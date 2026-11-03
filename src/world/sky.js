@@ -1,9 +1,10 @@
 // The sky: the sun and the Moon where they really are (src/astro.js), the light they give
 // (uSunDir, uSunColor, uSkyAmb, uNight, three's sun and hemisphere lights, scene.fog), the
 // haze (aerial perspective) every world shader applies, and the night sky: the real stars
-// (BSC5, data/stars.json), a faint fill of fainter ones, the Milky Way, the Moon with its
-// phase, and the twilight colours. Drawn as Satisfactory's sky is (a dome shader at infinity),
-// in two draw calls at night (the dome and one Points draw for the stars) and one by day.
+// (BSC5, data/stars.json), a fill of fainter ones (to about magnitude 9), the Milky Way, the
+// Moon with its phase, and the twilight colours. Drawn as Satisfactory's sky is (a dome shader
+// at infinity), in two draw calls at night (the dome and one Points draw for the stars) and
+// one by day.
 //
 //   const sky = createSky(scene, uniforms, chunks);
 //   every frame: sky.setTime(ms, latDeg, lonDeg); sky.update(camera, camAlt);
@@ -248,7 +249,15 @@ const gv = (l, b) => { const e = galacticToEquatorial(l, b); return eqVec(e.raDe
 const GAL_C = gv(0, 0), GAL_90 = gv(90, 0), GAL_N = gv(0, 90);
 const v3s = (v) => `vec3(${v.map((x) => x.toFixed(6)).join(', ')})`;
 
-// The dome's night pieces: the faint fill of stars, the Milky Way and the Moon.
+// A star's brightness on screen for its magnitude: compressed (STAR_GAMMA < 1), so the faint
+// ones stay visible. v0.2.1: 0.55 (was 0.72): magnitude 4 is 1.6 times as bright as before,
+// 5 twice, 6.5 2.4 times; first magnitude is as it was (brighter ones a little less, still
+// white). The fill stars run on from 6.5 to FILL_FAINT.
+export const STAR_GAMMA = 0.55;
+export const FILL_FAINT = 8.0;
+export function starBrightness(m) { return 1.4 * Math.pow(10, -0.4 * (m - 1) * STAR_GAMMA); }
+
+// The dome's night pieces: the fill of fainter stars, the Milky Way and the Moon.
 const NIGHT_GLSL = /* glsl */ `
 uniform mat3 uSkyToJ;        // scene direction -> J2000
 uniform float uStarVis, uMoonR, uMoonDisc;
@@ -266,24 +275,34 @@ float fbm4(vec3 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += 
 
 float gPix = 0.001;   // a pixel in radians, set at the top of main()
 
-// The faint stars below the catalogue's limit: at most one per cell of a grid round the sky,
-// denser along the Milky Way (band: 0..1).
-vec3 fillStars(vec3 j, float band) {
+const vec3 GAL_C = ${v3s(GAL_C)}, GAL_90 = ${v3s(GAL_90)}, GAL_N = ${v3s(GAL_N)};
+
+// The stars past the catalogue's limit: at most one per cell of a grid round the sky. v0.2.1
+// (Shane: "Add some more stars to the night sky"): before, a tenth of the cells had one and
+// most were too faint to see. Now one in fourteen does at the galactic poles, one in eight at
+// its plane and up to three in ten along the Milky Way (band: 0..1). Each has a magnitude
+// from the catalogue's 6.5 to FILL_FAINT, three times as many for each magnitude fainter, and
+// is as bright as the catalogue's rule makes it (starBrightness), so they carry on from its
+// faintest stars. They twinkle a little (tw).
+vec3 fillStars(vec3 j, float band, float tw) {
   vec3 p = j * 260.0, c = floor(p);
   vec3 h = h33(c);
-  if (h.x < 0.90 - 0.12 * band) return vec3(0.0);
+  if (h.x < 0.93 - 0.05 * (1.0 - abs(dot(j, GAL_N))) - 0.18 * band) return vec3(0.0);
   vec3 sp = c + 0.5 + (h33(c + 17.0) - 0.5) * 0.6;
   float dist = length(p - sp);
   float px = gPix * 260.0;
-  float r = max(0.10, px * 1.1);                 // at least a pixel wide: no shimmer
-  float s = smoothstep(r, r * 0.3, dist) * (0.004 + 0.022 * pow(h.y, 3.0)) * min(0.10 / r, 1.0) * 5.0;
+  float r = max(0.12, px * 1.1);                 // at least a pixel wide: no shimmer
+  // h.y = 1: FILL_FAINT; ten times rarer: 2.1 magnitudes brighter (1 / ln 10 / 0.477 = 0.910).
+  float mag = max(6.5, ${FILL_FAINT.toFixed(2)} + log(max(h.y, 1e-4)) * 0.910);
+  float b = 1.4 * pow(10.0, -0.4 * (mag - 1.0) * ${STAR_GAMMA.toFixed(3)});
+  float s = smoothstep(r, r * 0.3, dist) * b * 1.1 * min(0.42 / r, 1.0);
+  s *= 1.0 + tw * sin(uTime * (1.3 + 2.7 * h.z) + h.y * 40.0);
   vec3 tint = mix(vec3(0.78, 0.85, 1.0), vec3(1.0, 0.90, 0.76), h.z);
   return tint * s;
 }
 
 // The Milky Way: a soft, mottled band along the galactic plane, brightest and widest towards
 // Sagittarius (l = 0), with the dark Great Rift from Cygnus down to Scorpius.
-const vec3 GAL_C = ${v3s(GAL_C)}, GAL_90 = ${v3s(GAL_90)}, GAL_N = ${v3s(GAL_N)};
 vec3 milkyWay(vec3 j, out float bandOut) {
   float sb = dot(j, GAL_N);
   float b = asin(clamp(sb, -1.0, 1.0));
@@ -365,7 +384,11 @@ void main() {
   float tw = 1.0 + (0.10 + 0.35 * (1.0 - smoothstep(0.0, 0.4, e))) * (1.0 - 0.8 * hi)
            * sin(uTime * (4.0 + 7.0 * seed) + seed * 80.0);
   float moonCut = smoothstep(cos(uMoonR * 1.4), cos(uMoonR * 2.2), dot(d, uMoonDir));
-  float k = uStarVis * haze * contrast * tw * mix(1.0, 1.55, hi) * moonCut;
+  // Moonlight (ml, 0..1) washes out the faint ones (v0.2.1, now they're brighter): under a
+  // full Moon high up, those past about magnitude 5.5 go.
+  float ml = clamp(uMoonGlow.r * 100.0, 0.0, 1.0);
+  float faint = mix(1.0, smoothstep(0.07, 0.24, max(aCol.r, max(aCol.g, aCol.b))), ml);
+  float k = uStarVis * haze * contrast * tw * mix(1.0, 1.55, hi) * moonCut * faint;
   vCol = aCol * k;
   gl_PointSize = aSize;
   gl_Position = projectionMatrix * viewMatrix * vec4(d * 45000.0 + cameraPosition, 1.0);
@@ -392,7 +415,7 @@ export function starGeometry(json) {
     const v = eqVec(ra, dec);
     pos.set(v, 3 * i);
     // Brightness: compressed magnitudes (faint stars stay visible on a screen), then colour.
-    const b = 1.4 * Math.pow(10, -0.4 * (m - 1) * 0.72);
+    const b = starBrightness(m);
     const c = bvColor(bv);
     col[3 * i] = c[0] * b; col[3 * i + 1] = c[1] * b; col[3 * i + 2] = c[2] * b;
     size[i] = 2.2 + 4.8 * Math.pow(smooth(6.5, -1.5, m), 1.6);
@@ -456,8 +479,10 @@ export function createSky(scene, uniforms, chunks) {
             float k = uStarVis * haze / (1.0 + lum * 70.0) * mix(1.0, 1.5, hi);
             vec3 j = uSkyToJ * d;
             float band;
-            col += milkyWay(j, band) * k * (1.0 - 0.8 * clamp(uMoonGlow.r * 100.0, 0.0, 1.0));
-            col += fillStars(j, band) * k;
+            float ml = clamp(uMoonGlow.r * 100.0, 0.0, 1.0);   // moonlight, 0..1
+            col += milkyWay(j, band) * k * (1.0 - 0.8 * ml);
+            // The fill stars are the faint ones: moonlight washes them out (gone at full Moon).
+            col += fillStars(j, band, 0.12 * (1.0 - 0.8 * hi)) * k * (1.0 - ml) * (1.0 - ml);
           }
           if (uMoonDir.y > horizonDip() - 0.02) {
             vec4 m = moonDisc(d);

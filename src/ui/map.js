@@ -2,12 +2,15 @@
 // the aircraft, the line to the destination through dragged waypoints, and, with the
 // autopilot on, the predicted path in a bright colour. Click the path to jump there,
 // or skip to a 15 nm final. North up. Nothing here ever says you're off course.
+// v0.2.1: Change route (or a click on an airport) picks a new destination and runway in flight.
 //
 // createMap(root, { airports, coast }) -> { open(), close(), toggle(), isOpen, update(view),
-//   setPrediction(samples), onjump(sample), onskipfinal(), setCoast(coast), waypoints, setWaypoints(list) }
+//   setPrediction(samples), onjump(sample), onskipfinal(), onroute(icao, ident) -> { ok, error? },
+//   openRoute(icao?), setCoast(coast), waypoints, setWaypoints(list) }
 
-import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, route, setWaypoints, altLabel } from './common.js';
+import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, route, setWaypoints, altLabel, magDeg } from './common.js';
 import { MAP_EXTENT } from '../world/frame.js';
+import { fuelEstimate } from './setup.js';
 
 const PRED = '#c6ff2e';      // the predicted path: bright lime
 const PRED_GLOW = 'rgba(198,255,46,0.55)';
@@ -22,20 +25,29 @@ export function createMap(root, { airports, coast } = {}) {
       <div class="fsui-map-title">MAP</div>
       <button class="fsui-b" data-a="centre" tabindex="-1">Centre</button>
       <button class="fsui-b" data-a="clear" tabindex="-1">Clear waypoints</button>
+      <button class="fsui-b" data-a="route" tabindex="-1">Change route</button>
       <button class="fsui-b primary" data-a="final" tabindex="-1">Skip to 15 nm final</button>
       <button class="fsui-b" data-a="close" tabindex="-1">Close (M)</button>
     </div>
     <div class="fsui-map-info"></div>
-    <div class="fsui-map-help">Drag to pan · pinch or wheel to zoom<br>Drag the magenta line to add a waypoint · double-click a waypoint to remove it<br>Click the bright path to jump there</div>
+    <div class="fsui-map-help">Drag to pan · pinch or wheel to zoom<br>Drag the magenta line to add a waypoint · double-click a waypoint to remove it<br>Click the bright path to jump there · click an airport to fly there instead</div>
     <div class="fsui-tip" hidden></div>
     <div class="fsui-confirm" hidden><div class="q"></div><div class="row">
-      <button class="fsui-b" data-a="no" tabindex="-1">Cancel</button><button class="fsui-b primary" data-a="yes" tabindex="-1">Jump</button></div></div>`;
+      <button class="fsui-b" data-a="no" tabindex="-1">Cancel</button><button class="fsui-b primary" data-a="yes" tabindex="-1">Jump</button></div></div>
+    <div class="fsui-route" hidden>
+      <div class="fsui-route-h">Change the route</div>
+      <div class="fsui-route-row"><span class="lab">To</span><div class="fsui-seg" data-r="apt"></div></div>
+      <div class="fsui-route-row"><span class="lab">Runway</span><div class="fsui-seg" data-r="rwy"></div></div>
+      <div class="fsui-route-note"></div>
+      <div class="row"><button class="fsui-b" data-a="rcancel" tabindex="-1">Cancel</button><button class="fsui-b primary" data-a="rset" tabindex="-1">Fly there</button></div>
+    </div>`;
   root.appendChild(el);
   const canvas = el.querySelector('canvas');
   const ctx = canvas.getContext('2d');
   const info = el.querySelector('.fsui-map-info');
   const tip = el.querySelector('.fsui-tip');
   const confirmEl = el.querySelector('.fsui-confirm');
+  const routeEl = el.querySelector('.fsui-route');
   let coastL = coast ? buildCoast(coast) : null;
 
   let W = 0, H = 0, dpr = 1;
@@ -48,10 +60,17 @@ export function createMap(root, { airports, coast } = {}) {
     get isOpen() { return isOpen; },
     get waypoints() { return route.waypoints; },
     setWaypoints(list) { setWaypoints(list); redraw(); },
-    onjump: null, onskipfinal: null,
+    onjump: null, onskipfinal: null, onroute: null,
+    openRoute: (icao) => openRoute(icao),
+    get routeOpen() { return !routeEl.hidden; },
     // Dev hook: open the jump confirm at a fraction along the path.
     _devScreen(x, y) { const r = canvas.getBoundingClientRect(); return [r.left + X(x), r.top + Y(y)]; },
     _devConfirm(f) { const i = Math.floor(clamp(f, 0, 1) * (ahead().length - 1)); const s = ahead()[i]; if (s) showConfirm(s); },
+    // Dev hook: a point on an airport's label (its ICAO code), in page px.
+    _devLabel(icao) {
+      const a = airportList(airports).find((x) => x.icao === icao), L = a && labelOf(a), r = canvas.getBoundingClientRect();
+      return L ? [r.left + L.x + (L.left ? -12 : 12), r.top + L.y] : null;
+    },
   };
 
   const X = (x) => W / 2 + (x - cx) * k, Y = (y) => H / 2 - (y - cy) * k;
@@ -87,7 +106,7 @@ export function createMap(root, { airports, coast } = {}) {
     if (isOpen) return;
     isOpen = true; el.hidden = false; sizeCanvas(); fit(); hideConfirm(); redraw();
   }
-  function close() { if (!isOpen) return; isOpen = false; el.hidden = true; hideConfirm(); tip.hidden = true; }
+  function close() { if (!isOpen) return; isOpen = false; el.hidden = true; hideConfirm(); closeRoute(); tip.hidden = true; }
   function toggle() { isOpen ? close() : open(); }
   function setCoast(c) { coastL = c ? buildCoast(c) : null; redraw(); }
   function setPrediction(list) { samples = Array.isArray(list) ? list : []; hover = null; redraw(); }
@@ -210,17 +229,47 @@ export function createMap(root, { airports, coast } = {}) {
           }
         }
       }
-      const [ox, oy] = apt.origin || [rws[0]?.ends[0].x || 0, rws[0]?.ends[0].y || 0];
       const isDest = view?.dest && rws.some((r) => r.ends.includes(view.dest));
-      // Label to the right, or to the left when a neighbour lies close to the east (Incheon by Gimpo).
-      const left = airportList(airports).some((b) => b !== apt && b.origin && b.origin[0] > ox && Math.hypot(b.origin[0] - ox, b.origin[1] - oy) * k < 260);
-      ctx.font = font(13, true); ctx.textAlign = left ? 'right' : 'left'; ctx.textBaseline = 'middle';
+      const L = labelOf(apt);
+      ctx.font = font(13, true); ctx.textAlign = L.left ? 'right' : 'left'; ctx.textBaseline = 'middle';
       ctx.fillStyle = isDest ? C.magenta : C.cyan;
-      const off = Math.max(12, 2200 * k), lx = X(ox) + (left ? -off : off);
-      ctx.fillText(apt.icao, lx, Y(oy) - off);
+      ctx.fillText(apt.icao, L.x, L.y);
       ctx.font = font(11); ctx.fillStyle = 'rgba(255,255,255,0.65)';
-      ctx.fillText(apt.name || '', lx, Y(oy) - off + 14);
+      ctx.fillText(apt.name || '', L.x, L.y + 14);
     }
+  }
+  // Where an airport's label goes (screen px): to the right, or to the left when a neighbour
+  // lies close to the east (Incheon by Gimpo).
+  function labelOf(apt) {
+    const rws = apt.runways || [];
+    const [ox, oy] = apt.origin || [rws[0]?.ends[0].x || 0, rws[0]?.ends[0].y || 0];
+    const left = airportList(airports).some((b) => b !== apt && b.origin && b.origin[0] > ox && Math.hypot(b.origin[0] - ox, b.origin[1] - oy) * k < 260);
+    const off = Math.max(12, 2200 * k);
+    return { x: X(ox) + (left ? -off : off), y: Y(oy) - off, left };
+  }
+  // The airport whose label is under the pointer. Labels come first, ahead of the lines over
+  // them: they're what you aim at to pick an airport.
+  function hitLabel(sx, sy) {
+    for (const apt of airportList(airports)) {
+      const L = labelOf(apt);
+      ctx.font = font(13, true);
+      const w = Math.max(ctx.measureText(apt.icao).width, (ctx.font = font(11), ctx.measureText(apt.name || '').width));
+      const x0 = L.left ? L.x - w : L.x, x1 = L.left ? L.x : L.x + w;
+      if (sx >= x0 - 4 && sx <= x1 + 4 && sy >= L.y - 10 && sy <= L.y + 22) return apt;
+    }
+    return null;
+  }
+  // The airport one of whose runways is under the pointer (after the paths, which go first).
+  function hitRunway(sx, sy) {
+    for (const apt of airportList(airports)) {
+      for (const rw of apt.runways || []) {
+        const [a, b] = rw.ends;
+        const ax = X(a.x), ay = Y(a.y), dx = X(b.x) - ax, dy = Y(b.y) - ay, L2 = dx * dx + dy * dy || 1;
+        const t = clamp(((sx - ax) * dx + (sy - ay) * dy) / L2, 0, 1);
+        if (Math.hypot(ax + t * dx - sx, ay + t * dy - sy) < Math.max(9, (rw.widthM || 45) * k / 2 + 5)) return apt;
+      }
+    }
+    return null;
   }
 
   function drawAircraft(st) {
@@ -323,18 +372,31 @@ export function createMap(root, { airports, coast } = {}) {
     canvas.setPointerCapture(e.pointerId);
     const wi = hitWaypoint(sx, sy);
     if (wi >= 0) { drag = { kind: 'wp', i: wi, sx, sy, moved: false }; return; }
-    const sample = hitSample(sx, sy), seg = hitSegment(sx, sy);
-    if (seg >= 0) { drag = { kind: 'seg', seg, sx, sy, moved: false, sample }; return; }
-    if (sample) { drag = { kind: 'sample', sample, sx, sy, moved: false }; return; }
-    drag = { kind: 'pan', sx, sy, cx0: cx, cy0: cy, moved: false };
+    // On an airport's label (or, below the paths, its runways): a click offers it as the new
+    // destination; a drag still pans.
+    const label = hitLabel(sx, sy);
+    if (!label) {
+      const sample = hitSample(sx, sy), seg = hitSegment(sx, sy);
+      if (seg >= 0) { drag = { kind: 'seg', seg, sx, sy, moved: false, sample }; return; }
+      if (sample) { drag = { kind: 'sample', sample, sx, sy, moved: false }; return; }
+    }
+    drag = { kind: 'pan', sx, sy, cx0: cx, cy0: cy, moved: false, airport: label || hitRunway(sx, sy) };
     canvas.classList.add('drag');
   });
   canvas.addEventListener('pointermove', (e) => {
     const [sx, sy] = local(e);
     if (!drag) {
-      const s = hitSample(sx, sy), hot = s || hitWaypoint(sx, sy) >= 0 || hitSegment(sx, sy) >= 0;
-      canvas.classList.toggle('hot', !!hot);
+      const label = hitLabel(sx, sy);
+      const s = label ? null : hitSample(sx, sy), wp = hitWaypoint(sx, sy) >= 0 || (!label && hitSegment(sx, sy) >= 0);
+      const apt = label || (s || wp ? null : hitRunway(sx, sy));
+      canvas.classList.toggle('hot', !!(s || wp || apt));
       if (s !== hover) { hover = s; showTip(s, sx, sy); redraw(); } else if (s) showTip(s, sx, sy);
+      if (!s && apt) {
+        const isDest = apt.runways?.some((r) => r.ends.includes(view?.dest));
+        tip.textContent = isDest ? `${apt.icao}: click to change the runway` : `${apt.icao}: click to fly there instead`;
+        tip.hidden = false; tip.style.left = sx + 14 + 'px'; tip.style.top = sy + 12 + 'px';
+        tipAirport = true;
+      } else if (!s && tipAirport) { tip.hidden = true; tipAirport = false; }
       return;
     }
     if (Math.hypot(sx - drag.sx, sy - drag.sy) > 4) drag.moved = true;
@@ -355,6 +417,7 @@ export function createMap(root, { airports, coast } = {}) {
     else if (!d.moved && d.kind === 'seg') hint(ahead().length
       ? 'Jumps go along the bright path. To jump along this line, turn the HDG towards it first.'
       : 'Turn the autopilot on (Z): its bright path is where you can jump to.', d.sx, d.sy);
+    else if (!d.moved && d.kind === 'pan' && d.airport) openRoute(d.airport.icao);
     else if (!d.moved && d.kind === 'pan') hideConfirm();
   };
   canvas.addEventListener('pointerup', endDrag);
@@ -367,7 +430,7 @@ export function createMap(root, { airports, coast } = {}) {
   // Pinch (ctrlKey) or a mouse wheel zooms around the pointer; a two-finger swipe pans.
   el.addEventListener('wheel', (e) => {
     e.preventDefault(); e.stopPropagation();
-    if (e.target.closest('.fsui-confirm, .fsui-map-bar')) return;
+    if (e.target.closest('.fsui-confirm, .fsui-map-bar, .fsui-route')) return;
     const [sx, sy] = local(e);
     const mouse = !e.ctrlKey && e.deltaX === 0 && (e.deltaMode !== 0 || (Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50));
     if (e.ctrlKey || mouse) {
@@ -387,6 +450,7 @@ export function createMap(root, { airports, coast } = {}) {
     if (a === 'close') close();
     else if (a === 'centre') { fit(); redraw(); }
     else if (a === 'clear') { setWaypoints([]); redraw(); }
+    else if (a === 'route') { if (routeEl.hidden) openRoute(); else closeRoute(); }
     else if (a === 'final') { close(); api.onskipfinal?.(); }
   });
   confirmEl.addEventListener('click', (e) => {
@@ -416,6 +480,83 @@ export function createMap(root, { airports, coast } = {}) {
     redraw();
   }
   function hideConfirm() { if (pending) { pending = null; redraw(); } confirmEl.hidden = true; }
+
+  // ---- Changing the route (v0.2.1) ----
+  // The panel under the bar: the destination, its runway, and what flying there takes. Fly
+  // there hands it to main.js (onroute), which may say no (after landing, say).
+  let pick = null;            // { icao, ident } chosen in the panel
+  let tipAirport = false;     // the tip is showing an airport's hint
+  const destAirport = () => airportList(airports).find((a) => a.runways?.some((r) => r.ends.includes(view?.dest))) || null;
+  const shortName = (a) => (a.name || '').replace(/ International Airport$| Airport$/, '').replace(/^Seoul /, '');
+  const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  // The runway end you'd fly straight in to from here: the one whose landing direction is
+  // nearest the bearing from the aircraft to its threshold.
+  function straightIn(apt) {
+    const st = view?.state;
+    let best = null, bd = Infinity;
+    for (const r of apt.runways || []) {
+      for (const [e, o] of [[r.ends[0], r.ends[1]], [r.ends[1], r.ends[0]]]) {
+        const [tx, ty] = thresholdOf(e), land = Math.atan2(o.x - e.x, o.y - e.y);
+        const d = st ? Math.abs(wrapPi(land - Math.atan2(tx - st.pos.x, ty - st.pos.y))) : 0;
+        if (d < bd) { bd = d; best = e.ident; }
+      }
+    }
+    return best;
+  }
+  function openRoute(icao) {
+    const list = airportList(airports), cur = destAirport();
+    const apt = list.find((a) => a.icao === (icao || cur?.icao)) || list[0];
+    if (!apt) return;
+    pick = { icao: apt.icao, ident: apt === cur && view?.dest ? view.dest.ident : straightIn(apt) };
+    hideConfirm(); tip.hidden = true; tipAirport = false;
+    routeEl.hidden = false;
+    fillRoute();
+  }
+  function closeRoute() { routeEl.hidden = true; pick = null; }
+  function fillRoute(error = '') {
+    if (!pick) return;
+    const list = airportList(airports), apt = list.find((a) => a.icao === pick.icao);
+    routeEl.querySelector('[data-r="apt"]').innerHTML = list.map((a) =>
+      `<button data-icao="${a.icao}" class="${a.icao === pick.icao ? 'on' : ''}" tabindex="-1">${a.icao}<small>${shortName(a)}</small></button>`).join('');
+    const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r })));
+    routeEl.querySelector('[data-r="rwy"]').innerHTML = ends.map(({ e, r }) =>
+      `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}" tabindex="-1">${e.ident}</button>`).join('');
+    const sel = ends.find((x) => x.e.ident === pick.ident);
+    const st = view?.state, lines = [];
+    if (sel) {
+      const same = view?.dest === sel.e;
+      lines.push(`<b>${apt.icao} ${sel.e.ident}</b> · ${Math.round(sel.r.lengthM || 0).toLocaleString()} m${sel.e.ils ? ` · ILS CAT ${sel.e.ils}` : ''}${same ? ' · <span class="dim">your destination now</span>' : ''}`);
+      if (st) {
+        const [tx, ty] = thresholdOf(sel.e), nm = Math.hypot(tx - st.pos.x, ty - st.pos.y) / NM;
+        const brg = Math.round(magDeg(Math.atan2(tx - st.pos.x, ty - st.pos.y), st.pos.x, st.pos.y)) || 360;
+        lines.push(`<b>${Math.round(nm)}</b> nm direct, bearing <b>${String(brg).padStart(3, '0')}°</b>`);
+        // Fuel: the setup's estimate for the trip, allowance for a climb included (on the safe
+        // side from cruise), against what's on board.
+        const need = Math.round(fuelEstimate(nm).trip / 100) * 100;
+        const fob = Math.round(st.fuelKg / 100) * 100;
+        const cls = fob < need ? 'bad' : fob < need + 1200 ? 'warn' : '';
+        const what = cls === 'bad' ? 'not enough' : cls === 'warn' ? 'under the 1,200 kg reserve' : 'enough';
+        lines.push(`Fuel <b>${fob.toLocaleString()}</b> kg; the trip takes about ${need.toLocaleString()} kg: <span class="${cls}">${what}</span>`);
+      }
+    }
+    if (error) lines.push(`<span class="bad">${error}</span>`);
+    routeEl.querySelector('.fsui-route-note').innerHTML = lines.join('<br>');
+  }
+  routeEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || !pick) return;
+    if (b.dataset.icao) {
+      const apt = airportList(airports).find((a) => a.icao === b.dataset.icao), cur = destAirport();
+      pick = { icao: apt.icao, ident: apt === cur && view?.dest ? view.dest.ident : straightIn(apt) };
+      fillRoute();
+    } else if (b.dataset.ident) { pick.ident = b.dataset.ident; fillRoute(); }
+    else if (b.dataset.a === 'rcancel') closeRoute();
+    else if (b.dataset.a === 'rset') {
+      const res = api.onroute ? api.onroute(pick.icao, pick.ident) : { ok: false, error: 'Not available' };
+      if (res && res.ok === false) fillRoute(res.error || 'That route can’t be set');
+      else { closeRoute(); lastSig = ''; redraw(); }
+    }
+  });
 
   window.addEventListener('resize', () => { if (isOpen) { sizeCanvas(); redraw(); } });
   return api;

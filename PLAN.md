@@ -167,7 +167,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
   - Captain's seat;
   - First Officer's seat.
 - **Camera:**
-  - Two-finger swipe pans the view: it looks around from the nose and the seats, and sets the angle in 3rd person.
+  - Press and drag on the view with one finger (v0.2.1) pans the view: it looks around from the nose and the seats, and sets the angle in 3rd person. The view follows the finger. A two-finger swipe does the same.
   - Pinch zooms: distance in 3rd person, field of view elsewhere.
   - Double-click recentres.
   - The pointer stays free for clicking the FCU and the map.
@@ -314,11 +314,12 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 | X | autothrust on / off |
 | = / − | time compression faster / slower |
 | M | map (predicted path, jumps, skip to final) |
-| V | next view (1st person, 3rd person, Captain, First Officer) |
+| 1 / 2 / 3 | cockpit, nose, 3rd person (v0.2.1, with the view switch at the top right; in the cockpit, 1 again moves to the other seat) |
+| V | next view (nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
 | Esc | pause menu |
 | F3 or \` | performance overlay (fps, CPU ms, triangles, draw calls) |
-| two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
+| drag on the view (v0.2.1) or two-finger swipe / pinch / double-click | look or orbit / zoom / recentre |
 
 No Ctrl keys, because Ctrl+W closes the tab on Windows. The one exception (v0.2.0, decided 2026-11-01): Cmd+L or Ctrl+L opens the Sky window, as in Satisfactory, with the browser's default prevented; it can't lose anything (if a browser keeps the shortcut, its address bar just takes the focus), and L alone works too. Handle keydown and keyup state, ignore auto-repeat, and drop all held keys when the window loses focus.
 

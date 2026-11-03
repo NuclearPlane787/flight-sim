@@ -38,7 +38,8 @@ html, body {
 }
 
 #app { position: fixed; inset: 0; overscroll-behavior: none; }
-#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; cursor: grab; }
+#view.drag { cursor: grabbing; }   /* dragging the camera (src/camera.js) */
 #hud, #map-root, #setup-root { position: absolute; inset: 0; }
 #hud { pointer-events: none; }
 /* The roots never take the pointer themselves (their hidden panels stay in the DOM);

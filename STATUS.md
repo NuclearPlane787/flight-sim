@@ -1231,3 +1231,99 @@ Several night shots predated the last fixes: Gimpo 14R had been taken before the
   - `v020-night-airport-incheon-taxi.png`: green centrelines, blue edges, a red stop bar ahead, lit terminals;
   - the rest re-rendered with no visible change.
 - **Guard:** `--status` shows no slots in use; `--sweep` is clean.
+
+## 2026-11-03, 15:10 KST: v0.2.1 (Cowork session, the second agent)
+
+Shane (after v0.2.0 was pushed, `73b7776`): "These are the fixes: 1. Some taxiways at Jeju airport still clip strangely with the runway. 2. Be able to change the route during a flight. 3. Have an easy way to transfer between a cockpit view, a nose view, and a third person view, maybe a switch somewhere."
+
+**1. Taxiways and runways** (`src/world/apron-geom.js`, `apron.js`):
+
+- **Reproduced** in the cloud container (stills at Jeju 07/25 by taxiway P10, from the cockpit on the runway and from a low orbit): the taxiway's asphalt was drawn over the runway in jagged patches, hiding its edge line and half its width from the cockpit.
+- **The cause:**
+  - OSM's taxiway lines end on the runway centreline, so every taxiway ran half across the runway it joins (35 overlaps at Jeju, 35 at Gimpo, 120 at Incheon).
+  - The pavement lies 8 cm over the ground; the runway lies on it, and its bigger pull towards the camera (0.16 + 0.0016 d against 0.06 + 0.0006 d) outweighs 8 cm only when seen from high enough. Along a ray at grazing angle θ the gap is 0.08 / sin θ, so from the cockpit (4 m up) the taxiway won beyond about 5 m.
+- **The fix:**
+  - The pavement (taxiways, taxilanes, aprons, stand pads) is cut away inside each runway as drawn, 5 cm under its edge (`drawnRunwayRects()`, `clipSoupOutside()`).
+  - The taxiway centrelines are split at the runway's edge (`splitPolyline()`). On the runway they're its lead-on and lead-off lines: on the runway's own surface (the heightfield there, points every 4 m) with a pull just over the runway's (`PULL.lead`, the `lay` attribute), so they show from any angle. The taxiway edge lines stop at the runway.
+- **Also found and fixed:** long flat taxiway triangles dipped under the ground where it curves: down to −0.58 m on Jeju's parallel taxiway P, where the flattening around the runway fades into the terrain, −0.33 m at Gimpo (D1, G1, B1), −0.11 m at Incheon. The terrain showed through there. `refineSoup()` and `refineLine()` split the pavement and the paint only where they'd stray more than 2 cm (pavement) or 3 cm (paint) from the ground. Taxiway triangles: Jeju 4,916 → 7,075, Gimpo 20,039 → 20,495, Incheon 50,473 → 48,598 (fewer: the parts on the runways are gone).
+
+**2. Changing the route in flight** (`src/ui/map.js`, `src/main.js`):
+
+- **A bug behind it, since v0.1.0:** a waypoint dragged onto the magenta line on the map was kept in the map's list but never drawn or counted, because the map, the ND and the distance read `plan.waypoints` (the setup's). In flight the path couldn't be changed at all. Reproduced in the container (`map.waypoints` 1, `plan.waypoints` 0, the line still straight). Now `view.waypoints` is the map's own list.
+- **Change route:** a button on the map's bar, or a click on an airport's label (or, below the paths, its runway), opens a panel: the airport, its runway ends (the one you'd fly straight in to picked first), the distance and magnetic bearing direct from the aircraft, and the fuel on board against the setup's estimate for the trip. **Fly there** calls `changeRoute()` in main.js: `plan.dest`/`arrRunway` and `dest`, the waypoints cleared, the scorer's planned runway moved, a toast, and a save. It refuses after landing ("You've landed. A new flight (Esc → New flight) starts from here."). The departure can't change.
+
+**3. The view switch** (`src/ui/hud.js`, `src/main.js`, `src/input.js`, `src/camera.js`): Cockpit, Nose, 3rd person, at the top right in a box like the FCU's. In a seat, Cockpit shows CPT or F/O, and clicking it again swaps seats; 1, 2 and 3 do the same as the buttons; V still steps through all four. It goes compact (no key caps), then to the bottom centre, if it would touch the FCU; it re-checks when the FCU's width changes or a font arrives. The views' names: Nose, 3rd person, "Cockpit: captain's seat", "Cockpit: first officer's seat".
+
+**Checks:**
+
+- **Unit tests: 274 pass**, 0 fail (262 and 12 new), in the cloud container and on the Mac through the guard (`cpu-guard.py --minutes 3 -- node --test tests/*.test.mjs`: 7 s; then `--status`: no slots in use, `--sweep`: clean).
+  - `tests/apron.test.mjs`: clipping a taxiway that joins or crosses a runway (exactly the part on it goes), splitting a centreline there, real data with no pavement left on a runway, `refineSoup()` and `refineLine()`.
+  - New `tests/apron-ground.test.mjs`: `buildPavement()` and `buildPaint()` themselves on the real terrain (the heightfield read from `data/`), at all three airports. No pavement on a runway; the pavement at least 3 cm over the ground everywhere (the lowest is 3.8 cm, at Jeju; v0.2.0 went down to −0.58 m); the paint at least 4 cm over it; every lead line on a runway's surface within 1 cm.
+- **Every changed `.js`/`.mjs`** checked as a module (copied to `.mjs`, `node --check`).
+- **In the cloud container** (headless Chromium, SwiftShader, through the real game loop):
+  - **`tests/cloud/route-views.cjs`** (new; 15 minutes): **all pass**.
+    - The switch is level with the FCU and clear of it. Clicks and keys pick the views; Cockpit again swaps the seat; the lit button follows V.
+    - A dragged waypoint counts: 10 → 168 nm.
+    - Change route opens on RKPC 07, lists RKSI's eight runway ends, and Fly there to RKSI 33L: the plan, `dest`, the waypoints cleared, the toast, `captureState()`.
+    - A click on RKPC's label (under the lines) and on RKSS's offers them; Cancel leaves the route.
+    - Skip to final puts the aircraft 15.7 nm from RKSI, for 33L. The controller landed there: B 88 with the approach parts, logbook "RKSS–RKSI 33L". Change route is refused after landing.
+  - **The switch at four window sizes** (fonts loaded, every view): never overlapping the FCU. 1512×860: full. 1440×900 and 1280×800: full, compact in the cockpit (its seat label). 1100×700: compact. 960×640: at the bottom centre.
+  - **Stills looked at:**
+    - Jeju 07/25 at P10, from the cockpit and a low orbit, before and after;
+    - Jeju's taxiway P by the 25 end, before (grass through the junction) and after;
+    - Jeju's 13/31 crossing;
+    - Gimpo 14R/32L at E1, from the cockpit and an orbit (a lead line onto the centreline).
+  - **The ground, measured** (`dip3.mjs`-style sampling in scratch): taxiway samples under the ground went 304 → 0 at Jeju, 88 → 0 at Gimpo, 23 → 0 at Incheon.
+- **Not done:** flying it in Chrome on the Mac's GPU; the lead lines at night; listening to the sound (as before).
+- **Screenshots** in `Claude outputs/flight-sim/`:
+  - `v021-jeju-taxiways-before-after`, `v021-jeju-taxiway-grass-before-after`;
+  - `v021-view-switch-cockpit`, `-nose`, `-orbit` (1440×900: full in the nose and 3rd person views, compact in the cockpit), `v021-hud-new-route`;
+  - `v021-map-waypoint`, `v021-map-change-route`, `v021-map-new-route`.
+- **Written up:**
+  - `src/version.js` (`Flight Sim v0.2.1 · CL#261103`) and `Updates.md`;
+  - `ROADMAP.md`: row 6 done, and a "Found after v0.2.0" list;
+  - `README.md` and `PLAN.md` (the keys, the map); the Controls page (`ui/menu.js`);
+  - `HANDOFF.md`: the version table, how the changes work, two pitfalls, the Cowork tools;
+  - `AGENTS.md`: State.
+- **Next:** Shane pushes: `sh tools/push.sh v0.2.1`, then a hard reload (Cmd+Shift+R).
+
+## 2026-11-03, 16:00 KST: v0.2.1, two more (Cowork session, the second agent)
+
+Shane, before v0.2.1 was pushed: "Group these in with 0.2.1: 1. For steering the camera, I have to use two finders, but I am not used to that, so change it to clicking and dragging with one finger. 2. Add some more stars to the night sky." Still v0.2.1 (`CL#261103`).
+
+**4. One-finger drag** (`src/camera.js`, `style.css`):
+
+- Press on the 3D view and drag: from the nose or a seat it looks around, in 3rd person it goes round the aircraft. The view follows the finger, the same way round as the two-finger swipe (natural scrolling), which stays, as do pinch to zoom and double-click to recentre.
+- Pointer events on the canvas, captured from the press, so a drag carries on over the HUD. Nothing turns until the pointer has moved 4 px, so a click stays a click. Speeds per screen height: 2.5 × the field of view when looking (about 150° at 60°; finer when zoomed in), 3.2 rad (183°) in 3rd person.
+- A double-click whose second press dragged doesn't recentre. Presses on the panels and the map never reach the canvas. The cursor over the view is a hand (grabbing while dragging).
+- The tooltip on 3rd person, the Controls page, README and PLAN say "drag".
+
+**5. More stars** (`src/world/sky.js`):
+
+- **Why it looked sparse:** the fill of stars past the catalogue's 6.5 lit a tenth of its cells, but at 0.005–0.03 (linear), which ACES at the night's exposure (1.45) crushes to almost nothing (the first try at a brighter fill, up to 0.04, still had none standing 40/255 over the sky). The catalogue's faint end was dim too (magnitude 6.5 at 0.037).
+- **Now:**
+  - The catalogue's brightness rule is `starBrightness()`, `STAR_GAMMA` 0.55 (was 0.72): magnitude 4 is 1.6 times as bright, 5 twice, 6.5 2.4 times; first magnitude is unchanged.
+  - The fill gives each lit cell a magnitude from 6.5 to `FILL_FAINT` (8.0), three times as many for each magnitude fainter, and the same brightness rule, so it carries on from the catalogue. Lit: 7% of the cells at the galactic poles, 12% at its plane, up to 30% in the Milky Way's band. They twinkle ±12% (±2% at cruise).
+  - **Moonlight** (`uMoonGlow.r × 100`, 0..1) fades the fill by (1 − m)², gone at full Moon, and the catalogue's stars fainter than about magnitude 5.5 (the vertex shader), as a bright Moon does outside.
+- **Tuned on counts** (`countstars.py` in scratch: local maxima at least T/255 over the median of their 9×9 neighbourhood) and by eye, against Satisfactory's sky (`Claude outputs/satisfactory/sky-10-midnight-south.jpg`, about 150–200 clear stars in a 400×300 crop). Eleven variants of the fill's brightness, faintest magnitude, density and the brightness rule were rendered in one session (temporary uniforms, removed). Stars counted in the sky part of stills at 1200×750, 60° of view, at Jeju, 2026-11-10 00:00 KST (new Moon):
+
+  | View | ≥ 20 before → after | ≥ 40 | ≥ 80 | ≥ 160 |
+  |---|---|---|---|---|
+  | west, 30° up (the Milky Way) | 564 → 8,449 | 237 → 1,889 | 59 → 210 | 10 → 20 |
+  | south, 50° up | 521 → 6,446 | 242 → 2,015 | 76 → 202 | 16 → 23 |
+  | the zenith | 766 → 9,134 | 326 → 2,930 | 101 → 278 | 25 → 40 |
+  | FL350, ESE 8° up | 1,398 → 7,149 | 517 → 5,007 | 184 → 699 | 64 → 103 |
+
+  Under a full Moon high in the south (2026-11-25 00:00 KST), south 45° up: ≥ 40 213 → 228, ≥ 80 72 → 124; the faint dust is gone (≥ 20 514 → 348), as it should be.
+- **Also looked at:** dusk (sun −8.7°: a few stars, the fill held back by the bright sky), the full Moon both ways, the captain's seat at night (the stars through the windows), and a 3rd person view from below the aircraft.
+- No new objects or draw calls: the same dome shader and Points draw. The fill costs a dot product, a `log` and a `pow` more on the lit cells only.
+
+**Checks:**
+
+- **Unit tests: 275 pass** (one new in `tests/sky.test.mjs`: the faint end brighter, first magnitude unchanged, `starGeometry()` using `starBrightness()`), in the cloud container and on the Mac through the guard (below).
+- **New `tests/cloud/camera-drag.cjs`** (2 minutes, the real mouse through Playwright): **23/23**. In the nose, the captain's seat and 3rd person, a 200 px drag right turns exactly the speed above (37.5°, 38.8°, 45.8° at 800 px high) and down raises the pitch; the cursor is a hand, grabbing while dragging; the nose stops at 170° and 80°; a click and a 2 px wobble change nothing; a double-click recentres; a click then a press-and-drag (Chrome fires `dblclick` for it) keeps the drag; a drag across the PFD carries on; a drag that starts on the ND, and one on the map, leave the camera alone; the view switch still clicks; the swipe and the pinch still work; no page errors.
+- `tests/browser-boot.mjs` (the Mac's Chrome, not run here) has a drag check next to its swipe check.
+- **Not done:** dragging on the Mac's own trackpad; how fast the drag feels is a guess (the speeds above are easy to change: `DRAG_LOOK`, `DRAG_ORBIT`).
+- **Screenshots** in `Claude outputs/flight-sim/`: `v021-night-stars-before-after` (the west and FL350 views), `v021-night-stars-orbit`.
+- **Written up:** `Updates.md` (the v0.2.1 entry and its title), `README.md`, `PLAN.md`, `ROADMAP.md` (found after v0.2.0), `HANDOFF.md` (the table, how it works, the cloud tools), `AGENTS.md` (State), the Controls page and the 3rd person tooltip.
+- **Next:** Shane pushes: `sh tools/push.sh v0.2.1`, then a hard reload (Cmd+Shift+R).

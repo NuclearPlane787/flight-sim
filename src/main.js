@@ -468,6 +468,44 @@ async function boot() {
     });
   }
 
+  // ---- Changing the route (v0.2.1) ----
+  // Shane: "Be able to change the route during a flight." A new destination and runway from
+  // the map (Change route, or a click on an airport). The magenta line then goes direct from
+  // where the aircraft is, and waypoints can be dragged onto it again. The ND, the PFD's
+  // approach scales, skip to final, the score and the saved scenario all follow `dest`. The
+  // departure stays as it was. Once landed there's nothing to change: a new flight does that.
+  function changeRoute(icao, ident) {
+    if (!plan || crashed) return { ok: false, error: 'There’s no flight to change' };
+    if (landed && sim.state.onGround) return { ok: false, error: 'You’ve landed. A new flight (Esc → New flight) starts from here.' };
+    const d = runwayEnds(icao, ident);
+    if (!d) return { ok: false, error: `${icao} has no runway ${ident}` };
+    const same = dest && d.end === dest.end;
+    plan.dest = icao; plan.arrRunway = ident; plan.waypoints = [];
+    dest = d; destOther = d.other;
+    map.setWaypoints([]);
+    // Until the touchdown the scorer only holds the planned runway (the touchdown sets the
+    // one actually landed on); the approach track it keeps isn't tied to either.
+    if (!scorer.touchedDown) scorer.setRunway(d.end, d.other);
+    toast(same ? `Direct to ${icao} ${ident}` : `New route: ${plan.origin} to ${icao}, runway ${ident}`, 2500);
+    saveNow('route');
+    return { ok: true };
+  }
+
+  // ---- Views (v0.2.1): the switch at the top right, and 1, 2, 3 ----
+  // Cockpit picks the last seat used (the captain's at first); in a seat, it swaps them.
+  let lastSeat = 'captain';
+  const isSeat = (id) => id === 'captain' || id === 'fo';
+  function selectView(which) {
+    const cur = rig.view.id;
+    let id = which;
+    if (which === 'cockpit') id = isSeat(cur) ? (cur === 'captain' ? 'fo' : 'captain') : lastSeat;
+    if (isSeat(id)) lastSeat = id;
+    if (id === cur) return;
+    rig.viewId = id;
+    toast(rig.view.name, 1000);
+    if (paused) renderOnce();
+  }
+
   function fadeThen(fn) {
     ui.fade.classList.add('on');
     setTimeout(() => {
@@ -559,7 +597,10 @@ async function boot() {
       case 'faster': changeRate(1); break;
       case 'slower': changeRate(-1); break;
       case 'map': map.toggle(); if (map.isOpen) apKey = ''; else predictor.cancel(); break;
-      case 'view': { const v = rig.next(); toast(v.name, 1000); break; }
+      case 'view': { const v = rig.next(); if (v.id === 'captain' || v.id === 'fo') lastSeat = v.id; toast(v.name, 1000); break; }
+      case 'viewCockpit': selectView('cockpit'); break;
+      case 'viewNose': selectView('nose'); break;
+      case 'viewOrbit': selectView('orbit'); break;
       case 'pushback':
         if (gate.phase === 'parked' || gate.phase === 'pushback') gate.onKey('pushback');
         else toast('Pushback works from a gate start (Flight setup → At the gate)');
@@ -646,8 +687,10 @@ async function boot() {
   window.addEventListener('keydown', startAudio);
 
   hud.onlaw = (law) => { sim.controls.law = law; };
+  hud.onview = (which) => selectView(which);
   map.onjump = (sample) => jumpTo(sample);
   map.onskipfinal = () => { map.close(); skipToFinal(); };
+  map.onroute = (icao, ident) => changeRoute(icao, ident);
   predictor.onresult = (res) => {
     prediction = res.samples;
     map.setPrediction(prediction);
@@ -871,8 +914,11 @@ async function boot() {
     view.timeScale = timeScale;
     view.timeScaleActual = timeScale > 1 ? Math.round(achievedScale * 10) / 10 : 1;
     view.paused = paused;
-    view.waypoints = plan?.waypoints || [];
+    // The map's waypoints, which it edits in flight (v0.2.1: this was plan.waypoints, the
+    // setup's, so a waypoint dragged on the map never showed or counted).
+    view.waypoints = map.waypoints;
     view.taxiRoute = gate.points;
+    view.viewId = rig.view.id;
     hud.update(view);
     if (map.isOpen) map.update(view);
     synthOpts.inside = seat; synthOpts.timeScale = timeScale; synthOpts.paused = paused;
@@ -974,7 +1020,7 @@ async function boot() {
     get paused() { return paused; },
     get crashed() { return crashed; },
     get dest() { return dest; },
-    startFlight, skipToFinal, jumpTo, scenarios, clock, captureState, applyState, saveNow, loadScenario, exitToMenu, newScenario,
+    startFlight, skipToFinal, jumpTo, changeRoute, selectView, scenarios, clock, captureState, applyState, saveNow, loadScenario, exitToMenu, newScenario,
     get current() { return current; }, get inMenu() { return inMenu; }, get lastSaveMs() { return lastSaveMs; }, get frames() { return renderer.info.render.frame; },
     get landed() { return landed; }, get plan() { return plan; }, setTimeScale: (r) => { if (r === 1 || canCompress()) setTimeScale(r); return timeScale; },
     setPaused, rewindNow, requestPredict: () => { predictor.request(sim.snapshot(), {}); },

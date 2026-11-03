@@ -3,7 +3,7 @@
 // Everything is in map metres (x east, y north); headings are grid degrees, clockwise
 // from +y, so a heading h points along (sin h, cos h).
 
-import { pavementEnd } from './runways.js';
+import { pavementEnd, RUNWAY_SHOULDER_M } from './runways.js';
 
 export const TAXI_W = 23;          // default taxiway width (m)
 export const HOLD_DIST = 90;       // m from the runway centreline for synthetic hold-shorts
@@ -168,6 +168,200 @@ export function subdivideSoup(soup, maxEdge, out = []) {
     stack.push([mx, my, t[i1], t[i1 + 1], t[i2], t[i2 + 1]]);
   }
   return out;
+}
+
+// v0.2.1. Split triangles (soup) by their longest edge wherever the flat triangle between its
+// corners' ground heights strays more than tol (m) from the ground (tested at seven points
+// inside it), down to edges of minEdge. Pavement lies just 8 cm up, so a long triangle across
+// curving ground dips under it and the terrain shows through: up to 0.58 m on Jeju's parallel
+// taxiway, where the flattening around the runway fades into the terrain. Only those triangles
+// get split, so the count barely grows.
+export function refineSoup(soup, groundAt, tol = 0.02, minEdge = 3, out = []) {
+  const m2 = minEdge * minEdge;
+  const stack = [];
+  for (let i = 0; i < soup.length; i += 6) stack.push(soup.slice(i, i + 6));
+  let guard = 0;
+  while (stack.length) {
+    const t = stack.pop();
+    const e = [
+      (t[2] - t[0]) ** 2 + (t[3] - t[1]) ** 2,
+      (t[4] - t[2]) ** 2 + (t[5] - t[3]) ** 2,
+      (t[0] - t[4]) ** 2 + (t[1] - t[5]) ** 2,
+    ];
+    const k = e[0] >= e[1] && e[0] >= e[2] ? 0 : e[1] >= e[2] ? 1 : 2;
+    if (e[k] <= m2 || ++guard > 2e6) { out.push(...t); continue; }
+    const h0 = groundAt(t[0], t[1]), h1 = groundAt(t[2], t[3]), h2 = groundAt(t[4], t[5]);
+    // Tested at the edges' midpoints, the centre, and halfway from the centre to each corner.
+    let dev = 0;
+    for (const [a, b, c] of [[2, 2, 0], [0, 2, 2], [2, 0, 2], [1, 1, 1], [4, 1, 1], [1, 4, 1], [1, 1, 4]]) {
+      const s = a + b + c;
+      const x = (t[0] * a + t[2] * b + t[4] * c) / s, y = (t[1] * a + t[3] * b + t[5] * c) / s;
+      dev = Math.max(dev, Math.abs(groundAt(x, y) - (h0 * a + h1 * b + h2 * c) / s));
+    }
+    if (dev <= tol) { out.push(...t); continue; }
+    const i0 = k * 2, i1 = ((k + 1) % 3) * 2, i2 = ((k + 2) % 3) * 2;
+    const mx = (t[i0] + t[i1]) / 2, my = (t[i0 + 1] + t[i1 + 1]) / 2;
+    stack.push([t[i0], t[i0 + 1], mx, my, t[i2], t[i2 + 1]]);
+    stack.push([mx, my, t[i1], t[i1 + 1], t[i2], t[i2 + 1]]);
+  }
+  return out;
+}
+
+// The same for a line (the paint): a point is put in the middle of any segment whose middle
+// strays more than tol from the ground, down to minSeg.
+export function refineLine(pts, groundAt, tol = 0.03, minSeg = 3) {
+  const out = [pts[0]];
+  const walk = (a, b, ha, hb, depth) => {
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, hm = groundAt(mx, my);
+    if (depth < 12 && Math.hypot(b[0] - a[0], b[1] - a[1]) > minSeg && Math.abs(hm - (ha + hb) / 2) > tol) {
+      walk(a, [mx, my], ha, hm, depth + 1);
+      walk([mx, my], b, hm, hb, depth + 1);
+    } else out.push(b);
+  };
+  for (let i = 1; i < pts.length; i++) walk(pts[i - 1], pts[i], groundAt(pts[i - 1][0], pts[i - 1][1]), groundAt(pts[i][0], pts[i][1]), 0);
+  return out;
+}
+
+// ------------------------------------------------------------------ runways drawn over the ground
+
+// v0.2.1. The taxiways run on to the runways (OSM's taxiway lines end on the runway's
+// centreline), but a taxiway's pavement and paint sit 8–10 cm up on the ground while the
+// runway is drawn on it, and the runway's extra pull towards the camera (airports.js) only
+// outweighs that gap when it's seen from high enough. From the cockpit or a low orbit the
+// taxiway's asphalt was drawn over the runway in jagged patches. So the pavement stops at the
+// runway's drawn edge, and the paint is split there (apron.js).
+
+// Each runway as drawn (airports.js: pavement end to pavement end, its width plus the paved
+// shoulders), as a rectangle in its own frame: (ax, ay) its first pavement end, (ux, uy)
+// along it, u0..u1 and the half width hw, all shrunk by `inset` (m).
+export function drawnRunwayRects(airport, inset = 0) {
+  return runwayLines(airport).map((l) => {
+    const r = { ax: l.ax, ay: l.ay, ux: l.ux, uy: l.uy, u0: inset, u1: l.len - inset, hw: l.hw + RUNWAY_SHOULDER_M - inset };
+    // Its corners' bounding box, to skip far-off triangles quickly.
+    const xs = [], ys = [];
+    for (const u of [r.u0, r.u1]) for (const v of [-r.hw, r.hw]) { xs.push(r.ax + r.ux * u - r.uy * v); ys.push(r.ay + r.uy * u + r.ux * v); }
+    r.box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    return r;
+  });
+}
+
+// The point's (u, v) in a rect's frame.
+const rectUV = (r, x, y) => [(x - r.ax) * r.ux + (y - r.ay) * r.uy, -(x - r.ax) * r.uy + (y - r.ay) * r.ux];
+
+export function inRect(r, x, y) {
+  const [u, v] = rectUV(r, x, y);
+  return u >= r.u0 && u <= r.u1 && Math.abs(v) <= r.hw;
+}
+
+// A rect's four sides as lines f(x, y) = a x + b y + c, with f <= 0 on the inside.
+function rectSides(r) {
+  const k = r.ux * r.ax + r.uy * r.ay, m = r.uy * r.ax - r.ux * r.ay;
+  return [
+    [-r.ux, -r.uy, k + r.u0],          // u >= u0
+    [r.ux, r.uy, -k - r.u1],           // u <= u1
+    [-r.uy, r.ux, m - r.hw],           // v <= hw
+    [r.uy, -r.ux, -m - r.hw],          // v >= -hw
+  ];
+}
+
+// A convex polygon ([[x, y], ...]) cut by the line f: [the part where f >= 0, the part where f <= 0].
+function cutPoly(poly, [a, b, c]) {
+  const pos = [], neg = [];
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const p = poly[i], q = poly[(i + 1) % n];
+    const fp = a * p[0] + b * p[1] + c, fq = a * q[0] + b * q[1] + c;
+    if (fp >= 0) pos.push(p);
+    if (fp <= 0) neg.push(p);
+    if ((fp > 0 && fq < 0) || (fp < 0 && fq > 0)) {
+      const t = fp / (fp - fq), x = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+      pos.push(x); neg.push(x);
+    }
+  }
+  return [pos, neg];
+}
+
+function polyArea(poly) {
+  let s = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) s += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
+  return Math.abs(s) / 2;
+}
+
+// Triangles (soup) with whatever lies inside any of the rects cut away. Each triangle is cut
+// along a rect's four sides in turn: a piece outside one side is kept, the rest goes on to
+// the next side, and what's left inside all four is dropped.
+export function clipSoupOutside(soup, rects, out = []) {
+  const sides = rects.map(rectSides);
+  for (let i = 0; i < soup.length; i += 6) {
+    let pieces = [[[soup[i], soup[i + 1]], [soup[i + 2], soup[i + 3]], [soup[i + 4], soup[i + 5]]]];
+    const x0 = Math.min(soup[i], soup[i + 2], soup[i + 4]), x1 = Math.max(soup[i], soup[i + 2], soup[i + 4]);
+    const y0 = Math.min(soup[i + 1], soup[i + 3], soup[i + 5]), y1 = Math.max(soup[i + 1], soup[i + 3], soup[i + 5]);
+    rects.forEach((r, ri) => {
+      const [bx0, by0, bx1, by1] = r.box;
+      if (x1 < bx0 || x0 > bx1 || y1 < by0 || y0 > by1) return;
+      const kept = [];
+      for (const piece of pieces) {
+        let rest = piece;
+        for (const side of sides[ri]) {
+          const [o, inn] = cutPoly(rest, side);
+          if (o.length >= 3 && polyArea(o) > 1e-4) kept.push(o);
+          rest = inn;
+          if (rest.length < 3 || polyArea(rest) <= 1e-4) break;
+        }
+      }
+      pieces = kept;
+    });
+    for (const p of pieces) for (let k = 1; k < p.length - 1; k++) out.push(p[0][0], p[0][1], p[k][0], p[k][1], p[k + 1][0], p[k + 1][1]);
+  }
+  return out;
+}
+
+// A polyline cut where it crosses the rects' edges, as runs that lie wholly inside some rect
+// or wholly outside all of them, in order: [{ inside, pts }]. Neighbouring runs share the
+// point where they meet.
+export function splitPolyline(pts, rects) {
+  const runs = [];
+  let cur = null;
+  const push = (inside, p) => {
+    if (!cur || cur.inside !== inside) {
+      const prev = cur && cur.pts[cur.pts.length - 1];
+      cur = { inside, pts: prev ? [prev] : [] };
+      runs.push(cur);
+    }
+    const last = cur.pts[cur.pts.length - 1];
+    if (!last || Math.hypot(last[0] - p[0], last[1] - p[1]) > 1e-6) cur.pts.push(p);
+  };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    // Where along a..b (t in 0..1) it's inside each rect (Liang–Barsky), merged.
+    const spans = [];
+    for (const r of rects) {
+      const [ua, va] = rectUV(r, a[0], a[1]), [ub, vb] = rectUV(r, b[0], b[1]);
+      let t0 = 0, t1 = 1;
+      const clip = (p, q) => {          // keep where p + q t >= 0
+        if (Math.abs(q) < 1e-12) return p >= 0;
+        const t = -p / q;
+        if (q > 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+        return t0 <= t1;
+      };
+      if (clip(ua - r.u0, ub - ua) && clip(r.u1 - ua, ua - ub) && clip(r.hw - va, va - vb) && clip(r.hw + va, vb - va) && t1 - t0 > 1e-9) spans.push([t0, t1]);
+    }
+    spans.sort((p, q) => p[0] - q[0]);
+    const merged = [];
+    for (const s of spans) {
+      const m = merged[merged.length - 1];
+      if (m && s[0] <= m[1] + 1e-9) m[1] = Math.max(m[1], s[1]); else merged.push(s.slice());
+    }
+    const at = (t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    let t = 0;
+    for (const [s0, s1] of merged) {
+      if (s0 > t) { push(false, at(t)); push(false, at(s0)); }
+      push(true, at(Math.max(s0, t))); push(true, at(s1));
+      t = s1;
+    }
+    if (t < 1) { push(false, at(t)); push(false, b); }
+  }
+  return runs.filter((r) => r.pts.length >= 2);
 }
 
 // ------------------------------------------------------------------ segment index

@@ -347,11 +347,11 @@ const KEYS = [
   ['6 7 8 9 0', 'flaps 0, 1, 2, 3, FULL', 'G', 'gear'],
   ['C / Shift+C', 'speed brakes / arm ground spoilers', 'Z / X', 'autopilot / autothrust'],
   ['= / −', 'time compression', 'M', 'map, jumps, skip to final'],
-  ['V', 'next view', 'F3 or `', 'performance readout'],
-  ['swipe / pinch', 'look or orbit / zoom', 'double-click', 'recentre'],
+  ['1 2 3', 'cockpit, nose, 3rd person (1 again: other seat)', 'F3 or `', 'performance readout'],
+  ['drag / pinch', 'look or orbit / zoom', 'double-click', 'recentre'],
   ['T', 'rewind 30 s (paused or crashed)', 'P', 'pushback (= speeds it up)'],
   ['FCU window', 'scroll it, or click, type, Enter', 'map', 'click the bright path (AP on) to jump'],
-  ['Esc', 'pause menu', '', ''],
+  ['V', 'next view', 'Esc', 'pause menu'],
 ];
 
 export function createControlsPage(root, { sky = false } = {}) {
@@ -366,6 +366,11 @@ export function createControlsPage(root, { sky = false } = {}) {
         Esc, a click elsewhere or a flying key closes it unchanged.</p>
       <p><b>The map (M):</b> with the AP on, the bright line is where the aircraft will go: click a point on it to jump there.
         The magenta line is the route to your destination and doesn't jump, so point the HDG along it first.
-        A red cross means the path meets the terrain. “Skip to 15 nm final” puts you on the 3° path to the destination runway.</p>
+        A red cross means the path meets the terrain. “Skip to 15 nm final” puts you on the 3° path to the destination runway.
+        Drag the magenta line to add a waypoint. “Change route”, or a click on an airport, picks a new destination and runway;
+        the line then goes direct from where you are.</p>
+      <p><b>Views:</b> the switch at the top right (or 1, 2, 3) picks the cockpit, the nose or the 3rd person view.
+        In the cockpit, Cockpit (or 1) again moves you to the other seat.
+        Press and drag on the view (one finger) to look around, or in 3rd person to go round the aircraft; a two-finger swipe does the same.</p>
     </div>`);
 }

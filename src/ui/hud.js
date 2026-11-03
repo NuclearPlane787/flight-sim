@@ -1,6 +1,7 @@
-// The HUD: PFD (left), ND and engine panel (right), FCU (top), drawn over the 3D view.
-// createHud(root, { airports, coast? }) -> { update(view), resize(), setCoast(coast), onlaw }.
-// view = { state, ap, dest: runwayEnd, timeScale, timeScaleActual, paused, waypoints?, controls? }.
+// The HUD: PFD (left), ND and engine panel (right), FCU (top), drawn over the 3D view, and
+// the view switch (top right).
+// createHud(root, { airports, coast? }) -> { update(view), resize(), setCoast(coast), onlaw, onview }.
+// view = { state, ap, dest: runwayEnd, timeScale, timeScaleActual, paused, waypoints?, controls?, viewId? }.
 // Panels redraw only when what they show changed, and at most 30 times a second.
 
 import { hidpiCanvas, shield, locateEnd, buildCoast, changed, KT, FT, FPM, DEG, route } from './common.js';
@@ -10,6 +11,14 @@ import { createEnginesPanel } from './engines-panel.js';
 import { createFcu } from './fcu.js';
 
 const MIN_DT = 1000 / 30;
+
+// The view switch (v0.2.1). Shane: "Have an easy way to transfer between a cockpit view, a
+// nose view, and a third person view, maybe a switch somewhere." [view, key, label, tooltip]
+const VIEW_BUTTONS = [
+  ['cockpit', '1', 'Cockpit', 'Cockpit (1). In the cockpit, click again for the other seat'],
+  ['nose', '2', 'Nose', 'Nose (2)'],
+  ['orbit', '3', '3rd person', '3rd person (3): drag to orbit, pinch to zoom'],
+];
 
 export function createHud(root, { airports, coast } = {}) {
   const el = document.createElement('div');
@@ -30,8 +39,28 @@ export function createHud(root, { airports, coast } = {}) {
   const pfd = createPfd(pfdCv);
   const nd = createNd(ndCv, { airports, coast: coast ? buildCoast(coast) : null });
   const eng = createEnginesPanel(engCv);
-  const hud = { update, resize, setCoast, setTopInset, onlaw: null, poke, el };
+  const hud = { update, resize, setCoast, setTopInset, onlaw: null, onview: null, poke, el };
   const fcu = createFcu(el, hud);
+
+  // The view switch, level with the FCU at the top right. In a seat, Cockpit shows which one
+  // (CPT or F/O), and clicking it again swaps them (main.js → selectView).
+  const views = document.createElement('div');
+  views.className = 'fsui-views fsui-panel';
+  views.innerHTML = VIEW_BUTTONS.map(([v, key, label, tip]) =>
+    `<button data-v="${v}" title="${tip}" tabindex="-1"><kbd>${key}</kbd><span class="fsui-vl">${label}</span><span class="fsui-seat"></span></button>`).join('');
+  el.appendChild(views);
+  shield(views);
+  views.addEventListener('mousedown', (e) => e.preventDefault()); // keep keyboard focus where it is
+  views.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && hud.onview) hud.onview(b.dataset.v); });
+  let shownView = '';
+  function showView(id) {
+    if (!id || id === shownView) return;
+    shownView = id;
+    const seat = id === 'captain' || id === 'fo';
+    for (const b of views.children) b.classList.toggle('on', b.dataset.v === (seat ? 'cockpit' : id));
+    views.querySelector('[data-v="cockpit"] .fsui-seat').textContent = seat ? (id === 'fo' ? 'F/O' : 'CPT') : '';
+    placeViews();     // the seat's label makes it wider
+  }
 
   // ND range: scroll or click.
   let wheelAcc = 0;
@@ -51,6 +80,7 @@ export function createHud(root, { airports, coast } = {}) {
   function update(v) {
     view = v;
     if (!v || !v.state) return;
+    showView(v.viewId);
     const now = performance.now();
     pfd.update(v, now);
     if (now - last < MIN_DT) { schedule(); return; }
@@ -105,11 +135,25 @@ export function createHud(root, { airports, coast } = {}) {
     place(ndEl, ndCv, W - sr - pad, top, sr, sr);
     place(engEl, engCv, W - sr - pad, top + sr + 8, sr, sr * 0.62);
     Object.assign(fcu.el.style, { top: (8 + inset) + 'px', height: fcuH + 'px', fontSize: (fcuH * 0.36) + 'px' });
+    // The view switch: the same box as the FCU's (fcuH inside, the FCU's 0.35em above and below).
+    const padY = 0.35 * fcuH * 0.36;
+    Object.assign(views.style, { top: (8 + inset) + 'px', right: pad + 'px', height: fcuH + 'px', padding: `${padY}px 0.45em`, fontSize: (fcuH * 0.33) + 'px' });
+    placeViews();
     force = true;
     if (view) draw(performance.now());
   }
+  // Right of the FCU; without the key caps if that's too tight, and at the bottom centre if even
+  // that runs into it. Again whenever the FCU's width changes (its LAW label fills in after the
+  // first frame) or a font arrives, since both change the widths.
+  function placeViews() {
+    views.classList.remove('compact', 'low');
+    const clear = () => views.getBoundingClientRect().left >= fcu.el.getBoundingClientRect().right + 10;
+    if (!clear()) { views.classList.add('compact'); if (!clear()) views.classList.add('low'); }
+  }
 
   window.addEventListener('resize', resize);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(fcu.el);
+  document.fonts?.addEventListener?.('loadingdone', () => placeViews());
   resize();
   return hud;
 }

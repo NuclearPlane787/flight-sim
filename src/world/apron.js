@@ -28,6 +28,7 @@ import * as THREE from '../../vendor/three.module.js';
 import {
   TAXI_W, DOOR_SILL, openRing, signedArea, densify, dedupePolys, segmentIndex,
   holdShortSites, taxiwayEdges, standMarks, jetBridge, strokeTriangles, subdivideSoup, hdgVec,
+  drawnRunwayRects, clipSoupOutside, splitPolyline, refineSoup, refineLine,
 } from './apron-geom.js';
 import { floodMasts } from './taxilights.js';
 
@@ -46,7 +47,13 @@ const GLYPH_H = 3.2, GLYPH_W = 2.0, GLYPH_GAP = 0.35;
 // apron read as apron concrete.
 // The distance terms cover the coarser terrain rings further out (they cut through flat
 // pavement by a few cm per 100 m); the runways (airports.js) stay above all of these.
-const PULL = { taxi: [0.06, 0.0006], apron: [0.10, 0.0010], paint: [0.13, 0.0013] };
+// `lead` is the taxiway centrelines' paint on a runway (lead-on and lead-off lines, v0.2.1):
+// it lies on the runway's own surface, with no lift, and pulls a little more than the
+// runway, so it's over the runway from any angle.
+const PULL = { taxi: [0.06, 0.0006], apron: [0.10, 0.0010], paint: [0.13, 0.0013], lead: [0.19, 0.0019] };
+// The pavement stops this far inside the runway's drawn edge, so no hairline of grass shows
+// between them.
+const RUNWAY_OVERLAP = 0.05;
 
 // ------------------------------------------------------------------ shaders
 
@@ -131,6 +138,7 @@ const PAINT_VERT = /* glsl */ `
   attribute vec3 side;                // scene-local unit across (x, z) and which side (-1, 1); 0 = fixed quad
   attribute vec2 lc;                  // local coordinates (m, or glyph cell 0..1)
   attribute vec4 kp;                  // kind, half width / pattern, glyph index, colour
+  attribute float lay;                // 1: on a runway's surface (lead-on and lead-off lines)
   varying vec3 vRel;
   varying vec2 vLc, vLoc;
   varying vec4 vKp;
@@ -149,7 +157,7 @@ const PAINT_VERT = /* glsl */ `
     vRel = wp - uCamPos;
     vLoc = vec2(wp.x - uRelA.x, -wp.z - uRelA.y);
     vKp = kp;
-    gl_Position = projectPulled(wp, vec2(${PULL.paint[0]}, ${PULL.paint[1]}));
+    gl_Position = projectPulled(wp, lay > 0.5 ? vec2(${PULL.lead[0]}, ${PULL.lead[1]}) : vec2(${PULL.paint[0]}, ${PULL.paint[1]}));
     #include <logdepthbuf_vertex>
   }`;
 
@@ -299,9 +307,14 @@ function glyphAtlas(chars) {
 // Growable typed buffers.
 function buf() { return { a: [], push(...v) { for (const x of v) this.a.push(x); } }; }
 
-function buildPavement(a, ox, oy, groundAt, aprons) {
+// Exported for tests/apron.test.mjs (v0.2.1), like buildPaint.
+export function buildPavement(a, ox, oy, groundAt, aprons) {
   const P = buf(), M = buf();
-  const add = (soup, mat, layer) => {
+  // Nothing under the runways (see apron-geom.js → drawnRunwayRects).
+  const rects = drawnRunwayRects(a, RUNWAY_OVERLAP);
+  const add = (whole, mat, layer) => {
+    // Then split wherever the flat triangles would stray from the ground (apron-geom.js → refineSoup).
+    const soup = refineSoup(clipSoupOutside(whole, rects), groundAt);
     for (let i = 0; i < soup.length; i += 2) {
       const x = soup[i], y = soup[i + 1];
       P.push(x - ox, groundAt(x, y) + 0.08, -(y - oy));
@@ -351,15 +364,17 @@ function buildPavement(a, ox, oy, groundAt, aprons) {
   return g;
 }
 
-function buildPaint(a, ox, oy, groundAt, aprons, chars) {
-  const P = buf(), S = buf(), L = buf(), K = buf();
+export function buildPaint(a, ox, oy, groundAt, aprons, chars) {
+  const P = buf(), S = buf(), L = buf(), K = buf(), Y = buf();
   const idx = [];
   let nv = 0;
+  let lead = 0;                              // 1 while adding paint that lies on a runway
   const vert = (x, y, sx, sy, s, u, v, kind, hw, gi, col) => {
-    P.push(x - ox, groundAt(x, y) + 0.1, -(y - oy));
+    P.push(x - ox, groundAt(x, y) + (lead ? 0 : 0.1), -(y - oy));
     S.push(sx, -sy, s);                      // map (x, y) -> scene (x, -z)
     L.push(u, v);
     K.push(kind, hw, gi, col);
+    Y.push(lead);
     return nv++;
   };
   // A line along a polyline: each segment a quad that the shader widens.
@@ -391,11 +406,23 @@ function buildPaint(a, ox, oy, groundAt, aprons, chars) {
     idx.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
   };
 
-  // Taxiway centrelines (also through aprons, as taxilanes).
-  for (const tw of a.taxiways || []) if (tw.points && tw.points.length >= 2) line(tw.points, LINE_HW);
-  // Edge lines where the taxiway borders unpaved ground.
+  // Taxiway centrelines (also through aprons, as taxilanes). On a runway they're its lead-on
+  // and lead-off lines: on the runway's own surface (the heightfield there is that surface,
+  // so the points every 4 m follow its bends), over the runway (PULL.lead).
+  const rects = drawnRunwayRects(a);
+  for (const tw of a.taxiways || []) {
+    if (!tw.points || tw.points.length < 2) continue;
+    for (const run of splitPolyline(tw.points, rects)) {
+      lead = run.inside ? 1 : 0;
+      line(run.inside ? densify(run.pts, 4) : refineLine(run.pts, groundAt), LINE_HW);
+    }
+    lead = 0;
+  }
+  // Edge lines where the taxiway borders unpaved ground; none on the runways.
   const index = segmentIndex(a.taxiways || []);
-  for (const e of taxiwayEdges(a, index, aprons)) line(simplify(e, 0.05), EDGE_HW, 4);
+  for (const e of taxiwayEdges(a, index, aprons)) {
+    for (const run of splitPolyline(simplify(e, 0.05), rects)) if (!run.inside) line(refineLine(run.pts, groundAt), EDGE_HW, 4);
+  }
   // Hold-short markings.
   const holds = holdShortSites(a, index);
   for (const h of holds) {
@@ -409,7 +436,7 @@ function buildPaint(a, ox, oy, groundAt, aprons, chars) {
   const labels = [];
   for (const s of a.stands || []) {
     const m = standMarks(s);
-    line(m.lead, LINE_HW);
+    line(refineLine(m.lead, groundAt), LINE_HW);
     const { stop } = m;
     const rx = stop.dy, ry = -stop.dx;
     line([[stop.x - rx * 3, stop.y - ry * 3], [stop.x + rx * 3, stop.y + ry * 3]], 0.25);
@@ -436,6 +463,7 @@ function buildPaint(a, ox, oy, groundAt, aprons, chars) {
   g.setAttribute('side', new THREE.Float32BufferAttribute(S.a, 3));
   g.setAttribute('lc', new THREE.Float32BufferAttribute(L.a, 2));
   g.setAttribute('kp', new THREE.Float32BufferAttribute(K.a, 4));
+  g.setAttribute('lay', new THREE.Float32BufferAttribute(Y.a, 1));
   g.setIndex(idx);
   return { geo: g, holds: holds.length, synthetic: holds.filter((h) => h.synthetic).length, stands };
 }
