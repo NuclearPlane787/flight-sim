@@ -11,6 +11,16 @@
   const note = (m) => { log.push(`${fs.sim.state.t.toFixed(1)}s ${m}`); };
 
   const ctl = (window.__e2e = { phase: 'idle', vapp: 140, note, pitchI: 0 });
+  // The type's flap lever, and whether its law is Boeing's (v0.3.0). A Boeing has no flare law and
+  // no path hold: the stick asks for g on top of the speed law, and the pilot trims the speed.
+  const type = () => fs.sim.type;
+  const boeing = () => type()?.family === 'boeing';
+  const flapIdx = (name) => type().data.FLAP_LEVER.indexOf(name);
+  // On a Boeing: the trim reference to the speed being flown (+1 nose up lowers the reference).
+  function trimTo(c, s, kt) {
+    const err = s.vRef * KT - kt;
+    c.trim = err > 1 ? 1 : err < -1 ? -1 : 0;
+  }
 
   // Flight path tracking through the Normal-law stick (load-factor demand), a PI loop.
   function holdGamma(c, s, gammaCmd, dt, kp = 0.22, ki = 0.05) {
@@ -39,13 +49,13 @@
         // Rotate at about 2.5°/s, holding 9.5° on the wheels (the tail strikes near 10–11°).
         if (s.ias * KT >= vr) {
           if (ctl.rotateT === undefined) { ctl.rotateT = s.t; note('rotate at ' + (s.ias * KT).toFixed(0) + ' kt'); }
-          const target = Math.min(9.5, (s.t - ctl.rotateT) * 2.5);
+          const target = Math.min(boeing() ? type().data.PITCH_TAILSTRIKE_DEG - 2 : 9.5, (s.t - ctl.rotateT) * 2.5);
           c.pitch = clamp((target - s.pitch / DEG) * 0.3 - s.q / DEG * 0.05, -0.5, 0.7);
         } else c.pitch = 0;
       } else {
         c.yaw = 0;
         if (ctl.liftT === undefined) { ctl.liftT = s.t; note('lift-off at ' + (s.ias * KT).toFixed(0) + ' kt, pitch ' + (s.pitch / DEG).toFixed(1)); }
-        const target = Math.min(15, 9.5 + (s.t - ctl.liftT) * 1.5);
+        const target = Math.min(boeing() ? 13 : 15, (boeing() ? type().data.PITCH_TAILSTRIKE_DEG - 2 : 9.5) + (s.t - ctl.liftT) * 1.5);
         c.pitch = clamp((target - s.pitch / DEG) * 0.15 - s.q * 1.5, -0.6, 0.6);
         holdTrack(c, s, ctl.rwyHdg, 5);
       }
@@ -60,28 +70,40 @@
       const toGo = -along;
       // Configuration by distance to the threshold.
       if (toGo < 9 * 1852 && !c.gearDown) { c.gearDown = true; note('gear down'); }
+      if (boeing()) {
+        const land = ctl.landFlap || '30';
+        if (toGo < 10 * 1852 && c.flapLever < flapIdx('5')) { c.flapLever = flapIdx('5'); note('flaps 5'); }
+        if (toGo < 8 * 1852 && c.flapLever < flapIdx('20')) { c.flapLever = flapIdx('20'); note('flaps 20'); }
+        if (toGo < 7 * 1852 && c.flapLever < flapIdx(land)) { c.flapLever = flapIdx(land); c.spoilersArmed = true; note('flaps ' + land + ', spoilers armed'); }
+      } else {
       if (toGo < 10 * 1852 && c.flapLever < 2) { c.flapLever = 2; note('flaps 2'); }
       if (toGo < 8 * 1852 && c.flapLever < 3) { c.flapLever = 3; note('flaps 3'); }
       if (toGo < 7 * 1852 && c.flapLever < 4) { c.flapLever = 4; c.spoilersArmed = true; note('flaps FULL, spoilers armed'); }
+      }
       // Skip to final starts on the 3° path, so hand-fly it from there (A/THR keeps the speed).
       if (ap.ap) { ap.disconnectAp('test'); note('AP off at ' + Math.round(s.agl * FT) + ' ft, ' + (toGo / 1852).toFixed(1) + ' nm'); }
-      if (c.flapLever >= 4 && s.vls > 0) ctl.vapp = Math.round(s.vls * KT + 5); // Vapp = VLS + 5 kt
-      if (ap.athr && Math.abs(ap.spdKt - ctl.vapp) > 0.5 && c.flapLever >= 3) ap.setSpd(ctl.vapp);
+      const landing = boeing() ? c.flapLever >= flapIdx(ctl.landFlap || '30') : c.flapLever >= 4;
+      // Vapp = VLS + 5 kt. A Boeing's vls is its minimum manoeuvring speed, so Vref + 5 from the 1 g stall.
+      if (landing && s.vls > 0) ctl.vapp = boeing() ? Math.round(s.vls * KT / type().data.VMM_FACTOR * type().data.VLS_FACTOR + 5) : Math.round(s.vls * KT + 5);
+      if (ap.athr && Math.abs(ap.spdKt - ctl.vapp) > 0.5 && (boeing() ? c.flapLever >= flapIdx('20') : c.flapLever >= 3)) ap.setSpd(ctl.vapp);
+      if (boeing()) trimTo(c, s, ap.athr ? ap.spdKt : ctl.vapp);
 
       const ftAgl = s.agl * FT;
       if (ctl.phase === 'approach' && !ap.ap) {
         const gammaCmd = -3 - clamp(hErr * 0.04, -2, 2);
+        if (boeing()) holdGamma(c, s, gammaCmd, dt, 0.14, 0.03); else
         holdGamma(c, s, gammaCmd, dt);
         const corr = clamp(-cross * 0.004, -0.35, 0.35); // rad of intercept
         holdTrack(c, s, ax.hdg + corr, toGo < 1000 ? 5 : 15);
-        if (ftAgl < 50) { ctl.phase = 'flare'; note('flare at ' + ftAgl.toFixed(0) + ' ft'); }
+        if (ftAgl < (boeing() ? 70 : 50)) { ctl.phase = 'flare'; note('flare at ' + ftAgl.toFixed(0) + ' ft'); }
       } else if (ctl.phase === 'flare') {
         if (!s.onGround) {
           // Ease the sink from the approach rate to ~ -0.8 m/s (150 ft/min) at the wheels.
           if (ctl.flareVs0 === undefined) ctl.flareVs0 = s.vs;
           const k = clamp(s.agl / 15, 0, 1) ** 1.5; // 15 m ≈ 50 ft
           const vsCmd = -0.6 + (ctl.flareVs0 + 0.6) * k;
-          c.pitch = clamp((vsCmd - s.vs) * 0.25 - s.q * 0.8 + ctl.pitchI, -0.3, 0.7);
+          c.pitch = boeing() ? clamp((vsCmd - s.vs) * 0.3 - s.q * 0.5 + ctl.pitchI, -0.3, 0.8)
+            : clamp((vsCmd - s.vs) * 0.25 - s.q * 0.8 + ctl.pitchI, -0.3, 0.7);
           const corr = clamp(-cross * 0.004, -0.1, 0.1);
           holdTrack(c, s, ax.hdg + corr, 3);
           c.yaw = clamp(wrap(ax.hdg - s.hdg) / DEG * 0.15, -0.5, 0.5); // decrab

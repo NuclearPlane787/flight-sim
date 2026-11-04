@@ -4,6 +4,21 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.3.0 · 2026-11-04 · The Boeing 787-9 and 777-300ER
+
+- **Two new aircraft, in Nuclear Airlines colours.** The 787-9 (HL7879, GEnx engines) and the 777-300ER (HL7773, GE90-115Bs) join the A321neo, each with its own numbers from its type certificate and Boeing's airport-planning document, its own model and cockpit, and its own engine sound. The A321neo flies exactly as it did.
+- **Pick the aircraft in New scenario,** with a picture and the key numbers of each. A scenario keeps its aircraft, your old saves load as the A321neo, and the logbook shows each flight's type.
+- **They fly like Boeings.** The aircraft holds the speed it's trimmed for, not the flight path: let go and it settles back to that speed, and more thrust raises the nose.
+  - **Trim:** H nose up, Y nose down. The trim moves the reference speed (a small mark beside the speed tape). The autopilot trims for itself.
+  - **The flare is yours:** there's no flare law and no RETARD call. It takes back pressure, and more as the speed bleeds off.
+  - **Soft protections you can overpower:** the trim stops at the minimum manoeuvring speed (the amber band), with a stick shaker and a pitch-limit indicator on the PFD; the nose comes up past VMO/MMO; past 35° of bank it rolls back to 30° once you let go. Holding full input overrides each one.
+  - **Flaps:** Boeing's detents (787: UP, 1, 5, 10, 15, 17, 18, 20, 25, 30; 777: UP, 1, 5, 15, 20, 25, 30). `[` and `]` step through them on any aircraft; 6 to 0 go to UP, 5, 15, 20, 30.
+- **Boeing's flight deck on screen:** an MCP in place of the FCU (with the same typing and scrolling), and Boeing's PFD with its three-part mode annunciator, ND and EICAS.
+  - **More than the A321's autopilot does:** LNAV follows the map's route, a simple VNAV, FLCH, V/S, and APP, which captures the ILS and lands by itself, down the centreline to 30 kt, where it hands back. (No autobrake: you brake.)
+  - **The autothrottle:** O is TO/GA: the levers go to take-off thrust, then HOLD above 80 kt. R and F move the levers against it, and it takes them back a second after you let go; X turns it off. There's no alpha floor: armed, it wakes near the stick shaker, except in FLCH with HOLD, as on the real aircraft, and that one can catch you out.
+- **The wings bend with the lift,** rising through the rotation: the 787's by a couple of metres at the tips in cruise, the stiffer 777's less.
+- **Widebody stands:** the setup lists only the stands a widebody fits (Incheon's code F stands first), parked aircraft are kept clear of yours, and the pushback swings wider. At tight corners on the taxi lines you'll need to swing wide yourself.
+
 ## v0.2.2 · 2026-11-04 · Engines that sound like the A321's, the autothrust moving the thrust levers, the Cockpit button
 
 - **New engine sound.** Each engine was one steady tone over a low rumble. Now it's built from what makes a real LEAP-1A's sound, at its real frequencies:

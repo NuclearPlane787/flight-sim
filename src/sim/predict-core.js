@@ -24,15 +24,15 @@ export function terrainGround(hf) {
 }
 
 // Sets up a run. Call run.advance(n) until it returns true; run.samples holds the result
-// and run.reason why it stopped ('time' | 'fuel' | 'map' | 'crash' | 'terrain').
+// and run.reason why it stopped ('time' | 'fuel' | 'map' | 'crash' | 'terrain' | 'landed').
 // hf: an optional heightfield (heightfield.js); without it the ground is flat sea.
 export function createPredictionRun(snap, opts = {}, hf = null) {
   const o = { ...PREDICT_DEFAULTS, ...opts };
   const ground = hf ? terrainGround(hf) : seaGround;
-  const sim = createSim({ ground });
+  const sim = createSim({ ground, type: snap.type });
   sim.restore(snap);
   // Hands off the stick: the path is what the AP flies.
-  sim.controls.pitch = 0; sim.controls.roll = 0; sim.controls.yaw = 0;
+  sim.controls.pitch = 0; sim.controls.roll = 0; sim.controls.yaw = 0; sim.controls.trim = 0;
   const S = sim.state;
   const t0 = S.t;
   const tEnd = t0 + o.maxMinutes * 60;
@@ -50,6 +50,11 @@ export function createPredictionRun(snap, opts = {}, hf = null) {
           samples.push({ t: S.t, x: S.pos.x, y: S.pos.y, z: S.pos.z, snap: sim.snapshot() });
         }
         let why = '';
+        // A Boeing's autoland (v0.3.0): the path ends on the runway. The worker's ground has no runways,
+        // so without this it would read as flying into the terrain (or as ditching, over the flat sea).
+        const autoland = sim.ap.vertical === 'FLARE' || sim.ap.lateral === 'ROLLOUT';
+        if (autoland && (S.onGround || S.crashed === 'ditched')) why = 'landed';
+        else
         // Contact with land (a crash, or wheels down off a runway) ends the path at the terrain.
         if (hf && (S.crashed || S.onGround) && ground(S.pos.x, S.pos.y).kind === 'ground') why = 'terrain';
         else if (S.crashed) why = 'crash';

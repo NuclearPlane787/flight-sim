@@ -13,6 +13,11 @@
 // to every taxiway end that stops at its edge. Entering and leaving a runway costs
 // RUNWAY_CROSS_PENALTY in total; rolling along it costs double its length.
 
+import { createPushback, pushbackPoses, REF_WHEELBASE } from './pushback.js';
+import { AIRLINER_TYPES } from '../world/traffic-models.js';
+import { standHeading, apronIndex, pointInPoly, footprint, sizedFootprint, rectsOverlap,
+  standObstacles, footprintBlocked, CLEAR, WINGTIP_CLEARANCE } from '../world/traffic-layout.js';
+
 const SNAP_M = 15;            // join ends / crossings closer than this
 const END_SNAP_M = 25;        // a polyline end this close to another polyline joins it (T-junction)
 const RUNWAY_JOIN_M = 35;     // a taxiway end this far beyond a runway edge joins the runway
@@ -508,4 +513,195 @@ export function freeStand(airport, occupied = [], nearXY = null) {
   let best = free[0];
   for (const s of free) if (score(s) < score(best)) best = s;
   return best;
+}
+
+// ---- stands by aircraft size (v0.3.0) ----
+//
+// The stand data has no size, so a stand's fit for a code E aircraft is worked out from the map:
+//   1. the aircraft on the stop mark clears the buildings and the runway strips;
+//   2. it stands on pavement (the mapped aprons; a wingtip may overhang their edge);
+//   3. it frees at most MAX_FREED neighbours (traffic.setPlayerStand does the freeing). More than
+//      that isn't a stand, it's a row of narrowbody stands;
+//   4. a taxi line lies far enough behind it (pushMinBack) and joins the rest of the network;
+//   5. the pushback onto it, nose either way along the line, ends on the taxi lines and clears
+//      the buildings on the way.
+// The eAIP (AIP AMDT 11/26, AD 2) adds what the map can't say, in AIP_STANDS.
+
+const CLASS_SPAN = { E: 65 };   // m, ICAO's wingspan limit for each code letter handled here
+const MAX_FREED = 4;
+const MIN_APRON = 0.85;         // share of the sample points on an apron
+const FUSELAGE_MARGIN = 1.5;    // m, to a wall (a stop mark is close to the terminal on purpose)
+const TAIL_MARGIN = 3;          // m, tailplane to a wall
+const PUSH_END_M = 8;           // m, how far off the taxi lines a pushback may end
+
+// exclude(ref): no code E here, whatever the geometry says. prefer: stands to offer first, best
+// first. Each with its reason, from the eAIP's AD 2.20 unless noted.
+const AIP_STANDS = {
+  // Gimpo: the 500s to 900s are the West apron and the helicopter and GA spots, reached over W1,
+  // W2, T and S, all "up to code letter B" (§1.7). The widebodies use the International Terminal
+  // (North apron), stands 34 to 39.
+  RKSS: {
+    exclude: (ref) => { const n = parseInt(ref, 10); return n >= 500 && n <= 999; },
+    prefer: ['36', '37', '38', '39;301', '35', '34'],
+  },
+  // Jeju: spots 64 and 65 are "enable up to A321", 62 "up to B767" (§4 De-icing). No list of code
+  // E stands is published; these gates have hydrant fuel (AD 2.4), which is our reason to start there.
+  RKPC: {
+    exclude: (ref) => ['R62', 'R64', 'R65'].includes(ref),
+    prefer: ['13', '15', '17', '18'],
+  },
+  // Incheon: the stands the AIP clears for code F (§11.5), so code E certainly fits.
+  RKSI: {
+    exclude: () => false,
+    prefer: ['233', '234', '236R', '231', '232', '225', '224', '264', '265', '266', '267', '268', '258R', '261R', '239R', '275',
+      '8', '10', '12', '15', '17', '43', '46', '106', '110', '112', '122', '126'],
+  },
+};
+
+// How far behind the reference point the taxi line must be: past the tail, as it stands parked,
+// so the aircraft isn't pushed round onto a line that runs beneath its own stand. 30 m is the
+// A321neo's, whose tail is shorter than that.
+export function pushMinBack(geo) {
+  return Math.max(30, geo.LENGTH - geo.NOSE_X + 5);
+}
+
+// The taxi line behind a point looking along hdg: the first the backward ray meets minS to maxS
+// back, skipping any that run along the ray, such as the stand's own lead-in. Or null.
+export function lineBehind(g, x, y, hdg, minS = 30, maxS = 250) {
+  const bx = -Math.sin(hdg), by = -Math.cos(hdg);
+  let best = null;
+  for (const e of g.edges) {
+    if (e.dead || e.axis || e.runway) continue;
+    const A = g.nodes[e.a], B = g.nodes[e.b];
+    const ex = B.x - A.x, ey = B.y - A.y, el = Math.hypot(ex, ey);
+    if (el < 1 || Math.abs((ex * bx + ey * by) / el) > 0.8) continue;
+    const den = bx * ey - by * ex;
+    const s = ((A.x - x) * ey - (A.y - y) * ex) / den;      // along the ray
+    const t = ((A.x - x) * by - (A.y - y) * bx) / den;      // along the edge
+    if (t < 0 || t > 1 || s < minS || s > maxS) continue;
+    if (!best || s < best.s) best = { s, x: x + bx * s, y: y + by * s, hdg: Math.atan2(ex, ey), edge: e };
+  }
+  return best;
+}
+
+// The pushback, planned against the real (often curved) taxi line: run it ahead of time, see
+// where it ends, and plan again against the line at that spot. A longer aircraft's wider arc can
+// swing that next try onto a far line, so for one the try that ends nearest a line is kept.
+export function planPushback(g, st, push, prefer, wheelbase, dt = 0.1) {
+  if (!push) return createPushback(st, { wheelbase });
+  const keepBest = wheelbase > REF_WHEELBASE;
+  let L = { x: push.x, y: push.y, hdgGrid: push.hdg }, pbk = null, best = null, bestD = Infinity;
+  for (let it = 0; it < 4; it++) {
+    pbk = createPushback(st, { line: L, preferHdgGrid: prefer, wheelbase });
+    const trial = createPushback(st, { line: L, preferHdgGrid: prefer, wheelbase });
+    trial.toggle();
+    let o = null;
+    for (let i = 0, n = Math.round(600 / dt); i < n && !(o && o.done); i++) o = trial.update(dt, {});
+    const at = snapToGraph(g, o.x, o.y);
+    if (keepBest && at && at.d < bestD) { best = pbk; bestD = at.d; }
+    if (!at || at.d < 1 || at.edge.axis || at.edge.runway) break;
+    const A = g.nodes[at.edge.a], B = g.nodes[at.edge.b];
+    L = { x: at.x, y: at.y, hdgGrid: Math.atan2(B.x - A.x, B.y - A.y) };
+    prefer = o.hdgGrid;   // keep the way the nose ended up pointing
+  }
+  return best || pbk;
+}
+
+// The nodes that can reach a runway.
+function reachesRunway(g) {
+  const seen = new Uint8Array(g.nodes.length), todo = [];
+  g.nodes.forEach((n, i) => { if (n.runway) { seen[i] = 1; todo.push(i); } });
+  while (todo.length) {
+    const n = todo.pop();
+    for (const e of g.nodes[n].edges) {
+      const m = e.a === n ? e.b : e.a;
+      if (!seen[m]) { seen[m] = 1; todo.push(m); }
+    }
+  }
+  return seen;
+}
+
+const fitCache = new WeakMap();   // airport → { g, seen, heads, obs, aprons, lists: Map }
+
+function fitContext(airport) {
+  let c = fitCache.get(airport);
+  if (!c) {
+    const aprons = apronIndex(airport);
+    const g = buildTaxiGraph(airport);
+    c = { g, seen: reachesRunway(g), aprons, obs: standObstacles(airport), lists: new Map(),
+      heads: new Map((airport.stands || []).map((s) => [s, standHeading(airport, s, aprons)])) };
+    fitCache.set(airport, c);
+  }
+  return c;
+}
+
+function onApron(aprons, x, y) {
+  for (const a of aprons) {
+    if (x < a.bb[0] || x > a.bb[2] || y < a.bb[1] || y > a.bb[3]) continue;
+    if (pointInPoly(x, y, a.P)) return true;
+  }
+  return false;
+}
+
+// Does an aircraft of this size and geometry fit stand s? See the list above.
+function standFits(airport, c, s, size, geo) {
+  const h = c.heads.get(s), fx = Math.sin(h), fy = Math.cos(h);
+  const body = [sizedFootprint(size, s.x, s.y, h, FUSELAGE_MARGIN)[0],
+    sizedFootprint(size, s.x, s.y, h, WINGTIP_CLEARANCE)[1], sizedFootprint(size, s.x, s.y, h, TAIL_MARGIN)[2]];
+  if (footprintBlocked(body, c.obs)) return false;
+
+  let n = 0, on = 0;
+  const test = (x, y) => { n++; if (onApron(c.aprons, x, y)) on++; };
+  for (let d = 5; d <= size.length; d += 5) test(s.x - fx * d, s.y - fy * d);
+  const mid = size.length / 2;
+  for (const k of [-0.9, -0.6, -0.3, 0.3, 0.6, 0.9]) test(s.x - fx * mid + fy * k * size.span / 2, s.y - fy * mid - fx * k * size.span / 2);
+  if (on / n < MIN_APRON) return false;
+
+  const me = sizedFootprint(size, s.x, s.y, h, WINGTIP_CLEARANCE - CLEAR);
+  const reach = size.length + 60;
+  let freed = 0;
+  for (const t of airport.stands) {
+    if (t === s || Math.abs(t.x - s.x) > reach + size.span || Math.abs(t.y - s.y) > reach + size.span) continue;
+    const fp = footprint(AIRLINER_TYPES[0], t.x, t.y, c.heads.get(t), 1, CLEAR);
+    if (me.some((a) => fp.some((b) => rectsOverlap(a, b))) && ++freed > MAX_FREED) return false;
+  }
+
+  const st = { x: s.x - fx * geo.NOSE_X, y: s.y - fy * geo.NOSE_X, hdgGridDeg: h * 180 / Math.PI };
+  const L = lineBehind(c.g, st.x, st.y, h, pushMinBack(geo));
+  if (!L || !c.seen[L.edge.a]) return false;
+  const walls = { polys: c.obs.polys, strips: [] };   // a line beside a runway is fine
+  for (const way of [L.hdg, L.hdg + Math.PI]) {
+    // A coarser time step than the flight's: this runs for every stand, and only has to judge.
+    const poses = pushbackPoses(st, planPushback(c.g, st, L, way, geo.WHEELBASE, 0.5).state, 2, 0.5);
+    const [ex, ey] = poses[poses.length - 1];
+    if (snapToGraph(c.g, ex, ey).d > PUSH_END_M) return false;
+    for (const [x, y, ph] of poses) {
+      const nx = x + Math.sin(ph) * geo.NOSE_X, ny = y + Math.cos(ph) * geo.NOSE_X;
+      if (footprintBlocked(sizedFootprint(size, nx, ny, ph), walls)) return false;
+    }
+  }
+  return true;
+}
+
+// The stands an aircraft type can use. Below code E (or with no type): every stand, the data's own
+// array in the data's order, as ever. Code E: those that fit, the AIP's preferred ones first, then
+// in the data's order. Worked out once per airport and size. Don't change the array you get.
+//   typeDef = { icaoCode, geo: { SPAN, LENGTH, NOSE_X, ... } }
+export function standsFor(airport, typeDef) {
+  const all = airport?.stands || [];
+  const classSpan = CLASS_SPAN[typeDef?.icaoCode];
+  if (!classSpan || !typeDef.geo || !all.length) return all;
+  const geo = typeDef.geo;
+  const c = fitContext(airport);
+  const size = { span: Math.max(classSpan, geo.SPAN), length: geo.LENGTH };
+  const key = `${size.span}|${size.length}|${geo.NOSE_X}`;
+  let list = c.lists.get(key);
+  if (!list) {
+    const rules = AIP_STANDS[airport.icao];
+    const fits = all.filter((s) => !rules?.exclude(s.ref) && standFits(airport, c, s, size, geo));
+    const rank = (s) => { const i = rules ? rules.prefer.indexOf(s.ref) : -1; return i < 0 ? Infinity : i; };
+    list = fits.map((s, i) => [rank(s), i, s]).sort((p, q) => (p[0] - q[0]) || (p[1] - q[1])).map((p) => p[2]);
+    c.lists.set(key, list);
+  }
+  return list;
 }

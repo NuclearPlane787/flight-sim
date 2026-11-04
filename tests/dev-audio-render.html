@@ -14,7 +14,27 @@ call <code>runAll()</code> in the console to see the numbers.</p>
 <pre id="out"></pre>
 <script type="module">
 // ?synth=<url> renders another copy of the synth (v0.2.2: an older one, to compare).
-const { createSynth } = await import(new URLSearchParams(location.search).get('synth') || '../src/audio/synth.js');
+const params = new URLSearchParams(location.search);
+const synthModule = await import(params.get('synth') || '../src/audio/synth.js');
+const { createSynth } = synthModule;
+
+// ?type=<id> renders that aircraft type's engine (v0.3.0); without it, the A321neo as always. A
+// widebody reads its entry in the registry; until that entry has its `sound` (or exists at all: the
+// 777-300ER joins later), the spec and the rest come from here, so its sound can be checked now.
+const TYPE = params.get('type') || 'a321neo';
+let def = null;
+if (TYPE !== 'a321neo') {
+  const [{ TYPES }, { GENX_1B, GE90_115B }] = await Promise.all([import('../src/sim/types.js'), import('../src/audio/engine-sounds.js')]);
+  const pending = { 'b787-9': { sound: GENX_1B }, 'b777-300er': { sound: GE90_115B, orbitDist: 115 } }[TYPE];
+  if (!TYPES[TYPE] && !pending) throw new Error(`unknown type ${TYPE}`);
+  def = { ...pending, ...TYPES[TYPE] };
+  if (!def.sound) def.sound = pending.sound;
+}
+const SPEC = def ? def.sound : synthModule.LEAP_1A || { n1Hz: 3894 / 101 / 60, fanBlades: 18 };
+// What this type's engines do on a take-off (engines.js); the A321's clips keep their v0.2.2 values.
+const CLIP_N1 = def ? def.data?.N1_TOGA ?? 97 : 95;
+const TAU = def ? [def.data?.SPOOL_TAU_LOW ?? 3, def.data?.SPOOL_TAU_HIGH ?? 1.1] : [2.6, 0.9];
+const ORBIT = def ? def.orbitDist ?? 105 : 75;
 
 const SR = 48000;
 const FPS = 60;
@@ -93,21 +113,22 @@ SCEN['landing-in'] = { dur: 14, step(s, t, o) { SCEN['landing-out'].step(s, t, o
 function spooler() {
   let n = 20.5;
   return (target) => {
-    const f = Math.max(0, Math.min(1, (n - 20) / 76)), tau = 2.6 + (0.9 - 2.6) * f;
+    const f = Math.max(0, Math.min(1, (n - 20) / 76)), tau = TAU[0] + (TAU[1] - TAU[0]) * f;
     n += (target - n) * Math.min(1, (1 / FPS) / tau);
     return n;
   };
 }
 // The views: the cockpit (inside); the nose camera (outside, in front of the engines: aft −1,
-// 20 m); 3rd person at its default 75 m, from behind and to the side (aft 0.5) or abeam (0).
+// 20 m); 3rd person at its default distance (the type's; the A321's is 75 m), from behind and to
+// the side (aft 0.5) or abeam (0).
 const VIEW = { cockpit: { inside: true }, nose: { inside: false, aft: -1, dist: 20 },
-  orbitBehind: { inside: false, aft: 0.5, dist: 75 }, orbitSide: { inside: false, aft: 0, dist: 75 } };
+  orbitBehind: { inside: false, aft: 0.5, dist: ORBIT }, orbitSide: { inside: false, aft: 0, dist: ORBIT } };
 function takeoff(view) {
   let sp;
   return { dur: 34, step(s, t, o) {
     if (t === 0) sp = spooler();
     Object.assign(o, VIEW[view]);
-    n1(s, sp(t < 3 ? 20.5 : 95));
+    n1(s, sp(t < 3 ? 20.5 : CLIP_N1));
     const v = t < 4 ? 0 : Math.min(160, (t - 4) * 2.6 / KT * 1);   // 2.6 m/s² from 4 s
     s.ias = s.gs = Math.min(v, 160) * KT;
     s.onGround = t < 31; s.vs = t < 31 ? 0 : 4; s.gearPos = t < 33 ? 1 : 1 - (t - 33) / 6;
@@ -143,6 +164,7 @@ async function render(name) {
   const len = Math.round(sc.dur * SR);
   const ctx = new OfflineAudioContext(2, len, SR);
   const synth = createSynth({ context: ctx });
+  if (def) synth.setType(def);
   await synth.start();
   const s = baseState();
   const o = { inside: true, timeScale: 1, paused: false };
@@ -282,20 +304,20 @@ window.runAudio = async () => {
   timing.calls = 0; timing.ms = 0; timing.max = 0;
   const r = await runAll();
   const m = (name, t0, t1, lo, hi) => measure(r[name].pcm, t0, t1, lo, hi);
-  const out = { scen: {}, seg: {}, timing: { avgMs: timing.ms / timing.calls, maxMs: timing.max, calls: timing.calls } };
+  const out = { type: TYPE, spec: SPEC, scen: {}, seg: {}, timing: { avgMs: timing.ms / timing.calls, maxMs: timing.max, calls: timing.calls } };
   for (const [k, v] of Object.entries(r)) out.scen[k] = { peak: v.whole.peak, nan: v.whole.nan, click: v.click, win: v.win };
   const seg = out.seg;
   seg.idleOut = m('idle-out', 1, 3); seg.idleIn = m('idle-in', 1, 3);
   seg.togaOut = m('toga-out', 1, 3); seg.togaIn = m('toga-in', 1, 3);
   seg.cruiseOut = m('cruise-out', 1, 3); seg.cruiseIn = m('cruise-in', 1, 3);
   seg.spool = [];
-  // From 150 Hz (v0.2.2): the fan's blade-passing tone is 237 Hz at idle (18 blades).
+  // From 150 Hz (v0.2.2): the fan's blade-passing tone is 237 Hz at idle (the A321's 18 blades).
   for (let t = 0.5; t < 8.5; t += 1) seg.spool.push(m('spoolup-out', t, t + 1, 150, 2500));
-  // v0.2.2: the blade-passing tone where it should be (18 × the N1 shaft's 0.6426 Hz per %),
+  // v0.2.2: the blade-passing tone where it should be (the blades × the N1 shaft's Hz per %),
   // about the middle of each second of the spool-up (N1 20.5 → 95 % from 0.5 to 8.5 s; the
   // synth follows 0.1 s behind). The best of seven windows 0.1 s apart: the two engines' tones
   // beat (at 1 kHz, 1.5 times a second), and at a trough the tone dips.
-  const bpfAt = (t) => 18 * 3894 / 101 / 60 * (20.5 + (95 - 20.5) * Math.min(1, Math.max(0, (t - 0.6) / 8)));
+  const bpfAt = (t) => SPEC.fanBlades * SPEC.n1Hz * (20.5 + (95 - 20.5) * Math.min(1, Math.max(0, (t - 0.6) / 8)));
   seg.bpf = [];
   for (let t = 1; t < 8.5; t += 1) {
     let db = -99;
@@ -325,6 +347,15 @@ window.runAudio = async () => {
   return out;
 };
 window.runAll = runAll;
+// n independent renders of the landing: the door clunk's rise each time (dB), for the noise's spread.
+window.doorTrials = async (n) => {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const r = await render('landing-out');
+    out.push(+(measure(r, 1.53, 1.61).rms - measure(r, 1.42, 1.5).rms).toFixed(2));
+  }
+  return out;
+};
 
 // A scenario or clip as a 16-bit stereo WAV file, base64 (tests/audio-clips.mjs saves them),
 // with its level and peak.

@@ -3,6 +3,7 @@
 //   const traffic = createTraffic(scene, uniforms, chunks, airports, heightfield);
 //   each rendered frame:  traffic.update({ camera, origin, dt })  → { drawCalls, triangles }
 //   traffic.setPlayerStand('RKSS', '12')   frees that stand (and any overlapping one); null clears
+//   traffic.setPlayerStand('RKSS', '36', { span, length })   the same for an aircraft of that size
 //
 // At night (uNight > 0) each type adds one instanced Points draw: the parked aircraft's
 // navigation lights (red left wingtip, green right, white tail), sharing the shadow's
@@ -560,11 +561,12 @@ export function createTraffic(scene, uniforms, chunks, airports, heightfield = n
       return { drawCalls: calls, triangles: tris };
     },
 
-    // Keep the player's stand free: hide the parked aircraft there and any it would overlap.
-    setPlayerStand(icao, ref) {
+    // Keep the player's stand free: hide the parked aircraft there and any it would overlap
+    // (with opts = { span, length }: any within wingtip clearance of an aircraft that size).
+    setPlayerStand(icao, ref, opts = null) {
       for (const s of sites) {
         const before = s.hidden;
-        s.hidden = s.a.icao === icao && ref != null ? blockedByPlayer(s.a, s.parked, ref) : new Set();
+        s.hidden = s.a.icao === icao && ref != null ? blockedByPlayer(s.a, s.parked, ref, opts) : new Set();
         if (before.size !== s.hidden.size || [...before].some((i) => !s.hidden.has(i))) packAirliners();
       }
     },

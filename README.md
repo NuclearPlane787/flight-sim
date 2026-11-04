@@ -1,13 +1,13 @@
 # Flight Sim
 
-An A321neo over South Korea, flown between Incheon, Gimpo and Jeju, over real coastline and elevation with procedural fine detail. It has:
+Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), flown between Incheon, Gimpo and Jeju, over real coastline and elevation with procedural fine detail. It has:
 
-- realistic physics with fly-by-wire;
+- realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777;
 - a holds-only autopilot with up to 16× time compression;
 - a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
 - gate starts with pushback and a taxi route drawn on the ground;
 - parked aircraft and ground vehicles at the airports;
-- synthesised engine sound built from the LEAP-1A's real tones (the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
+- synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
 `Updates.md` lists what each version added; the game shows its version in the pause menu.
 
@@ -52,7 +52,10 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | Space (hold) | wheel brakes |
 | B | parking brake |
 | G | gear lever |
-| 6 / 7 / 8 / 9 / 0 | flap lever 0, 1, 2, 3, FULL |
+| 6 / 7 / 8 / 9 / 0 | flap lever: A321neo 0, 1, 2, 3, FULL; Boeings UP, 5, 15, 20, 30 |
+| [ / ] | flap lever one detent up / down (every type) |
+| H / Y (hold) | Boeings: pitch trim nose up / nose down (it moves the speed the aircraft holds) |
+| O | Boeings: TO/GA (take-off thrust on the ground, a go-around in the air) |
 | C | speed brakes in / out |
 | Shift+C | arm ground spoilers |
 | Z | autopilot on / off |
@@ -69,6 +72,8 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | drag on the view (one finger) / pinch / double-click | look around, or orbit in 3rd person / zoom / recentre; a two-finger swipe also looks or orbits |
 
 The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min). Esc, a click elsewhere or a flying key closes it unchanged. The strip also has the AP1 and A/THR buttons and the Normal/Alternate law switch.
+
+On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, IAS/MACH (it shows Mach above FL260, and it's blank in VNAV), LNAV, VNAV, FLCH, HDG (HDG SEL, HDG HOLD), V/S, ALT (ALT HOLD), LOC, APP, A/P and TO/GA. Pressing Enter on a window pushes it: HDG to HDG SEL, ALT to FLCH, V/S to V/S.
 
 ## Flying tips
 
@@ -90,16 +95,37 @@ The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to tur
   5. Pull the levers to idle when you hear RETARD.
   6. On the ground, hold F for reverse and Space for the brakes.
 - **Levers at TOGA** start a go-around at any point.
+- **On a Boeing:** trim to the speed you want before you let go (H nose up, Y nose down). Pull the flare yourself from about 30 ft, and there's no RETARD call. With APP armed and the autopilot on it lands itself, and hands back below 30 kt: you brake (there's no autobrake).
 
 ## Known issues
 
 - No agent has listened to the sound: the levels and the engines' frequencies are measured (`tests/audio-render.mjs`), not judged by ear. `tests/audio-clips.mjs` renders flight phases to listen to.
-- The predicted path is a straight line on the selected heading, because the autopilot has holds only (route following is on the roadmap).
+- On the A321neo the predicted path is a straight line on the selected heading, because its autopilot has holds only (route following is on the roadmap). A Boeing's follows LNAV and its ILS.
+
+## Types
+
+| | A321neo | 787-9 | 777-300ER |
+|---|---|---|---|
+| Engines | CFM LEAP-1A | GE GEnx-1B | GE GE90-115B |
+| Control law | Airbus: load-factor demand, auto-trim, hard protections | Boeing: speed-stable about the trim, soft protections | the same as the 787 |
+| Flap detents | 0, 1, 1+F, 2, 3, FULL | UP, 1, 5, 10, 15, 17, 18, 20, 25, 30 | UP, 1, 5, 15, 20, 25, 30 |
+| Numbers | `src/sim/a321neo.js`, `reference/notes/a321neo-performance.md` | `src/sim/b787-9.js`, `reference/notes/b787-9-performance.md` | `src/sim/b777-300er.js`, `reference/notes/b777-300er-performance.md` |
+| Sources | EASA TCDS A.064, Airbus AC | EASA TCDS IM.A.115, Boeing D6-58333, EASA TCDS IM.E.102 | EASA TCDS IM.A.003, Boeing D6-58329-2, EASA TCDS IM.E.002 |
+
+**Flying a Boeing:** trim for the speed you want (H, Y), and it holds that speed hands off. Thrust moves the nose, and flaps and gear slow you only if you trim down too. Flare with back pressure; nothing does it for you.
 
 ## Code map
 
 | Path | What |
 |---|---|
+| `src/sim/types.js` | the type registry: each type's data, geometry and what the screens say (`typeById`, `kitFor`, `TYPE_LIST`) |
+| `src/type-assets.js` | each type's model and cockpit builders (the page only) |
+| `src/sim/b787-9.js`, `src/sim/b777-300er.js`, `src/geometry-b787-9.js`, `src/geometry-b777-300er.js` | the Boeings' numbers and geometry |
+| `src/sim/fbw-boeing.js`, `src/sim/autopilot-boeing.js` | Boeing's C*U law, the trim and soft protections; the autothrottle and the MCP's modes, LOC, G/S, autoland (`reference/notes/boeing-fbw-ap.md`) |
+| `src/widebody.js`, `src/widebody-shape.js`, `src/widebody-specs.js`, `src/livery-widebody.js` | the widebodies' exterior and livery, from one spec per type |
+| `src/cockpit-boeing.js`, `src/cockpit-windows-boeing.js` | the widebodies' cockpit and windows |
+| `src/ui/boeing/`, `src/ui/knobs.js` | Boeing's PFD, ND, EICAS and MCP; the knobs the MCP and FCU share |
+| `src/audio/engine-sounds.js` | the GEnx-1B's and GE90-115B's numbers for the synth |
 | `index.html`, `style.css` | the page, the pause, crash and score panels |
 | `src/main.js` | boot, the frame loop (fixed 1/120 s physics, 60 fps cap, physics budget), time compression, rewind, jumps, skip to final, test hooks |
 | `src/version.js` | the version the game shows, bumped with every update (see `Updates.md`; commits are titled with the version, `sh tools/push.sh v0.1.1`) |
@@ -156,6 +182,7 @@ All in localStorage, under `gamedump:flight-sim:`:
 
 The baked files in `data/` keep those licences: the OpenStreetMap-derived ones (coast, water, land cover, airports) are under the ODbL, and the elevation is under the Copernicus DEM licence.
 - The A321neo's numbers come from Airbus (the A321 Aircraft Characteristics document and the A321neo page) and EASA (TCDS EASA.A.064). Sources and pages are in `src/sim/a321neo.js`.
+- The 787-9's come from EASA (TCDS IM.A.115, IM.E.102) and Boeing (D6-58333), the 777-300ER's from EASA (TCDS IM.A.003, IM.E.002) and Boeing (D6-58329-2), with sources and pages in `src/sim/b787-9.js` and `src/sim/b777-300er.js`. What those don't give is marked as an estimate or a weaker source there. Those PDFs aren't in the repository.
 - The stars: the Yale Bright Star Catalogue, 5th revised edition (Hoffleit and Warren 1991), from NASA's HEASARC, public domain (`data/STARS-CREDIT.md`). The sun and Moon follow Jean Meeus, *Astronomical Algorithms*.
 - three.js r186 (MIT), in `vendor/`.
 - B612 and B612 Mono (© The B612 Project Authors) and Barlow (© The Barlow Project Authors), under the SIL Open Font Licence 1.1, in `vendor/fonts/` with their licence texts.

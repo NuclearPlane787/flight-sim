@@ -1,10 +1,10 @@
 # Flight Sim: read this first
 
-Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D A321neo sim of South Korea, flown between Incheon, Gimpo and Jeju. GameDump's root `AGENTS.md` (the house rules) applies on top of this file.
+Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D airliner sim of South Korea (the A321neo, 787-9 and 777-300ER), flown between Incheon, Gimpo and Jeju. GameDump's root `AGENTS.md` (the house rules) applies on top of this file.
 
 **Picking the game up? Read `HANDOFF.md` first:** where things stand, what's next (v0.2.0's decisions), and how the Cowork sessions checked their work (`tests/cloud/`).
 
-**Building v0.2.0 overnight? `V020.md` is the brief:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
+**Building v0.3.0 overnight? `V030.md` is the brief:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
 
 ## Files
 
@@ -12,6 +12,7 @@ Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D A321neo sim of South
 |---|---|
 | `HANDOFF.md` | Where things stand, what's next, and how to work on the game from a Cowork session. Read it first. |
 | `V020.md` | The brief for v0.2.0 (the main menu and scenarios, then night), an overnight Claude Code run. |
+| `V030.md` | The brief for v0.3.0 (aircraft types, then the Boeing 787-9 and 777-300ER), an overnight Claude Code run. |
 | `PLAN.md` | The design: Shane's decisions (final) and how each part is built. The spec for everything. |
 | `STATUS.md` | The progress log. Append a checkpoint after every step, and read it after any context compaction. |
 | `ROADMAP.md` | Milestones M1–M3 with a Done column, and the future additions. |
@@ -35,7 +36,8 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **v0.2.0** (2026-11-01, an overnight Claude Code run, 04:10–05:30 KST): the main menu and scenarios (`src/scenarios.js`, `src/ui/menu.js`; a scenario is a save slot with the whole state), one logbook tagged by scenario, then night: the KST clock and the Sky window (`src/clock.js`, `src/ui/sky-window.js`, L or Cmd/Ctrl+L), Earth's sky (`src/astro.js`, `src/world/sky.js`, BSC5 stars), and city, airport and aircraft lights. `V020.md` was the brief; `STATUS.md` has the evidence.
 - **v0.2.1** (2026-11-03, a Cowork session): Shane's three fixes. Taxiways stop at the runways' drawn edges, with their centrelines carried across as lead lines (`drawnRunwayRects()`, `clipSoupOutside()`, `splitPolyline()` in `world/apron-geom.js`); Change route on the map (`ui/map.js`; `changeRoute()` in `main.js`), and waypoints dragged in flight now show (`view.waypoints` is the map's); the view switch at the top right (`ui/hud.js`; 1, 2, 3). Then two more he grouped in: one-finger drag to look around or orbit (`camera.js`), and more stars (`fillStars()` and `starBrightness()` in `world/sky.js`).
 - **v0.2.2** (2026-11-04, the same Cowork session): Shane's three fixes. The engine sound rebuilt from the LEAP-1A's real tones (`audio/synth.js`: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar); the A/THR moves the thrust lever and the N1 ring, and R/F take it over smoothly (`athrStep()` in `sim/autopilot.js`, `input.js`, `ui/engines-panel.js`); Cockpit (1) no longer swaps seats (`selectView()` in `main.js`).
-- **Next:** not decided; the future additions are in `ROADMAP.md`.
+- **v0.3.0** (2026-11-04, an overnight Claude Code run; `V030.md` was the brief): aircraft types (`src/sim/types.js`, `src/type-assets.js`, `useType()` in `main.js`), with the A321neo unchanged (`tests/golden-a321.test.mjs`), then the Boeing 787-9 and 777-300ER: their numbers (`src/sim/b787-9.js`, `b777-300er.js`), Boeing's law and autoflight (`fbw-boeing.js`, `autopilot-boeing.js`), `src/widebody*.js`, `src/cockpit-boeing.js`, `src/ui/boeing/`, `src/audio/engine-sounds.js`, code E stands (`standsFor()`). `STATUS.md` has the evidence and what's weak.
+- **Next:** nothing is decided. The future additions are in `ROADMAP.md`, with v0.3.0's leftovers in their own section.
 
 ## Versions, Updates.md and pushing
 

@@ -1,8 +1,10 @@
 // Gate starts, pushback and the taxi routes (PLAN.md → Airports → Gate starts).
 //
 //   const gate = createGateFlow({ sim, airports, findRunwayEnd, scene, uniforms, heightAt });
+//   gate.setType(typeDef)       // optional: the aircraft type; else sim.type, else the A321neo
 //   gate.start(plan)            // plan.start === 'gate': at plan.stand (or a free gate), brakes set
 //   gate.onKey('pushback')      // P: start / hold / continue the pushback
+//   gate.pushPath()             // where the planned pushback takes the nose, for the parked traffic
 //   gate.update(dt, controls)   // every frame, after the physics steps
 //   gate.afterLanding(state)    // every frame after touchdown: below 30 kt, a route to a stand
 //   gate.clear()                // runway and final starts: no route
@@ -14,20 +16,21 @@
 // The phases: 'none' → 'parked' → 'pushback' → 'taxi' → 'departed' (lined up or airborne);
 // after landing 'taxi-in' → 'arrived'.
 
-import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph } from './taxi.js';
-import { createPushback } from './pushback.js';
+import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, lineBehind, pushMinBack, planPushback } from './taxi.js';
+import { createPushback, pushbackPoses } from './pushback.js';
 import { createTaxiRoute } from '../world/taxiroute.js';
-import { NOSE_X } from '../geometry.js';
+import * as A321_GEO from '../geometry.js';
 
 const DEG = Math.PI / 180;
 const KT = 0.514444;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const dist = (ax, ay, bx, by) => Math.hypot(bx - ax, by - ay);
 
-// Stands for the setup screen: gates first, then by ref (numbers in number order).
-export function standList(airport) {
+// Stands for the setup screen: gates first, then by ref (numbers in number order). With a
+// typeDef, only the stands that type can use (taxi.js standsFor).
+export function standList(airport, typeDef = null) {
   const num = (r) => { const m = String(r).match(/\d+/); return m ? Number(m[0]) : 1e9; };
-  return (airport?.stands || []).filter((s) => s.ref).slice().sort((a, b) =>
+  return standsFor(airport, typeDef).filter((s) => s.ref).slice().sort((a, b) =>
     (b.gate - a.gate) || (num(a.ref) - num(b.ref)) || String(a.ref).localeCompare(String(b.ref)));
 }
 
@@ -42,9 +45,19 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   let lastTry = null; // where the last failed stand search was made: no retry until 50 m on
   let airport = null, stand = null, depEnd = null, depRect = null;
   let wasAirborne = false;
+  let forcedType = null;
+
+  // The aircraft: what setType gave, else the sim's own, else (a mock sim in a test) the A321neo.
+  const typeNow = () => forcedType || sim?.type || null;
+  const geoNow = () => typeNow()?.geo || A321_GEO;
+  const usable = (ap) => standsFor(ap, typeNow());
+  // The stand that goes by this ref. Some of Incheon's refs name two positions: take one that fits.
+  const standByRef = (ap, ref) => usable(ap).find((s) => s.ref === ref) || (ap.stands || []).find((s) => s.ref === ref);
 
   const flow = {
     onstatus: null,
+    setType(typeDef) { forcedType = typeDef || null; },
+    pushPath,
     start, onKey, update, afterLanding, afterRestore, clear, serialize, deserialize, afterLoad,
     get phase() { return phase; },
     get status() { return status; },
@@ -79,15 +92,17 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     airport = byIcao.get(plan.origin);
     if (!airport) throw new Error(`No airport ${plan.origin}`);
     const g = graphFor(airport);
-    stand = (airport.stands || []).find((s) => s.ref === plan.stand) || freeStand(airport, []);
+    stand = pickStand(airport, plan.stand);
     if (!stand) throw new Error(`No stands at ${plan.origin}`);
+    const { NOSE_X } = geoNow();
     const h0 = stand.hdgGridDeg * DEG;
     const fx = Math.sin(h0), fy = Math.cos(h0);
     // The nose on the stop point: the reference point is NOSE_X behind it.
     const rx = stand.x - fx * NOSE_X, ry = stand.y - fy * NOSE_X;
-    sim.reset({ x: rx, y: ry, hdg: h0, onGround: true, flapLever: 1, gearDown: true, parkingBrake: true,
+    const toFlap = sim.type?.data.TAKEOFF_FLAP_LEVER ?? 1;
+    sim.reset({ x: rx, y: ry, hdg: h0, onGround: true, flapLever: toFlap, gearDown: true, parkingBrake: true,
       fuelKg: plan.fuelKg, payloadKg: plan.payloadKg ?? ((plan.pax || 0) * 84 + (plan.cargoKg || 0)) });
-    sim.controls.flapLever = 1;
+    sim.controls.flapLever = toFlap;
     sim.controls.gearDown = true;
     sim.controls.parkingBrake = true;
     sim.controls.thrust = 0;
@@ -103,7 +118,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       const p = r.points, q = p.find((pt) => dist(pt[0], pt[1], p[0][0], p[0][1]) > 3) || p[p.length - 1];
       prefer = Math.atan2(q[0] - p[0][0], q[1] - p[0][1]);
     }
-    pb = planPushback(g, { x: rx, y: ry, hdgGridDeg: stand.hdgGridDeg }, push, prefer);
+    pb = planPushback(g, { x: rx, y: ry, hdgGridDeg: stand.hdgGridDeg }, push, prefer, geoNow().WHEELBASE);
     if (r) { r.kind = 'out'; r.stand = stand.ref; r.runway = depEnd.ident; r.text = taxiText(r, `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`); }
     show(r);
     phase = 'parked';
@@ -111,47 +126,40 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     return r;
   }
 
-  // The taxi line behind the aircraft: the first taxiway the backward ray meets 30–250 m
-  // back (not one running along the ray, such as the lead-in itself), else the nearest.
-  function pushLine(g, x, y, hdg) {
-    const bx = -Math.sin(hdg), by = -Math.cos(hdg), L = 250;
-    let best = null;
-    for (const e of g.edges) {
-      if (e.dead || e.axis || e.runway) continue;
-      const A = g.nodes[e.a], B = g.nodes[e.b];
-      const ex = B.x - A.x, ey = B.y - A.y, el = Math.hypot(ex, ey);
-      if (el < 1 || Math.abs((ex * bx + ey * by) / el) > 0.8) continue;
-      const den = bx * ey - by * ex;
-      const s = ((A.x - x) * ey - (A.y - y) * ex) / den;      // along the ray
-      const t = ((A.x - x) * by - (A.y - y) * bx) / den;      // along the edge
-      if (t < 0 || t > 1 || s < 30 || s > L) continue;
-      if (!best || s < best.s) best = { s, x: x + bx * s, y: y + by * s, hdg: Math.atan2(ex, ey) };
-    }
-    if (best) return best;
-    const at = snapToGraph(g, x + bx * 60, y + by * 60);
-    if (!at) return null;
-    const A = g.nodes[at.edge.a], B = g.nodes[at.edge.b];
-    return { s: 60, x: at.x, y: at.y, hdg: Math.atan2(B.x - A.x, B.y - A.y) };
+  // The stand for a gate start: plan's if this type can use it, else the usable one nearest to
+  // it, else (no stand asked for) the first free gate. If nothing at all fits, every stand.
+  function pickStand(ap, ref) {
+    const all = ap.stands || [], fits = usable(ap);
+    const pool = fits.length ? fits : all;
+    const hit = pool.find((s) => s.ref === ref);
+    if (hit) return hit;
+    const wanted = all.find((s) => s.ref === ref);
+    if (!wanted) return freeStand({ stands: pool }, []);
+    let best = null, bd = Infinity;
+    for (const s of pool) { const q = dist(s.x, s.y, wanted.x, wanted.y); if (q < bd) { bd = q; best = s; } }
+    return best;
   }
 
-  // The pushback, planned against the real (often curved) taxi line: run it ahead of
-  // time, see where it ends, and plan again against the line at that spot.
-  function planPushback(g, st, push, prefer) {
-    if (!push) return createPushback(st, {});
-    let L = { x: push.x, y: push.y, hdgGrid: push.hdg }, pbk = null;
-    for (let it = 0; it < 4; it++) {
-      pbk = createPushback(st, { line: L, preferHdgGrid: prefer });
-      const trial = createPushback(st, { line: L, preferHdgGrid: prefer });
-      trial.toggle();
-      let o = null;
-      for (let i = 0; i < 6000 && !(o && o.done); i++) o = trial.update(0.1, {});
-      const at = snapToGraph(g, o.x, o.y);
-      if (!at || at.d < 1 || at.edge.axis || at.edge.runway) break;
-      const A = g.nodes[at.edge.a], B = g.nodes[at.edge.b];
-      L = { x: at.x, y: at.y, hdgGrid: Math.atan2(B.x - A.x, B.y - A.y) };
-      prefer = o.hdgGrid;   // keep the way the nose ended up pointing
-    }
-    return pbk;
+  // The taxi line behind the aircraft: the first taxiway the backward ray meets far enough
+  // back for this aircraft and within 250 m (taxi.js lineBehind), else the nearest.
+  function pushLine(g, x, y, hdg) {
+    const minS = pushMinBack(geoNow());
+    const best = lineBehind(g, x, y, hdg, minS, 250);
+    if (best) return best;
+    const back = 60 * (minS / 30);
+    const at = snapToGraph(g, x - Math.sin(hdg) * back, y - Math.cos(hdg) * back);
+    if (!at) return null;
+    const A = g.nodes[at.edge.a], B = g.nodes[at.edge.b];
+    return { s: back, x: at.x, y: at.y, hdg: Math.atan2(B.x - A.x, B.y - A.y) };
+  }
+
+  // The nose's way along the planned pushback, [x, y, hdg] every few metres, for
+  // traffic.setPlayerStand's opts.path. Empty once it has gone.
+  function pushPath() {
+    if (!pb || !stand || phase !== 'parked') return [];
+    const noseX = geoNow().NOSE_X, h0 = stand.hdgGridDeg * DEG;
+    const st = { x: stand.x - Math.sin(h0) * noseX, y: stand.y - Math.cos(h0) * noseX, hdgGridDeg: stand.hdgGridDeg };
+    return pushbackPoses(st, pb.state).map(([x, y, h]) => [x + Math.sin(h) * noseX, y + Math.cos(h) * noseX, h]);
   }
 
   function onKey(action) {
@@ -192,7 +200,8 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       }
     } else if (phase === 'taxi-in' && route?.standXY) {
       const fx = Math.sin(s.hdg), fy = Math.cos(s.hdg);
-      const nx = s.pos.x + fx * NOSE_X, ny = s.pos.y + fy * NOSE_X;   // the nose (pos is the reference point)
+      const noseX = geoNow().NOSE_X;
+      const nx = s.pos.x + fx * noseX, ny = s.pos.y + fy * noseX;     // the nose (pos is the reference point)
       if (dist(nx, ny, route.standXY[0], route.standXY[1]) < 8 && s.gs < 1) {
         phase = 'arrived';
         line?.clear();
@@ -206,7 +215,8 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   function reroute() {
     if (!airport || !depEnd) return;
     const s = sim.state, g = graphFor(airport);
-    const r = routeFromStand(g, { x: s.pos.x + Math.sin(s.hdg) * 8, y: s.pos.y + Math.cos(s.hdg) * 8 }, depEnd);
+    const ahead = 8 * geoNow().NOSE_X / A321_GEO.NOSE_X;
+    const r = routeFromStand(g, { x: s.pos.x + Math.sin(s.hdg) * ahead, y: s.pos.y + Math.cos(s.hdg) * ahead }, depEnd);
     if (!r) return;
     Object.assign(r, { kind: 'out', stand: stand.ref, runway: depEnd.ident });
     r.text = taxiText(r, `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`);
@@ -279,7 +289,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
         if (o.phase !== 'parked' && o.phase !== 'pushback' && !o.pb) pb = null;
       } else if (ap) {
         airport = ap;
-        stand = o.stand != null ? (ap.stands || []).find((st) => st.ref === o.stand) || null : null;
+        stand = o.stand != null ? standByRef(ap, o.stand) || null : null;
         depEnd = o.depIdent ? endOf(ap, o.depIdent) : null;
         depRect = depEnd ? graphFor(ap).rects.find((r) => r.idents.includes(depEnd.ident)) : null;
         if (o.pb && stand) {
@@ -341,8 +351,11 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     exits.sort((p, q) => p.ahead - q.ahead);
     let best = null;
     for (const ex of exits.slice(0, 6)) {
-      // Skip stands with a parked aircraft (occupied(icao) gives their refs).
-      const st = freeStand(ap, occupied ? occupied(ap.icao) : [], [ex.O.x, ex.O.y]);
+      // Skip stands with a parked aircraft (occupied(icao) gives their refs). A widebody has few
+      // stands to choose from: if all are taken, one of them gets freed (traffic.setPlayerStand).
+      const fits = usable(ap), pool = fits.length ? { stands: fits } : ap;
+      const at = [ex.O.x, ex.O.y];
+      const st = freeStand(pool, occupied ? occupied(ap.icao) : [], at) || (fits === ap.stands ? null : freeStand(pool, [], at));
       const r = st && routeToStand(g, [ex.O.x, ex.O.y], st);
       if (!r) continue;
       const total = ex.ahead + r.lengthM;

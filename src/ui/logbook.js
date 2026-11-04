@@ -18,11 +18,12 @@
 // "Clear these flights" and removes only that scenario's entries.
 //
 // A log entry (main.js → showScore): { date (ISO), route 'RKSS–RKPC', depRunway, arrRunway,
-//   gate, airTimeS, fuelUsedKg, score: { points, grade, parts }, scenarioId, scenarioName }.
-//   Any field may be missing.
+//   gate, airTimeS, fuelUsedKg, score: { points, grade, parts }, scenarioId, scenarioName, type }.
+//   Any field may be missing. `type` (v0.3.0) is the aircraft's id; without one it was the A321neo.
 // The pure helpers are exported for the node tests.
 
 import { esc, gradeColor, partsHtml, verdict } from './score-panel.js';
+import { typeName } from '../scenarios.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -216,13 +217,14 @@ export function createLogbook(root, { load, save, onclose } = {}) {
       return `<div class="fslb-row${on ? ' on' : ''}" data-i="${i}">
           <span class="date">${esc(d.day)}<small>${esc(d.time)}</small></span>
           <span class="route">${esc(e.route || '—')}${names ? `<small class="sc">${esc(nameOf(scenarioOf(e, legacyId)))}</small>` : ''}</span>
+          <span class="type">${esc(typeName(e.type))}</span>
           <span class="rwy">${rwys}${e.gate ? `<small>Gate ${esc(e.gate)}</small>` : ''}</span>
           <span class="num">${fmtDuration(e.airTimeS)}</span>
           <span class="num">${fmtKg(e.fuelUsedKg)}</span>
           <span class="grade">${badgeHtml(e.score)}</span>
         </div>${on ? detailHtml(e) : ''}`;
     }).join('');
-    $('list').innerHTML = `<div class="fslb-row head"><span>Date</span><span>Route${names ? ' · Scenario' : ''}</span><span>Runways</span>`
+    $('list').innerHTML = `<div class="fslb-row head"><span>Date</span><span>Route${names ? ' · Scenario' : ''}</span><span>Aircraft</span><span>Runways</span>`
       + `<span class="num">Air time</span><span class="num">Fuel used</span><span class="grade">Landing</span></div>${html}`;
   }
 

@@ -1,6 +1,9 @@
 // The HUD: PFD (left), ND and engine panel (right), FCU (top), drawn over the 3D view, and
 // the view switch (top right).
-// createHud(root, { airports, coast? }) -> { update(view), resize(), setCoast(coast), onlaw, onview }.
+// createHud(root, { airports, coast? }) -> { update(view), resize(), setCoast(coast), setType(def), onlaw, onview }.
+// setType(def) swaps the four panels for the type's family: the Boeings' (src/ui/boeing/) in the same
+// places and on the same 30 Hz redraw, or the Airbus's, which are what the HUD starts with. Only one
+// set draws; the Boeing set is made the first time a Boeing is flown.
 // view = { state, ap, dest: runwayEnd, timeScale, timeScaleActual, paused, waypoints?, controls?, viewId? }.
 // Panels redraw only when what they show changed, and at most 30 times a second.
 
@@ -9,6 +12,10 @@ import { createPfd } from './pfd.js';
 import { createNd } from './nd.js';
 import { createEnginesPanel } from './engines-panel.js';
 import { createFcu } from './fcu.js';
+import { createBoeingPfd } from './boeing/pfd.js';
+import { createBoeingNd } from './boeing/nd.js';
+import { createEicas } from './boeing/eicas.js';
+import { createMcp } from './boeing/mcp.js';
 
 const MIN_DT = 1000 / 30;
 
@@ -36,11 +43,16 @@ export function createHud(root, { airports, coast } = {}) {
   const pfdEl = mkPanel('fsui-pfd'), ndEl = mkPanel('fsui-nd'), engEl = mkPanel('fsui-eng');
   ndEl.title = 'Scroll or click to change the range';
   const pfdCv = hidpiCanvas(pfdEl), ndCv = hidpiCanvas(ndEl), engCv = hidpiCanvas(engEl);
-  const pfd = createPfd(pfdCv);
-  const nd = createNd(ndCv, { airports, coast: coast ? buildCoast(coast) : null });
-  const eng = createEnginesPanel(engCv);
-  const hud = { update, resize, setCoast, setTopInset, onlaw: null, onview: null, poke, el };
-  const fcu = createFcu(el, hud);
+  const builtCoast = coast ? buildCoast(coast) : null;
+  const hud = { update, resize, setCoast, setTopInset, setType, onlaw: null, onview: null, poke, el };
+  const airbus = {
+    pfd: createPfd(pfdCv),
+    nd: createNd(ndCv, { airports, coast: builtCoast }),
+    eng: createEnginesPanel(engCv),
+    fcu: createFcu(el, hud),
+  };
+  let boeing = null;      // made on the first setType to a Boeing
+  let pfd = airbus.pfd, nd = airbus.nd, eng = airbus.eng, fcu = airbus.fcu, isBoeing = false;
 
   // The view switch, level with the FCU at the top right. In a seat, Cockpit shows which one
   // (CPT or F/O; V reaches the first officer's). Clicks go to main.js → selectView.
@@ -73,7 +85,34 @@ export function createHud(root, { airports, coast } = {}) {
   let view = null, last = 0, timer = 0, force = true;
   let sigP = null, sigN = null, sigE = null, destRef = null, destInfo = null;
 
-  function setCoast(c) { nd.coast = c ? buildCoast(c) : null; force = true; schedule(); }
+  function setCoast(c) {
+    const b = c ? buildCoast(c) : null;
+    airbus.nd.coast = b; if (boeing) boeing.nd.coast = b;
+    force = true; schedule();
+  }
+
+  // Swap the panels for a type's family (a registry entry; null or an unknown family is the Airbus's).
+  function setType(def) {
+    const toBoeing = def?.family === 'boeing';
+    if (toBoeing && !boeing) {
+      boeing = {
+        pfd: createBoeingPfd(pfdCv),
+        nd: createBoeingNd(ndCv, { airports, coast: airbus.nd.coast }),
+        eng: createEicas(engCv),
+        fcu: createMcp(el, hud),
+      };
+      if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(boeing.fcu.el);
+    }
+    if (toBoeing) { boeing.pfd.setType(def); boeing.eng.setType(def); }
+    if (toBoeing === isBoeing) { poke(); return; }
+    const next = toBoeing ? boeing : airbus, was = fcu;
+    next.nd.setRange(nd.range);        // the range the pilot chose stays
+    was.close();                       // a window being typed into closes unchanged
+    was.el.style.display = 'none'; next.fcu.el.style.display = '';
+    pfd = next.pfd; nd = next.nd; eng = next.eng; fcu = next.fcu; isBoeing = toBoeing;
+    sigP = sigN = sigE = null;
+    resize();
+  }
   function poke() { force = true; schedule(); }
   function schedule() { if (!timer) timer = setTimeout(() => { timer = 0; if (view) draw(performance.now()); }, MIN_DT); }
 
@@ -113,6 +152,11 @@ export function createHud(root, { airports, coast } = {}) {
       r(st.gearPos, 50), r(st.speedbrake, 50), r(st.groundSpoilers, 50), r(st.brakes?.left, 20), r(st.brakes?.right, 20), st.parkingBrake,
       (sp.spoilersL || []).map((x) => r(x, 20)).join(), (sp.spoilersR || []).map((x) => r(x, 20)).join(),
       v.timeScale, r(v.timeScaleActual, 10), v.paused, v.controls?.spoilersArmed];
+    // What only the Boeing screens show (their FMA's armed modes, the tape's speeds, the stab trim).
+    if (isBoeing) {
+      sP.push(r(st.vRef), r(st.vmm), r(st.vStick), r(st.pliDeg, 5), st.shaker, ap.armedLateral, ap.armedVertical, r(st.flapDeg), r(st.slatDeg));
+      sE.push(r(sp.stab, 500), ap.thrustMode, ap.lateral, ap.vertical, st.onGround ? 1 : 0, r(st.vs * FPM, 0.01), st.flapLever, r(st.pos.z, 0.01), r(st.mach, 100));
+    }
     if (force || changed(sigP, sP)) { pfd.draw(dv, now); sigP = sP; }
     if (force || changed(sigN, sN)) { nd.draw(dv); sigN = sN; }
     if (force || changed(sigE, sE)) { eng.draw(dv); sigE = sE; }
@@ -128,14 +172,21 @@ export function createHud(root, { airports, coast } = {}) {
   function resize() {
     const W = window.innerWidth, H = window.innerHeight - inset;
     const fcuH = Math.max(38, Math.min(56, H * 0.052));
-    const top = inset + fcuH + 16, pad = 12;
+    const pad = 12;
+    Object.assign(fcu.el.style, { top: (8 + inset) + 'px', height: fcuH + 'px', fontSize: (fcuH * 0.36) + 'px' });
+    // The MCP has more on it than the FCU: on a narrow window its text comes down until it fits. It's
+    // also wide enough to reach over the panels, so they start under it, its padding included.
+    if (isBoeing) {
+      const room = W - 2 * pad, w = fcu.el.scrollWidth;
+      if (w > room) fcu.el.style.fontSize = (fcuH * 0.36 * room / w) + 'px';
+    }
+    const top = isBoeing ? inset + 8 + fcu.el.offsetHeight + 6 : inset + fcuH + 16;
     let s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560));
-    const sr = Math.min(s, (H - fcuH - 16 - pad * 2 - 8) / 1.62);
+    const sr = Math.min(s, (H - (top - inset) - pad * 2 - 8) / 1.62);
     const place = (p, cv, x, y, w, h) => { Object.assign(p.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); cv.size(w, h); };
     place(pfdEl, pfdCv, pad, top, s, s);
     place(ndEl, ndCv, W - sr - pad, top, sr, sr);
     place(engEl, engCv, W - sr - pad, top + sr + 8, sr, sr * 0.62);
-    Object.assign(fcu.el.style, { top: (8 + inset) + 'px', height: fcuH + 'px', fontSize: (fcuH * 0.36) + 'px' });
     // The view switch: the same box as the FCU's (fcuH inside, the FCU's 0.35em above and below).
     const padY = 0.35 * fcuH * 0.36;
     Object.assign(views.style, { top: (8 + inset) + 'px', right: pad + 'px', height: fcuH + 'px', padding: `${padY}px 0.45em`, fontSize: (fcuH * 0.33) + 'px' });
@@ -153,7 +204,7 @@ export function createHud(root, { airports, coast } = {}) {
   }
 
   window.addEventListener('resize', resize);
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(fcu.el);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(airbus.fcu.el);
   document.fonts?.addEventListener?.('loadingdone', () => placeViews());
   resize();
   return hud;

@@ -62,7 +62,7 @@
 .fslb-totals .best small:first-child { flex-basis: 100%; }
 .fslb-totals .best > small:last-child { text-transform: none; letter-spacing: 0; font-size: 13px; color: #c9ced2; margin: 0; }
 .fslb-list { flex: 1; overflow-y: auto; border: 1px solid #2b3238; border-radius: 8px; background: #0b1014; }
-.fslb-row { display: grid; grid-template-columns: 1.5fr 1.1fr 1.2fr 0.8fr 0.9fr 0.9fr; gap: 10px; align-items: center;
+.fslb-row { display: grid; grid-template-columns: 1.5fr 1.1fr 0.8fr 1.1fr 0.75fr 0.85fr 0.85fr; gap: 10px; align-items: center;
   padding: 8px 14px; border-bottom: 1px solid #1c2329; font-size: 14px; cursor: pointer; }
 .fslb-row:hover { background: #141c22; }
 .fslb-row.on { background: #12242c; }
@@ -72,6 +72,7 @@
 .fslb-row .route { font-weight: 600; letter-spacing: 0.03em; }
 .fslb-row .route small.sc { font-weight: 400; letter-spacing: 0; color: #2fe3ff; opacity: 0.85;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fslb-row .type { white-space: nowrap; color: #c9ced2; }
 .fslb-row .num { text-align: right; font-variant-numeric: tabular-nums; }
 .fslb-row .grade { text-align: right; }
 .fslb-badge { display: inline-block; min-width: 52px; text-align: center; border: 1.5px solid; border-radius: 6px; padding: 2px 8px;
@@ -87,5 +88,5 @@
 @media (max-width: 760px) {
   .fslb-totals { grid-template-columns: 1fr 1fr; }
   .fslb-row { grid-template-columns: 1.4fr 1fr 1fr auto; }
-  .fslb-row > :nth-child(4), .fslb-row > :nth-child(5) { display: none; }
+  .fslb-row > :nth-child(3), .fslb-row > :nth-child(5), .fslb-row > :nth-child(6) { display: none; }
 }

@@ -4,8 +4,8 @@
 // The AP drives the fly-by-wire's demands (a flight-path angle and a bank angle), never the
 // surfaces. Allocation free in the step.
 
-import * as A from './a321neo.js';
-import { LEVER_CL, leverToPhi, leverForPhi } from './engines.js';
+import * as A321 from './a321neo.js';
+import { createEngines } from './engines.js';
 import { magToGrid } from '../world/frame.js';
 
 const G = 9.80665;
@@ -13,9 +13,16 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const wrapPi = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const ALT_KH = 0.1; // 1/s: ALT* captures with a 10 s exponential approach
 
-// The FCU-facing object (sim.ap). `core` gives it access to the sim's state.
-export function createAp(core) {
-  const ap = {
+// Fields in sim.ap that a snapshot carries.
+export const AP_FIELDS = ['ap', 'athr', 'spdKt', 'hdgDeg', 'altFt', 'vsFpm', 'lateral', 'vertical', 'thrustMode'];
+
+export function createAutopilot(A) {
+const { LEVER_CL, leverToPhi, leverForPhi } = createEngines(A);
+
+// The FCU-facing object (sim.ap). `core` gives it access to the sim's state. `target`: the object
+// to fill (sim.ap keeps its identity when the sim changes type).
+function createAp(core, target = {}) {
+  const ap = Object.assign(target, {
     ap: false, athr: false,
     spdKt: 250, hdgDeg: 0, altFt: 5000, vsFpm: 0,
     lateral: 'HDG', vertical: 'V/S', thrustMode: '',
@@ -61,7 +68,8 @@ export function createAp(core) {
       core.X.opInt = 0;
       if (ap.athr) ap.thrustMode = modeThrust(ap);
     },
-  };
+    // No TO/GA switch, no trim, no LOC or G/S on the A321's FCU: those are the Boeings' (v0.3.0).
+  });
   return ap;
 }
 
@@ -71,11 +79,8 @@ function modeThrust(ap) {
   return 'SPEED';
 }
 
-// Fields in sim.ap that a snapshot carries.
-export const AP_FIELDS = ['ap', 'athr', 'spdKt', 'hdgDeg', 'altFt', 'vsFpm', 'lateral', 'vertical', 'thrustMode'];
-
 // One AP step: fills E.apOn, E.apGamma, E.apBank. Runs before the fly-by-wire.
-export function apStep(X, ap, E, S, dt) {
+function apStep(X, ap, E, S, dt) {
   E.apOn = ap.ap;
   if (!ap.ap) return;
   const V = Math.max(E.tas, 50);
@@ -138,7 +143,7 @@ export function apStep(X, ap, E, S, dt) {
 // landing, else 'lever'). Armed, on the ground or with the lever above CL in flight (MAN TOGA,
 // FLX), it doesn't move the lever; brought back to CL or below in flight, the lever is the
 // A/THR's again. Alpha floor puts the lever at TOGA, and can't be overridden while it's on.
-export function athrStep(X, ap, E, lever, dt) {
+function athrStep(X, ap, E, lever, dt) {
   if (X.athrDriving && lever !== X.athrLever && !(X.alphaFloorLock && X.alphaFloorTrig)) {
     X.athrDriving = false;
     if (ap.athr) {
@@ -182,3 +187,9 @@ export function athrStep(X, ap, E, lever, dt) {
   X.athrLever = leverForPhi(phi);
   return phi;
 }
+
+return { createAp, apStep, athrStep, AP_FIELDS };
+}
+
+// The A321neo's, as before the type registry.
+export const { createAp, apStep, athrStep } = createAutopilot(A321);

@@ -532,7 +532,7 @@ export function createMap(root, { airports, coast } = {}) {
         lines.push(`<b>${Math.round(nm)}</b> nm direct, bearing <b>${String(brg).padStart(3, '0')}°</b>`);
         // Fuel: the setup's estimate for the trip, allowance for a climb included (on the safe
         // side from cruise), against what's on board.
-        const need = Math.round(fuelEstimate(nm).trip / 100) * 100;
+        const need = Math.round(fuelEstimate(nm, st.type).trip / 100) * 100;
         const fob = Math.round(st.fuelKg / 100) * 100;
         const cls = fob < need ? 'bad' : fob < need + 1200 ? 'warn' : '';
         const what = cls === 'bad' ? 'not enough' : cls === 'warn' ? 'under the 1,200 kg reserve' : 'enough';

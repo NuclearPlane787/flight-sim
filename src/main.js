@@ -17,6 +17,7 @@ import { VERSION } from './version.js';
 import { ScenarioStore, whereText, legacyId } from './scenarios.js';
 import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js';
 import { createClock, afternoonOf } from './clock.js';
+import { typeById, DEFAULT_TYPE } from './sim/types.js';
 
 const STEP = 1 / 120;
 const KT = 1.943844, FT = 3.28084, NM = 1852, DEG = Math.PI / 180;
@@ -56,10 +57,10 @@ function toast(text, ms = 2200) {
 }
 
 async function boot() {
-  const [simMod, predMod, worldMod, hfMod, rwMod, acMod, cpMod, hudMod, mapMod, setupMod, synthMod, lightsMod, skyWinMod] = await Promise.all([
+  const [simMod, predMod, worldMod, hfMod, rwMod, assetsMod, hudMod, mapMod, setupMod, synthMod, lightsMod, skyWinMod] = await Promise.all([
     import('./sim/sim.js'), import('./sim/predict.js').catch(() => ({ createPredictor: () => ({ request() {}, cancel() {} }) })), import('./world/world.js'),
-    import('./world/heightfield.js'), import('./world/runways.js'), import('./aircraft.js'),
-    import('./cockpit.js'), import('./ui/hud.js'), import('./ui/map.js'), import('./ui/setup.js'),
+    import('./world/heightfield.js'), import('./world/runways.js'), import('./type-assets.js'),
+    import('./ui/hud.js'), import('./ui/map.js'), import('./ui/setup.js'),
     import('./audio/synth.js').catch(() => null),
     // v0.2.0, night: optional, so the game runs without them.
     import('./aircraft-lights.js').catch(() => null), import('./ui/sky-window.js').catch(() => null),
@@ -112,15 +113,30 @@ async function boot() {
 
   ui.loadingText.textContent = 'Building the world…';
   const world = await worldMod.createWorld({ renderer, scene, baseUrl: base, heightfield: hf, airports });
-  const aircraft = acMod.createAircraft();
-  const cockpit = cpMod.createCockpit();
-  aircraft.object.add(cockpit.object);
-  scene.add(aircraft.object);
+  // The aircraft and its cockpit, one pair per type, built the first time it's flown (v0.3.0).
+  let aircraft = null, cockpit = null;
+  const models = new Map();
+  function modelFor(id) {
+    let m = models.get(id);
+    if (!m) {
+      const b = assetsMod.buildersFor(id);
+      m = { aircraft: b.createAircraft(), cockpit: b.createCockpit() };
+      m.aircraft.object.add(m.cockpit.object);
+      models.set(id, m);
+    }
+    return m;
+  }
+  function showModel(id) {
+    if (aircraft) scene.remove(aircraft.object);
+    ({ aircraft, cockpit } = modelFor(id));
+    scene.add(aircraft.object);
+    lastNight = -1;     // the night's look goes to the new model at the next frame
+  }
 
   // The sim and its ground.
   const g = { h: 0, kind: 'ground' };
   const ground = (x, y) => { g.h = hf.heightAt(x, y); g.kind = rw.groundKind(x, y); return g; };
-  const sim = simMod.createSim({ ground });
+  const sim = simMod.createSim({ ground, type: DEFAULT_TYPE });
   const ap = sim.ap;
   const predictor = predMod.createPredictor();
   // M2: gate starts, pushback and taxi routes.
@@ -147,6 +163,23 @@ async function boot() {
         .map((f) => document.fonts.load(f))),
       new Promise((r) => setTimeout(r, 3000)),
     ]).catch(() => {});
+  }
+  // The aircraft type: everything that reads it, in one place. Before a reset or a restore.
+  let flyingType = null;
+  function useType(id) {
+    const def = typeById(id);
+    if (flyingType === def.id) return def;
+    flyingType = def.id;
+    sim.setType(def.id);
+    showModel(def.id);
+    rig.setType(def);
+    scorer.setType(def);
+    callouts.setType(def);
+    input.setDetents(def.data.THRUST_DETENTS);
+    synth?.setType?.(def);
+    hud?.setType?.(def);
+    controlsPage?.setFamily?.(def.family);
+    return def;
   }
   const hud = hudMod.createHud($('hud'), { airports, coast });
   const map = mapMod.createMap($('map-root'), { airports, coast });
@@ -202,9 +235,10 @@ async function boot() {
     if (!r) throw new Error(`No runway ${icao} ${ident}`);
     const ax = runwayAxis(r.end, r.other);
     const x = ax.px + ax.ux * 45, y = ax.py + ax.uy * 45; // lined up just past the pavement's end
-    sim.reset({ x, y, hdg: ax.hdg, onGround: true, flapLever: 1, gearDown: true,
+    const toFlap = sim.type.data.TAKEOFF_FLAP_LEVER;
+    sim.reset({ x, y, hdg: ax.hdg, onGround: true, flapLever: toFlap, gearDown: true,
       fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan) });
-    sim.controls.flapLever = 1;
+    sim.controls.flapLever = toFlap;
     sim.controls.gearDown = true;
     sim.controls.parkingBrake = false;
     input.lever = 0;
@@ -216,26 +250,57 @@ async function boot() {
     const dist = 15 * NM;
     const x = ax.tx - ax.ux * dist, y = ax.ty - ax.uy * dist;
     const z = (dest.end.elevM ?? dest.airport.elevM) + 15 + Math.tan(3 * DEG) * dist;
-    sim.reset({ x, y, z, hdg: ax.hdg, onGround: false, iasMs: 180 / KT, flapLever: 1, gearDown: false,
-      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan) });
-    sim.controls.flapLever = 1;
+    // A heavy Boeing: 180 kt would be under its minimum manoeuvring speed, so flaps 5 and at least 10 kt
+    // above it. (The A321's start is as it always was.)
+    const finalFlap = sim.type.data.FINAL_FLAP_LEVER ?? 1;
+    const ic = { x, y, z, hdg: ax.hdg, onGround: false, iasMs: 180 / KT, flapLever: finalFlap, gearDown: false,
+      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan) };
+    sim.reset(ic);
+    let finalKt = 180;
+    if (sim.state.vmm && sim.state.vmm * KT + 10 > finalKt) {
+      finalKt = Math.round(sim.state.vmm * KT + 10);
+      sim.reset({ ...ic, iasMs: finalKt / KT });
+    }
+    sim.controls.flapLever = finalFlap;
     sim.controls.gearDown = false;
     sim.controls.speedbrake = 0;
     // The lever at the trim thrust (sim.reset puts it there), at most CL: the A/THR takes it
     // from there and moves it (v0.2.2; before, it sat in CL).
-    input.lever = sim.controls.thrust = Math.min(sim.controls.thrust, 25 / 45);
+    input.lever = sim.controls.thrust = Math.min(sim.controls.thrust, sim.leverClimb);
     ap.setHdg(Math.round(gridToMag(ax.hdg, x, y) / DEG) % 360 || 360);
+    ap.hdgSel?.();       // a Boeing's window is only the mode once it's selected
     ap.setAlt(Math.round((z * FT) / 100) * 100);
-    ap.setSpd(180);
+    ap.setSpd(finalKt);
     ap.engageAp();
     if (!ap.athr) ap.toggleAthr();
+    syncNav();
     setTimeScale(1);
   }
 
-  const payloadOf = (p) => (p.pax || 0) * 84 + (p.cargoKg || 0);
+  // What a widebody needs kept clear round its stand (undefined for code C: as before v0.3.0).
+  function standClear() {
+    const t = sim.type;
+    return t.icaoCode === 'E' ? { span: t.geo.SPAN, length: t.geo.LENGTH, path: gate.pushPath?.() } : undefined;
+  }
+  // What a Boeing's LOC, G/S and LNAV follow: the destination's ILS and the map's route (v0.3.0).
+  // sim.reset() clears them, so after every reset, and when the route changes.
+  let navKey = '';
+  function syncNav() {
+    if (!ap.setIls) return;
+    if (dest) {
+      const ax = runwayAxis(dest.end, dest.other);
+      ap.setIls({ x: ax.tx, y: ax.ty, hdgGrid: ax.hdg, elev: dest.end.elevM ?? dest.airport.elevM ?? 0, gsDeg: 3 });
+    } else ap.setIls(null);
+    const wp = map.waypoints || [];
+    navKey = navKeyNow();
+    ap.setRoute(dest ? [...wp, [dest.end.x, dest.end.y]] : wp);
+  }
+  const navKeyNow = () => (map.waypoints || []).join(';') + '|' + (dest ? dest.end.x + ',' + dest.end.y : '');
+  const payloadOf = (p) => (p.pax || 0) * (sim.type.limits.PAX_KG || 84) + (p.cargoKg || 0);
 
   function startFlight(p, { keepClock = false } = {}) {
     plan = p;
+    useType(p.type);
     store.save('lastflight', p);
     map.setWaypoints(p.waypoints || []);
     // The time of day: Now (the real time in Korea), or the one picked in the setup. Restart the
@@ -252,13 +317,14 @@ async function boot() {
     if (p.start === 'gate' && p.stand) {
       gate.start(p);
       input.lever = 0;
-      world.traffic?.setPlayerStand(p.origin, p.stand);
+      world.traffic?.setPlayerStand(p.origin, gate.stand?.ref ?? p.stand, standClear());   // the flow may have changed the stand
     } else {
       gate.clear();
       world.traffic?.setPlayerStand(p.origin, null);
       if (p.start === 'final' && dest) placeOnFinal(null);
       else placeOnRunway(p.origin, p.depRunway, null);
     }
+    syncNav();
     // The FCU heading starts at the aircraft's own heading (else Z would turn it to 360).
     if (p.start !== 'final') ap.setHdg(Math.round(gridToMag(sim.state.hdg, sim.state.pos.x, sim.state.pos.y) / DEG) % 360 || 360);
     sim.events.length = 0;
@@ -281,7 +347,8 @@ async function boot() {
     const defaults = { ...(last || { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' }) };
     const at = arrivedAt();
     if (at) Object.assign(defaults, { origin: at.icao, start: 'gate', stand: at.stand, depRunway: '' });
-    const p = await setup.show(defaults, { title: 'New flight', cancel: !!plan });
+    if (!defaults.type) defaults.type = sim.type.id;   // a plan from before v0.3.0
+    const p = await setup.show(defaults, { title: 'New flight', cancel: !!plan, lockType: !!current });
     if (!p) {
       input.setEnabled(true);
       // Cancelled after a crash: back to the crash panel (the flight can't go on).
@@ -341,6 +408,7 @@ async function boot() {
     store.save('lastflight', plan);
     dest = runwayEnds(plan.dest, plan.arrRunway);
     destOther = dest ? dest.other : null;
+    useType(st.sim?.type || plan.type);       // a save from before v0.3.0 is the A321neo
     gate.deserialize(st.gate, plan);          // may reset the sim (a gate start), so before restore
     sim.restore(st.sim);
     gate.afterLoad();
@@ -349,8 +417,8 @@ async function boot() {
     liftoffT = f.liftoffT ?? null; fuelAtStart = f.fuelAtStart ?? sim.state.fuelKg;
     input.lever = Number.isFinite(f.lever) ? f.lever : sim.controls.thrust;
     // The stand left behind stays free while the aircraft is near it, as in live play.
-    if (plan.start === 'gate' && !landed && ['parked', 'pushback', 'taxi', 'departed'].includes(gate.phase)) world.traffic?.setPlayerStand(plan.origin, gate.stand?.ref ?? plan.stand);
-    else if (arrivalStand && f.arrivalIcao) world.traffic?.setPlayerStand(f.arrivalIcao, arrivalStand);
+    if (plan.start === 'gate' && !landed && ['parked', 'pushback', 'taxi', 'departed'].includes(gate.phase)) world.traffic?.setPlayerStand(plan.origin, gate.stand?.ref ?? plan.stand, standClear());
+    else if (arrivalStand && f.arrivalIcao) world.traffic?.setPlayerStand(f.arrivalIcao, arrivalStand, standClear());
     else world.traffic?.setPlayerStand(plan.origin, null);
     scorer.reset();
     if (dest) scorer.setRunway(dest.end, dest.other);
@@ -358,6 +426,7 @@ async function boot() {
     if (st.camera) rig.load(st.camera);
     clock.load(st.clock);
     map.setWaypoints(plan.waypoints || []);
+    navKey = navKeyNow();                  // the save's ILS and route came with the snapshot
     rewind = []; lastSnapT = sim.state.t; acc = 0;
     crashed = false; clearPrediction();
     callouts.reset();
@@ -438,6 +507,7 @@ async function boot() {
     // aircraft now is (the gate state isn't in the sim's snapshots).
     if (rewound) gate.afterRestore(); else gate.clear();
     input.lever = Math.max(sim.state.onGround ? -1 : 0, sim.controls.thrust);
+    navKey = '';   // a snapshot brings its own ILS and route: back to the current ones (v0.3.0)
     clearPrediction();
     callouts.reset();
     sim.events.length = 0;
@@ -488,6 +558,7 @@ async function boot() {
     // Until the touchdown the scorer only holds the planned runway (the touchdown sets the
     // one actually landed on); the approach track it keeps isn't tied to either.
     if (!scorer.touchedDown) scorer.setRunway(d.end, d.other);
+    syncNav();
     toast(same ? `Direct to ${icao} ${ident}` : `New route: ${plan.origin} to ${icao}, runway ${ident}`, 2500);
     saveNow('route');
     return { ok: true };
@@ -595,6 +666,7 @@ async function boot() {
       case 'speedbrake': c.speedbrake = c.speedbrake > 0 ? 0 : 1; break;
       case 'spoilersArm': c.spoilersArmed = !c.spoilersArmed; toast(c.spoilersArmed ? 'Ground spoilers armed' : 'Ground spoilers disarmed', 1200); break;
       case 'ap': if (ap.ap) ap.disconnectAp('pilot'); else ap.engageAp(); break;
+      case 'toga': ap.toga?.(); break;
       case 'athr': ap.toggleAthr(); break;
       case 'faster': changeRate(1); break;
       case 'slower': changeRate(-1); break;
@@ -610,7 +682,11 @@ async function boot() {
       case 'perf': setPerf(ui.perf.hidden); break;
       case 'rewind': break; // T: handled above, only from the pause or crash screens
       default:
-        if (a.startsWith('flap')) c.flapLever = Number(a.slice(4));
+        if (a === 'flapUp' || a === 'flapDown') {
+          const n = sim.type.data.FLAP_LEVER.length;
+          c.flapLever = Math.max(0, Math.min(n - 1, (c.flapLever | 0) + (a === 'flapDown' ? 1 : -1)));
+          toast('Flaps ' + sim.type.data.FLAP_LEVER[c.flapLever], 900);
+        } else if (a.startsWith('flap')) c.flapLever = sim.type.data.FLAP_KEYS[Number(a.slice(4))];
     }
   });
 
@@ -724,6 +800,8 @@ async function boot() {
         callouts.reset();
       }
       if (e.type === 'apDisconnect') { setTimeScale(1); clearPrediction(); }
+      if (e.type === 'apDisconnect' && e.reason === 'rollout') toast('Rollout done: the autopilot’s off, you have the aircraft', 3500);
+      if (e.type === 'athrWake') toast('AIRSPEED LOW: the autothrottle woke up', 3000);
       // v0.2.2: R or F while the A/THR moved the lever took it over (to idle, at the RETARD,
       // it goes quietly, as before).
       if (e.type === 'athrDisconnect') {
@@ -749,7 +827,7 @@ async function boot() {
       runwayLengthM: rf ? rf.lda : undefined, runwayWidthM: rwy?.widthM, aimM: rf ? aimingPoint(rf.lda) : 400,
     });
     store.addLogEntry({
-      date: new Date().toISOString(), version: VERSION.number,
+      date: new Date().toISOString(), version: VERSION.number, type: sim.type.id,
       ...(current ? { scenarioId: current.id, scenarioName: current.name } : { scenarioId: 'unsaved', scenarioName: 'Unsaved flights' }), route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
       depRunway: plan.start === 'runway' ? plan.depRunway : null, arrRunway: le ? le.end.ident : null, gate: plan.start === 'gate' ? plan.stand ?? null : null,
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,
@@ -764,7 +842,7 @@ async function boot() {
   function maybePredict(now) {
     if (!ap.ap && prediction) clearPrediction(); // the path shows only with the autopilot on
     if (!map.isOpen || !ap.ap) return;
-    const key = [ap.hdgDeg, ap.altFt, ap.vsFpm, ap.spdKt, ap.vertical, ap.lateral, ap.athr].join('|');
+    const key = [ap.hdgDeg, ap.altFt, ap.vsFpm, ap.spdKt, ap.vertical, ap.lateral, ap.athr, ap.armedLateral, ap.armedVertical, ap.route?.length].join('|');
     // Rerun when a target changes, and every 20 s while the map is open (the aircraft moves on).
     if (key !== apKey || now - lastPredictReal > 20000) {
       apKey = key;
@@ -842,12 +920,13 @@ async function boot() {
       if (gate.phase === 'taxi-in' && r && r.stand !== arrivalStand) {
         arrivalStand = r.stand;
         const a = airports.find((ap) => ap.origin && Math.hypot(ap.origin[0] - s.pos.x, ap.origin[1] - s.pos.y) < 8000);
-        if (a) world.traffic?.setPlayerStand(a.icao, r.stand);
+        if (a) world.traffic?.setPlayerStand(a.icao, r.stand, standClear());
       }
     }
 
     if (s.t - lastSnapT >= 1) {
       lastSnapT = s.t;
+      if (ap.setRoute && navKeyNow() !== navKey) syncNav();   // a waypoint dragged on the map
       rewind.push({ t: s.t, snap: sim.snapshot(), clockMs: clock.ms });
       if (rewind.length > REWIND_S + 15) rewind.shift();
     }
@@ -896,6 +975,7 @@ async function boot() {
     }
   }
 
+  let wingLift = 0;
   function render(dt) {
     const s = sim.state;
     rig.update(s, camMap);
@@ -907,6 +987,13 @@ async function boot() {
     aircraft.setCockpitView(seat);
     cockpit.object.visible = seat;
     aircraft.update(s, dt);
+    // A Boeing's wings bend with the lift they carry (none on the wheels), eased so they rise through
+    // the rotation. V030.md's "nice" list.
+    if (aircraft.setWingFlex) {
+      const lift = s.onGround ? 0 : Math.max(-0.5, s.nz) * s.mass / sim.type.limits.MTOW;
+      wingLift += (lift - wingLift) * Math.min(1, dt / 1.5);
+      aircraft.setWingFlex(wingLift * sim.type.wingFlexM);
+    }
     if (seat) cockpit.update(s, sim.controls);
     // Behind the (nearly opaque) map, the 3D view only needs a few frames a second.
     if (!map.isOpen || ++mapSkip % 10 === 0) {
@@ -1018,6 +1105,7 @@ async function boot() {
     toggleSky();
   }, true);
 
+  useType(DEFAULT_TYPE);
   resize();
   if (settings.showPerf) setPerf(true);
   booted = true;
@@ -1025,7 +1113,8 @@ async function boot() {
 
   // ---- Test hooks (used by tests/browser-*.mjs) ----
   window.__fs = {
-    sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, aircraft, cockpit, scene, menu, setup, logbook, settingsPage, controlsPage,
+    sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, scene, menu, setup, logbook, settingsPage, controlsPage,
+    get aircraft() { return aircraft; }, get cockpit() { return cockpit; }, useType,
     get synth() { return synth; },
     get prediction() { return prediction; },
     get timeScale() { return timeScale; },
@@ -1044,7 +1133,7 @@ async function boot() {
   if (TEST && params.get('origin')) {
     startFlight({ origin: params.get('origin'), depRunway: params.get('dep') || '14R', dest: params.get('dest') || 'RKPC',
       arrRunway: params.get('arr') || '07', start: params.get('start') || 'runway', stand: params.get('stand') || null, pax: 180, cargoKg: 2000,
-      fuelKg: Number(params.get('fuel')) || 7500, waypoints: [] });
+      fuelKg: Number(params.get('fuel')) || 7500, waypoints: [], type: params.get('type') || undefined });
   } else {
     // The main menu, over a still: nothing renders or steps behind it (PLAN.md → CPU at runtime).
     paused = true;

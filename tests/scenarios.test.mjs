@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ScenarioStore, INDEX_KEY, SCEN_PREFIX, LASTFLIGHT_KEY, LOGBOOK_KEY, NAME_MIN, NAME_MAX,
-  cleanName, nameOk, migrate, legacyId, whereText, savedText, afternoonKst, newId, DEFAULT_PLAN,
+  cleanName, nameOk, migrate, legacyId, whereText, savedText, afternoonKst, newId, DEFAULT_PLAN, typeName,
 } from '../src/scenarios.js';
 
 // A Storage-like Map. `limit`: setItem throws (like QuotaExceededError) for values longer than it.
@@ -219,4 +219,52 @@ test('savedText', () => {
   assert.equal(savedText(new Date(2026, 10, 1, 12, 7).getTime(), now), 'Sun 1 Nov 12:07');
   assert.equal(savedText(new Date(2026, 9, 31, 9, 0).getTime(), now), 'Sat 31 Oct 09:00');
   assert.equal(savedText(undefined, now), '—');
+});
+
+// ---- The aircraft type (v0.3.0) ----
+
+test('type: a scenario round-trips its type, from the summary or the plan', () => {
+  const s = new ScenarioStore(mem());
+  const a = s.create('Boeing', { v: 1, plan: { origin: 'RKSS' } }, { route: 'r', where: 'w', type: 'b789' }, { now: T0 });
+  assert.equal(a.entry.type, 'b789');
+  assert.deepEqual(a.entry.summary, { route: 'r', where: 'w' }, 'the type is the entry\'s, not the summary\'s');
+  const b = s.create('From plan', { v: 1, fresh: true, plan: { origin: 'RKSS', type: 'b77w' } }, {}, { now: T0 + 1 });
+  assert.equal(s.entry(b.id).type, 'b77w');
+  const c = s.create('No type', state(1), {}, { now: T0 + 2 });
+  assert.equal(s.entry(c.id).type, 'a321neo');
+  // A save keeps the type, whether or not it says so; a new store reads the same.
+  assert.equal(s.write(a.id, { v: 1, plan: {} }, { route: 'r2' }, T0 + 3).ok, true);
+  assert.equal(s.entry(a.id).type, 'b789');
+  assert.equal(s.write(a.id, { v: 1, plan: { type: 'b789' } }, undefined, T0 + 4).ok, true);
+  assert.equal(s.entry(a.id).type, 'b789');
+  assert.equal(s.rename(a.id, 'Renamed').ok, true);
+  assert.equal(new ScenarioStore(s.s).entry(a.id).type, 'b789');
+  assert.equal(s.get(b.id).state.plan.type, 'b77w');
+});
+
+test('type: a v0.2.2 save, with no type anywhere, reads as the A321neo and keeps working', () => {
+  const id = 'old1';
+  const old = mem({
+    [INDEX_KEY]: JSON.stringify([{ id, name: 'Old flight', created: T0, savedAt: T0, summary: { route: 'RKSS–RKPC', where: 'FL350' } }]),
+    [SCEN_PREFIX + id]: JSON.stringify({ v: 1, id, name: 'Old flight', savedAt: T0, state: { v: 1, plan: { origin: 'RKSS' }, sim: { x: 1 } } }),
+  });
+  const s = new ScenarioStore(old);
+  assert.equal(s.entry(id).type, 'a321neo');
+  assert.equal(s.list()[0].type, 'a321neo');
+  assert.equal(s.newest().type, 'a321neo');
+  assert.equal(s.write(id, { v: 1, plan: { origin: 'RKSS' }, sim: { x: 2 } }, { route: 'RKSS–RKPC', where: 'FL350' }, T0 + 1).ok, true);
+  assert.equal(s.entry(id).type, 'a321neo');
+  assert.equal(s.get(id).state.sim.x, 2);
+});
+
+test('type: the migrated Scenario 1 is the A321neo', () => {
+  const s = new ScenarioStore(mem({ [LASTFLIGHT_KEY]: JSON.stringify(DEFAULT_PLAN) }));
+  assert.equal(s.migrate(T0).type, 'a321neo');
+});
+
+test('type: names for the screens', () => {
+  assert.equal(typeName('a321neo'), 'A321neo');
+  assert.equal(typeName(undefined), 'A321neo');
+  assert.equal(typeName(''), 'A321neo');
+  assert.equal(typeName('b999'), 'b999', 'an unknown id is not given a wrong name');
 });

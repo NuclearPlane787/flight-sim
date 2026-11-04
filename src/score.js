@@ -86,6 +86,7 @@ const soft = (x, s) => Math.sqrt(1 + sq(x / s)) - 1;
 
 // What each part costs, 0 at its ideal. The score is 100 × e^(−total cost), so a cost of
 // 0.01 takes about 1% off, 0.05 about 5%, 0.22 a fifth, 0.69 half.
+const PITCH_A321 = { best: 5.5, low: 2.5, high: 8 };
 export const COST = {
   // ft/min, ideal 130: 190 → 0.009, 250 → 0.03, 360 → 0.13, 450 → 0.24, 600 → 0.52, 750 → 0.91.
   // Below it the aircraft floats: 60 → 0.03.
@@ -105,7 +106,8 @@ export const COST = {
   bank: (deg) => sq(deg / 12),
   // °: a shallow bowl around 5.5° (4 → 0.006, 7.2 → 0.007), steep below 2.5° (the nosewheel
   // first) and above 8° (the tail strikes at 9.7° with the struts compressed): 1 → 0.33, 9 → 0.25.
-  pitch: (deg) => 0.01 * sq((deg - 5.5) / 2) + 0.5 * sq(Math.max(0, 2.5 - deg) / 2) + 0.5 * sq(Math.max(0, deg - 8) / 1.5),
+  // v0.3.0: the aircraft type moves the bowl and the steep sides (def.score; the A321neo's are these).
+  pitch: (deg, p = PITCH_A321) => 0.01 * sq((deg - p.best) / 2) + 0.5 * sq(Math.max(0, p.low - deg) / 2) + 0.5 * sq(Math.max(0, deg - p.high) / 1.5),
   bounces: (n) => 0.2 * n,
   grass: 0.35,      // the first main wheels landed on the grass (short of the runway or off its side)
   offRunway: 2.3,   // not on a runway at all: a perfect touchdown on a taxiway scores 10
@@ -133,14 +135,14 @@ export const APPROACH = {
 // track: [{ t, x, y, z, vs, gs }] (map m, the fuselage centre's MSL height in m, m/s), oldest
 // first; rf: runwayFrame(); elev: the threshold's elevation (m). Heights for the window are
 // the wheels' above the threshold. Returns null if too little of the window was flown.
-export function approachStats(track, rf, elev = 0) {
+export function approachStats(track, rf, elev = 0, groundZ = GROUND_Z) {
   const A = APPROACH, tanGs = Math.tan(A.gsDeg / DEG);
   let n = 0, sum2 = 0, gsSum = 0, locSum = 0;
   const errs = [];
   for (const p of track || []) {
     const { along, cross } = alongCross(rf, p.x, p.y);
     if (along >= 0) continue;                                    // over the runway already
-    const hFt = (p.z - GROUND_Z - elev) * FT;
+    const hFt = (p.z - groundZ - elev) * FT;
     if (hFt > A.topFt || hFt < A.swingBottomFt) continue;
     const locDeg = Math.atan2(cross, rf.lda - along) * DEG;       // + right of the course
     if (Math.abs(locDeg) > A.maxLocDeg) continue;
@@ -207,6 +209,9 @@ export function runwayEndRefs(airports) {
 }
 
 export function createScorer() {
+  // The aircraft type (v0.3.0: scorer.setType(def)): the height of its reference point on the
+  // wheels, and the touchdown pitch it's scored against, from its tail-strike geometry.
+  let groundZ = GROUND_Z, pitchBand = PITCH_A321;
   let rf = null;
   let landing = null;  // { runway, end, other } of the touchdown, or null (off the runway)
   let td = null;       // the first touchdown
@@ -219,6 +224,7 @@ export function createScorer() {
   const clearTrack = () => { track = []; lastSampleT = -Infinity; };
 
   return {
+    setType(def) { groundZ = def.geo.GROUND_Z; pitchBand = def.score || PITCH_A321; },
     // The runway end being landed on (null clears it). The touchdown sets it again
     // (setLanding), so this is only the plan until then.
     setRunway(end, other) {
@@ -305,7 +311,7 @@ export function createScorer() {
           td = { vsFpm: -e.vsMs * 60 * FT, g: e.g, along: ac.along, cross: ac.cross,
             bank: Math.abs(e.bank) * DEG, pitch: e.pitch * DEG, ias: s.ias * 1.943844, t: s.t, onRunway: !!rf,
             surface: e.surface || 'runway',
-            approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0) : null };
+            approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0, groundZ) : null };
           peakG = e.g;
         } else if (e.type === 'touchdown' && td && !result) {
           peakG = Math.max(peakG, e.g);           // a bounce's second arrival
@@ -334,7 +340,7 @@ export function createScorer() {
         if (td.surface === 'ground') add('On the grass', 'yes', '', COST.grass);
       }
       add('Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
-      add('Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch));
+      add('Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch, pitchBand));
       add('Bounces', bounces, '', COST.bounces(bounces));
       const ap = td.approach;
       if (ap) {

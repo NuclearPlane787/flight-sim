@@ -16,6 +16,7 @@
 // is open the FCU reads the keys first.
 
 import { clamp, wrap360 } from './common.js';
+import { bindKnobs } from './knobs.js';
 
 const WINDOWS = [
   { k: 'spd', label: 'SPD', step: 1, big: 10, tip: 'Speed (kt)' },
@@ -24,7 +25,6 @@ const WINDOWS = [
   { k: 'vs', label: 'V/S', step: 100, big: 500, tip: 'Vertical speed (ft/min; −15 = −1,500)' },
 ];
 const W = Object.fromEntries(WINDOWS.map((w) => [w.k, w]));
-const PX_PER_STEP = 12;   // trackpad scrolling per step
 
 export function createFcu(root, hud) {
   const el = document.createElement('div');
@@ -52,9 +52,8 @@ export function createFcu(root, hud) {
   law.className = 'fsui-law'; law.title = 'Flight control law (Alternate: no stall protection)';
   el.appendChild(law);
 
-  let view = null, selected = null, acc = 0, recent = [];
+  let view = null;
   let vsPreset = null, vsPresetAt = 0;
-  let edit = null;   // the window being typed into: { k, text }
 
   const call = (name, ...args) => { const ap = view?.ap; if (ap && typeof ap[name] === 'function') ap[name](...args); };
   const vsMode = () => view?.ap?.vertical === 'V/S';
@@ -78,17 +77,6 @@ export function createFcu(root, hud) {
     }
   }
 
-  function turn(k, steps) {
-    if (!view?.ap) return;
-    // Fast turning (more than 6 steps in 0.3 s) moves in big steps.
-    const now = performance.now();
-    recent = recent.filter((t) => now - t < 300); recent.push(now);
-    const big = recent.length > 6, st = big ? W[k].big : W[k].step;
-    const base = Math.round(current(k) / st) * st;
-    setValue(k, base + Math.sign(steps) * st * (big ? 1 : Math.abs(steps)));
-    hud.poke();
-  }
-
   function push(k) {
     const ap = view?.ap; if (!ap) return;
     if (k === 'spd') call('setSpd', Math.round(ap.spdKt ?? 250));
@@ -101,75 +89,33 @@ export function createFcu(root, hud) {
     hud.poke();
   }
 
-  // ---- typing a value ----
-  function openEdit(k) { edit = { k, text: '' }; selected = k; refresh(); }
-  function closeEdit(apply) {
-    if (!edit) return;
-    const { k, text } = edit;
-    edit = null;
-    if (apply) {
-      let v = text === '' || text === '-' ? null : Number(text);
-      if (v !== null && Number.isFinite(v)) {
-        if (k === 'alt' && Math.abs(v) < 1000) v *= 100;   // a flight level
-        if (k === 'vs' && Math.abs(v) <= 60) v *= 100;     // hundreds of ft/min
-        setValue(k, v);
-      }
-      push(k);
+  // What was typed: Enter or a second click sets it and pushes the knob.
+  function commit(k, text) {
+    let v = text === '' || text === '-' ? null : Number(text);
+    if (v !== null && Number.isFinite(v)) {
+      if (k === 'alt' && Math.abs(v) < 1000) v *= 100;   // a flight level
+      if (k === 'vs' && Math.abs(v) <= 60) v *= 100;     // hundreds of ft/min
+      setValue(k, v);
     }
-    refresh();
+    push(k);
   }
-  const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
-  // While a window is open the FCU reads the keys first (capture phase, before the game).
-  window.addEventListener('keydown', (e) => {
-    if (!edit || MODIFIERS.has(e.key)) return;
-    const key = e.key, k = edit.k;
-    let used = true;
-    if (/^[0-9]$/.test(key)) { if (edit.text.replace('-', '').length < 5) edit.text += key; }
-    else if ((key === '-' || key === '−') && k === 'vs' && edit.text === '') edit.text = '-';
-    else if (key === 'Backspace') edit.text = edit.text.slice(0, -1);
-    else if (key === 'Enter') closeEdit(true);
-    else if (key === 'Escape') closeEdit(false);
-    else if (key === 'ArrowUp' || key === 'ArrowDown') { edit.text = ''; turn(k, (key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? W[k].big / W[k].step : 1)); }
-    else used = false;
-    if (used) { e.preventDefault(); e.stopImmediatePropagation(); refresh(); }
-    else closeEdit(false);   // a flying key: the window closes and the key goes on to the game
-  }, true);
-  // A click anywhere else closes it unchanged.
-  window.addEventListener('pointerdown', (e) => { if (edit && !el.contains(e.target)) closeEdit(false); }, true);
-
-  el.addEventListener('wheel', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    const w = e.target.closest('.fsui-win');
-    if (w) selected = w.dataset.k;
-    if (!selected) return;
-    if (edit) { edit = null; refresh(); }
-    // Mouse wheels send ~100 per notch (one step); trackpads many small deltas.
-    const notch = e.deltaMode !== 0 || (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50);
-    if (notch) { turn(selected, Math.sign(e.deltaY)); return; }
-    acc += e.deltaY;
-    const n = Math.trunc(acc / PX_PER_STEP);
-    if (n) { acc -= n * PX_PER_STEP; turn(selected, Math.sign(n) * Math.min(Math.abs(n), 4)); }
-  }, { passive: false });
-  el.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
-  el.addEventListener('pointerdown', (e) => e.stopPropagation());
-  el.addEventListener('dblclick', (e) => e.stopPropagation());
-  el.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const w = e.target.closest('.fsui-win');
-    if (w) {
-      if (edit && edit.k === w.dataset.k) closeEdit(true);   // a second click sets it, like Enter
-      else openEdit(w.dataset.k);
-      return;
-    }
-    const b = e.target.closest('.fsui-btn');
-    if (b && b.dataset.k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'fcu'); else call('engageAp'); hud.poke(); }
-    else if (b && b.dataset.k === 'athr') { call('toggleAthr'); hud.poke(); }
-    else if (e.target.closest('.fsui-law')) {
-      const next = (view?.state?.law || 'normal') === 'normal' ? 'alternate' : 'normal';
-      if (view?.controls) view.controls.law = next;
-      if (hud.onlaw) hud.onlaw(next);
-      hud.poke();
-    }
+  const knobs = bindKnobs(el, {
+    windows: W, getView: () => view, current, setValue, commit, refresh: () => refresh(), poke: () => hud.poke(),
+    acceptKey(edit, key) {
+      if ((key === '-' || key === '−') && edit.k === 'vs' && edit.text === '') { edit.text = '-'; return true; }
+      return false;
+    },
+    onClick(e) {
+      const b = e.target.closest('.fsui-btn');
+      if (b && b.dataset.k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'fcu'); else call('engageAp'); hud.poke(); }
+      else if (b && b.dataset.k === 'athr') { call('toggleAthr'); hud.poke(); }
+      else if (e.target.closest('.fsui-law')) {
+        const next = (view?.state?.law || 'normal') === 'normal' ? 'alternate' : 'normal';
+        if (view?.controls) view.controls.law = next;
+        if (hud.onlaw) hud.onlaw(next);
+        hud.poke();
+      }
+    },
   });
 
   const set = (p, text, cls) => {
@@ -182,6 +128,7 @@ export function createFcu(root, hud) {
   function update(v) {
     view = v; if (!v) return;
     const ap = v.ap || {}, on = !!ap.ap;
+    const selected = knobs.selected, edit = knobs.edit;
     const sel = (k) => (selected === k ? ' sel' : '');
     // An open window shows what's typed so far (or its value, dimmed, until a digit comes).
     const ed = (k) => (edit && edit.k === k ? (edit.text ? ' edit typed' : ' edit') : '');
@@ -199,5 +146,5 @@ export function createFcu(root, hud) {
     if (law.textContent !== lawT) { law.textContent = lawT; law.classList.toggle('altn', lawT === 'LAW ALTN'); }
   }
 
-  return { el, update, get editing() { return edit ? edit.k : null; } };
+  return { el, update, close: knobs.close, get editing() { return knobs.edit ? knobs.edit.k : null; } };
 }

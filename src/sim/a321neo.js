@@ -232,3 +232,34 @@ export const ALPHA_PROT_MARGIN = 4.0 * DEG;
 export const ALPHA_FLOOR_MARGIN = 2.5 * DEG;
 export const ALPHA_SW_MARGIN = 3.0 * DEG;
 export const VLS_FACTOR = 1.23;   // VLS = 1.23 VS1g (Airbus, post-2006 definition)
+
+// ---- What the type registry reads (v0.3.0) ------------------------------------------------
+// These were literals in the sim's code until the types came; the values are unchanged.
+export const ID = 'a321neo';
+export const FAMILY = 'airbus';           // the control laws, the screens and the AP's modes
+export const LEVER_LAW = 'airbus';        // engines.js: IDLE, CL, FLX/MCT and TOGA detents
+export const N1_IDLE_ALT = 9, N1_IDLE_MACH = 6; // flight idle's rise with altitude and Mach [EST]
+export const N1_REV = 76;                 // N1 at full reverse [EST]
+export const CM0 = 0.012;                 // basic pitching moment [EST]
+export const CL_THS = -0.25;              // the stabiliser's own (download) lift, per rad [EST]
+export const FLAP_REF_DEG = 34;           // the flap angle at which the lift slope reaches CLA_FULL
+export const SLAT_BREAK_DEG = 18, SLAT_EXTRA_DEG = 9; // liftCurve's α max: full SLAT_ALPHA at the break, 0.5° more by break + extra
+export const WING_HEIGHT = 3.0;           // m, the wing's height above the wheels, for ground effect
+// The flap lever's positions (keys 6 to 0: FLAP_KEYS[key] is the lever), the next configuration
+// (the tape's VFE next), and whether lever position 1 is 1 or 1+F by speed (the Airbus logic).
+export const FLAP_LEVER = ['0', '1', '2', '3', 'FULL'];
+export const FLAP_KEYS = [0, 1, 2, 3, 4];
+export const NEXT_CONFIG = { '0': '1', '1': '1+F', '1+F': '2', '2': '3', '3': 'FULL', 'FULL': null };
+export const HAS_1F = true;
+export const TAKEOFF_FLAP_LEVER = 1;      // where a runway or gate start puts the lever (1+F)
+export const THRUST_DETENTS = [{ name: 'IDLE', at: 0 }, { name: 'CL', at: 25 / 45 }, { name: 'FLX/MCT', at: 35 / 45 }, { name: 'TOGA', at: 1 }];
+export const CONFIG_FULL = 'FULL';        // speed brakes are inhibited here
+// The configuration the surfaces are actually in (the VFE during a retraction).
+export function configOfSurfaces(slat, flap) {
+  if (flap > 21.5 || slat > 22.5) return 'FULL';
+  if (flap > 14.5) return '3';
+  if (flap > 10.5 || slat > 18.5) return '2';
+  if (flap > 0.5) return '1+F';
+  if (slat > 0.5) return '1';
+  return '0';
+}

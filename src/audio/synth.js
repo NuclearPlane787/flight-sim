@@ -38,11 +38,21 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 
 // The LEAP-1A (see above): shaft frequency per % of N1 and of N2, and the fan's blades.
-const N1_HZ = 3894 / 101 / 60, N2_HZ = 19391 / 116.5 / 60, FAN_BLADES = 18;
-const N2_OF_N1 = (n1Pct) => 60 + 0.4 * n1Pct;
-// Engine 2 runs this much faster, and its tones are a little quieter (TONE2): the two beat,
-// gently, as unsynchronised engines do.
-const SPLIT = 1.0015, TONE2 = 0.65;
+// v0.3.0: an engine's numbers live in a spec like this one (the type registry's `sound`; set with
+// synth.setType(def)): the voices are the same for every engine, at its own frequencies and mix.
+//   n1Hz, n2Hz: the shafts' frequency per %; fanBlades; n2Base + n2Slope × N1 %: the core;
+//   coreOrder: the whine's order on N2; buzzFrom, buzzTo: the N1 range (0..1) where the fan's tips
+//   go supersonic; jetHz, coreHz: [lowest, span] of the roar's and the rumble's low-passes (a bigger
+//   fan is lower); split: how much faster engine 2 runs (the two beat); gain: the voices' levels
+//   against the LEAP-1A's (by name, as in ENG; 1 if absent).
+//   The widebodies' specs are in engine-sounds.js.
+export const LEAP_1A = {
+  n1Hz: 3894 / 101 / 60, n2Hz: 19391 / 116.5 / 60, fanBlades: 18, n2Base: 60, n2Slope: 0.4, coreOrder: 12,
+  buzzFrom: 0.72, buzzTo: 0.95, jetHz: [160, 700], coreHz: [110, 200], split: 1.0015, gain: {},
+};
+// Engine 2 runs a little faster (the spec's split), and its tones are a little quieter (TONE2): the
+// two beat, gently, as unsynchronised engines do.
+const TONE2 = 0.65;
 
 // Overall levels (tuned by measurement): PRE feeds the limiter; the warnings' peaks.
 const PRE = 0.7;
@@ -77,6 +87,8 @@ export function createSynth({ context = null } = {}) {
   let n = null; // all the nodes, made once in start()
   let vol = FULL_VOLUME;
   let inside = true;
+  let SND = LEAP_1A;  // the engine's numbers (v0.3.0: setType)
+  const G = (voice) => SND.gain[voice] ?? 1;
 
   // Edge detectors and state between updates.
   let hasPrev = false, pT = 0, pGear = 0, pFlap = 0, pSlat = 0, pGround = false, pRev = 0;
@@ -141,25 +153,27 @@ export function createSynth({ context = null } = {}) {
   // The fan's tones, at the N1 shaft's frequency: the blade-passing frequency (18) and its
   // harmonics, each with sidebands, and the shaft's own first orders.
   function fanAmps() {
-    const a = new Float32Array(73);
+    const B = SND.fanBlades;
+    const a = new Float32Array(4 * B + 1);
     a[1] = 0.10; a[2] = 0.06; a[3] = 0.04;
-    a[18] = 1.0; a[17] = a[19] = 0.18; a[16] = a[20] = 0.07;
-    a[36] = 0.45; a[35] = a[37] = 0.08;
-    a[54] = 0.20; a[72] = 0.08;
+    a[B] = 1.0; a[B - 1] = a[B + 1] = 0.18; a[B - 2] = a[B + 2] = 0.07;
+    a[2 * B] = 0.45; a[2 * B - 1] = a[2 * B + 1] = 0.08;
+    a[3 * B] = 0.20; a[4 * B] = 0.08;
     return a;
   }
   // The buzz-saw: every shaft order, uneven (each blade a little different), strongest from
-  // the 6th to the 12th (a third to two thirds of the blade-passing frequency), weak at the
-  // first few, fading above.
+  // a third to two thirds of the blade-passing frequency (the 6th to the 12th with 18 blades),
+  // weak at the first few, fading above.
   function buzzAmps() {
+    const lo = SND.fanBlades / 3, hi = 2 * SND.fanBlades / 3;
     const a = new Float32Array(61);
     let s = 7;
     const rnd = () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return s / 4294967296; };
     for (let k = 1; k <= 60; k++) {
-      const env = k < 6 ? 0.15 + 0.85 * (k / 6) * (k / 6) : k <= 12 ? 1 : 12 / k;
+      const env = k < lo ? 0.15 + 0.85 * (k / lo) * (k / lo) : k <= hi ? 1 : hi / k;
       a[k] = env * (0.25 + 0.75 * rnd());
     }
-    a[18] = Math.max(a[18], 0.6);
+    a[SND.fanBlades] = Math.max(a[SND.fanBlades], 0.6);
     return a;
   }
 
@@ -400,23 +414,23 @@ export function createSynth({ context = null } = {}) {
       const pct = e ? Math.max(0, e.n1 || 0) : 0;
       const n1 = clamp01(pct / 100), on = running(n1);
       const pw = clamp01((n1 - 0.2) / 0.765);             // power, idle 0 … TOGA 1
-      const shaft = Math.max(1, pct) * N1_HZ * (i ? SPLIT : 1);
+      const shaft = Math.max(1, pct) * SND.n1Hz * (i ? SND.split : 1);
       set(E.p.pan, (i ? 1 : -1) * (inside ? 0.35 : 0.6), 0.2);
       set(E.fanOsc.frequency, shaft, 0.1);
       set(E.buzzOsc.frequency, shaft, 0.1);
-      set(E.whineOsc.frequency, 12 * N2_OF_N1(pct) * N2_HZ * (i ? SPLIT : 1), 0.1);
-      set(E.fanBp.frequency, Math.max(300, 1.4 * FAN_BLADES * shaft), 0.1);
-      set(E.jetLp.frequency, 160 + 700 * pw, 0.15);
-      set(E.coreLp.frequency, 110 + 200 * pw, 0.15);
+      set(E.whineOsc.frequency, SND.coreOrder * (SND.n2Base + SND.n2Slope * pct) * SND.n2Hz * (i ? SND.split : 1), 0.1);
+      set(E.fanBp.frequency, Math.max(300, 1.4 * SND.fanBlades * shaft), 0.1);
+      set(E.jetLp.frequency, SND.jetHz[0] + SND.jetHz[1] * pw, 0.15);
+      set(E.coreLp.frequency, SND.coreHz[0] + SND.coreHz[1] * pw, 0.15);
       // Levels: the fan's tones grow with its tip speed; the buzz-saw comes in as the tips
       // go supersonic (72–95 % N1), ahead of the engine; the jet's roar steeply with power,
       // behind it.
-      set(E.fan.gain, ENG.fan * (i ? TONE2 : 1) * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
-      set(E.buzz.gain, ENG.buzz * (i ? TONE2 : 1) * mix('buzz') * on * smooth(0.72, 0.95, n1) * (0.2 + 0.8 * ahead));
-      set(E.whine.gain, ENG.whine * mix('whine') * on * (0.6 + 0.4 * n1) * (0.5 + 0.5 * ahead));
-      set(E.fanNoise.gain, ENG.fanNoise * mix('fanNoise') * on * (0.1 + 0.9 * n1 * n1 * n1));
-      set(E.jet.gain, ENG.jet * mix('jet') * on * Math.pow(pw, 2.2) * (0.35 + 0.65 * behind));
-      set(E.core.gain, ENG.core * mix('core') * on * (0.3 + 0.7 * Math.pow(pw, 1.5)) * (0.6 + 0.4 * behind));
+      set(E.fan.gain, ENG.fan * G('fan') * (i ? TONE2 : 1) * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
+      set(E.buzz.gain, ENG.buzz * G('buzz') * (i ? TONE2 : 1) * mix('buzz') * on * smooth(SND.buzzFrom, SND.buzzTo, n1) * (0.2 + 0.8 * ahead));
+      set(E.whine.gain, ENG.whine * G('whine') * mix('whine') * on * (0.6 + 0.4 * n1) * (0.5 + 0.5 * ahead));
+      set(E.fanNoise.gain, ENG.fanNoise * G('fanNoise') * mix('fanNoise') * on * (0.1 + 0.9 * n1 * n1 * n1));
+      set(E.jet.gain, ENG.jet * G('jet') * mix('jet') * on * Math.pow(pw, 2.2) * (0.35 + 0.65 * behind));
+      set(E.core.gain, ENG.core * G('core') * mix('core') * on * (0.3 + 0.7 * Math.pow(pw, 1.5)) * (0.6 + 0.4 * behind));
       const rev = e ? clamp01(e.rev || 0) : 0;
       set(E.rev.gain, mix('reverser') * rev * (0.15 + n1 * n1) * 0.7);
       set(E.revBp.frequency, 400 + n1 * 600, 0.15);
@@ -454,7 +468,7 @@ export function createSynth({ context = null } = {}) {
       const lock = (gearPos >= 0.999 && pGear < 0.999) || (gearPos <= 0.001 && pGear > 0.001);
       const doors = (rev0 > 0.02 && pRev <= 0.02) || (rev0 >= 0.98 && pRev < 0.98) || (rev0 <= 0.02 && pRev > 0.02);
       if (lock || doors) {
-        const k = mix('clunk') * (lock ? 0.6 : 1);
+        const k = mix('clunk') * G('clunk') * (lock ? 0.6 : 1);
         pluck(n.clunk, now, k * 0.5, 0.05);
         pluck(n.clunkNoise, now, k * 0.7, 0.035);
       }
@@ -519,6 +533,13 @@ export function createSynth({ context = null } = {}) {
       return ctx.resume().then(() => true, () => false);
     },
     update,
+    // The aircraft type's engine (v0.3.0): new waveforms if the sound has started already.
+    setType(def) {
+      SND = def?.sound || LEAP_1A;
+      if (!n) return;
+      const fanWave = harmonicWave(fanAmps(), 11), buzzWave = harmonicWave(buzzAmps(), 23);
+      for (const E of n.engines) { E.fanOsc.setPeriodicWave(fanWave); E.buzzOsc.setPeriodicWave(buzzWave); }
+    },
     // Fade out and suspend the context (start() brings it back).
     stop() {
       if (!ctx) return Promise.resolve();

@@ -2,7 +2,9 @@
 // OfflineAudioContext (tests/dev-audio-render.html) and checks the PCM: levels, balance,
 // pitch tracking, clipping, clicks, NaN, pause / time-compression muting, update() cost.
 //
-//   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/audio-render.mjs [--json out.json]
+//   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/audio-render.mjs [--type b787-9] [--json out.json]
+//
+// --type (v0.3.0): that aircraft type's engine (b787-9, b777-300er; without it the A321neo).
 //
 // In the cloud container (v0.2.2): FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ node tests/audio-render.mjs
 // (its preinstalled Playwright and headless Chromium; NODE_PATH=$(npm root -g)). SYNTH=<url
@@ -25,7 +27,10 @@ try {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html' + (process.env.SYNTH ? '?synth=' + encodeURIComponent(process.env.SYNTH) : ''));
+  const ti = process.argv.indexOf('--type'), query = new URLSearchParams();
+  if (ti > 0) query.set('type', process.argv[ti + 1]);
+  if (process.env.SYNTH) query.set('synth', process.env.SYNTH);
+  await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html' + (query.size ? '?' + query : ''));
   await page.waitForFunction(() => typeof window.runAudio === 'function', null, { timeout: 30000 });
   r = await page.evaluate(() => window.runAudio());
   check('no page errors', errors.length === 0, errors.join(' | '));
@@ -37,6 +42,7 @@ const S = r.seg;
 const i = process.argv.indexOf('--json');
 if (i > 0) writeFileSync(process.argv[i + 1], JSON.stringify(r, null, 1));
 
+console.log(`\n${r.type}: ${r.spec.fanBlades} blades, ${r.spec.n1Hz.toFixed(4)} Hz per % N1`);
 console.log('\nsegment            rms dB   peak  centroid Hz  tone Hz  band dB');
 for (const [k, v] of Object.entries(S)) {
   if (Array.isArray(v)) continue;
@@ -73,10 +79,10 @@ check('spool-up level rises steadily (no 1 s step drops > 1.5 dB, total 10+ dB)'
 const w0 = r.scen['spoolup-out'].win, winSp = w0.slice(5, 85).map((_, k) => (w0[k + 4] + w0[k + 5] + w0[k + 6]) / 3);
 const wsteps = winSp.slice(1).map((v, k) => v - winSp[k]);
 check('spool-up smooth (300 ms average never steps > 2 dB)', wsteps.every((d) => Math.abs(d) < 2), `max |step| ${f1(Math.max(...wsteps.map(Math.abs)))} dB`);
-// v0.2.2: the fan's tone is checked where it should be (18 × the N1 shaft's frequency), every
+// v0.2.2: the fan's tone is checked where it should be (the blades × the N1 shaft's frequency), every
 // second of the spool-up. (Before, the strongest tone from 250 Hz up had to rise; now the
 // buzz-saw's tones can be stronger than the fan's at high N1, and 237 Hz at idle is below 250.)
-check('the fan tone tracks N1 (10+ dB over its neighbourhood at 18 × the shaft frequency, every second)', S.bpf.every((v) => v.db > 10),
+check('the fan tone tracks N1 (10+ dB over its neighbourhood at the blades × the shaft frequency, every second)', S.bpf.every((v) => v.db > 10),
   S.bpf.map((v) => `${Math.round(v.f)} Hz ${f1(v.db)}`).join(', '));
 check('cruise inside: engines and wind balanced (within 6 dB of each other)', Math.abs(S.cruiseInEng.rms - S.cruiseInWind.rms) < 6, `engines ${f1(S.cruiseInEng.rms)}, wind ${f1(S.cruiseInWind.rms)}`);
 check('cruise inside a little quieter than TOGA inside (0–8 dB)', S.togaIn.rms - S.cruiseIn.rms > 0 && S.togaIn.rms - S.cruiseIn.rms < 8, `${f1(S.cruiseIn.rms)} vs ${f1(S.togaIn.rms)}`);

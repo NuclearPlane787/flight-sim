@@ -1,4 +1,4 @@
-// The A321neo simulation: a 6-DOF rigid body in double precision with fixed steps, plus the
+// The aircraft simulation, for any type in src/sim/types.js: a 6-DOF rigid body in double precision with fixed steps, plus the
 // engines, gear, flaps, spoilers, fly-by-wire and the AP/A/THR. Deterministic: the same
 // snapshot and the same controls give the same states, bit for bit.
 // No DOM and no three.js: it runs in the page, in node and in a module Web Worker.
@@ -9,37 +9,18 @@
 // points are converted with y → −y, z → −z. state.pos is the body reference point (the
 // origin of geometry.js), not the CG; state.cgX is the CG's body x (m, + forward).
 
-import * as A from './a321neo.js';
 import { isaInto, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
-import { coefficients, liftCurve, machLift, clOfAlpha, alphaOfCl } from './flightmodel.js';
-import { engineStep, togaThrust, idleN1, detentName, leverToPhi, leverForPhi, n1ForPhi, LEVER_CL } from './engines.js';
-import { legStep } from './gear.js';
-import { fbwStep } from './fbw.js';
-import { createAp, apStep, athrStep, AP_FIELDS } from './autopilot.js';
-import { GEAR, GROUND_Z, ENGINES, NACELLES, NACELLE_DIAMETER, TAIL_STRIKE_POINT } from '../geometry.js';
+import { leverToPhi } from './engines.js';
+import { typeById, kitFor, DEFAULT_TYPE } from './types.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const approach = (x, target, rate) => (x < target ? Math.min(target, x + rate) : Math.max(target, x - rate));
 
-const CONFIG_BY_LEVER = ['0', '1', '2', '3', 'FULL'];
-const NEXT_CONFIG = { '0': '1', '1': '1+F', '1+F': '2', '2': '3', '3': 'FULL', 'FULL': null };
-
 const defaultGround = () => FLAT;
 const FLAT = { h: 0, kind: 'runway' };
 
-// Crash-check points (geometry.js FLU, metres).
-const CRASH_POINTS = [
-  { x: 19.6, y: 0, z: -1.7, why: 'nose impact' },
-  { x: -4, y: 0, z: -2.05, why: 'belly impact' },
-  { x: TAIL_STRIKE_POINT.x, y: 0, z: TAIL_STRIKE_POINT.z, why: 'tail strike' },
-  { x: NACELLES[0].x, y: NACELLES[0].y, z: NACELLES[0].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
-  { x: NACELLES[1].x, y: NACELLES[1].y, z: NACELLES[1].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
-  { x: -4.6, y: 17.9, z: 0.6, why: 'wingtip strike' },
-  { x: -4.6, y: -17.9, z: 0.6, why: 'wingtip strike' },
-];
-
-function newCore() {
+function newCore(A, boeing) {
   return {
     t: 0,
     px: 0, py: 0, pz: 0, vn: 0, ve: 0, vd: 0,
@@ -64,23 +45,40 @@ function newCore() {
     lastTdT: -100, bounceT: 0,
     apDiscT: 0, crashed: null,
     prevAlpha: 0, prevIas: 0, iasDot: 0, nzPrev: 1, nzF: 1, fAlong: 0, gspLatched: false,
+    ...(boeing ? boeing.coreFields() : null),
   };
 }
 
-export function createSim({ ground } = {}) {
+// type: a type id (src/sim/types.js), the A321neo by default. sim.setType(id) changes it (and
+// resets nothing else: call reset() or restore() next).
+export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   const groundFn = ground || defaultGround;
-  const X = newCore();
+  // Everything the type decides, bound by bindType() below.
+  let typeDef, A, kit, coefficients, liftCurve, machLift, clOfAlpha, engineStep, togaThrust, idleN1, detentName,
+    leverToPhi, leverForPhi, n1ForPhi, LEVER_CL, legStep, fbwStep, apStep, athrStep, AP_FIELDS,
+    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG;
+  const bindKit = (id) => {
+    typeDef = typeById(id);
+    A = typeDef.data; kit = kitFor(id);
+    ({ coefficients, liftCurve, machLift, clOfAlpha } = kit.fm);
+    ({ engineStep, togaThrust, idleN1, detentName, leverToPhi, leverForPhi, n1ForPhi, LEVER_CL } = kit.eng);
+    ({ legStep } = kit.gear); ({ fbwStep } = kit.fbw); ({ apStep, athrStep, AP_FIELDS } = kit.auto);
+    ({ GEAR, GROUND_Z, ENGINES, CRASH_POINTS } = typeDef.geo);
+    CONFIG_BY_LEVER = A.FLAP_LEVER; NEXT_CONFIG = A.NEXT_CONFIG;
+  };
+  bindKit(type);
+  const X = newCore(A, kit.boeing);
   const events = [];
 
   const controls = {
-    pitch: 0, roll: 0, yaw: 0, thrust: 0,
+    pitch: 0, roll: 0, yaw: 0, thrust: 0, trim: 0,
     brakeL: 0, brakeR: 0, parkingBrake: false, gearDown: true, flapLever: 0,
     speedbrake: 0, spoilersArmed: false, law: 'normal',
   };
 
   // ---- the read-only state, updated in place every step ----
   const state = {
-    t: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 },
+    type: typeDef.id, t: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 },
     hdg: 0, pitch: 0, roll: 0, quat: { x: 0, y: 0, z: 0, w: 1 },
     p: 0, q: 0, r: 0, alpha: 0, beta: 0,
     ias: 0, cas: 0, tas: 0, gs: 0, mach: 0, vs: 0, nz: 1, agl: 0, groundH: 0,
@@ -107,7 +105,7 @@ export function createSim({ ground } = {}) {
   };
 
   const core = { X, state, events };
-  const ap = createAp(core);
+  const ap = kit.auto.createAp(core);
 
   // ---- scratch, allocated once ----
   const R = new Float64Array(9);
@@ -133,11 +131,15 @@ export function createSim({ ground } = {}) {
     rx: 0, ry: 0, rz: 0, stroke: d.stroke, k: d.k, k3: d.k3, c: d.c, cExt: d.cExt, mu: d.mu, isNose,
     comp: 0, compRate: 0, wow: false, normal: 0, gh: 0, kind: 'runway', vRoll: 0,
   });
-  const legs = [
-    mkLeg(GEAR.nose, A.GEAR_DATA.nose, true),
-    mkLeg(GEAR.left, A.GEAR_DATA.main, false),
-    mkLeg(GEAR.right, A.GEAR_DATA.main, false),
-  ];
+  let legs;
+  const mkLegs = () => {
+    legs = [
+      mkLeg(GEAR.nose, A.GEAR_DATA.nose, true),
+      mkLeg(GEAR.left, A.GEAR_DATA.main, false),
+      mkLeg(GEAR.right, A.GEAR_DATA.main, false),
+    ];
+  };
+  mkLegs();
   const kctx = {
     R, px: 0, py: 0, pz: 0, u: 0, v: 0, w: 0, p: 0, q: 0, r: 0, brake: 0, steer: 0, F, M,
     groundAt(x, y, leg) { const g = groundFn(x, y); leg.gh = g.h; leg.kind = g.kind; },
@@ -177,13 +179,15 @@ export function createSim({ ground } = {}) {
     const lever = controls.flapLever | 0;
     if (lever !== X.prevLever) {
       if (lever === 1) {
-        X.lever1F = X.prevLever === 0 ? (onGround || ias < 100 * A.KT) : ias < A.AUTO_RETRACT_KT * A.KT;
+        X.lever1F = A.HAS_1F && (X.prevLever === 0 ? (onGround || ias < 100 * A.KT) : ias < A.AUTO_RETRACT_KT * A.KT);
       }
       X.prevLever = lever;
     }
-    if (lever === 1 && X.lever1F && !onGround && ias > A.AUTO_RETRACT_KT * A.KT) X.lever1F = false; // auto-retract
-    if (lever === 1 && onGround && ias < 60 * A.KT) X.lever1F = true;
-    X.cfg = lever === 1 ? (X.lever1F ? '1+F' : '1') : CONFIG_BY_LEVER[clamp(lever, 0, 4)];
+    if (A.HAS_1F) {
+      if (lever === 1 && X.lever1F && !onGround && ias > A.AUTO_RETRACT_KT * A.KT) X.lever1F = false; // auto-retract
+      if (lever === 1 && onGround && ias < 60 * A.KT) X.lever1F = true;
+    }
+    X.cfg = lever === 1 && A.HAS_1F ? (X.lever1F ? '1+F' : '1') : CONFIG_BY_LEVER[clamp(lever, 0, CONFIG_BY_LEVER.length - 1)];
     const tgt = A.CONFIGS[X.cfg];
     X.slat = approach(X.slat, tgt.slat, A.SLAT_RATE / A.DEG * dt);
     X.flap = approach(X.flap, tgt.flap, A.FLAP_RATE / A.DEG * dt);
@@ -264,10 +268,11 @@ export function createSim({ ground } = {}) {
       const firm = Math.abs(controls.pitch) > 0.5 || Math.abs(controls.roll) > 0.5;
       if (firm) ap.disconnectAp('stick');
       else if (X.protAlpha || X.protSpeed) ap.disconnectAp('protection');
-      else if (onGround) ap.disconnectAp('ground');
+      else if (onGround && !(kit.boeing && kit.boeing.staysOnGround(ap))) ap.disconnectAp('ground');
       else if (controls.law === 'alternate' && Math.abs(phi) > 45 * A.DEG) ap.disconnectAp('attitude');
     }
     apStep(X, ap, E, state, dt);
+    if (kit.boeing) kit.boeing.applyControls(X, controls);
 
     // Thrust demand (A/THR or manual) and the engines. While the A/THR drives the lever
     // (v0.2.2) it writes it back to the controls, so the keyboard's lever, the cockpit's levers
@@ -295,7 +300,7 @@ export function createSim({ ground } = {}) {
     if (mainsWow && ((controls.spoilersArmed && leverIdle && ias > 72 * A.KT) || revSel)) X.gspLatched = true;
     if (lever > 0.05 || (!mainsWow && !wowN)) X.gspLatched = false;
     X.gsp = approach(X.gsp, X.gspLatched ? 1 : 0, dt * (X.gspLatched ? 2.0 : 0.5));
-    const sbInhibit = X.cfg === 'FULL' || X.protAlpha || lever > 0.75 || X.alphaFloorLock;
+    const sbInhibit = X.cfg === A.CONFIG_FULL || X.protAlpha || lever > 0.75 || X.alphaFloorLock;
     X.sb = approach(X.sb, sbInhibit ? 0 : clamp(controls.speedbrake, 0, 1), dt * 0.5);
 
     // Brakes (anti-skid in the tyre model) and nosewheel steering.
@@ -320,7 +325,7 @@ export function createSim({ ground } = {}) {
     cs.adothat = clamp(adot, -1, 1) * A.MAC / (2 * Vn);
     cs.slat = X.slat; cs.flap = X.flap; cs.gear = X.gearPos; cs.doors = X.gearDoors;
     cs.sb = X.sb; cs.gsp = X.gsp; cs.spL = X.spL; cs.spR = X.spR; cs.ail = X.ail; cs.rud = X.rud; cs.ths = X.ths;
-    cs.hWing = aglEst + 3.0;
+    cs.hWing = aglEst + A.WING_HEIGHT;
     coefficients(cs, co);
     const qS = qbar * A.S;
     const ca = Math.cos(alpha), sa = Math.sin(alpha);
@@ -596,6 +601,7 @@ export function createSim({ ground } = {}) {
     W.sinkRate = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(998 + 1.67 * aglFt);
     W.pullUp = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(1710 + 2.17 * (aglFt - 50));
     W.tooLowGear = air && aglFt < 500 && X.gearPos < 0.99 && ias < 190 * A.KT && vsFpm < 0;
+    if (kit.boeing) kit.boeing.updateState(S, X, lc, atm);
     W.master = W.stall || W.overspeed || W.apDisc || W.sinkRate || W.pullUp || W.tooLowGear;
     S.crashed = X.crashed;
     S.cl = co.CL; S.cd = co.CD;
@@ -613,18 +619,12 @@ export function createSim({ ground } = {}) {
   // The VFE of the configuration the surfaces are actually in (so a retraction keeps the
   // lower limit until the flaps and slats have moved).
   function actualConfigVfe() {
-    let cfg = '0';
-    if (X.flap > 21.5 || X.slat > 22.5) cfg = 'FULL';
-    else if (X.flap > 14.5) cfg = '3';
-    else if (X.flap > 10.5 || X.slat > 18.5) cfg = '2';
-    else if (X.flap > 0.5) cfg = '1+F';
-    else if (X.slat > 0.5) cfg = '1';
-    return A.VFE_KT[cfg];
+    return A.VFE_KT[A.configOfSurfaces(X.slat, X.flap)];
   }
 
   // ---- initial conditions ----
   function reset(ic = {}) {
-    Object.assign(X, newCore());
+    Object.assign(X, newCore(A, kit.boeing));
     events.length = 0;
     controls.pitch = controls.roll = controls.yaw = 0;
     controls.brakeL = controls.brakeR = 0; controls.speedbrake = 0;
@@ -644,8 +644,8 @@ export function createSim({ ground } = {}) {
     X.prevLever = controls.flapLever | 0;
     // Lever 1 is 1+F on the ground; an airborne start is as if 1 was selected from 0 (slats
     // only, e.g. the skip-to-final start in CONF 1).
-    X.lever1F = controls.flapLever === 1 && onGround;
-    X.cfg = controls.flapLever === 1 ? (X.lever1F ? '1+F' : '1') : CONFIG_BY_LEVER[clamp(controls.flapLever | 0, 0, 4)];
+    X.lever1F = A.HAS_1F && controls.flapLever === 1 && onGround;
+    X.cfg = controls.flapLever === 1 && A.HAS_1F ? (X.lever1F ? '1+F' : '1') : CONFIG_BY_LEVER[clamp(controls.flapLever | 0, 0, CONFIG_BY_LEVER.length - 1)];
     X.slat = A.CONFIGS[X.cfg].slat; X.flap = A.CONFIGS[X.cfg].flap;
     X.gearPos = controls.gearDown || onGround ? 1 : 0;
     X.thsTakeoff = clamp((-0.5 + 20 * (0.25 - cgX / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
@@ -683,6 +683,7 @@ export function createSim({ ground } = {}) {
     updateState(isaInto(X.pz, atm), casFromTasP(Math.hypot(X.vn, X.ve, X.vd), atm.p, atm.a),
       Math.hypot(X.vn, X.ve, X.vd) / atm.a, X.prevAlpha, 0, 1, 0, g.h, X.pz - GROUND_Z - g.h);
     state.gs = Math.hypot(X.vn, X.ve);
+    if (kit.boeing) { kit.boeing.afterReset(X, ap, state, controls, ic); updateState(isaInto(X.pz, atm), state.ias, state.mach, X.prevAlpha, 0, 1, state.gs, g.h, X.pz - GROUND_Z - g.h); }
   }
 
   // Steady level flight at the given IAS: α from the lift needed, the stabiliser from the
@@ -752,9 +753,25 @@ export function createSim({ ground } = {}) {
   function snapshot() {
     const apSnap = {};
     for (const k of AP_FIELDS) apSnap[k] = ap[k];
-    return { v: 1, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
+    return { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
+  }
+  // Changes the aircraft type. The sim's objects stay the same; the core goes back to a fresh
+  // one, so call reset() or restore() next.
+  function setType(id) {
+    const def = typeById(id);
+    if (def === typeDef) return;
+    bindKit(def.id);
+    for (const k of Object.keys(X)) delete X[k];
+    Object.assign(X, newCore(A, kit.boeing));
+    Ixz = A.IXZ;
+    mkLegs();
+    for (const k of Object.keys(ap)) delete ap[k];
+    kit.auto.createAp(core, ap);
+    state.type = def.id;
   }
   function restore(snap) {
+    // A save from before v0.3.0 has no type: it's the A321neo.
+    setType(snap.type || DEFAULT_TYPE);
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE }, snap.core);
     Object.assign(controls, snap.controls);
@@ -788,7 +805,8 @@ export function createSim({ ground } = {}) {
     updateState(atm, casFromTasP(V, atm.p, atm.a), V / atm.a, 0, 0, 1, V, g.h, X.pz - GROUND_Z - g.h);
   }
 
-  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, _core: X };
+  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType,
+    get type() { return typeDef; }, get leverClimb() { return LEVER_CL; }, _core: X };
 }
 
 export { leverToPhi };

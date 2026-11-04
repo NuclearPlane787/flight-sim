@@ -92,6 +92,7 @@
 .fsm-keys td { padding: 4px 12px 4px 0; vertical-align: top; }
 .fsm-keys tr + tr td { border-top: 1px solid #1c2329; }
 .fsm-keys td:nth-child(odd) { color: #eef3f7; }
+.fsm-keys-h { margin: 12px 0 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #2fe3ff; }
 .fsm-notes { margin-top: 12px; font-size: 13.5px; line-height: 1.5; color: #a9b4bd; }
 .fsm-notes p { margin: 0 0 8px; }
 .fsm-notes b { color: #2fe3ff; font-weight: 600; }

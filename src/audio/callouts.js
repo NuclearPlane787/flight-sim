@@ -29,6 +29,9 @@ export function createCallouts() {
   }
   if (synth) { pickVoice(); synth.addEventListener?.('voiceschanged', pickVoice); }
 
+  // RETARD is an Airbus's call (v0.3.0: a Boeing's height calls stay, without it).
+  let retardOn = true;
+
   function say(text, urgent) {
     heard.push(text);
     if (heard.length > 30) heard.shift();
@@ -61,7 +64,7 @@ export function createCallouts() {
     const leversUp = s.thrustLever > 0.01;
     if (!s.onGround && ft > 50 && s.vs < 0) retardArmed = true;
     if (!leversUp || (s.onGround && s.gs < 40 / 1.944) || (!s.onGround && s.vs > 2.5 && ft > 100)) retardArmed = false;
-    if (retardArmed && leversUp && ft <= retardFt && now - retardAt > 1.2) { say('retard', true); retardAt = now; }
+    if (retardOn && retardArmed && leversUp && ft <= retardFt && now - retardAt > 1.2) { say('retard', true); retardAt = now; }
     const w = s.warnings || {};
     if (now - warnAt > 2.5 && !s.onGround) {
       for (const [k, text] of WARNINGS) if (w[k]) { say(text, true); warnAt = now; break; }
@@ -72,6 +75,7 @@ export function createCallouts() {
   return {
     update,
     say,
+    setType(def) { retardOn = def.family !== 'boeing'; },
     heard,
     set muted(v) { muted = v; if (v && synth) synth.cancel(); },
     get muted() { return muted; },

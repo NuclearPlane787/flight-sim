@@ -22,15 +22,20 @@ const ACTIONS = {
   KeyM: 'map', KeyV: 'view', KeyP: 'pushback', Escape: 'pause', F3: 'perf', Backquote: 'perf',
   Digit6: 'flap0', Digit7: 'flap1', Digit8: 'flap2', Digit9: 'flap3', Digit0: 'flap4',
   KeyT: 'rewind',
+  // v0.3.0: the flap lever a step at a time (every type; a Boeing has more detents than keys).
+  BracketLeft: 'flapUp', BracketRight: 'flapDown',
+  // The Boeings' TO/GA switches (nothing on the A321, whose TO/GA is the lever).
+  KeyO: 'toga',
   // The view switch's keys (v0.2.1): cockpit, nose, 3rd person.
   Digit1: 'viewCockpit', Digit2: 'viewNose', Digit3: 'viewOrbit',
 };
-const HELD = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'Space']);
+const HELD = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'Space', 'KeyY', 'KeyH']);
 
 export function createInput(target = window) {
   const down = new Set();
   const axes = { pitch: 0, roll: 0, yaw: 0 };
   let lever = 0;          // -1 … 1
+  let detents = DETENTS;  // the lever's stops (v0.3.0: the type's; a Boeing has idle and full)
   let detentTimer = 0;    // time left paused at a detent
   let reverseTimer = 0;
   // R/F: 0 not held; 1 held since a moment the lever was the pilot's; 2 held since a moment the
@@ -84,6 +89,8 @@ export function createInput(target = window) {
     controls.pitch = axes.pitch;
     controls.roll = axes.roll;
     controls.yaw = axes.yaw;
+    // v0.3.0: the Boeings' pitch trim, held: Y nose down, H nose up (the sim ignores it on the A321).
+    controls.trim = pair('KeyY', 'KeyH');
 
     // The thrust lever moves while R or F is held and pauses at each detent it crosses.
     const dir = pair('KeyF', 'KeyR');
@@ -113,7 +120,7 @@ export function createInput(target = window) {
         lever = Math.min(0, next); // reverse back up to idle, stopping there
         if (lever === 0) detentTimer = DETENT_HOLD;
       } else {
-        const crossed = DETENTS.find((d) => (lever < d.at && next >= d.at) || (lever > d.at && next <= d.at));
+        const crossed = detents.find((d) => (lever < d.at && next >= d.at) || (lever > d.at && next <= d.at));
         if (crossed) { lever = crossed.at; detentTimer = DETENT_HOLD; } else lever = next;
       }
     }
@@ -129,6 +136,7 @@ export function createInput(target = window) {
     update,
     axes,
     onAction(fn) { listeners.push(fn); },
+    setDetents(list) { detents = list || DETENTS; },
     get lever() { return lever; },
     set lever(v) { lever = v; },
     isDown: (code) => down.has(code),

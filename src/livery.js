@@ -61,7 +61,7 @@ export function bellyTheta(x) {
   return base + s * 120;
 }
 
-function stripes(ctx, x, y, w, h, period, color, slant) {
+export function stripes(ctx, x, y, w, h, period, color, slant) {
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   ctx.fillStyle = color;
@@ -78,7 +78,7 @@ function stripes(ctx, x, y, w, h, period, color, slant) {
 }
 
 // Stylised atom: three elliptical orbits round a glowing core. (cx, cy) centre, r radius in px.
-function atom(ctx, cx, cy, r, sx, glow) {
+export function atom(ctx, cx, cy, r, sx, glow) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(sx, 1);
@@ -258,7 +258,7 @@ function paintFin(ctx, glow, fuseTop) {
   atom(ctx, cx, cy, r, sx, glow);
 }
 
-function paintNacelle(ctx, glow) {
+export function paintNacelle(ctx, glow) {
   const X0 = 1024, Y0 = 1024, W = 1024, H = 512;
   const vy = (v) => Y0 + (1 - v) * H;
   ctx.fillStyle = glow ? '#000' : COLORS.navy;

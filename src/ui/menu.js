@@ -7,13 +7,13 @@
 //                                   onLogbook(), onSettings(), onControls(), onExit? });
 //   menu.show(); menu.hide(); menu.refresh(); menu.isOpen
 //   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky? });
-//   const controls = createControlsPage(root, { sky? });
+//   const controls = createControlsPage(root, { sky? });   controls.setFamily(def.family) for the type flown
 //   page.open(); page.close(); page.isOpen; page.onclose = () => {}
 //
 // `scenarios` is the ScenarioStore (list, rename, remove). Nothing renders behind the menu:
 // it's plain DOM over a still.
 
-import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText } from '../scenarios.js';
+import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -50,7 +50,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
     <div class="fsm-left">
       <p class="fsm-eyebrow">Game Dump presents</p>
       <h1 class="fsm-title">Flight Sim</h1>
-      <p class="fsm-sub">A321neo · South Korea</p>
+      <p class="fsm-sub">Airliners over South Korea</p>
     </div>
     <div class="fsm-right">
       <nav class="fsm-nav" data-o="nav" aria-label="Main menu">
@@ -113,7 +113,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
     } else {
       main = `<div class="fsm-row-main">
           <b>${esc(e.name)}</b>
-          <small>${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
+          <small>${esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
         </div>
         <span class="fsm-when">${esc(savedText(e.savedAt))}</span>`;
     }
@@ -354,13 +354,35 @@ const KEYS = [
   ['V', 'next view', 'Esc', 'pause menu'],
 ];
 
+// Keys only one family of aircraft has (types.js `family`), in the same four cells as KEYS, under its own
+// heading after the common table, with its own notes. `replace` rewords the common table's cells that
+// differ, and `hideNote` drops a note that doesn't apply. The page shows a family's once main.js says
+// which family is being flown (setFamily), so the A321's page stays as it has always been.
+export const FAMILY_KEYS = [
+  { family: 'boeing', title: 'Boeing 787 and 777', rows: [
+    ['Y', 'trim nose down', 'H', 'trim nose up'],
+    ['[ / ]', 'flaps one step up / down', 'O', 'TO/GA'],
+  ], replace: {
+    'flaps 0, 1, 2, 3, FULL': 'flaps UP, 5, 15, 20, 30',
+    'autopilot / autothrust': 'autopilot / A/T arm',
+    'FCU window': 'MCP window',
+  }, hideNote: 'fcu', notes: `<p>The trim sets the speed the aircraft holds: let go of the controls and it settles back to the green TRIM mark on the speed tape.
+    With the A/P on, it trims itself.</p>
+    <p><b>The MCP</b> along the top sets the speed, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter.
+    Enter on HDG goes to HDG SEL, on ALT to FLCH, on V/S to V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
+    Above FL260 the speed window is in Mach, and a typed 84 or .84 is a Mach at any height. Its buttons light green when active and white when armed.
+    Esc, a click elsewhere or a flying key closes a window unchanged.</p>` },
+];
+
+const keyRows = (rows) => rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('');
+
 export function createControlsPage(root, { sky = false } = {}) {
-  const rows = KEYS.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')
+  const rows = keyRows(KEYS)
     + (sky ? `<tr><td>L or Cmd/Ctrl+L</td><td colspan="3">the Sky window (time of day)</td></tr>` : '');
-  return createPage(root, 'fsm-controls', 'Controls', `
-    <table class="keys fsm-keys">${rows}</table>
+  const page = createPage(root, 'fsm-controls', 'Controls', `
+    <table class="keys fsm-keys">${rows}</table><div data-family-keys></div>
     <div class="fsm-notes">
-      <p><b>The FCU</b> along the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps),
+      <p data-note="fcu"><b>The FCU</b> along the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps),
         or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S.
         An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
         Esc, a click elsewhere or a flying key closes it unchanged.</p>
@@ -373,4 +395,15 @@ export function createControlsPage(root, { sky = false } = {}) {
         V steps through all four, the first officer's seat too.
         Press and drag on the view (one finger) to look around, or in 3rd person to go round the aircraft; a two-finger swipe does the same.</p>
     </div>`);
+  // The keys of the family being flown (a registry entry's `family`); any other is the common page.
+  const cells = [...page.el.querySelectorAll('.fsm-keys td')].map((td) => [td, td.textContent]);
+  page.setFamily = (family) => {
+    const g = FAMILY_KEYS.find((f) => f.family === family);
+    for (const [td, text] of cells) td.textContent = g?.replace?.[text] ?? text;
+    page.el.querySelector('[data-family-keys]').innerHTML = g ? `
+      <h3 class="fsm-keys-h" data-family="${esc(g.family)}">${esc(g.title)}</h3>
+      <table class="keys fsm-keys">${keyRows(g.rows)}</table>${g.notes ? `<div class="fsm-notes">${g.notes}</div>` : ''}` : '';
+    for (const n of page.el.querySelectorAll('[data-note]')) n.hidden = !!g && g.hideNote === n.dataset.note;
+  };
+  return page;
 }

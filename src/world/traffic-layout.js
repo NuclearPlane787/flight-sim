@@ -108,7 +108,8 @@ function footprintsOverlap(A, B) {
 // ------------------------------------------------------------------ parked aircraft
 
 export const FILL = 0.7;            // share of the stands that get an aircraft
-const CLEAR = 2.0;                  // m grown on every side of a footprint (4 m wingtip gap)
+export const CLEAR = 2.0;           // m grown on every side of a footprint (4 m wingtip gap)
+export const WINGTIP_CLEARANCE = 7.5; // m, ICAO Annex 14's clearance at a code E stand (v0.3.0)
 
 // Liveries: 0 = Nuclear Airlines, then the made-up ones (liveries-other.js). Nuclear is
 // the commonest at every airport, the others by airport.
@@ -140,6 +141,9 @@ function obstacles(airport) {
   });
   return { polys, strips };
 }
+
+// The same two, for the widebody stand check in ground/taxi.js (v0.3.0).
+export { obstacles as standObstacles, blocked as footprintBlocked };
 
 function blocked(fp, obs) {
   for (const r of fp) {
@@ -265,9 +269,37 @@ export function placeParked(airport, { heightAt = null, wide = airport.icao === 
   return placed;
 }
 
+// The footprint of an aircraft of any size, nose tip at (x, y), heading h. The widebody model's
+// proportions, stretched to the length with the given span: a box round the wing's whole sweep,
+// so it errs on the safe side. size = { span, length } in metres.
+export function sizedFootprint(size, x, y, h, margin = 0) {
+  const T = AIRLINER_TYPES[1], ls = size.length / T.length;
+  return footprint({ ...T, span: size.span, stabSpan: T.stabSpan * ls }, x, y, h, ls, margin);
+}
+
 // Which parked aircraft must go for the player's aircraft at this stand: the one at the
 // stand itself and any whose footprint overlaps a narrowbody's there.
-export function blockedByPlayer(airport, parked, ref) {
+// With opts = { span, length } (a widebody, v0.3.0): any that would come within wingtip
+// clearance of an aircraft of that size. A parked footprint already carries CLEAR, so the
+// player's gets the rest. A few of Incheon's refs name two positions, and only the ref
+// comes here, so both are kept clear. opts.path (gate.pushPath(): [x, y, hdg] of the nose along
+// the pushback) also frees whatever the aircraft would run into on the way out.
+export function blockedByPlayer(airport, parked, ref, opts = null) {
+  if (opts) {
+    const out = new Set();
+    for (const s of airport.stands || []) {
+      if (s.ref !== ref) continue;
+      const fp = sizedFootprint(opts, s.x, s.y, standHeading(airport, s), WINGTIP_CLEARANCE - CLEAR);
+      parked.forEach((p, i) => { if (p.stand === ref || footprintsOverlap(fp, p.fp)) out.add(i); });
+    }
+    if (out.size || (airport.stands || []).some((s) => s.ref === ref)) {
+      for (const [x, y, h] of opts.path || []) {
+        const fp = sizedFootprint(opts, x, y, h);
+        parked.forEach((p, i) => { if (footprintsOverlap(fp, p.fp)) out.add(i); });
+      }
+    }
+    return out;
+  }
   const s = (airport.stands || []).find((t) => t.ref === ref);
   if (!s) return new Set();
   const h = standHeading(airport, s);

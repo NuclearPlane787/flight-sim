@@ -1,6 +1,6 @@
 # Flight Sim: handoff
 
-Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, updated on 2026-11-01 by the second Cowork session, which made v0.1.4, again on 2026-11-01 (about 05:30 KST) by the overnight Claude Code run that made v0.2.0, on 2026-11-03 by the Cowork session that made v0.2.1, and on 2026-11-04 by the same session, which made v0.2.2. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
+Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, updated on 2026-11-01 by the second Cowork session, which made v0.1.4, again on 2026-11-01 (about 05:30 KST) by the overnight Claude Code run that made v0.2.0, on 2026-11-03 by the Cowork session that made v0.2.1, on 2026-11-04 by the same session, which made v0.2.2, and again on 2026-11-04 by the overnight Claude Code run that made v0.3.0. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
 
 ## Where things stand
 
@@ -13,10 +13,13 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | v0.1.4 | Typing into the FCU, jumps picked anywhere on the bright path, Gimpo stand 7's routes, pushbacks at up to 4×, Jeju's crossing as one surface, the B612 and Barlow fonts | yes (`f4482a4`) |
 | v0.2.0 | The main menu, scenarios (save slots with the whole state), one logbook tagged by scenario, Settings and Controls; night: the KST clock and the Sky window, Earth's sky with real stars and the Moon, the light following the sun, city, airport, taxiway and aircraft lights | yes (`73b7776`) |
 | v0.2.1 | Taxiways that stop at the runways' edges (no more clipping), changing the route in flight from the map, dragged waypoints that show, the view switch (Cockpit, Nose, 3rd person; 1, 2, 3), one-finger drag to look around or orbit, more stars | yes (`0c22ce4`) |
-| v0.2.2 | The engine sound rebuilt from the LEAP-1A's real tones; the A/THR moving the thrust lever (and the N1 ring), R/F taking it over smoothly; Cockpit (1) no longer swaps seats | not yet (built 2026-11-04 in Cowork) |
+| v0.2.2 | The engine sound rebuilt from the LEAP-1A's real tones; the A/THR moving the thrust lever (and the N1 ring), R/F taking it over smoothly; Cockpit (1) no longer swaps seats | yes (`7d9a20d`) |
+
+| v0.3.0 | Aircraft types, the Boeing 787-9 and 777-300ER, with Boeing's law, trim, autothrottle, MCP and screens, code E stands, the picker | not yet: Shane pushes with `sh tools/push.sh v0.3.0` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
-- **Not in any commit yet:** v0.2.2. Shane pushes it: `sh tools/push.sh v0.2.2`, then a hard reload (Cmd+Shift+R) in Chrome.
+- **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
+- **v0.3.0's evidence** is in `STATUS.md` (from "2026-11-04, 04:36 KST"), its final entry says what's weak, and ROADMAP has the leftovers.
 - **Passing at v0.2.0's hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers; v0.2.1's and v0.2.2's checks are in their STATUS entries):
   - 262 unit tests in 34 files (`node --test tests/*.test.mjs`);
   - every `.js`/`.mjs` in `src/` and `tests/` checked **as a module** (copy to `.mjs`, then `node --check`; a plain `node --check file.js` checks it as a script and missed a broken `if … else` once);
@@ -34,7 +37,7 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 - **The logbook** tags each flight with `scenarioId`/`scenarioName` (`unsaved` for flights without a scenario); untagged v0.1 flights count as the legacy Scenario 1's.
 - **Night:** `src/clock.js` (KST, stepped by the sim time stepped), `src/astro.js` (Meeus), `src/world/sky.js` (`setTime`, `lightingAt`, stars from `data/stars.json`, BSC5), `uNight` and the lamp uniforms in `glsl.js`, `citylights.js`, `taxilights.js`, the light shaders in `airports.js`, floods and windows in `apron.js`, `aircraft-lights.js` (`lightsFor` by phase), the cockpit's `setNight`, and the Sky window (`src/ui/sky-window.js`, L or Cmd/Ctrl+L, the one Ctrl binding).
 
-**Next:** nothing is decided. ROADMAP's 2026-11-01 table is the list; weather (row 10's other half) pairs naturally with the night.
+**Next (after v0.3.0):** nothing is decided. ROADMAP's 2026-11-01 table is the list, and "Found while building v0.3.0" the leftovers; weather (row 10's other half) pairs naturally with the night.
 
 ## Other open items
 
@@ -80,6 +83,16 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | `src/audio/synth.js` | v0.2.2: the engines, per engine: `fanOsc` and `buzzOsc` (custom `PeriodicWave`s at the N1 shaft's frequency: `fanAmps()`, the blade-passing order 18 and its harmonics with sidebands; `buzzAmps()`, every order, uneven), wavering through `wanderBuffer()` (±4 cents, ±15/20 % level); `whineOsc` from N2 (≈ 60 + 0.4 N1); white noise round 1.4 × the BPF (`fanNoise`), pink noise low-passed 160–860 Hz (`jet`), brown noise (`core`). `ENG` holds each voice's gain, `MIX` the cockpit/outside balance; `SPLIT`/`TONE2` the second engine's offset (the beat). `opts.aft`/`opts.dist` (main.js: the nose is −1; 3rd person `cos(yaw)·cos(pitch)` and its orbit distance) weight fan and buzz-saw ahead, jet behind, and lower and dull the sound beyond 75 m. `set()` skips unchanged targets. |
 | `src/main.js`, `src/ui/hud.js`, `src/ui/menu.js` | v0.2.2: `selectView('cockpit')` keeps the seat you're in, else the captain's (no swap, no `lastSeat`). |
 
+### v0.3.0: the types
+
+| Where | What |
+|---|---|
+| `src/sim/types.js`, `src/type-assets.js`, `useType()` in `src/main.js` | The registry (no DOM, the worker reads it), the models, and the one place everything is told the type. `sim.setType()` keeps `sim.ap`, `sim.state` and `sim.controls` as the same objects and starts a fresh core: reset or restore next. |
+| `src/sim/fbw-boeing.js` | C*U: hands off, an energy loop flies the path that returns to `X.vRef`; the stick's g goes on top; `controls.trim` moves `vRef` at 10 kt/s, stopped at `vmm` and VMO/MMO. No flare law. Its `hooks` are all `sim.js` knows of a Boeing. |
+| `src/sim/autopilot-boeing.js` | The modes run with the AP off too, as the flight director's. A hand on the levers is an override that ends 1 s after release. `ils` and `route` are in `AP_FIELDS`, so they're in every snapshot and the prediction flies them. |
+| `syncNav()` in `src/main.js` | `sim.reset()` clears a Boeing's ILS and route: it sets them after every reset and when the route changes. |
+| `tests/browser-boeing-flight.mjs <id> [flight1 flight2 views fps]`, `tests/browser-types.mjs <id>`, `tests/e2e-controller.js` | The two flights, views, frame rate, saves. The controller has a Boeing branch (trim, flap detents, a firmer flare from 70 ft). |
+
 ## Working from a Cowork session
 
 Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When it's connected, it's `$HOME/mnt/GameDump` in the device shell.
@@ -123,6 +136,11 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
 
 ## Pitfalls already hit in the game
 
+- **A type's data must export every name `a321neo.js` does** (the data tests check). A missing one is `undefined`, and the first symptom is NaN everywhere.
+- **Exit to menu saves.** A test that edits a save has to do it after that, or the edit is overwritten (it hid a v0.2.2-save check once).
+- **`VMM_FACTOR` has to leave the amber band below Vref:** the law's default of 1.3 put it above Vref on every approach. Each Boeing sets its own.
+- **Screenshots use the clock:** a check run at night is a night shot. `tests/browser-boeing-flight.mjs` fixes the afternoon.
+
 - **The screens draw in B612,** whose digits are wider than Helvetica's, which the windows were first sized for. Text in a fixed window goes through `fitSize()` (pfd.js) or gets measured; check the PFD at FL350 and on final after any change (`tests/dev-ui.html` renders the screens without WebGL, so ordinary screenshots work there).
 - **Runways that cross** have one surface: anything that needs a runway's height uses `profileAt()` or `rectElev()`, never a straight line between its ends, and `heightAt` (heightfield.js) and `flattenRunways` (glsl.js) must stay the same rule.
 - **Coplanar pavement flickers.** Since v0.1.1 the pavement writes no depth and draws in a fixed order: taxilanes, then taxiways, then aprons and stands (see `apron.js`'s header). Anything new on the ground has to fit that scheme.
@@ -157,6 +175,7 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
   - where the screenshots are.
 - **Ask what you can't see.** His logbook lives in his Chrome, so for v0.1.3 he was asked for his landing's numbers and answered at once.
 - **Standing decisions:**
+  - keys H and Y are the Boeings' trim, O their TO/GA, `[` and `]` the flap lever's steps (v0.3.0);
   - the CPU rules (`tools/cpu-guard.py`);
   - no Ctrl key bindings;
   - no network at runtime;

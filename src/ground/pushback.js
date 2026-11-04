@@ -15,6 +15,7 @@ const ACCEL = 0.4;      // m/s², tug pull-away and stop
 const TURN_R = 25;      // m, turn radius of the reference point
 const MIN_R = 12;       // m, the tightest turn, used when the taxi line is close behind
 const BIAS = 0.4;       // Q/E change the turn rate by ±40%
+export const REF_WHEELBASE = 16.91; // m, the A321neo's (geometry.js): the numbers above are for it
 
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -23,12 +24,17 @@ const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 //   (e.g. from taxi.js snapToGraph + the edge direction, or the first leg of the route).
 //   Without it: push 1.5 radii back, then a 90° turn to the left (tail right).
 // opts.finalHdgGrid: force the heading after the turn.
+// opts.wheelbase: metres. The turn radii and the straight leg grow with it: a tug turns a longer
+//   aircraft on the same nosewheel angle, so round a proportionally wider arc. Left out (or the
+//   A321neo's), the scale is exactly 1.
 export function createPushback(stand, opts = {}) {
   const h0 = stand.hdgGridDeg * Math.PI / 180;
   const bx = -Math.sin(h0), by = -Math.cos(h0);   // backwards direction
+  const scale = opts.wheelbase ? opts.wheelbase / REF_WHEELBASE : 1;
+  const turnR = TURN_R * scale, minR = MIN_R * scale, minLeg = 5 * scale;
 
   // Straight leg length and final heading.
-  let straightM = 1.5 * TURN_R, finalHdg = wrap(h0 - Math.PI / 2), radius = TURN_R;
+  let straightM = 1.5 * turnR, finalHdg = wrap(h0 - Math.PI / 2), radius = turnR;
   if (opts.line) {
     const L = opts.line;
     const back = (L.x - stand.x) * bx + (L.y - stand.y) * by;     // distance back to the line
@@ -45,18 +51,18 @@ export function createPushback(stand, opts = {}) {
     // Straight back a metres, then backing round an arc of radius R to finalHdg, must
     // end on the line: n·(stand + a·back + arc − line point) = 0, n the line's normal.
     const L = opts.line;
-    const dh = wrap(finalHdg - h0), k = Math.sign(dh || 1) / TURN_R, h1 = h0 + dh;
+    const dh = wrap(finalHdg - h0), k = Math.sign(dh || 1) / turnR, h1 = h0 + dh;
     const arcX = -(Math.cos(h0) - Math.cos(h1)) / k, arcY = -(Math.sin(h1) - Math.sin(h0)) / k;
     const nx = Math.cos(L.hdgGrid), ny = -Math.sin(L.hdgGrid);
     const nb = nx * bx + ny * by;
     if (Math.abs(nb) > 0.2) {
       const want = nx * (L.x - stand.x) + ny * (L.y - stand.y), na = nx * arcX + ny * arcY;
       const a = (want - na) / nb;
-      straightM = Math.max(5, a);
+      straightM = Math.max(minLeg, a);
       // Too close for the standard radius: turn tighter (the arc scales with the radius).
-      if (a < 5 && Math.abs(na) > 1e-6) {
-        radius = Math.max(MIN_R, Math.min(TURN_R, (want - 5 * nb) / (na / TURN_R)));
-        straightM = Math.max(5, (want - na * radius / TURN_R) / nb);
+      if (a < minLeg && Math.abs(na) > 1e-6) {
+        radius = Math.max(minR, Math.min(turnR, (want - minLeg * nb) / (na / turnR)));
+        straightM = Math.max(minLeg, (want - na * radius / turnR) / nb);
       }
     }
   }
@@ -117,4 +123,20 @@ export function createPushback(stand, opts = {}) {
     get state() { return { ...s, finalHdg, straightM, radius }; },
     get active() { return s.phase !== 'idle' && s.phase !== 'done'; },
   };
+}
+
+// Where a planned pushback goes: [x, y, hdgGrid] of the reference point, from the stand to its
+// end, a pose every `stepS` seconds (a multiple of dt). Runs a copy of the plan, so the pushback
+// itself isn't moved.
+export function pushbackPoses(stand, state, stepS = 2, dt = 0.1) {
+  const trial = createPushback(stand);
+  trial.setState({ ...state, phase: 'idle', running: false, x: stand.x, y: stand.y, hdgGrid: stand.hdgGridDeg * Math.PI / 180, v: 0, pushedM: 0 });
+  trial.toggle();
+  const out = [[stand.x, stand.y, stand.hdgGridDeg * Math.PI / 180]];
+  let o = null;
+  for (let i = 0, n = Math.round(600 / dt), every = Math.round(stepS / dt); i < n && !(o && o.done); i++) {
+    o = trial.update(dt, {});
+    if ((i + 1) % every === 0 || o.done) out.push([o.x, o.y, o.hdgGrid]);
+  }
+  return out;
 }

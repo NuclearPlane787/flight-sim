@@ -6,8 +6,10 @@
 // tests can use a Map. Every storage access is wrapped: storage can be blocked or
 // full, and the game goes on without it.
 
+import { TYPES, DEFAULT_TYPE } from './sim/types.js';
+
 export const PREFIX = 'gamedump:flight-sim:';
-export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, summary: { route, where }, legacy? }]
+export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, type, summary: { route, where }, legacy? }]
 export const SCEN_PREFIX = PREFIX + 'scenario:';   // + id → { v: 1, id, name, savedAt, state }
 export const LASTFLIGHT_KEY = PREFIX + 'lastflight'; // v0.1.x's last plan (read, never changed)
 export const LOGBOOK_KEY = PREFIX + 'logbook';       // the one logbook (read, never changed here)
@@ -20,6 +22,15 @@ export const nameOk = (name) => cleanName(name).length >= NAME_MIN;
 
 // v0.1.x's default flight, for a player who has a logbook but no lastflight.
 export const DEFAULT_PLAN = { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway', pax: 190, cargoKg: 1500, fuelKg: 4000, waypoints: [] };
+
+// A scenario keeps its aircraft (v0.3.0). The index entry says which, so the menu can show it without
+// reading the record: from the summary if it carries one, else from the state's plan. Saves from before
+// v0.3.0 have neither, and read as the A321neo.
+const typeFrom = (summary, state) => summary?.type || state?.plan?.type || null;
+
+// A type's name for the screens. No id: the A321neo. An id the registry doesn't know: the id itself,
+// rather than a wrong name.
+export const typeName = (id) => TYPES[id || DEFAULT_TYPE]?.name ?? String(id);
 
 // Short, unique, url-safe: base36 time plus six random base36 characters (four collided ~7% of
 // the time across 500 ids made in one millisecond, in the test).
@@ -50,10 +61,10 @@ export class ScenarioStore {
   // Put back what a key held before a failed two-step write (null: it held nothing).
   undo(k, old) { if (old == null) this.drop(k); else this.put(k, old); }
 
-  // The index as stored (its order), dropping anything malformed.
+  // The index in its stored order, dropping anything malformed; an entry without a type is the A321neo.
   index() {
     const idx = this.read(INDEX_KEY, []);
-    return (Array.isArray(idx) ? idx : []).filter((e) => e && typeof e.id === 'string');
+    return (Array.isArray(idx) ? idx : []).filter((e) => e && typeof e.id === 'string').map((e) => (e.type ? e : { ...e, type: DEFAULT_TYPE }));
   }
 
   // Newest savedAt first.
@@ -78,7 +89,7 @@ export class ScenarioStore {
     const idx = this.index();
     let id = newId(now);
     while (idx.some((e) => e.id === id)) id = newId(now);
-    const entry = { id, name: clean, created: now, savedAt: now, summary: { route: summary.route || '', where: summary.where || '' } };
+    const entry = { id, name: clean, created: now, savedAt: now, type: typeFrom(summary, state) || DEFAULT_TYPE, summary: { route: summary.route || '', where: summary.where || '' } };
     if (legacy) entry.legacy = true;
     // The record first, then the index; if the index is refused, take the record back.
     if (!this.put(SCEN_PREFIX + id, { v: 1, id, name: clean, savedAt: now, state })) return { ok: false, error: 'quota' };
@@ -94,7 +105,7 @@ export class ScenarioStore {
     if (i < 0) return { ok: false, error: 'missing' };
     const e = idx[i], k = SCEN_PREFIX + id, old = this.raw(k);
     if (!this.put(k, { v: 1, id, name: e.name, savedAt: now, state })) { this.undo(k, old); return { ok: false, error: 'quota' }; }
-    idx[i] = { ...e, savedAt: now, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '' } : e.summary };
+    idx[i] = { ...e, savedAt: now, type: typeFrom(summary, state) || e.type, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '' } : e.summary };
     if (!this.put(INDEX_KEY, idx)) { this.undo(k, old); return { ok: false, error: 'quota' }; }
     return { ok: true };
   }

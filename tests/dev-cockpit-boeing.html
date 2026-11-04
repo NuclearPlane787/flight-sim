@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boeing cockpit dev</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fa9c4; font: 12px system-ui, sans-serif; }
+  canvas { display: block; }
+  #info { position: fixed; right: 8px; bottom: 8px; color: #fff; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; }
+  body.shot #info { display: none; }
+</style>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// The Boeing cockpit on its own, with the real exterior when it can be built (seat view: the nose
+// hidden, as main.js does), on level ground at the eye's real height with marks to judge the view:
+// a white centreline, and across the ground an orange line where the document's down angle falls.
+// Drag to look; window.dev is what tests/browser-cockpit-boeing.mjs drives.
+import * as THREE from '../vendor/three.module.js';
+import { toModel } from '../src/aircraft.js';
+import { createBoeingCockpit } from '../src/cockpit-boeing.js';
+import * as specs from '../src/widebody-specs.js';
+
+// ?type=<id>: the 787-9 by default. Heights and angles: each document's p. 4-6, for the marks only.
+const TYPES = {
+  'b787-9': { spec: 'B787_9', data: '../src/sim/b787-9.js', down: 21 },
+  'b777-300er': { spec: 'B777_300ER', data: '../src/sim/b777-300er.js', down: 21 },
+};
+const T = TYPES[new URLSearchParams(location.search).get('type') || 'b787-9'];
+const data = await import(T.data);
+
+const DEG = Math.PI / 180;
+const spec = { ...specs[T.spec], flapLever: data.FLAP_LEVER };
+const G = spec.geo, EYE = G.EYES.captain;
+// The eye's height over the ground, from the nose gear's contact point at the taxi attitude: a slope, so
+// that it comes out as the geometry module has it, without a second copy of the number here.
+const EYE_HEIGHT = EYE.z - G.GEAR.nose.z + (G.GEAR.nose.x - EYE.x) * Math.sin(-G.TAXI_ATTITUDE_DEG * DEG);
+const groundY = EYE.z - EYE_HEIGHT;       // in the model frame
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, reversedDepthBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.info.autoReset = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const sky = { day: new THREE.Color('#9db8d6'), night: new THREE.Color('#05070c') };
+scene.background = sky.day.clone();
+const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
+const sunEl = 35 * DEG, sunAz = -40 * DEG;
+sun.position.set(Math.sin(sunAz) * Math.cos(sunEl), Math.sin(sunEl), Math.cos(sunAz) * Math.cos(sunEl)).multiplyScalar(60);
+scene.add(sun);
+const hemi = new THREE.HemisphereLight('#cfe2ff', '#8d8678', 2.2);
+scene.add(hemi);
+
+// Ground and marks. Everything here hangs from the eye's height, so the marks mean what they say.
+const groundMat = new THREE.MeshBasicMaterial({ color: '#6f7274' });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), groundMat);
+ground.rotation.x = -Math.PI / 2; ground.position.y = groundY;
+scene.add(ground);
+const mark = (x, y, lx, ly, color) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(ly, lx), new THREE.MeshBasicMaterial({ color }));
+  m.rotation.x = -Math.PI / 2;
+  const p = toModel(x, y, 0); m.position.set(p.x, groundY + 0.01, p.z);
+  scene.add(m);
+  return m;
+};
+mark(EYE.x + 150, 0, 300, 0.9, '#e8e8e8');
+const atDown = EYE_HEIGHT / Math.tan(T.down * DEG);
+mark(EYE.x + atDown, 0, 0.12, 30, '#ff8a1e');
+for (let d = 30; d < 600; d += 30) mark(EYE.x + d, 15, 3, 0.4, '#d8d8d8'), mark(EYE.x + d, -15, 3, 0.4, '#d8d8d8');
+
+const t0 = performance.now();
+const cockpit = createBoeingCockpit(spec);
+const buildMs = performance.now() - t0;
+scene.add(cockpit.object);
+// The exterior, when its module is ready: what's left of it after the nose is hidden must not show.
+let aircraft = null;
+try {
+  const { createWidebody } = await import('../src/widebody.js');
+  aircraft = createWidebody(spec);
+  aircraft.setCockpitView(true);
+  scene.add(aircraft.object);
+} catch (e) { console.info('no exterior:', e.message); }
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 8000);
+const view = { eye: G.EYES.captain, yaw: 0, pitch: -6 };
+const state = { thrustLever: 0, speedbrake: 0, gearPos: 1, flapLever: 0 };
+const controls = { pitch: 0, roll: 0, yaw: 0, thrust: 0, flapLever: 0, speedbrake: 0, gearDown: true };
+let night = 0;
+
+function render() {
+  cockpit.update(state, controls);
+  if (aircraft && aircraft.update) { try { aircraft.update(acState, 1 / 60); } catch { /* an unfinished exterior */ } }
+  const e = view.eye, p = toModel(e.x, e.y, e.z);
+  camera.position.copy(p);
+  camera.rotation.set(view.pitch * DEG, view.yaw * DEG, 0, 'YXZ');
+  camera.updateProjectionMatrix();
+  renderer.info.reset();
+  renderer.render(scene, camera);
+  const i = renderer.info.render;
+  document.getElementById('info').textContent = `${i.triangles} tris · ${i.calls} calls · build ${buildMs.toFixed(0)} ms`;
+}
+const acState = {
+  t: 0, surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },
+  slatDeg: 0, flapDeg: 0, flapLever: 0, gearPos: 1, gearDoors: 0,
+  gearCompression: { nose: 0.16, left: 0.22, right: 0.22 }, steerAngle: 0, wheelRate: { nose: 0, main: 0 },
+  engines: [{ n1: 20, rev: 0 }, { n1: 20, rev: 0 }], thrustLever: 0, speedbrake: 0,
+};
+
+function setNight(n) {
+  night = n;
+  cockpit.setNight(n);
+  aircraft?.setNight?.(n);
+  scene.background.copy(sky.day).lerp(sky.night, n);
+  sun.intensity = 2.6 * (1 - n);
+  hemi.intensity = 2.2 * (1 - n) + 0.06 * n;
+  groundMat.color.set('#6f7274').lerp(new THREE.Color('#050608'), n);
+}
+
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', (e) => (drag = { x: e.clientX, y: e.clientY }));
+addEventListener('pointerup', () => (drag = null));
+addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  view.yaw -= (e.clientX - drag.x) * 0.2; view.pitch -= (e.clientY - drag.y) * 0.2;
+  drag = { x: e.clientX, y: e.clientY };
+});
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; });
+function frame() { render(); requestAnimationFrame(frame); }
+
+window.dev = {
+  ready: false,
+  detents: spec.flapLever.length,
+  view(seat, yaw, pitch, fov = 62) { view.eye = G.EYES[seat]; view.yaw = yaw; view.pitch = pitch; camera.fov = fov; },
+  set(s = {}, c = {}) { Object.assign(state, s); Object.assign(controls, c); },
+  night: setNight,
+  shot(on) { document.body.classList.toggle('shot', on); },
+  info() {
+    render();
+    const i = renderer.info.render;
+    let tris = 0;
+    cockpit.object.traverse((o) => { if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+    return { cockpitTriangles: tris, triangles: i.triangles, calls: i.calls, exterior: !!aircraft, buildMs: +buildMs.toFixed(0) };
+  },
+};
+window.dev.ready = true;
+frame();
+</script>
+</body>
+</html>

@@ -196,7 +196,7 @@ export function grid(rows, { uvs = null, expect = null } = {}) {
 
 // Surface of revolution about the body x axis through (cy, cz). profile: [{x, r, v?}].
 // Normals point along (profile tangent rotated clockwise in (x, r)): see the profiles below.
-function lathe(profile, segs, cx, cy, cz, uvRegion = null) {
+export function lathe(profile, segs, cx, cy, cz, uvRegion = null) {
   const rows = [], uvs = [];
   profile.forEach((p, j) => {
     const row = [], urow = [];
@@ -225,7 +225,7 @@ export function boxAt(cx, cy, cz, lx, ly, lz) {
   g.translate(cx, cy, cz);
   return g;
 }
-function sphereAt(c, r, segs = 8) {
+export function sphereAt(c, r, segs = 8) {
   const g = new THREE.SphereGeometry(r, segs, Math.max(4, segs >> 1));
   g.translate(c.x, c.y, c.z);
   return g;
@@ -233,15 +233,15 @@ function sphereAt(c, r, segs = 8) {
 
 // --- Airfoils ----------------------------------------------------------------------------
 
-const halfThick = (f, t) => 5 * t * (0.2969 * Math.sqrt(f) - 0.126 * f - 0.3516 * f * f + 0.2843 * f ** 3 - 0.1036 * f ** 4);
+export const halfThick = (f, t) => 5 * t * (0.2969 * Math.sqrt(f) - 0.126 * f - 0.3516 * f * f + 0.2843 * f ** 3 - 0.1036 * f ** 4);
 
 // Section: { le (Vector3), chord, t, c (chord direction, unit), n (thickness direction), camber }.
-function foilPoint(s, f, side, plate = 0) {
+export function foilPoint(s, f, side, plate = 0) {
   const cam = (s.camber || 0) * 4 * f * (1 - f);
   const h = plate ? (side > 0 ? 0.022 : 0.004) + halfThick(f, s.t) + cam : cam + side * halfThick(f, s.t);
   return s.le.clone().addScaledVector(s.c, f * s.chord).addScaledVector(s.n, h * s.chord + (plate ? 0 : 0));
 }
-function plateOffset(s, f, side) {
+export function plateOffset(s, f, side) {
   // Spoiler plate: follows the upper surface, 4…22 mm above it.
   const cam = (s.camber || 0) * 4 * f * (1 - f);
   const up = s.le.clone().addScaledVector(s.c, f * s.chord).addScaledVector(s.n, (cam + halfThick(f, s.t)) * s.chord);
@@ -249,7 +249,7 @@ function plateOffset(s, f, side) {
 }
 
 // A wing-like piece across sections secs[], from chord fraction f0 to f1. Returns geometries.
-function foilPiece(secs, f0, f1, { nf = 7, caps = [true, true], plate = false } = {}) {
+export function foilPiece(secs, f0, f1, { nf = 7, caps = [true, true], plate = false } = {}) {
   const fs = [];
   for (let i = 0; i <= nf; i++) {
     const s = i / nf;

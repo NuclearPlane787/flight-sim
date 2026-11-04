@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: Boeing screens dev page</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../src/ui/ui.css">
+<link rel="stylesheet" href="../src/ui/menu.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #000; }
+  /* A stand-in for the 3D view. */
+  #view { position: absolute; inset: 0; background: linear-gradient(#5b8fc4 0%, #a9c8e2 46%, #c9d6c4 50%, #6e7e55 56%, #4a5a3a 100%); }
+  #hud { position: absolute; inset: 0; pointer-events: none; }
+  #dev { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font: 12px Menlo, monospace; color: #fff;
+    background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; z-index: 10; }
+  #dev a { color: #2fe3ff; margin: 0 4px; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="hud"></div>
+<div id="dev"></div>
+<script type="module">
+// ?scene=fl350|final|takeoff|stall-near|climb|stand, &type=<a Boeing's id>: the mock.
+// ?real=fl350|final|slow: the real sim (createSim) and its real sim.ap, stepping in real time.
+import { createHud } from '../src/ui/hud.js';
+import { findEnd } from '../src/ui/common.js';
+import { typeById } from '../src/sim/types.js';
+import { createSim } from '../src/sim/sim.js';
+import { loadAirportsOrMock, loadCoastOrMock } from './dev-ui-mock.js';
+import { makeBoeingState, makeBoeingAp, SCENES } from './dev-ui-boeing-mock.js';
+
+const q = new URLSearchParams(location.search);
+const scene = q.get('scene') || 'fl350';
+const def = typeById(q.get('type') || 'b787-9');
+const A = def.data;
+
+const { airports } = await loadAirportsOrMock();
+const { coast } = await loadCoastOrMock();
+await Promise.all(['400 16px B612', '700 16px B612', '400 16px "B612 Mono"', '700 16px "B612 Mono"', '600 16px Barlow'].map((f) => document.fonts.load(f))).catch(() => {});
+const hud = createHud(document.getElementById('hud'), { airports, coast });
+hud.setType(def);
+
+const real = q.get('real');
+let sim = null;
+let st = makeBoeingState(A), ap = makeBoeingAp(st);
+const controls = { spoilersArmed: scene === 'final' };
+const dep = findEnd(airports, 'RKSS', '14R'), arr = findEnd(airports, 'RKPC', '07');
+if (real) {
+  // A real aircraft: on an airborne reset the sim trims it, as main.js's skip to final does.
+  const FT = 0.3048, KT = 0.514444, h = arr.end.hdgGridDeg * Math.PI / 180;
+  const P = { fl350: { altFt: 35000, ias: 280, nm: 120, lever: 0, gear: false, fuel: 40000 },
+    final: { altFt: 1300, ias: 150, nm: 4, lever: A.FLAP_LEVER.length - 1, gear: true, fuel: 12000 },
+    slow: { altFt: 8000, ias: 175, nm: 40, lever: 0, gear: false, fuel: 40000 } }[real];
+  const d = P.nm * 1852;
+  sim = createSim({ type: def.id });
+  sim.reset({ x: arr.end.x - Math.sin(h) * d, y: arr.end.y - Math.cos(h) * d, hdg: h, onGround: false, z: arr.end.elevM + P.altFt * FT, iasMs: P.ias * KT,
+    flapLever: P.lever, gearDown: P.gear, fuelKg: P.fuel, payloadKg: 30000 });
+  st = sim.state; ap = sim.ap;
+  for (let i = 0; i < 240; i++) sim.step(1 / 120);
+} else SCENES[scene](st, ap, A, { dep, arr });
+const view = { state: st, ap, dest: arr.end, timeScale: q.get('rate') ? Number(q.get('rate')) : 1, timeScaleActual: q.get('rate') ? Number(q.get('rate')) : 1, paused: false, controls, viewId: 'captain' };
+
+document.getElementById('dev').innerHTML = `${def.name} · ` + Object.keys(SCENES).map((s) => `<a href="?scene=${s}">${s}</a>`).join('');
+let last = performance.now();
+function frame(now) {
+  if (sim) { const n = Math.min(12, Math.round((now - last) / (1000 / 120))); last = now; for (let i = 0; i < n; i++) sim.step(1 / 120); view.controls = sim.controls; }
+  hud.update(view); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.addEventListener('mousedown', () => { window.__leaks = (window.__leaks || 0) + 1; });
+window.__sim = sim; window.__view = view; window.__hud = hud; window.__typeById = typeById; window.__ready = true;
+</script>
+</body>
+</html>

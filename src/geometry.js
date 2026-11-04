@@ -54,3 +54,14 @@ export const EYES = {
   captain: { x: 18.35, y: 0.53, z: 0.95 },      // left seat
   fo:      { x: 18.35, y: -0.53, z: 0.95 },     // right seat
 };
+
+// The points that end the flight if they touch the ground (sim.js; v0.3.0: per type).
+export const CRASH_POINTS = [
+  { x: 19.6, y: 0, z: -1.7, why: 'nose impact' },
+  { x: -4, y: 0, z: -2.05, why: 'belly impact' },
+  { x: TAIL_STRIKE_POINT.x, y: 0, z: TAIL_STRIKE_POINT.z, why: 'tail strike' },
+  { x: NACELLES[0].x, y: NACELLES[0].y, z: NACELLES[0].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
+  { x: NACELLES[1].x, y: NACELLES[1].y, z: NACELLES[1].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
+  { x: -4.6, y: 17.9, z: 0.6, why: 'wingtip strike' },
+  { x: -4.6, y: -17.9, z: 0.6, why: 'wingtip strike' },
+];

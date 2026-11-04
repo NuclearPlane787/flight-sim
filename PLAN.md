@@ -56,6 +56,10 @@ Numbered as in the planning questions, in his words where it matters.
 - The Han River and the big lakes.
 - No real airline's branding.
 
+## The aircraft types (v0.3.0)
+
+`V030.md` was the brief. A type is one data module with every number and its source (`src/sim/<id>.js`), one geometry module (`src/geometry*.js`; same frame and names) and one entry in `src/sim/types.js`. The sim's modules are factories that take the data (`createFlightModel(A)`, `createEngines(A)`, `createGear(A)`, `createFbw(A)` or `createFbwBoeing(A)`, `createAutopilot(A)` or `createAutopilotBoeing(A)`), made once per type by `kitFor()`. `createSim({ type })`, `sim.setType(id)`; a snapshot carries its type, and one without it is the A321neo, so the prediction worker flies the right aircraft. `ready: false` keeps a type out of the picker. `tests/golden-a321.test.mjs` flies a flight recorded from v0.2.2's code and compares it to 1e-9: never re-record it to make a test pass. `main.js`'s `useType()` is the one place everything that reads the type is told. To add a type: copy a Boeing's two modules and its notes file, add its spec (`src/widebody-specs.js`), window design, registry entry and `src/type-assets.js` line, and run the same tests with its id (`BOEING_TYPE=<id>`).
+
 ## The aircraft: A321neo
 
 ### Published numbers (Airbus's A321neo page)
@@ -308,7 +312,10 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 | Space (hold) | wheel brakes |
 | B | parking brake |
 | G | gear lever |
-| 6 / 7 / 8 / 9 / 0 | flap lever 0, 1, 2, 3, FULL |
+| 6 / 7 / 8 / 9 / 0 | flap lever 0, 1, 2, 3, FULL (Boeings: UP, 5, 15, 20, 30) |
+| [ / ] | flap lever one detent up / down |
+| H / Y (hold) | Boeings: pitch trim nose up / nose down |
+| O | Boeings: TO/GA |
 | C | speed brakes in / out |
 | Shift+C | arm ground spoilers |
 | Z | autopilot on / off |
@@ -436,6 +443,13 @@ done
 cd ../docs
 curl -fLo easa-tcds-a064.pdf https://www.easa.europa.eu/en/downloads/16507/en
 curl -fLo airbus-ac-a321.pdf https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2024-06/AC_A321_0624.pdf
+curl -fLo easa-tcds-im-a-115-787.pdf https://www.easa.europa.eu/en/downloads/7302/en
+curl -fLo boeing-acap-787.pdf https://www.boeing.com/content/dam/boeing/v2/airports/acaps/787_ACAP_Rev_Q.pdf
+curl -fLo easa-tcds-im-e-102-genx.pdf https://www.easa.europa.eu/en/downloads/7641/en
+curl -fLo boeing-arc-approach-speeds.pdf https://www.boeing.com/content/dam/boeing/v2/airports/faq/arcandapproachspeeds.pdf
+curl -fLo easa-tcds-im-a-003-777.pdf https://www.easa.europa.eu/en/downloads/7521/en
+curl -fLo boeing-acap-777-300er.pdf https://www.boeing.com/content/dam/boeing/v2/airports/acaps/777-200LR-300ER-F_Rev_G.pdf
+curl -fLo easa-tcds-im-e-002-ge90.pdf https://www.easa.europa.eu/en/downloads/7799/en
 ```
 
 Expect roughly 30 "got" lines for the 90 m tiles. The tile URL pattern was confirmed from the GLO-90 STAC catalogue.

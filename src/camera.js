@@ -4,7 +4,7 @@
 // Positions are worked out in map metres; main.js makes the camera the scene origin.
 
 import * as THREE from '../vendor/three.module.js';
-import { EYES } from './geometry.js';
+import { EYES as A321_EYES } from './geometry.js';
 
 // The names match the view switch (v0.2.1: Cockpit, Nose, 3rd person; ui/hud.js).
 export const VIEWS = [
@@ -26,6 +26,9 @@ export function createCameraRig(dom) {
   const camera = new THREE.PerspectiveCamera(60, 16 / 10, 0.1, 500000);
   const looks = structuredClone(DEFAULTS);
   let index = 0;
+  // The type's eye points and 3rd-person distance (v0.3.0: rig.setType()).
+  let EYES = A321_EYES;
+  let orbitDist = DEFAULTS.orbit.dist;
 
   const modelQ = new THREE.Quaternion();
   const lookQ = new THREE.Quaternion();
@@ -169,6 +172,14 @@ export function createCameraRig(dom) {
     recentre,
     serialize,
     load,
+    // The aircraft type: its eye points, and 3rd person's distance scaled to its size unless the
+    // player has zoomed away from the old default.
+    setType(def) {
+      EYES = def.geo.EYES;
+      const d = def.orbitDist ?? DEFAULTS.orbit.dist;
+      if (looks.orbit.dist === orbitDist) looks.orbit.dist = d;
+      orbitDist = d;
+    },
     get view() { return VIEWS[index]; },
     set viewId(id) { index = Math.max(0, VIEWS.findIndex((w) => w.id === id)); },
     next() { index = (index + 1) % VIEWS.length; return VIEWS[index]; },

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widebody dev</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fa9c4; font: 12px system-ui, sans-serif; overscroll-behavior: none; }
+  canvas { display: block; }
+  #ui { position: fixed; top: 8px; left: 8px; width: 250px; max-height: calc(100% - 16px); overflow: auto; background: rgba(15, 22, 34, 0.82); color: #dfe6ee; padding: 8px 10px; border-radius: 6px; }
+  #ui label { display: grid; grid-template-columns: 92px 1fr 36px; gap: 6px; align-items: center; margin: 2px 0; }
+  #ui input[type=range] { width: 100%; }
+  #info { position: fixed; right: 8px; bottom: 8px; color: #fff; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; }
+  body.shot #ui, body.shot #info { display: none; }
+</style>
+</head>
+<body>
+<div id="ui"></div>
+<div id="info"></div>
+<script type="module">
+// tests/dev-aircraft.html for a widebody: ?type=b787-9 (the default) or b777-300er, with orthographic side, top and
+// front views for comparing with the planning document's three-view drawing.
+import * as THREE from '../vendor/three.module.js';
+import { toModel } from '../src/aircraft.js';
+import { createWidebody } from '../src/widebody.js';
+import * as SPECS from '../src/widebody-specs.js';
+
+const DEG = Math.PI / 180;
+const TYPE = new URLSearchParams(location.search).get('type') || 'b787-9';
+const spec = Object.values(SPECS).find((s) => s.id === TYPE);
+if (!spec) throw new Error(`no widebody spec ${TYPE}`);
+const G = spec.geo;
+// The views were framed on the 787-9; a longer type moves the cameras back in proportion.
+const K = G.LENGTH / 62.81;
+const renderer = new THREE.WebGLRenderer({ antialias: true, reversedDepthBuffer: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.info.autoReset = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const DAY_BG = new THREE.Color('#9db8d6'), NIGHT_BG = new THREE.Color('#070b14');
+scene.background = DAY_BG.clone();
+const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
+const sunEl = 35 * DEG, sunAz = -40 * DEG;
+sun.position.set(Math.sin(sunAz) * Math.cos(sunEl), Math.sin(sunEl), Math.cos(sunAz) * Math.cos(sunEl)).multiplyScalar(80);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.normalBias = 0.06;   // the game has no shadow map; without this the spoilers show acne here
+Object.assign(sun.shadow.camera, { left: -45 * K, right: 45 * K, top: 45 * K, bottom: -45 * K, near: 1, far: 220 * K });
+scene.add(sun);
+const hemi = new THREE.HemisphereLight('#cfe2ff', '#8d8678', 2.2);
+scene.add(hemi);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: '#7d7f82', roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2;
+// The model stands at its taxi attitude, as in the sim, except in the orthographic views, which are
+// level like the document's three-view.
+ground.position.y = -G.GROUND_Z;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const t0 = performance.now();
+const aircraft = createWidebody(spec);
+const buildMs = performance.now() - t0;
+scene.add(aircraft.object);
+const standing = G.TAXI_ATTITUDE_DEG * DEG;
+aircraft.object.rotation.x = standing;
+
+let camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 5000);
+const persp = camera;
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+const orbit = { yaw: 35 * DEG, pitch: 12 * DEG, dist: 90, target: new THREE.Vector3() };
+let seat = null;
+const comp = spec.data.GEAR_DATA;
+const state = {
+  t: 0, surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },
+  slatDeg: 0, flapDeg: 0, gearPos: 1, gearDoors: 0,
+  gearCompression: { nose: comp.nose.staticComp, left: comp.main.staticComp, right: comp.main.staticComp }, steerAngle: 0, wheelRate: { nose: 0, main: 0 },
+  engines: [{ n1: 20, rev: 0 }, { n1: 20, rev: 0 }],
+};
+
+const ui = document.getElementById('ui');
+for (const [name, min, max, val, fn] of [
+  ['elevator°', -30, 25, 0, (v) => (state.surfaces.elevator = v * DEG)],
+  ['stab°', -13.5, 4, 0, (v) => (state.surfaces.stab = v * DEG)],
+  ['aileron°', -25, 25, 0, (v) => { state.surfaces.aileronL = -v * DEG; state.surfaces.aileronR = v * DEG; }],
+  ['rudder°', -30, 30, 0, (v) => (state.surfaces.rudder = v * DEG)],
+  ['spoilers', 0, 1, 0, (v) => { state.surfaces.spoilersL.fill(v); state.surfaces.spoilersR.fill(v); }],
+  ['slats°', 0, 30, 0, (v) => (state.slatDeg = v)],
+  ['flaps°', 0, 40, 0, (v) => (state.flapDeg = v)],
+  ['gearPos', 0, 1, 1, (v) => (state.gearPos = v)],
+  ['gearDoors', 0, 1, 0, (v) => (state.gearDoors = v)],
+  ['compr main', 0, 0.6, comp.main.staticComp, (v) => (state.gearCompression.left = state.gearCompression.right = v)],
+  ['steer°', -70, 70, 0, (v) => (state.steerAngle = v * DEG)],
+  ['wheel rad/s', 0, 30, 0, (v) => (state.wheelRate.main = v, state.wheelRate.nose = v * 1.3)],
+  ['N1 %', 0, 100, 20, (v) => (state.engines[0].n1 = state.engines[1].n1 = v)],
+  ['reverser', 0, 1, 0, (v) => (state.engines[0].rev = state.engines[1].rev = v)],
+  ['flex m', 0, 4, 0, (v) => aircraft.setWingFlex(v)],
+]) {
+  const l = document.createElement('label');
+  l.innerHTML = `<span>${name}</span><input type=range min=${min} max=${max} step=${(max - min) / 200} value=${val}><span>${val}</span>`;
+  const [inp, out] = [l.children[1], l.children[2]];
+  inp.oninput = () => { fn(+inp.value); out.textContent = (+inp.value).toFixed(2); };
+  ui.appendChild(l);
+}
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', (e) => (drag = { x: e.clientX, y: e.clientY }));
+addEventListener('pointerup', () => (drag = null));
+addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY };
+  orbit.yaw -= dx * 0.005; orbit.pitch = Math.max(-1.4, Math.min(1.4, orbit.pitch + dy * 0.005));
+});
+renderer.domElement.addEventListener('wheel', (e) => { e.preventDefault(); orbit.dist *= Math.exp(e.deltaY * 0.001); }, { passive: false });
+
+const N = G.NOSE_X, midX = (N + G.TAIL_X) / 2;
+const nac = G.NACELLES[0];
+// target: [x_body, z_body, y_body], as dev-aircraft.html. o: half-width of an orthographic view.
+const VIEWS = {
+  side: { yaw: 90, pitch: 2, dist: 78 * K, target: [midX, 1, 0] },
+  front: { yaw: 0, pitch: 3, dist: 70 * K, target: [N - 20 * K, 1.5, 0] },
+  threeQuarter: { yaw: 40, pitch: 14, dist: 72 * K, target: [midX, 0, 0] },
+  threeQuarterRear: { yaw: 140, pitch: 18, dist: 72 * K, target: [midX, 0, 0] },
+  threeQuarterRight: { yaw: -40, pitch: 14, dist: 72 * K, target: [midX, 0, 0] },
+  below: { yaw: -35, pitch: -22, dist: 72 * K, target: [midX + 5, -1, 0] },
+  top: { yaw: 0, pitch: 89, dist: 88 * K, target: [midX, 0, 0] },
+  nose: { yaw: 48, pitch: 8, dist: 20, target: [N - 5, 0, 0] },
+  noseFront: { yaw: 0, pitch: 4, dist: 15, target: [N - 3, 0.2, 0] },
+  tail: { yaw: 115, pitch: 10, dist: 33 * K, target: [G.TAIL_X + 8.81, 4, 0] },
+  tailHigh: { yaw: 150, pitch: 35, dist: 28 * K, target: [G.TAIL_X + 6.81, 2, 0] },
+  wingTip: { yaw: 120, pitch: 22, dist: 22, target: [G.WING.tipTeX + 4, 1.5, G.SPAN / 2 - 5] },
+  wing: { yaw: 150, pitch: 28, dist: 42, target: [-4, -0.5, 15] },
+  wingBelow: { yaw: 150, pitch: -10, dist: 38, target: [-4, -2, 15] },
+  gear: { yaw: 112, pitch: 3, dist: 22, target: [-4, -2.5, 3] },
+  bogie: { yaw: 112, pitch: 3, dist: 9 * K, target: [G.GEAR.left.x, G.GEAR.left.z + 1.3, G.GEAR.left.y] },
+  // Under the left bogie from behind, with the ground hidden: where the aft axle's steering shows.
+  bogieBelow: { yaw: 155, pitch: -48, dist: 8 * K, target: [G.GEAR.left.x, G.GEAR.left.z + 0.8, G.GEAR.left.y] },
+  noseGear: { yaw: 55, pitch: 2, dist: 11, target: [G.GEAR.nose.x, -3, 0] },
+  noseGearBelow: { yaw: 60, pitch: -12, dist: 13, target: [G.GEAR.nose.x, -2.8, 0] },
+  engine: { yaw: 25, pitch: 3, dist: 14, target: [nac.x + 2, nac.z, nac.y] },
+  engineSide: { yaw: 90, pitch: 1, dist: 17, target: [nac.x - 1, nac.z + 1, nac.y] },
+  flapClose: { yaw: 165, pitch: 22, dist: 19, target: [G.WING.kinkTeX - 1, 0, 9] },
+  rearEngine: { yaw: 135, pitch: 6, dist: 15, target: [nac.x - 3, nac.z, nac.y] },
+  // Orthographic, for overlaying on the three-view.
+  orthoSide: { ortho: 'side' }, orthoTop: { ortho: 'top' }, orthoFront: { ortho: 'front' },
+  captain: { seat: G.EYES.captain, yaw: 0, pitch: -8, fov: 62 },
+  captainLeft: { seat: G.EYES.captain, yaw: 70, pitch: -10, fov: 62 },
+};
+function setView(name) {
+  const v = VIEWS[name];
+  seat = null;
+  aircraft.setCockpitView(!!v.seat);
+  aircraft.object.rotation.x = v.ortho ? 0 : standing;
+  if (v.ortho) {
+    camera = ortho;
+    const aspect = innerWidth / innerHeight, hw = (v.ortho === 'front' ? 34 : 36) * K;
+    Object.assign(ortho, { left: -hw, right: hw, top: hw / aspect, bottom: -hw / aspect });
+    ortho.updateProjectionMatrix();
+    const cx = toModel(midX, 0, 0);
+    if (v.ortho === 'side') { ortho.position.set(-300, 1, cx.z); ortho.up.set(0, 1, 0); ortho.lookAt(0, 1, cx.z); }
+    else if (v.ortho === 'top') { ortho.position.set(0, 300, cx.z); ortho.up.set(1, 0, 0); ortho.lookAt(0, 0, cx.z); }
+    else { ortho.position.set(0, 3, -300); ortho.up.set(0, 1, 0); ortho.lookAt(0, 3, 0); }
+    return;
+  }
+  camera = persp;
+  camera.fov = v.fov || 40; camera.updateProjectionMatrix();
+  if (v.seat) {
+    seat = { eye: toModel(v.seat.x, v.seat.y, v.seat.z), yaw: v.yaw * DEG, pitch: v.pitch * DEG };
+  } else {
+    orbit.yaw = v.yaw * DEG; orbit.pitch = v.pitch * DEG; orbit.dist = v.dist;
+    const t = v.target || [0, 0, 0];
+    orbit.target.copy(toModel(t[0], t[2], t[1]));
+  }
+}
+function placeCamera() {
+  if (camera === ortho) return;
+  if (seat) { camera.position.copy(seat.eye); camera.rotation.set(seat.pitch, seat.yaw, 0, 'YXZ'); return; }
+  const cp = Math.cos(orbit.pitch);
+  camera.position.set(-Math.sin(orbit.yaw) * cp, Math.sin(orbit.pitch), -Math.cos(orbit.yaw) * cp).multiplyScalar(orbit.dist).add(orbit.target);
+  camera.lookAt(orbit.target);
+}
+let last = performance.now();
+function render(dt) {
+  state.t += dt;
+  aircraft.update(state, dt);
+  placeCamera();
+  renderer.info.reset();
+  renderer.render(scene, camera);
+  const i = renderer.info.render;
+  document.getElementById('info').textContent = `${i.triangles} tris · ${i.calls} calls · model ${aircraft.triangles} tris · build ${buildMs.toFixed(0)} ms`;
+}
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  render(dt);
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); persp.aspect = innerWidth / innerHeight; persp.updateProjectionMatrix(); });
+setView('threeQuarter');
+requestAnimationFrame(frame);
+
+window.dev = {
+  set(patch) {
+    const merge = (a, b) => { for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) merge(a[k] ??= {}, b[k]); else a[k] = b[k]; } };
+    merge(state, patch);
+  },
+  view: setView,
+  shot(on) { document.body.classList.toggle('shot', on); },
+  night(n, lights) {
+    aircraft.setNight(n);
+    if (lights) aircraft.setLights(lights);
+    scene.background.copy(DAY_BG).lerp(NIGHT_BG, n);
+    sun.intensity = 2.6 * (1 - n); hemi.intensity = 2.2 * (1 - 0.92 * n);
+  },
+  hideGround(on) { ground.visible = !on; },
+  flex(m) { aircraft.setWingFlex(m); },
+  info() {
+    render(0);
+    const i = renderer.info.render;
+    return { triangles: i.triangles, calls: i.calls, modelTriangles: aircraft.triangles, buildMs, bones: Object.keys(aircraft.bones).length };
+  },
+  // Where the skinned mesh is now, in the body frame: the extents, and how far below the fuselage's
+  // underside anything hangs inboard of the engines (nothing should, with the gear up).
+  bounds() {
+    aircraft.update(state, 0);
+    aircraft.object.updateMatrixWorld(true);
+    const m = aircraft.mesh, n = m.geometry.attributes.position.count, v = new THREE.Vector3();
+    const rest = aircraft.object.rotation.x; void rest;
+    const e = { xMin: 1e9, xMax: -1e9, yMax: 0, zMin: 1e9, zMax: -1e9, inboardLow: 1e9 };
+    for (let i = 0; i < n; i++) {
+      m.getVertexPosition(i, v);          // model frame: X = −y, Y = z, Z = −x
+      const x = -v.z, y = -v.x, z = v.y;
+      e.xMin = Math.min(e.xMin, x); e.xMax = Math.max(e.xMax, x); e.yMax = Math.max(e.yMax, Math.abs(y));
+      e.zMin = Math.min(e.zMin, z); e.zMax = Math.max(e.zMax, z);
+      if (Math.abs(y) < 5.5) e.inboardLow = Math.min(e.inboardLow, z);
+    }
+    return e;
+  },
+  geo: {
+    NOSE_X: G.NOSE_X, TAIL_X: G.TAIL_X, SPAN: G.SPAN, topZ: G.FIN.topZ, mainZ: G.GEAR.left.z, noseZ: G.GEAR.nose.z,
+    bellyLow: Math.min(...spec.fairing.bot.map((p) => p[1])),
+  },
+  type: spec.id,
+  // The seat view for a look past the hidden nose.
+  defaults: { nose: comp.nose.staticComp, main: comp.main.staticComp },
+  ready: true,
+};
+</script>
+</body>
+</html>

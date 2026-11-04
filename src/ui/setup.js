@@ -1,34 +1,70 @@
 // Flight setup: a modal for origin and runway, destination and runway, the start
 // (runway, 15 nm final, or a gate with pushback and taxi), passengers, cargo and fuel, with weight checks.
-// createSetup(root, { airports, coast?, limits? }) -> { show(defaults, opts?) -> Promise<plan | null>, hide() }
-// plan = { origin, depRunway, dest, arrRunway, start, stand?, pax, cargoKg, fuelKg, waypoints, payloadKg, name? }
-// (stand: the origin stand's ref, for start 'gate')
+// createSetup(root, { airports, coast?, types? }) -> { show(defaults, opts?) -> Promise<plan | null>, hide(), setTypes(list) }
+// plan = { origin, depRunway, dest, arrRunway, start, stand?, type, pax, cargoKg, fuelKg, waypoints, payloadKg, name? }
+// (stand: the origin stand's ref, for start 'gate'; type: the aircraft's id in src/sim/types.js)
+// `types`: the picker's list, TYPE_LIST() unless given (the tests pass a list to see three cards).
+// defaults.type sets the aircraft at the start (missing: the A321neo).
 // plan.time = { mode: 'now' } (the real time in Korea, the default) | { mode: 'set', ms } (a date and a
 // KST time picked here, KST whatever the Mac's timezone); defaults.time sets the start.
-// opts = { title, name, nameField, cancel }: the dialog's title ("New scenario", "New flight"), a Name
-// field at the top (3–40 characters; the plan gets `name`, cleaned), and a Cancel button (resolves null).
+// opts = { title, name, nameField, cancel, lockType }: the dialog's title ("New scenario", "New flight"),
+// a Name field at the top (3–40 characters; the plan gets `name`, cleaned), a Cancel button (resolves null),
+// and lockType: a scenario keeps its aircraft, so a New flight inside one shows only defaults.type's card.
 // The last plan is kept in localStorage['gamedump:flight-sim:settings'].lastPlan.
 
 import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints } from './common.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
 import { fmtKst, fmtKstDate } from '../clock.js';
 import { kstFieldValues, kstFromFields } from './sky-window.js';
+import { esc } from './score-panel.js';
+import { standList } from '../ground/gate-flow.js';
+import { TYPE_LIST, typeById, DEFAULT_TYPE } from '../sim/types.js';
 
 const KEY = 'gamedump:flight-sim:settings';
 
-// A321neo weights (kg). Max fuel: standard tanks, 23,580 L at 0.8 kg/L, until the sim says otherwise.
-export const LIMITS = { OEW: 50100, MTOW: 97000, MLW: 79200, MZFW: 75600, FUEL_MAX: Math.round(23580 * 0.8), PAX_MAX: 244, PAX_KG: 84, CARGO_MAX: 9000 };
+// The A321neo's weights (kg), for what imports them. The dialog uses the selected type's.
+export const LIMITS = typeById(DEFAULT_TYPE).limits;
 
-// Fuel for the trip, as a rough A321neo block-fuel rule:
+// Fuel for the trip, as a rough block-fuel rule from the type's `fuel` numbers. The A321neo's:
 //   trip    = 1,100 kg (climb and descent) + 6.2 kg per nm along the route
 //             (≈ 2.4 t/h at a 390 kt average ground speed),
 //   reserve = 30 min holding at ≈ 2,000 kg/h = 1,000 kg, plus 5 % of the trip as contingency,
 //   taxi    = 200 kg.
 // Rounded up to 100 kg. Gimpo–Jeju (243 nm) gives about 4,000 kg.
-export function fuelEstimate(distNm) {
-  const trip = 1100 + 6.2 * distNm;
-  const total = trip * 1.05 + 1000 + 200;
+// `type`: a registry entry or an id; without one, the A321neo.
+export function fuelEstimate(distNm, type) {
+  const r = (type && typeof type === 'object' ? type : typeById(type)).fuel;
+  const trip = r.climbKg + r.perNm * distNm;
+  const total = trip * 1.05 + r.holdKg + r.taxiKg;
   return { trip: Math.round(trip), total: Math.ceil(total / 100) * 100 };
+}
+
+// The load after a change of type: what fits stays, what doesn't goes to the type's default. A payload
+// that fits the seats and the hold can still be over a smaller type's MZFW, so that resets both.
+export function fitLoad({ pax, cargoKg }, type) {
+  const l = type.limits, d = type.defaults;
+  let p = pax > l.PAX_MAX ? d.pax : pax, c = cargoKg > l.CARGO_MAX ? d.cargoKg : cargoKg;
+  if (l.OEW + p * l.PAX_KG + c > l.MZFW) { p = d.pax; c = d.cargoKg; }
+  return { pax: p, cargoKg: c };
+}
+
+// The picture's URL: picker.picture is relative to the game's root, this file two folders below it.
+const pictureUrl = (type) => (type.picker?.picture ? new URL('../../' + type.picker.picture, import.meta.url).href : '');
+
+// A type's card: its picture, name and key numbers. A button in the picker; a plain block when `locked`
+// (nothing to choose). A missing picture leaves the empty panel behind it (the error listener in createSetup).
+export function typeCardHtml(type, pictureSrc = '', locked = false) {
+  const k = type.picker || {};
+  const cell = (label, value) => `<div><small>${label}</small>${esc(value)}</div>`;
+  const tag = locked ? 'div' : 'button';
+  return `<${tag} class="fsui-tc"${locked ? '' : ` type="button" data-type="${esc(type.id)}" aria-pressed="false"`}>
+      <span class="fsui-tc-pic">${pictureSrc ? `<img src="${esc(pictureSrc)}" alt="">` : ''}</span>
+      <span class="fsui-tc-head"><b>${esc(type.name)}</b><small>${esc(type.maker)}</small></span>
+      <div class="fsui-tc-nums">
+        ${cell('Length', `${k.lengthM?.toFixed(1)} m`)}${cell('Span', `${k.spanM?.toFixed(1)} m`)}${cell('MTOW', `${k.mtowT?.toLocaleString('en-US')} t`)}
+        ${cell('Range', `${k.rangeNm?.toLocaleString('en-US')} nm`)}${cell('Seats', k.seats ?? '—')}${cell('Engines', type.engineName ?? '—')}
+      </div>
+    </${tag}>`;
 }
 
 const BASE = { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway', pax: 190, cargoKg: 1500, fuelKg: 0, waypoints: [] };
@@ -40,8 +76,11 @@ function saveStored(plan) {
   try { const o = loadStored(); o.lastPlan = plan; localStorage.setItem(KEY, JSON.stringify(o)); } catch {}
 }
 
-export function createSetup(root, { airports, coast, limits } = {}) {
-  const L = { ...LIMITS, ...(limits || {}) };
+export function createSetup(root, { airports, coast, types } = {}) {
+  let typeList = types || null;
+  const typesNow = () => typeList || TYPE_LIST();
+  let type = typeById(DEFAULT_TYPE);   // the selected type
+  let L = type.limits;
   const list = () => airportList(airports);
   let coastL = coast ? buildCoast(coast) : null;
   const el = document.createElement('div');
@@ -49,7 +88,11 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   el.innerHTML = `
   <div class="fsui-dlg" role="dialog" aria-label="Flight setup">
     <h2 data-o="title">Flight setup</h2>
-    <p class="sub">A321neo · Nuclear Airlines · HL8787</p>
+    <p class="sub" data-o="sub"></p>
+    <div class="fsui-sec"><h3>Aircraft</h3>
+      <div class="fsui-types" data-o="types" role="group" aria-label="Aircraft type"></div>
+      <div class="fsui-note fsui-types-note" data-o="typeNote"></div>
+    </div>
     <div class="fsui-sec" data-o="nameRow" hidden><div class="fsui-row"><label for="fsui-setup-name">Name</label>
       <input type="text" id="fsui-setup-name" class="fsui-name" data-f="name" maxlength="${NAME_MAX + 10}" spellcheck="false" autocomplete="off">
       <span class="fsui-note">${NAME_MIN}–${NAME_MAX} characters</span></div></div>
@@ -67,9 +110,9 @@ export function createSetup(root, { airports, coast, limits } = {}) {
           <div class="fsui-row" data-o="standRow" style="display:none"><label>Stand</label><select data-f="stand"></select><span class="fsui-note" data-o="standNote"></span></div>
         </div>
         <div class="fsui-sec"><h3>Load</h3>
-          <div class="fsui-row"><label>Passengers</label><input type="range" min="0" max="${L.PAX_MAX}" step="1" data-f="paxR"><input type="number" min="0" max="${L.PAX_MAX}" step="1" data-f="pax"><span class="fsui-note">× ${L.PAX_KG} kg incl. bags</span></div>
-          <div class="fsui-row"><label>Cargo</label><input type="number" min="0" max="${L.CARGO_MAX}" step="100" data-f="cargoKg"><span class="fsui-note">kg</span></div>
-          <div class="fsui-row"><label>Fuel</label><input type="number" min="0" max="${L.FUEL_MAX}" step="100" data-f="fuelKg"><span class="fsui-note">kg</span>
+          <div class="fsui-row"><label>Passengers</label><input type="range" min="0" step="1" data-f="paxR"><input type="number" min="0" step="1" data-f="pax"><span class="fsui-note" data-o="paxNote"></span></div>
+          <div class="fsui-row"><label>Cargo</label><input type="number" min="0" step="100" data-f="cargoKg"><span class="fsui-note">kg</span></div>
+          <div class="fsui-row"><label>Fuel</label><input type="number" min="0" step="100" data-f="fuelKg"><span class="fsui-note">kg</span>
             <button class="fsui-b" data-a="enough">Enough for the trip + reserve</button></div>
           <div class="fsui-weights" data-o="weights"></div>
         </div>
@@ -95,6 +138,8 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   const f = (n) => el.querySelector(`[data-f="${n}"]`);
   const o = (n) => el.querySelector(`[data-o="${n}"]`);
   const mini = $('.fsui-mini');
+  // A card's picture that isn't there: the panel behind it stays. (error doesn't bubble, so captured.)
+  o('types').addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
   let plan = null, pick = 'dest', resolver = null, opts = {};
   // The start time: 'now' or 'set' (from the date and time fields, read as KST).
   let timeMode = 'now';
@@ -137,13 +182,9 @@ export function createSetup(root, { airports, coast, limits } = {}) {
     for (const r of list().find((a) => a.icao === icao)?.runways || []) for (const e of r.ends) if (e.ident === ident) return e;
     return null;
   };
-  // Stands at an airport: gates first, then the rest, numbers in number order.
-  const stands = (icao) => {
-    const num = (r) => { const m = String(r).match(/\d+/); return m ? Number(m[0]) : 1e9; };
-    return (list().find((a) => a.icao === icao)?.stands || []).filter((s) => s.ref)
-      .sort((a, b) => (b.gate - a.gate) || (num(a.ref) - num(b.ref)) || String(a.ref).localeCompare(String(b.ref)))
-      .map((s) => [s.ref, `${s.gate ? 'Gate' : 'Stand'} ${s.ref}`]);
-  };
+  // The stands this type can use at an airport: gates first, then the rest, numbers in number order.
+  const standsAt = (icao) => standList(list().find((a) => a.icao === icao), type);
+  const stands = (icao) => standsAt(icao).map((s) => [s.ref, `${s.gate ? 'Gate' : 'Stand'} ${s.ref}`]);
   const distNm = () => {
     const a = endObj(plan.origin, plan.depRunway), b = endObj(plan.dest, plan.arrRunway);
     if (!a || !b) return 0;
@@ -171,9 +212,50 @@ export function createSetup(root, { airports, coast, limits } = {}) {
     for (const b of el.querySelectorAll(`[data-seg="${name}"] button`)) b.classList.toggle('on', b.dataset.v === v);
     if (name === 'start') {
       o('standRow').style.display = v === 'gate' ? '' : 'none';
-      const n = stands(plan.origin).length, g = (list().find((a) => a.icao === plan.origin)?.stands || []).filter((s) => s.gate).length;
-      o('standNote').textContent = n ? `${g} gates, ${n - g} remote stands · P pushes back` : 'No stands mapped here';
+      const all = standsAt(plan.origin), n = all.length, g = all.filter((s) => s.gate).length;
+      o('standNote').textContent = n ? `${g} gates, ${n - g} remote stands · P pushes back` : noStands();
     }
+  }
+
+  // Whether the airport has no stands at all, or none for this aircraft.
+  const noStands = () => ((list().find((a) => a.icao === plan.origin)?.stands || []).some((s) => s.ref) ? `No stand here for the ${type.name}` : 'No stands mapped here');
+
+  // ---- The aircraft ----
+  const enoughFuel = (t, d) => Math.min(t.limits.FUEL_MAX, fuelEstimate(d, t).total);
+  // An id to a type: from the list, else (a locked scenario's type, which may not be on it) the registry.
+  const findType = (id, locked) => typesNow().find((t) => t.id === id) || (locked ? typeById(id) : typesNow()[0] || typeById(id));
+  function setType(t) {
+    type = t; L = t.limits;
+    f('paxR').max = f('pax').max = L.PAX_MAX;
+    f('cargoKg').max = L.CARGO_MAX;
+    f('fuelKg').max = L.FUEL_MAX;
+    o('paxNote').textContent = `× ${L.PAX_KG} kg incl. bags`;
+    o('sub').textContent = `${t.name} · Nuclear Airlines · ${t.registration}`;
+    for (const c of o('types').querySelectorAll('button.fsui-tc')) {
+      const on = c.dataset.type === t.id;
+      c.classList.toggle('on', on); c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    o('typeNote').textContent = opts.lockType ? 'A scenario keeps its aircraft. New scenario to fly another.' : (t.picker?.note || '');
+  }
+  function renderTypes() {
+    const shown = opts.lockType ? [type] : typesNow();
+    o('types').className = `fsui-types n${shown.length}`;
+    o('types').innerHTML = shown.map((t) => typeCardHtml(t, pictureUrl(t), !!opts.lockType)).join('');
+    if (opts.lockType) o('types').firstElementChild?.classList.add('on');
+    setType(type);
+  }
+  // The player picks another type: the limits, the fuel rule and the stands follow. The load stays if it
+  // fits; the fuel follows too if it was the old type's "enough", and is cut if it won't fit the tanks.
+  function chooseType(id) {
+    const next = findType(id);
+    if (next.id === type.id) return;
+    readInputs();
+    const d = distNm(), wasEnough = plan.fuelKg === enoughFuel(type, d);
+    setType(next);
+    plan.type = next.id;
+    Object.assign(plan, fitLoad(plan, next));
+    if (wasEnough || plan.fuelKg > L.FUEL_MAX) plan.fuelKg = enoughFuel(next, d);
+    fill();
   }
 
   const num = (v, lo, hi) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo; };
@@ -182,12 +264,12 @@ export function createSetup(root, { airports, coast, limits } = {}) {
     if (src === f('pax')) f('paxR').value = f('pax').value;
     plan.pax = num(f('pax').value, 0, L.PAX_MAX);
     plan.cargoKg = num(f('cargoKg').value, 0, 100000);
-    plan.fuelKg = num(f('fuelKg').value, 0, 100000);
+    plan.fuelKg = num(f('fuelKg').value, 0, Math.max(100000, L.FUEL_MAX * 2)); // room above the tanks, so the "tanks hold" message can fire
   }
 
   // Weights and the checks; returns the first blocking problem, or ''.
   function refresh() {
-    const d = distNm(), est = fuelEstimate(d);
+    const d = distNm(), est = fuelEstimate(d, type);
     o('dist').textContent = d ? `${Math.round(d)} nm` + (plan.origin === plan.dest ? ' (same airport: a circuit)' : '') : '–';
     const payload = plan.pax * L.PAX_KG + plan.cargoKg;
     const zfw = L.OEW + payload, tow = zfw + plan.fuelKg, lw = Math.round((tow - Math.min(plan.fuelKg, est.trip + 200)) / 10) * 10;
@@ -230,13 +312,14 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.type) { chooseType(b.dataset.type); return; }
     const sg = b.closest('[data-seg]');
     if (sg && !b.disabled) {
       if (sg.dataset.seg === 'time') { setTimeMode(b.dataset.v); return; }
       if (sg.dataset.seg === 'start') plan.start = b.dataset.v; else pick = b.dataset.v;
       seg(sg.dataset.seg, b.dataset.v); refresh();
     } else if (b.dataset.a === 'enough') {
-      plan.fuelKg = Math.min(L.FUEL_MAX, fuelEstimate(distNm()).total); f('fuelKg').value = plan.fuelKg; refresh();
+      plan.fuelKg = enoughFuel(type, distNm()); f('fuelKg').value = plan.fuelKg; refresh();
     } else if (b.dataset.a === 'fly') fly();
     else if (b.dataset.a === 'cancel') cancel();
   });
@@ -302,8 +385,8 @@ export function createSetup(root, { airports, coast, limits } = {}) {
       startMs = kstFromFields(tf('date').value, tf('time').value);
       if (startMs === null) { o('msg').textContent = 'Pick a date and a time for the start, or choose Now.'; o('msg').style.color = C.red; tf('date').focus(); return; }
     }
-    if (plan.start === 'gate' && !plan.stand) { o('msg').textContent = 'No stands mapped at this airport: start on the runway.'; o('msg').style.color = C.red; return; }
-    const out = { origin: plan.origin, depRunway: plan.depRunway, dest: plan.dest, arrRunway: plan.arrRunway, start: plan.start,
+    if (plan.start === 'gate' && !plan.stand) { o('msg').textContent = `${noStands()}: start on the runway.`; o('msg').style.color = C.red; return; }
+    const out = { origin: plan.origin, depRunway: plan.depRunway, dest: plan.dest, arrRunway: plan.arrRunway, start: plan.start, type: type.id,
       pax: plan.pax, cargoKg: plan.cargoKg, fuelKg: plan.fuelKg, waypoints: (plan.waypoints || []).map((p) => [p[0], p[1]]),
       payloadKg: plan.pax * L.PAX_KG + plan.cargoKg };
     if (plan.start === 'gate') out.stand = plan.stand;
@@ -323,7 +406,11 @@ export function createSetup(root, { airports, coast, limits } = {}) {
   // show(defaults, opts): the built-in plan, then the last plan, then the given defaults.
   function show(defaults = {}, options = {}) {
     opts = options || {};
-    plan = { ...BASE, ...(loadStored().lastPlan || {}), ...(defaults || {}) };
+    type = findType(defaults?.type ?? DEFAULT_TYPE, !!opts.lockType);
+    // The last plan's load and stand belong to its own type: they don't carry over to another.
+    const last = { ...(loadStored().lastPlan || {}) };
+    if ((last.type || DEFAULT_TYPE) !== type.id) { delete last.pax; delete last.cargoKg; delete last.fuelKg; delete last.stand; }
+    plan = { ...BASE, ...type.defaults, ...last, ...(defaults || {}), type: type.id };
     delete plan.name;
     const t = defaults?.time;
     delete plan.time;
@@ -335,13 +422,23 @@ export function createSetup(root, { airports, coast, limits } = {}) {
     o('nameRow').hidden = !opts.nameField;
     f('name').value = opts.nameField ? (opts.name || '') : '';
     $('[data-a="cancel"]').hidden = !opts.cancel;
+    renderTypes();
     el.hidden = false;
     fill();
-    if (!plan.fuelKg) { plan.fuelKg = Math.min(L.FUEL_MAX, fuelEstimate(distNm()).total); f('fuelKg').value = plan.fuelKg; refresh(); }
+    if (!plan.fuelKg) { plan.fuelKg = enoughFuel(type, distNm()); f('fuelKg').value = plan.fuelKg; refresh(); }
     if (opts.nameField) { f('name').focus({ preventScroll: true }); f('name').select(); }
     else $('[data-a="fly"]').focus({ preventScroll: true });
     return new Promise((res) => { resolver = res; });
   }
 
-  return { show, hide, setCoast(c) { coastL = c ? buildCoast(c) : null; if (!el.hidden) drawMini(); }, get isOpen() { return !el.hidden; } };
+  // A new list for the picker (the tests' three-type list). Applies at once if the dialog is open.
+  function setTypes(l) {
+    typeList = l || null;
+    if (el.hidden) return;
+    const stay = typesNow().find((t) => t.id === type.id);
+    if (stay) { type = stay; renderTypes(); fill(); }
+    else { renderTypes(); chooseType(typesNow()[0]?.id); }
+  }
+
+  return { show, hide, setTypes, setCoast(c) { coastL = c ? buildCoast(c) : null; if (!el.hidden) drawMini(); }, get isOpen() { return !el.hidden; } };
 }

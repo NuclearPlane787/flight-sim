@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtDuration, fmtDate, fmtKg, totals, newestFirst, scenarioOf, filterByScenario, removeScenario, scenarioOptions, UNTAGGED } from '../src/ui/logbook.js';
+import { typeName } from '../src/scenarios.js';
 import { verdict, penaltyFrac, touchdownText, gradeColor, esc, runwaySvg } from '../src/ui/score-panel.js';
 
 const parts = (vs, g, bounces = 0) => [
@@ -166,4 +167,14 @@ test('removeScenario: only that scenario\'s entries go', () => {
   assert.deepEqual(removeScenario(LOG, '', 's1'), LOG);
   assert.deepEqual(removeScenario([null, LOG[3]], 'a'), [null]);
   assert.deepEqual(removeScenario(undefined, 'a'), []);
+});
+
+// ---- The aircraft type (v0.3.0) ----
+
+test('type: an entry keeps its type through the store\'s JSON, and one without it is the A321neo', () => {
+  const log = JSON.parse(JSON.stringify([{ date: '2026-11-01T00:00:00Z', route: 'RKSS–RKPC', type: 'b789' }, { date: '2026-10-01T00:00:00Z', route: 'RKSS–RKPC' }]));
+  assert.equal(log[0].type, 'b789');
+  assert.equal(typeName(log[1].type), 'A321neo');
+  assert.deepEqual(newestFirst(log).map((x) => x.e.type), ['b789', undefined]);
+  assert.equal(totals(log).flights, 2, 'the totals count every type');
 });
