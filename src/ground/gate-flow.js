@@ -101,7 +101,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     const rx = stand.x - fx * NOSE_X, ry = stand.y - fy * NOSE_X;
     const toFlap = sim.type?.data.TAKEOFF_FLAP_LEVER ?? 1;
     sim.reset({ x: rx, y: ry, hdg: h0, onGround: true, flapLever: toFlap, gearDown: true, parkingBrake: true,
-      fuelKg: plan.fuelKg, payloadKg: plan.payloadKg ?? ((plan.pax || 0) * 84 + (plan.cargoKg || 0)) });
+      fuelKg: plan.fuelKg, payloadKg: plan.payloadKg ?? ((plan.pax || 0) * 84 + (plan.cargoKg || 0)), pax: plan.pax, cargoKg: plan.cargoKg });
     sim.controls.flapLever = toFlap;
     sim.controls.gearDown = true;
     sim.controls.parkingBrake = true;

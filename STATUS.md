@@ -1530,3 +1530,56 @@ The workspace copy was cloned from GitHub at `12921f2` and matched the Mac's tre
 - **Clips:** `v031-sound-<type>-takeoff-cockpit-before-after.mp3`, `…-approach-cockpit-before-after.mp3` for the three types.
 - **Written up:** `src/version.js` (`Flight Sim v0.3.1 · CL#261108`), `Updates.md`, `README.md` (controls, sound), `PLAN.md` (the model, the sound), `ROADMAP.md` (found after v0.3.0; the v0.2.2 seat-swap item corrected), `HANDOFF.md` (the table, how v0.3.1 works), `AGENTS.md` (State).
 - **Next:** Shane listens to the clips and flies a landing with full flap in 3rd person; pushes with `sh tools/push.sh v0.3.1`, then "Empty Cache and Hard Reload" (a plain reload can keep v0.3.0's modules, as on 2026-11-04).
+
+## 2026-11-08, 15:05 KST: v0.3.2 (Cowork session, the second agent)
+
+Shane (after pushing v0.3.1, `1530e48`): "Do one thing: Can you change the maximum altitude on the autopilot from 43000 to 45000? I know the coffin corner effect, but I just want to know what happens a little higher."
+
+- **The base:** the workspace copy matched GitHub's `1530e48` (a fresh clone, `diff -r`: nothing else differs) and the Mac's tree (every common file; the Mac's extras are the git-ignored reference files and five old `__pycache__` files).
+- **The change:** the Boeings' MCP ALT window (`ALT_TOP` in `src/ui/boeing/mcp.js`) and `setAlt()` in `src/sim/autopilot-boeing.js` stop at 45,000 ft, not 43,000 (the old comment said 43,000 was above the ceilings; it was 100 ft under them). The A321neo's FCU (39,800 ft, `ui/fcu.js`) and its `setAlt()` (41,000 ft, `sim/autopilot.js`) are unchanged: Shane asked about the 777.
+- **Nothing else stops at the ceiling:** `MAX_ALT_FT` (43,100 ft on both Boeings) is data that only the tests read. The ISA is isothermal above 11 km (right to 20 km), thrust lapses with σ and Mach with no clamp (`engines.js`), CLmax falls with Mach (`CLMAX_MACH_SLOPE`, `flightmodel.js`) and VMO/MMO bound the top (`sim.js`), so the coffin corner comes out of the model.
+- **What it does up there** (a scratch script, not kept: FLCH from FL410 at 250 kt, about M.84, to 45,000 ft, 20 min, AP and A/T on; mass, then the result):
+  - 787-9: 142 t at 45,000 ft in 6.8 min (M.882, 241 kt; VMO/MMO 246, minimum manoeuvre 209, shaker 194); 161 t in 12.8 min (241 kt, minimum 222); 180 t at 43,936 ft after 20 min, still climbing at 100 ft/min, 244 kt (minimum 234); 193 t at 43,296 ft, 240 kt (minimum 238).
+  - 777-300ER: 183 t in 5.5 min (M.872, 238 kt; 243, 218); 209 t in 10.3 min (238 kt, minimum 232); 234 t at 43,988 ft after 20 min, 242 kt (minimum 245); 251 t at 43,035 ft, 242 kt, under its 251 kt minimum (shaker 230) and falling.
+  - No NaN, no crash, and the AP stayed on in every case.
+- **Seen, not changed** (both v0.3.0's design):
+  - FLCH's elevator floor in a climb (+100 ft/min, `speedOnElevator()`'s `floorVs`) keeps a heavy one climbing at its thrust limit, so the speed bleeds under the amber band toward the shaker instead of the climb stopping. Not checked against Boeing's FCOM.
+  - The IAS/MACH window keeps the knots it was set to (`ap.spdKt`), not the Mach, so a FLCH climb from M.84 at FL410 ends near M.88 at FL450, held 5 kt under VMO/MMO by `X.boSpdCmd`'s clamp.
+- **Checks:**
+  - Unit tests: 508 pass, in the container and on the Mac through the guard (12 s, peak 0.50 GB; `--status` and `--sweep` clean). v0.3.1 has 506 (counted on the clone). The new test (`tests/boeing-ap.test.mjs`: the top is 45,000 ft; a light one climbs there from FL410 by FLCH and holds it, between the shaker and VMO/MMO) runs twice, because `boeing-777.test.mjs` re-runs the file for the 777.
+  - `tests/browser-boeing-ui.mjs`: 59/59 in headless Chromium (a scratch copy with the cloud's Playwright, headless, screenshots to scratch), with two new checks: typed 450 is FL450, typed 480 stops at 45,000. No console errors.
+  - Every changed `.js`/`.mjs` checked as a module.
+- **Written up:** `src/version.js` (`Flight Sim v0.3.2 · CL#261108`), `Updates.md`, `AGENTS.md` (State), `HANDOFF.md` (the table: v0.3.1 pushed, `1530e48`; v0.3.2 not yet). `README.md`, `PLAN.md` and `ROADMAP.md` don't mention the window's top, so they're unchanged.
+- **Next:** Shane pushes with `sh tools/push.sh v0.3.2`, then "Empty Cache and Hard Reload" (a plain reload can keep v0.3.1's `mcp.js`, which stops at 43,000).
+
+## 2026-11-08, 15:48 KST: v0.3.2, two more (Cowork session, the second agent)
+
+Shane (trying FL450, v0.3.2 not pushed yet): "While I test out the FL450 feature, do these items extra for v0.3.2: 1. Add the ability to duplicate a scenario, since I've found that I want to test various from certain points. 2. Be able to change the weight settings of a flight during the flight. Maybe put it under the L (time) tab or put under another tab."
+
+Worked in the workspace copy (it matched the Mac's v0.3.2 tree) and synced to the Mac in one batch at the end, so nothing changed under Shane's test.
+
+**1. Duplicate** (`src/scenarios.js`, `src/ui/menu.js`, `menu.css`, `index.html`, `src/main.js`):
+
+- **The store:** `duplicate(id, { now, name })` is `create()` with the original's state, summary and type, named by `copyName()`: "Name (copy)", then "(copy 2)", "(copy 3)", the lowest free; a copy of a copy counts on from the same name; a long name is cut to fit 40 characters. It's saved now, so it heads the list (and Continue picks it until the original saves again). Never legacy; the logbook's flights stay with the original. Storage full: no copy, nothing changed (`create()`'s record-then-index rule).
+- **Load scenario:** Duplicate on each row, between Rename and Delete. A note over the list says what happened ("Copied as “…”: at the top, ready to fly or rename", or why not), and the new row takes the focus.
+- **The pause menu's Save a copy** (`saveCopy()`): saves, then duplicates the current scenario; the flight goes on in the original, and the toast names both. So a point can be kept: one copy left as it is, duplicated each time it's flown (a scenario being flown autosaves). Updates.md says so.
+
+**2. The weights in flight** (`src/sim/sim.js`, `src/ui/load-window.js` (new), `src/ui/sky-window.js`, `sky-window.css`, `src/main.js`, `src/ground/gate-flow.js`, `index.html`, `src/ui/menu.js`):
+
+- **Where:** the L window's second tab, as Shane suggested. The Weight window has the Sky window's frame and place (bottom-left, under the PFD), and both title bars carry the tabs (Sky · Weight); L opens the tab last shown. The pause menu has Weight and fuel; the Controls page and README's keys say so. No new key.
+- **The window:** Passengers, Cargo and Fuel fields with the setup's checks (`loadCheck()`: the seats, the hold, the tanks, MZFW and MTOW stop Apply; over MLW and under 600 kg of fuel warn); Max fills the tanks up to MTOW (`maxFuel()`); the payload, zero-fuel weight and weight against their limits, and "Now" (the weight, the fuel, the CG). The fuel field follows the burn until it's edited. Apply or Enter loads it; Undo edits goes back. The fields take the keys while one has the cursor (input.js already ignores keys typed in a field); Apply, Esc or a click outside give them back. Esc closes it (also from a field) without opening the pause menu, as the Sky window's does.
+- **The sim:** `setLoad({ payloadKg, fuelKg, pax, cargoKg })`. The fuel goes in as at a reset (wings first, then the centre; a fuel the same to 0.5 kg leaves the tanks alone); the airframe stays where it is (the CG moves inside it, so the core's CG position moves by the change along the body's x); speeds and attitude stay; `thsTakeoff` follows the CG (on the ground the fly-by-wire trims to it). `paxN`, `cargoKg` and `fuelAddedKg` are new core fields, so saves, rewinds and copies carry them; `restore()` defaults them for older saves (the plan's load, no fuel added); `state` shows them with `payloadKg`.
+- **Around it:** the logbook's fuel used is `fuelAtStart + fuelAddedKg − fuel`, the burn alone. Skip to final keeps the present load (it used the plan's payload, which would have undone a change). Runway, final and gate starts set the load's parts from the plan. The plan itself isn't changed, so Restart the flight and New flight start from the setup's load (Updates.md says so). The window's sums use the sim's own OEW and tanks: the A321's setup shows v0.1.0's (OEW 50,100 kg, 18,864 kg of fuel, against the sim's 50,500 and 18,510), so the setup's numbers would have disagreed with the weight shown as "Now".
+
+**Checks:**
+
+- **Unit tests: 521 pass** (508 and 13 new), in the container and on the Mac through the guard (12 s, peak 0.59 GB; `--status` and `--sweep` clean). New: `tests/load.test.mjs` (10: in cruise on each type the mass, tanks and CG follow, the airframe doesn't move, the AP flies on with the minimum speed up; fuel taken off counts; the clamps; parked with the brake, 40 t more settles where it stands with no crash or touchdown; a snapshot carries the parts, an older one clears them; crashed: no change; the window's checks and Max on each type), and 3 in `tests/scenarios.test.mjs` (`copyName()`; `duplicate()`: the same state, summary and type, at the top, the original untouched, (copy 2) and (copy 3), a named copy; the legacy scenario's copy, and a full storage making none). The golden A321 flight is unchanged.
+- **`tests/cloud/weight-copy.cjs` (new): all 40 checks pass** in headless Chromium through the real game, on the 777: L, the tabs, the Weight tab in the Sky window's place under the PFD, the plan's load to start, the fuel following the burn, too many passengers stopping Apply with the reason, Max, a key typed in a field staying there, Enter applying (300 pax, 5,000 kg, the fuel to Max with the fuel added counted, the aircraft exactly where it was), the keys back to the flight, L closing and reopening on the Weight tab, Esc from a field with no pause menu, skip to final keeping the load, the pause menu's two new buttons, Save a copy (the same state, the 777, the flight staying the original's), Load scenario → Duplicate ((copy 2) at the top with the note and the focus), the copy flying on from the original's point with its load; at 1280×720 the Weight tab under the PFD and the pause menu inside the window; no console errors. Pictures looked at: `v032-sky-tabs`, `v032-weight-tab`, `v032-pause-menu`, `v032-duplicate-list`, `v032-weight-tab-720`, `v032-pause-menu-720` (`Claude outputs/flight-sim/`, as .jpg).
+- **`route-views.cjs`: all 16 pass**, its landing B 88, no console errors (the view switch, a dragged waypoint, Change route, skip to final and a landing by the e2e controller, the logbook).
+- Every changed `.js` checked as a module (`main.js` with `node --check`).
+
+**Seen, not changed** (in ROADMAP, "Seen while building v0.3.2"): FLCH's +100 ft/min floor in a climb; the IAS/MACH window keeping knots; the A321's setup showing v0.1.0's OEW and tanks.
+
+**Written up:** `Updates.md` (v0.3.2's entry, retitled), `README.md` (scenarios, the weights, the keys, the code map), `AGENTS.md` (State), `HANDOFF.md` (the table, the evidence, "v0.3.2: 45,000 ft, Duplicate, the Weight tab", the cloud tools), `ROADMAP.md` (found after v0.3.1; seen while building v0.3.2).
+
+**Next:** Shane pushes with `sh tools/push.sh v0.3.2`, then "Empty Cache and Hard Reload" (a plain reload can mix the old and new modules).

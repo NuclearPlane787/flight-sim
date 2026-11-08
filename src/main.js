@@ -18,6 +18,7 @@ import { ScenarioStore, whereText, legacyId } from './scenarios.js';
 import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js';
 import { createClock, afternoonOf } from './clock.js';
 import { typeById, DEFAULT_TYPE } from './sim/types.js';
+import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 
 const STEP = 1 / 120;
 const KT = 1.943844, FT = 3.28084, NM = 1852, DEG = Math.PI / 180;
@@ -197,6 +198,10 @@ async function boot() {
   // picks a time; a migrated Scenario 1 starts in the afternoon.
   const clock = createClock({ ms: Date.now(), running: true, speed: 1 });
   let skyWin = null;   // the Sky window (src/ui/sky-window.js), once it's loaded
+  let loadWin = null;  // v0.3.2: the Weight window (src/ui/load-window.js), the Sky window's second tab
+  let lTab = 'sky';    // the L window's tab last shown
+  // Both of the L window's tabs closed (a new flight, the menu: else an Esc handler would still catch).
+  function closeLWindow() { if (skyWin?.isOpen) skyWin.close(); if (loadWin?.isOpen) loadWin.close(); }
   const geo = [0, 0];
   function placeNow() { const s = sim.state; const g = toGeo(s.pos.x, s.pos.y); return { lat: g[0], lon: g[1] }; }
 
@@ -237,11 +242,16 @@ async function boot() {
     const x = ax.px + ax.ux * 45, y = ax.py + ax.uy * 45; // lined up just past the pavement's end
     const toFlap = sim.type.data.TAKEOFF_FLAP_LEVER;
     sim.reset({ x, y, hdg: ax.hdg, onGround: true, flapLever: toFlap, gearDown: true,
-      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan) });
+      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan), ...loadParts(keep) });
     sim.controls.flapLever = toFlap;
     sim.controls.gearDown = true;
     sim.controls.parkingBrake = false;
     input.lever = 0;
+  }
+  // The load's parts for a reset (v0.3.2): the kept ones (a skip to final carries the Weight window's
+  // load on), else the plan's.
+  function loadParts(keep) {
+    return keep ? { pax: keep.pax, cargoKg: keep.cargoKg, fuelAddedKg: keep.fuelAddedKg } : { pax: plan.pax, cargoKg: plan.cargoKg, fuelAddedKg: 0 };
   }
 
   // 15 nm out on the extended centreline, on the 3° path, 180 kt, CONF 1, gear up, AP holding.
@@ -254,7 +264,7 @@ async function boot() {
     // above it. (The A321's start is as it always was.)
     const finalFlap = sim.type.data.FINAL_FLAP_LEVER ?? 1;
     const ic = { x, y, z, hdg: ax.hdg, onGround: false, iasMs: 180 / KT, flapLever: finalFlap, gearDown: false,
-      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan) };
+      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan), ...loadParts(keep) };
     sim.reset(ic);
     let finalKt = 180;
     if (sim.state.vmm && sim.state.vmm * KT + 10 > finalKt) {
@@ -340,7 +350,7 @@ async function boot() {
   // A new flight inside the scenario (the pause menu, the crash panel, the score card): it
   // replaces the scenario's flight. Parked at a stand after arriving, it starts from there.
   async function newFlight() {
-    if (skyWin?.isOpen) skyWin.close();
+    closeLWindow();
     setPaused(true, true);
     input.setEnabled(false);
     const last = plan || store.load('lastflight', null);
@@ -484,7 +494,7 @@ async function boot() {
   }
   function showMenu() {
     inMenu = true;
-    if (skyWin?.isOpen) skyWin.close();   // else its Esc handler would still catch the menu's Esc
+    closeLWindow();   // else its Esc handler would still catch the menu's Esc
     input.setEnabled(false);
     paused = true;
     if (synth && audioStarted) synth.stop();
@@ -524,7 +534,8 @@ async function boot() {
     if (!dest) { toast('No destination runway set'); return; }
     fadeThen(() => {
       const s = sim.state;
-      placeOnFinal({ fuelKg: s.fuelKg, payloadKg: payloadOf(plan) });
+      // The load as it is now (v0.3.2: the Weight window may have changed it from the plan's).
+      placeOnFinal({ fuelKg: s.fuelKg, payloadKg: s.payloadKg, pax: s.paxN, cargoKg: s.cargoKg, fuelAddedKg: s.fuelAddedKg });
       rewind = [];
       afterJump();
       scorer.reset();
@@ -726,6 +737,8 @@ async function boot() {
         else if (crashed || sim.state.crashed) toast('Crashed: the last good save is kept');
         else if (saveNow('save')) toast(`Saved “${current.name}”`, 1500);
       }
+      else if (act === 'copy') saveCopy();
+      else if (act === 'weight') { setPaused(false); showLTab('load'); }
       else if (act === 'rewind') rewindNow();
       else if (act === 'restart') { startFlight(plan, { keepClock: true }); saveNow('restart'); }
       else if (act === 'setup') { ui.crash.hidden = true; ui.score.hidden = true; newFlight(); }
@@ -735,6 +748,19 @@ async function boot() {
       else if (act === 'sky') { setPaused(false); openSky(); }
       else if (act === 'menu') exitToMenu();
     });
+  }
+
+  // v0.3.2, the pause menu's Save a copy: this moment as a new scenario to come back to (Shane: "I
+  // want to test various from certain points"). The flight goes on in this one.
+  function saveCopy() {
+    if (!scenarios) { toast('Browser storage is off: flying without saving'); return; }
+    if (!current) { toast('This flight isn’t a scenario (a test start): nothing to copy'); return; }
+    if (crashed || sim.state.crashed) { toast('Crashed: rewind first, then save a copy'); return; }
+    if (!saveNow('copy')) return;          // saveNow says why
+    const r = scenarios.duplicate(current.id);
+    if (!r.ok) { toast(r.error === 'quota' ? 'Could not save a copy: the browser’s storage is full' : 'Could not save a copy', 4000); return; }
+    menu.refresh();
+    toast(`Saved a copy, “${r.entry.name}”. You’re still flying “${current.name}”.`, 3500);
   }
 
   // ---- Master volume (the Settings page) ----
@@ -833,7 +859,7 @@ async function boot() {
       ...(current ? { scenarioId: current.id, scenarioName: current.name } : { scenarioId: 'unsaved', scenarioName: 'Unsaved flights' }), route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
       depRunway: plan.start === 'runway' ? plan.depRunway : null, arrRunway: le ? le.end.ident : null, gate: plan.start === 'gate' ? plan.stand ?? null : null,
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,
-      fuelUsedKg: Math.round(fuelAtStart - s.fuelKg),
+      fuelUsedKg: Math.round(fuelAtStart + (s.fuelAddedKg || 0) - s.fuelKg),   // the burn: fuel put in or taken off in flight doesn't count
       score: { points: res.points, grade: res.grade, parts: res.parts, ...(res.offRunway ? { offRunway: true } : {}) },
     });
     window.__fsLastScore = res;
@@ -953,6 +979,7 @@ async function boot() {
     if (night !== lastNight) { lastNight = night; aircraft.setNight?.(night); cockpit.setNight?.(night); }
     updateAircraftLights(s);
     if (skyWin?.isOpen && ++skyWinTick % 6 === 0) skyWin.update();
+    if (loadWin?.isOpen && ++skyWinTick % 6 === 0) loadWin.update();   // the fuel as it burns
   }
   // The A321's lights by phase (src/aircraft-lights.js), and its lamps' beam for the ground's shaders.
   const lampP = new THREE.Vector3(), lampD = new THREE.Vector3();
@@ -1075,7 +1102,7 @@ async function boot() {
   const menu = createMenu($('menu-root'), {
     version: VERSION.label,
     backdrops: MENU_STILLS.map((u) => new URL('../' + u, import.meta.url).href),
-    scenarios: scenarios || { list: () => [], rename: () => ({ ok: false, error: 'storage' }), remove: () => false, newest: () => null },
+    scenarios: scenarios || { list: () => [], rename: () => ({ ok: false, error: 'storage' }), duplicate: () => ({ ok: false, error: 'storage' }), remove: () => false, newest: () => null },
     onContinue: (id) => loadScenario(id),
     onLoad: (id) => loadScenario(id),
     onNew: () => newScenario(),
@@ -1084,28 +1111,68 @@ async function boot() {
     onControls: () => controlsPage.open(),
   });
 
-  // ---- The Sky window (L, or Cmd/Ctrl+L as in Satisfactory) ----
+  // ---- The L window (L, or Cmd/Ctrl+L as in Satisfactory): the Sky window, and from v0.3.2 the
+  // Weight window as its second tab. Both stand at the bottom-left; L opens the tab last shown. ----
   if (skyWinMod?.createSkyWindow) {
-    skyWin = skyWinMod.createSkyWindow($('skywin-root'), { clock, place: placeNow });
+    skyWin = skyWinMod.createSkyWindow($('skywin-root'), { clock, place: placeNow,
+      tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }] });
     skyWin.onclose = () => requestFrame();
+    skyWin.ontab = (t) => showLTab(t);
     // A time set in the window shows at once, also while paused (the game draws on demand then).
     skyWin.onchange = () => { if (paused) renderOnce(); else requestFrame(); };
   } else for (const b of document.querySelectorAll('[data-sky]')) b.hidden = true;
-  function openSky() { if (!skyWin || inMenu || !plan) return; if (!skyWin.isOpen) toggleSky(); }
-  function toggleSky() {
-    if (!skyWin || inMenu || !plan) return;
-    skyWin.toggle();
-    if (skyWin.isOpen) { skyWin.update(); requestFrame(); }
+  // After the Sky window, so it's the first .fssw in the page (tests/browser-sky-window.mjs reads it so).
+  loadWin = createLoadWindow($('skywin-root'), { get: loadNow, onapply: applyLoad });
+  loadWin.onclose = () => requestFrame();
+  loadWin.ontab = (t) => showLTab(t);
+  if (!skyWin) loadWin.el.querySelector('[data-tab="sky"]')?.remove();
+  // Open the L window on a tab ('sky' or 'load'), closing the other.
+  function showLTab(t) {
+    if (inMenu || !plan) return;
+    const win = t === 'load' ? loadWin : skyWin, other = t === 'load' ? skyWin : loadWin;
+    if (!win) return;
+    lTab = t;
+    if (other?.isOpen) other.close();
+    if (!win.isOpen) win.open();
+    win.update(); requestFrame();
+  }
+  function openSky() { showLTab('sky'); }
+  function toggleL() {
+    if (inMenu || !plan) return;
+    if (skyWin?.isOpen || loadWin?.isOpen) closeLWindow();
+    else showLTab(lTab === 'load' || !skyWin ? 'load' : 'sky');
   }
   // Cmd/Ctrl+L is the one Ctrl binding (PLAN.md): it can't lose anything, so it's the exception.
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyL' || e.altKey || e.repeat) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-    if (!skyWin || inMenu || !plan || setup.isOpen) return;
+    if (inMenu || !plan || setup.isOpen) return;
     e.preventDefault();
-    toggleSky();
+    toggleL();
   }, true);
+
+  // v0.3.2: what the Weight window shows. The load's parts come from the sim; a save from before
+  // v0.3.2, or a test start, has none, so the plan's. Its sums use the sim's own empty weight and
+  // tanks (the A321's setup shows v0.1.0's, 400 kg lighter and 354 kg more fuel), so they match
+  // the weight it flies at.
+  function loadNow() {
+    const s = sim.state, L = sim.type.limits, A = sim.type.data;
+    return { limits: { ...L, OEW: A.OEW ?? L.OEW, FUEL_MAX: Math.min(L.FUEL_MAX, A.FUEL_MAX ?? L.FUEL_MAX) },
+      pax: s.paxN ?? plan?.pax ?? 0, cargoKg: s.cargoKg ?? plan?.cargoKg ?? 0,
+      fuelKg: s.fuelKg, gross: s.mass, cgMac: s.cgMac, crashed: !!(crashed || s.crashed) };
+  }
+  // Its Apply. The plan stays as it was set up (Restart the flight and New flight start from it);
+  // the flight, a save, a rewind and a copy carry the new load (it's in the sim's core).
+  function applyLoad({ pax, cargoKg, fuelKg }) {
+    if (!plan || crashed || sim.state.crashed) return { ok: false, text: 'Crashed: rewind or restart to change the load.' };
+    sim.setLoad({ payloadKg: pax * sim.type.limits.PAX_KG + cargoKg, fuelKg, pax, cargoKg });
+    apKey = '';                 // the predicted path depends on the weight
+    saveNow('weight');
+    requestFrame();
+    const s = sim.state;
+    return { ok: true, text: `Loaded: ${Math.round(s.mass).toLocaleString('en-US')} kg, CG ${(s.cgMac * 100).toFixed(1)} % MAC.` };
+  }
 
   useType(DEFAULT_TYPE);
   resize();
@@ -1128,6 +1195,7 @@ async function boot() {
     get current() { return current; }, get inMenu() { return inMenu; }, get lastSaveMs() { return lastSaveMs; }, get frames() { return renderer.info.render.frame; },
     get landed() { return landed; }, get plan() { return plan; }, setTimeScale: (r) => { if (r === 1 || canCompress()) setTimeScale(r); return timeScale; },
     setPaused, rewindNow, requestPredict: () => { predictor.request(sim.snapshot(), {}); },
+    get skyWin() { return skyWin; }, get loadWin() { return loadWin; }, showLTab, toggleL, applyLoad, saveCopy,   // v0.3.2
     renderOnce, runwayEnds, runwayAxis,
     gridToMagDeg: (h, x, y) => gridToMag(h, x, y) / DEG,
   };

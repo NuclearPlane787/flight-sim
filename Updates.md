@@ -4,6 +4,12 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.3.2 · 2026-11-08 · The Boeings to 45,000 ft, duplicating a scenario, changing the weights in flight
+
+- **The 787's and 777's ALT window now goes to 45,000 ft** (it stopped at 43,000), 1,900 ft past their certified ceiling, so you can take them up there and see what happens. A light one climbs there and levels off; a heavy one runs out of thrust before it. The A321neo's still stops at 39,800 ft.
+- **Duplicate a scenario:** each scenario in Load scenario has a Duplicate button. The copy is the same moment, aircraft and load, named "(copy)", at the top of the list. In flight, the pause menu's Save a copy keeps this moment as a new scenario while you fly on in this one. To try things from one point again and again, keep one copy as it is and duplicate it each time: a scenario you fly saves itself as it goes.
+- **Change the weights during a flight:** the L window has a Weight tab beside Sky (or Weight and fuel in the pause menu), for the passengers, cargo and fuel, in the air or on the ground. It has the setup's checks (the seats, the hold, the tanks, MZFW and MTOW, and a warning over MLW), Max fills the tanks up to MTOW, and Apply (or Enter) loads it. The aircraft flies on from where it is with the new weight and CG, and the logbook's fuel used stays the fuel burned. Restart the flight goes back to the setup's load.
+
 ## v0.3.1 · 2026-11-08 · The gear and flaps on the wing, the seat swap, the engines in the cockpit, the gear doors
 
 - **The main gear hangs from the wing again with the flaps out,** on all three aircraft. The inboard flaps used to start in front of the gear's legs, so with them out the legs seemed to hang from thin air. Each inboard flap now starts behind the legs, and the wing ahead of it carries the gear, as on the real aircraft. The A321neo's wing also sits where Airbus's drawings put it, about a metre further back than before.

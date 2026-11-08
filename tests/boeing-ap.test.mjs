@@ -514,3 +514,19 @@ test('the prediction of an autoland ends on the runway, not in the terrain', () 
   assert.equal(r.reason, 'landed', `${r.reason}, ended at ${(r.samples.at(-1).z / FT_).toFixed(0)} ft`);
   assert.ok(!r.samples.at(-1).terrain);
 });
+
+// v0.3.2 (Shane: "I just want to know what happens a little higher"): the MCP goes to 45,000 ft,
+// past both types' 43,100 ft ceiling. A light one gets there (about 6–7 min from FL410 by FLCH).
+test('the MCP altitude goes to 45,000 ft, past the ceiling, and a light one climbs there and levels off', () => {
+  const sim = air({ frac: 0.2, altFt: 41000, iasKt: 250, ap: apOn(41000, 250) });
+  run(sim, 60);
+  sim.ap.setAlt(47000);
+  assert.equal(sim.ap.altFt, 45000, 'the top is 45,000 ft');
+  assert.ok(45000 > A.MAX_ALT_FT);
+  sim.ap.levelChange();
+  const there = (s) => s.ap.vertical === 'ALT' && Math.abs(s.state.pos.z - 45000 * FT) < 50 * FT;
+  assert.ok(run(sim, 12 * 60, there), `stuck at ${(sim.state.pos.z / FT).toFixed(0)} ft in ${sim.ap.vertical}`);
+  run(sim, 120);
+  assert.ok(there(sim) && sim.ap.ap, `held: ${(sim.state.pos.z / FT).toFixed(0)} ft, ${sim.ap.vertical}`);
+  assert.ok(sim.state.ias > sim.state.vStick && sim.state.ias < sim.state.vmax, 'between the shaker and the limit');
+});

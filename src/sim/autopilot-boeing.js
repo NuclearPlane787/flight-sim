@@ -107,7 +107,8 @@ export function createAutopilotBoeing(A) {
         ap.athrArmed = !!on;
         if (!on) { ap.athr = false; ap.thrustMode = ''; const X = X0(); X.athrDriving = false; X.boOvr = false; X.boWake = false; }
       },
-      setAlt(ft) { ap.altFt = clamp(Math.round(ft), 100, 43000); },
+      // To 45,000 ft, past the 43,100 ft ceiling on purpose (v0.3.2; the MCP's ALT_TOP is the same).
+      setAlt(ft) { ap.altFt = clamp(Math.round(ft), 100, 45000); },
       // The heading window. It's the mode only if it's in HDG SEL already: hdgSel() selects it.
       setHdg(deg) { ap.hdgDeg = ((Math.round(deg) % 360) + 360) % 360; if (ap.lateral === 'HDG SEL') X0().hdgTimer = 0; },
       setSpd(kt) { ap.spdKt = clamp(Math.round(kt), 100, 399); },

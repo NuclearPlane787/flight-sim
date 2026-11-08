@@ -10,8 +10,8 @@
 //   const controls = createControlsPage(root, { sky? });   controls.setFamily(def.family) for the type flown
 //   page.open(); page.close(); page.isOpen; page.onclose = () => {}
 //
-// `scenarios` is the ScenarioStore (list, rename, remove). Nothing renders behind the menu:
-// it's plain DOM over a still.
+// `scenarios` is the ScenarioStore (list, rename, duplicate, remove). Nothing renders behind the
+// menu: it's plain DOM over a still.
 
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
 
@@ -64,8 +64,9 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
       </nav>
       <section class="fsm-load" data-o="load" hidden aria-label="Load scenario">
         <div class="fsm-load-bar"><h2>Load scenario</h2><button class="fsui-b" data-k="back">Back</button></div>
+        <p class="fsm-note" data-o="loadMsg" aria-live="polite"></p>
         <div class="fsm-list" data-o="list"></div>
-        <p class="fsm-help">Click a scenario or press Enter to fly it. Esc goes back.</p>
+        <p class="fsm-help">Click a scenario or press Enter to fly it. Duplicate copies one, so you can fly on from the same point again. Esc goes back.</p>
       </section>
     </div>
     <p class="fsm-version" data-o="version"></p>`;
@@ -77,6 +78,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
   let editing = null;   // the id being renamed
   let confirming = null; // the id asking to be deleted
   let renameMsg = '';
+  let loadMsg = '', loadMsgBad = false; // a Duplicate's result, over the list
 
   $('version').textContent = version;
   keepPointer(el);
@@ -121,11 +123,13 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
       ? `<div class="fsm-confirm"><span>Delete “${esc(e.name)}”? Its flights stay in the logbook.</span>
           <button class="fsui-b" data-r="no">Cancel</button><button class="fsui-b danger" data-r="yes">Delete</button></div>`
       : editing === e.id ? ''
-      : `<div class="fsm-row-act"><button class="fsui-b primary" data-r="load">Load</button><button class="fsui-b" data-r="rename">Rename</button><button class="fsui-b" data-r="delete">Delete</button></div>`;
+      : `<div class="fsm-row-act"><button class="fsui-b primary" data-r="load">Load</button><button class="fsui-b" data-r="rename">Rename</button><button class="fsui-b" data-r="duplicate" title="A copy with the same state: fly on from this point again">Duplicate</button><button class="fsui-b" data-r="delete">Delete</button></div>`;
     return `<div class="fsm-row${confirming === e.id ? ' asking' : ''}" data-id="${id}" tabindex="0">${main}${act}</div>`;
   }
 
   function renderLoad(focusId) {
+    const m = $('loadMsg');
+    m.textContent = loadMsg; m.classList.toggle('bad', loadMsgBad);
     const list = scenarios?.list?.() || [];
     $('list').innerHTML = list.length ? list.map(rowHtml).join('')
       : '<div class="fsm-empty">No scenarios yet. Start one with New scenario.</div>';
@@ -142,7 +146,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
 
   function showPage(p) {
     page = p;
-    editing = confirming = null; renameMsg = '';
+    editing = confirming = null; renameMsg = ''; loadMsg = ''; loadMsgBad = false;
     $('nav').hidden = p !== 'main';
     $('load').hidden = p !== 'load';
     el.classList.toggle('on-load', p === 'load');
@@ -170,6 +174,18 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
     const id = row.dataset.id;
     const r = ev.target.closest('[data-r]')?.dataset.r;
     if (r === 'name') return; // a click in the text field
+    if (r && r !== 'duplicate') { loadMsg = ''; loadMsgBad = false; }
+    if (r === 'duplicate') {
+      const res = scenarios?.duplicate?.(id) || { ok: false, error: 'storage' };
+      editing = confirming = null;
+      loadMsgBad = !res.ok;
+      loadMsg = res.ok ? `Copied as “${res.entry.name}”: at the top, ready to fly or rename.`
+        : res.error === 'quota' ? 'Browser storage is full: no copy was made.'
+        : res.error === 'missing' ? 'That scenario is gone.' : 'Browser storage is off: no copy was made.';
+      renderLoad(res.ok ? res.id : id);
+      if (res.ok) $('list').scrollTop = 0;
+      return;
+    }
     if (r === 'rename') { editing = id; confirming = null; renameMsg = ''; renderLoad(); return; }
     if (r === 'save') { commitRename(id); return; }
     if (r === 'cancel') { editing = null; renameMsg = ''; renderLoad(id); return; }
@@ -378,7 +394,9 @@ const keyRows = (rows) => rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td
 
 export function createControlsPage(root, { sky = false } = {}) {
   const rows = keyRows(KEYS)
-    + (sky ? `<tr><td>L or Cmd/Ctrl+L</td><td colspan="3">the Sky window (time of day)</td></tr>` : '');
+    // v0.3.2: the Weight tab (passengers, cargo and fuel) is there with or without the Sky window.
+    + (sky ? `<tr><td>L or Cmd/Ctrl+L</td><td colspan="3">the Sky window (time of day), and its Weight tab (passengers, cargo and fuel)</td></tr>`
+      : `<tr><td>L or Cmd/Ctrl+L</td><td colspan="3">the Weight window (passengers, cargo and fuel)</td></tr>`);
   const page = createPage(root, 'fsm-controls', 'Controls', `
     <table class="keys fsm-keys">${rows}</table><div data-family-keys></div>
     <div class="fsm-notes">

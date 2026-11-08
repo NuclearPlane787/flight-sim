@@ -92,6 +92,43 @@
   border: 1px solid #44505a; border-radius: 5px; padding: 6px 8px; color-scheme: dark; }
 .fsui-dlg input.fsui-date:focus, .fsui-dlg input.fsui-time:focus { outline: none; border-color: #2fe3ff; }
 
+/* v0.3.2: the tabs in the title bar (Sky · Weight), where the title was. The one showing is lit, as
+   the title was, with the cyan underline of what's on; the other is dim. */
+.fssw-tabs { display: flex; align-self: stretch; margin-left: -10px; }
+.fssw-tab { display: flex; align-items: center; gap: 7px; padding: 0 11px; border: 0; background: transparent; cursor: pointer;
+  font: 600 16px/1 var(--font); letter-spacing: 0.02em; color: #8a9097; box-shadow: inset 0 -2px 0 transparent; }
+.fssw-tab:hover:not(.on) { color: #eef3f7; background: rgba(255, 255, 255, 0.05); }
+.fssw-tab.on { color: #eef3f7; cursor: default; box-shadow: inset 0 -2px 0 #2fe3ff; }
+.fssw-tab .fssw-ico { width: 17px; height: 17px; }
+.fssw-tab:not(.on) .fssw-ico { filter: none; opacity: 0.6; color: currentColor; }
+.fssw-ico--load { color: #cfe6ff; filter: drop-shadow(0 0 4px rgba(120, 190, 255, 0.6)); }
+
+/* v0.3.2: the Weight window (load-window.js), the L window's second tab */
+.fslw-body { display: flex; flex-direction: column; gap: 7px; padding-top: 9px; }
+.fslw-now { font: 600 13px var(--font); color: #a9b4bd; font-variant-numeric: tabular-nums; }
+.fslw-now b { color: #eef3f7; font-weight: 700; }
+.fslw-grid { display: grid; grid-template-columns: auto 104px minmax(0, 1fr); align-items: center; gap: 6px 8px; }
+.fslw-grid label { font: 600 14px var(--font); color: #d8dde1; }
+.fslw-grid input { box-sizing: border-box; width: 100%; font: 600 15px var(--font); font-variant-numeric: tabular-nums; color: #f0f0f0;
+  background: #0a0e11; border: 1px solid #44505a; border-radius: 5px; padding: 5px 7px; color-scheme: dark;
+  user-select: text; -webkit-user-select: text; touch-action: auto; }
+.fslw-grid input:focus { outline: none; border-color: #2fe3ff; }
+.fslw-grid input.edited { border-color: #1f9fbc; background: #0b1a20; }
+.fslw-unit { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 12px var(--font); color: #8a9097; white-space: nowrap; }
+.fslw-unit > span { overflow: hidden; text-overflow: ellipsis; }
+.fslw-unit .fssw-b { margin-left: auto; padding: 4px 8px; font-size: 12px; }
+.fslw-sum { display: flex; flex-direction: column; gap: 2px; font: 600 12.5px var(--font); color: #a9b4bd; font-variant-numeric: tabular-nums; }
+.fslw-sum b { color: #eef3f7; }
+.fslw-sum .bad, .fslw-msg.bad { color: #ff6b6b; }
+.fslw-sum .warn, .fslw-msg.warn { color: #ffb347; }
+.fslw-sum b.bad, .fslw-sum b.warn { font-weight: 700; }
+.fslw-msg { min-height: 16px; font: 600 12.5px var(--font); color: #8a9097; }
+.fslw-msg.ok { color: #3cff4e; }
+.fslw-act { margin-top: 0; justify-content: flex-end; }
+.fslw-apply { min-width: 92px; }
+.fslw-apply:not(:disabled) { background: #0f6e86; border-color: #2fe3ff; }
+.fslw-apply:not(:disabled):hover { background: #148aa8; }
+
 /* A short window (1280x720): no footer, a smaller clock, so the panel stays under the PFD. */
 @media (max-height: 800px) {
   .fssw-foot { display: none; }

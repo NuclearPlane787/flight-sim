@@ -26,6 +26,10 @@ function newCore(A, boeing) {
     px: 0, py: 0, pz: 0, vn: 0, ve: 0, vd: 0,
     q0: 1, q1: 0, q2: 0, q3: 0, p: 0, q: 0, r: 0,
     payload: 15000,
+    // v0.3.2: the load's parts as the Weight window shows them (null: not known, so the plan's), and the
+    // fuel added (or taken off) since the flight began, so the logbook's fuel used stays the burn. In the
+    // core, so a save, a rewind and a copy carry them.
+    paxN: null, cargoKg: null, fuelAddedKg: 0,
     n1L: A.N1_IDLE, n1R: A.N1_IDLE, revL: 0, revR: 0,
     n1tL: A.N1_IDLE, n1tR: A.N1_IDLE, thrL: 0, thrR: 0, ffL: 0, ffR: 0,
     fuelL: 3000, fuelR: 3000, fuelC: 0,
@@ -84,6 +88,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     ias: 0, cas: 0, tas: 0, gs: 0, mach: 0, vs: 0, nz: 1, agl: 0, groundH: 0,
     onGround: true, wow: { nose: false, left: false, right: false },
     mass: 0, fuelKg: 0, fuel: { left: 0, right: 0, center: 0 }, cgMac: 0.25, cgX: 0,
+    payloadKg: 0, paxN: null, cargoKg: null, fuelAddedKg: 0,   // v0.3.2 (the core's)
     engines: [
       { n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0 },
       { n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0 },
@@ -155,6 +160,18 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     Ixx = A.IXX_ZFW_PER_KG * zfw + A.IXX_WING_FUEL_R2 * wing;
     Iyy = A.IYY_PER_KG * mass;
     Izz = A.IZZ_ZFW_PER_KG * zfw + A.IZZ_WING_FUEL_R2 * wing;
+  }
+  // Fuel into the tanks, at a reset and from the Weight window (v0.3.2): the wings fill first, the
+  // centre tank takes the rest.
+  function fillTanks(fuel) {
+    const wing = Math.min(fuel, 2 * A.FUEL_WING_EACH);
+    X.fuelL = X.fuelR = wing / 2; X.fuelC = fuel - wing;
+  }
+  // The stabiliser's take-off setting for the CG (the fly-by-wire trims to it on the ground).
+  const takeoffThs = () => clamp((-0.5 + 20 * (0.25 - cgX / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
+  // The load's fields in the public state (updateState, setLoad).
+  function massState(S) {
+    S.payloadKg = X.payload; S.paxN = X.paxN ?? null; S.cargoKg = X.cargoKg ?? null; S.fuelAddedKg = X.fuelAddedKg || 0;
   }
 
   function computeR() {
@@ -552,6 +569,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     S.mass = mass; S.fuelKg = X.fuelL + X.fuelR + X.fuelC;
     S.fuel.left = X.fuelL; S.fuel.right = X.fuelR; S.fuel.center = X.fuelC;
     S.cgX = cgX; S.cgMac = 0.25 - cgX / A.MAC;
+    massState(S);
     const e0 = S.engines[0], e1 = S.engines[1];
     e0.n1 = X.n1L; e0.n1Target = X.n1tL; e0.ffKgS = X.ffL; e0.thrustN = X.thrL; e0.rev = X.revL;
     e1.n1 = X.n1R; e1.n1Target = X.n1tR; e1.ffKgS = X.ffR; e1.thrustN = X.thrR; e1.rev = X.revR;
@@ -632,10 +650,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     controls.gearDown = ic.gearDown ?? true;
     controls.law = ic.law || controls.law || 'normal';
     X.payload = clamp(ic.payloadKg ?? 15000, 0, A.MAX_PAYLOAD);
-    const fuel = clamp(ic.fuelKg ?? 8000, 0, A.FUEL_MAX);
-    // Wings fill first, the centre tank takes the rest.
-    const wing = Math.min(fuel, 2 * A.FUEL_WING_EACH);
-    X.fuelL = X.fuelR = wing / 2; X.fuelC = fuel - wing;
+    fillTanks(clamp(ic.fuelKg ?? 8000, 0, A.FUEL_MAX));
+    X.paxN = Number.isFinite(ic.pax) ? ic.pax : null;
+    X.cargoKg = Number.isFinite(ic.cargoKg) ? ic.cargoKg : null;
+    X.fuelAddedKg = Number.isFinite(ic.fuelAddedKg) ? ic.fuelAddedKg : 0;
     massProps();
     const hdg = ic.hdg || 0;
     const onGround = ic.onGround ?? true;
@@ -648,7 +666,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.cfg = controls.flapLever === 1 && A.HAS_1F ? (X.lever1F ? '1+F' : '1') : CONFIG_BY_LEVER[clamp(controls.flapLever | 0, 0, CONFIG_BY_LEVER.length - 1)];
     X.slat = A.CONFIGS[X.cfg].slat; X.flap = A.CONFIGS[X.cfg].flap;
     X.gearPos = controls.gearDown || onGround ? 1 : 0;
-    X.thsTakeoff = clamp((-0.5 + 20 * (0.25 - cgX / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
+    X.thsTakeoff = takeoffThs();
     ap.ap = false; ap.athr = false; ap.thrustMode = ''; ap.vertical = 'V/S'; ap.lateral = 'HDG';
 
     if (onGround) {
@@ -772,8 +790,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   function restore(snap) {
     // A save from before v0.3.0 has no type: it's the A321neo.
     setType(snap.type || DEFAULT_TYPE);
-    // A save from before v0.2.2 has no A/THR lever fields: it starts not driving.
-    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE }, snap.core);
+    // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
+    // v0.3.2 has no load fields: the plan's load, and no fuel added.
+    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0 }, snap.core);
     Object.assign(controls, snap.controls);
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
     [wowN, wowL, wowR] = snap.wow;
@@ -783,6 +802,36 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const V = Math.hypot(X.vn, X.ve, X.vd);
     const g = groundFn(X.px, X.py);
     updateState(atm, casFromTasP(V, atm.p, atm.a), V / atm.a, X.prevAlpha, 0, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
+  }
+
+  // v0.3.2: change the load, in flight or on the ground (the Weight window). payloadKg and fuelKg
+  // within the type's limits, the fuel put in as at a reset (a fuel the same to 0.5 kg leaves the
+  // tanks alone); pax and cargoKg are kept for the window (undefined: unchanged). The airframe stays
+  // where it is, and so do the speeds and the attitude: the CG moves inside it. Fuel put in or taken
+  // off adds to fuelAddedKg. No events. → false if crashed.
+  function setLoad({ payloadKg, fuelKg, pax, cargoKg } = {}) {
+    if (X.crashed) return false;
+    massProps(); computeR();
+    const cg0 = cgX, fuel0 = X.fuelL + X.fuelR + X.fuelC;
+    if (Number.isFinite(payloadKg)) X.payload = clamp(payloadKg, 0, A.MAX_PAYLOAD);
+    if (Number.isFinite(fuelKg) && Math.abs(fuelKg - fuel0) >= 0.5) {
+      const fuel = clamp(fuelKg, 0, A.FUEL_MAX);
+      fillTanks(fuel);
+      X.fuelAddedKg = (X.fuelAddedKg || 0) + fuel - fuel0;
+    }
+    if (pax !== undefined) X.paxN = Number.isFinite(pax) ? pax : null;
+    if (cargoKg !== undefined) X.cargoKg = Number.isFinite(cargoKg) ? cargoKg : null;
+    massProps();
+    // The reference point (the airframe) stays put: the CG moves by the change, along the body's x.
+    const d = cgX - cg0;
+    X.px += d * R[3]; X.py += d * R[0]; X.pz -= d * R[6];
+    X.thsTakeoff = takeoffThs();
+    const S = state;
+    S.mass = mass; S.fuelKg = X.fuelL + X.fuelR + X.fuelC;
+    S.fuel.left = X.fuelL; S.fuel.right = X.fuelR; S.fuel.center = X.fuelC;
+    S.cgX = cgX; S.cgMac = 0.25 - cgX / A.MAC;
+    massState(S);
+    return true;
   }
 
   // Move the aircraft on the ground (pushback drives it): the reference point to (x, y),
@@ -805,7 +854,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     updateState(atm, casFromTasP(V, atm.p, atm.a), V / atm.a, 0, 0, 1, V, g.h, X.pz - GROUND_Z - g.h);
   }
 
-  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType,
+  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad,
     get type() { return typeDef; }, get leverClimb() { return LEVER_CL; }, _core: X };
 }
 

@@ -11,7 +11,9 @@ import { bindKnobs } from '../knobs.js';
 import { mcpLights, usesMach, machOfKt, ktOfMach, machText, typedSpeedKt } from './logic.js';
 
 const FPM = 196.85;     // ft/min per m/s
-const ALT_TOP = 43000;  // the window's top, ft: above both Boeings' certified ceilings
+// The ALT window's top, ft: past both Boeings' certified ceiling (43,100 ft) on purpose, so you can
+// see what happens up there (Shane, v0.3.2). setAlt() in autopilot-boeing.js has the same top.
+const ALT_TOP = 45000;
 
 // [kind, key, label, tooltip, ap method]. A label's <br> makes the button two lines tall.
 const STRIP = [

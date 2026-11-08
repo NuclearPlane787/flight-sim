@@ -90,6 +90,18 @@ Found after v0.3.0 (Shane, 2026-11-08, "Let's go for v0.3.1"):
 - **The engines in the cockpit** ("I can't hear the engines much at all from the cockpit. They should be muffled and quieter than the outside, but not almost absent."). **Done in v0.3.1** (see `Updates.md`).
 - **The gear doors** ("The polygons of the landing gear doors are only visible from one side."). **Fixed in v0.3.1**: the Boeings' doors are panels with an inside.
 
+Found after v0.3.1 (Shane, 2026-11-08, for v0.3.2):
+
+- **Higher than the ceiling** ("Can you change the maximum altitude on the autopilot from 43000 to 45000? I know the coffin corner effect, but I just want to know what happens a little higher."). **Done in v0.3.2**: the Boeings' ALT window goes to 45,000 ft.
+- **Duplicating a scenario** ("Add the ability to duplicate a scenario, since I've found that I want to test various from certain points."). **Done in v0.3.2**: Duplicate in Load scenario, and Save a copy in the pause menu.
+- **The weights in flight** ("Be able to change the weight settings of a flight during the flight. Maybe put it under the L (time) tab or put under another tab."). **Done in v0.3.2**: the L window's Weight tab.
+
+## Seen while building v0.3.2 (left for later)
+
+- **FLCH won't give up a climb it can't make:** in a climb its elevator floor is +100 ft/min (`speedOnElevator()` in `autopilot-boeing.js`), so a heavy Boeing at its thrust limit keeps climbing while the speed bleeds under the amber band toward the shaker. Not checked against Boeing's FCOM.
+- **The IAS/MACH window keeps knots, not Mach** (`ap.spdKt`), so a FLCH climb from M.84 at FL410 ends near M.88 at FL450 (held 5 kt under VMO/MMO). A real Boeing in Mach holds the Mach.
+- **The A321's setup shows v0.1.0's empty weight and tanks** (OEW 50,100 kg, 18,864 kg of fuel), against the sim's 50,500 kg and 18,510 kg: its ZFW reads 400 kg light, and fuel over 18,510 kg is cut without a word. The Weight tab uses the sim's numbers.
+
 ## Found while building v0.3.0 (left for later)
 
 - **Both Boeings lift off late,** 16–20 kt after VR against about 5 in reality, and their take-off distances sit at the top of the bands.

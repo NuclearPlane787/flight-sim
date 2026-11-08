@@ -105,6 +105,15 @@ try {
   await page.keyboard.type('370'); await page.keyboard.press('Enter');
   let c = await calls();
   check(c.includes('setAlt 37000') && c.includes('levelChange'), 'typed ALT 370 is FL370 and starts FLCH: ' + c.join(', '));
+  // The window's top is 45,000 ft (v0.3.2), past the 43,100 ft ceiling.
+  await page.click('.fsui-mcp .fsui-win[data-k="alt"]');
+  await page.keyboard.type('450'); await page.keyboard.press('Enter');
+  c = await calls();
+  check(c.includes('setAlt 45000'), 'typed ALT 450 is FL450: ' + c.join(', '));
+  await page.click('.fsui-mcp .fsui-win[data-k="alt"]');
+  await page.keyboard.type('480'); await page.keyboard.press('Enter');
+  c = await calls();
+  check(c.includes('setAlt 45000'), 'typed ALT 480 stops at 45,000: ' + c.join(', '));
   await page.click('.fsui-mcp .fsui-win[data-k="hdg"]');
   await page.keyboard.type('90'); await page.keyboard.press('Enter');
   c = await calls();

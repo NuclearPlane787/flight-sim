@@ -68,6 +68,11 @@
 .fsm-confirm span { margin-right: auto; }
 .fsm-empty { padding: 40px 20px; text-align: center; color: #8a9097; font-size: 14px; }
 .fsm-help { margin: 8px 0 0; font-size: 12px; color: #8a9097; }
+/* A Duplicate's result (v0.3.2), between the title and the list */
+.fsm-note { margin: -4px 0 10px; padding: 6px 10px; font-size: 13px; color: #bff6ff; background: rgba(15, 110, 134, 0.28);
+  border: 1px solid #1f7f96; border-radius: 6px; }
+.fsm-note.bad { color: #ffd0d0; background: rgba(110, 26, 26, 0.35); border-color: #a33; }
+.fsm-note:empty { display: none; }
 .fsui-b.danger { background: #6e1a1a; border-color: #ff5a5a; }
 .fsui-b.danger:hover { background: #8a2222; }
 

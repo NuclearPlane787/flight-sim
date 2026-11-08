@@ -25,9 +25,9 @@ It also runs from the hub's player (`play.html?game=flight-sim`). There's no bui
 
 The game opens on the main menu, over a still rendered from the game: Continue (the newest scenario), New scenario, Load scenario, Logbook, Settings, Controls, and Exit to Game Dump.
 
-**Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the pause menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename and delete. v0.1.x's last flight becomes "Scenario 1", with its logbook.
+**Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the pause menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename, duplicate and delete: a copy is the same moment, aircraft and load, so you can fly on from one point again and again (the pause menu's Save a copy makes one of the present moment, and you fly on in the original). v0.1.x's last flight becomes "Scenario 1", with its logbook.
 
-New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the pause menu replaces the scenario's flight, starting from the stand when parked after arriving.
+New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the pause menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the pause menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
 
 **Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
@@ -65,8 +65,8 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | 1 / 2 / 3 | cockpit (the captain's seat; 1 again swaps to the first officer's and back), nose, 3rd person view, as the switch at the top right does |
 | V | next view (Nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
-| Esc | pause menu (Resume, Save, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Exit to menu) |
-| L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory) |
+| Esc | pause menu (Resume, Save, Save a copy, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Weight and fuel, Exit to menu) |
+| L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory); its Weight tab: the passengers, cargo and fuel. L opens the tab last shown |
 | F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the pause menu) |
 | T | rewind 30 s (from the pause menu or after a crash) |
 | drag on the view (one finger) / pinch / double-click | look around, or orbit in 3rd person / zoom / recentre; a two-finger swipe also looks or orbits |
@@ -142,6 +142,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/ui/menu.js`, `src/ui/menu.css`, `assets/menu/` | the main menu, Load scenario, Settings and Controls pages; the stills (rendered from the game by `tests/render-stills.mjs`) |
 | `src/clock.js`, `src/astro.js` | the KST clock; the sun, the Moon and its phase, sidereal time and the stars (Meeus's low-precision formulas) |
 | `src/ui/sky-window.js` | the Sky window |
+| `src/ui/load-window.js` | the Weight window, the Sky window's second tab (v0.3.2) |
 | `src/world/sky.js` | the sky by day, twilight and night (stars, Milky Way, Moon), and the light, haze and fog following the sun |
 | `src/world/citylights.js`, `src/world/taxilights.js`, `src/aircraft-lights.js` | the city lights, the taxiway lights and stop bars, the A321's lights by phase |
 | `src/score.js`, `src/store.js` | the landing score (100 × e^(−cost), the approach included); localStorage under `gamedump:flight-sim:` |

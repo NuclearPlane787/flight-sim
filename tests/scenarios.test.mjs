@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ScenarioStore, INDEX_KEY, SCEN_PREFIX, LASTFLIGHT_KEY, LOGBOOK_KEY, NAME_MIN, NAME_MAX,
-  cleanName, nameOk, migrate, legacyId, whereText, savedText, afternoonKst, newId, DEFAULT_PLAN, typeName,
+  cleanName, nameOk, migrate, legacyId, whereText, savedText, afternoonKst, newId, DEFAULT_PLAN, typeName, copyName,
 } from '../src/scenarios.js';
 
 // A Storage-like Map. `limit`: setItem throws (like QuotaExceededError) for values longer than it.
@@ -94,6 +94,62 @@ test('remove', () => {
   assert.equal(st.getItem(SCEN_PREFIX + a.id), null);
   assert.deepEqual(s.list().map((e) => e.id), [b.id]);
   assert.equal(s.remove(a.id), false);
+});
+
+// v0.3.2: Duplicate (Shane: "I've found that I want to test various from certain points").
+test('copyName: (copy), then (copy 2), (copy 3); a copy of a copy counts on; long names fit', () => {
+  assert.equal(copyName('Test'), 'Test (copy)');
+  assert.equal(copyName('Test', new Set(['Test (copy)'])), 'Test (copy 2)');
+  assert.equal(copyName('Test (copy)', new Set(['Test (copy)'])), 'Test (copy 2)');
+  assert.equal(copyName('Test (copy 2)', new Set(['Test (copy)', 'Test (copy 2)'])), 'Test (copy 3)');
+  const long = 'x'.repeat(NAME_MAX);
+  const c = copyName(long);
+  assert.equal(c.length, NAME_MAX);
+  assert.ok(c.endsWith(' (copy)'));
+  assert.ok(nameOk(copyName('abc')));
+});
+
+test('duplicate: the same state, summary and type under a new id, at the top; the original untouched', () => {
+  const st = mem(), s = new ScenarioStore(st);
+  const a = s.create('FL410 point', { ...state(7), plan: { origin: 'RKSS', type: 'b777-300er' } }, { route: 'RKSS 14R → RKPC 07', where: 'FL410, 100 nm to RKPC' }, { now: T0 });
+  const b = s.create('Other', state(2), {}, { now: T0 + 1000 });
+  const recA0 = st.getItem(SCEN_PREFIX + a.id), idxA0 = JSON.stringify(s.entry(a.id));
+  const d = s.duplicate(a.id, { now: T0 + 5000 });
+  assert.equal(d.ok, true);
+  assert.notEqual(d.id, a.id);
+  assert.equal(d.entry.name, 'FL410 point (copy)');
+  assert.equal(d.entry.type, 'b777-300er');
+  assert.deepEqual(d.entry.summary, { route: 'RKSS 14R → RKPC 07', where: 'FL410, 100 nm to RKPC' });
+  assert.equal(d.entry.legacy, undefined);
+  assert.deepEqual(s.get(d.id).state, s.get(a.id).state);
+  assert.deepEqual(s.list().map((e) => e.name), ['FL410 point (copy)', 'Other', 'FL410 point']);
+  assert.equal(st.getItem(SCEN_PREFIX + a.id), recA0, 'the original record untouched');
+  assert.equal(JSON.stringify(s.entry(a.id)), idxA0, 'the original entry untouched');
+  // Saving the copy leaves the original as it was, and the other way round.
+  s.write(d.id, state(99), {}, T0 + 6000);
+  assert.deepEqual(s.get(a.id).state.sim, { x: 7 });
+  assert.deepEqual(s.get(d.id).state, state(99));
+  // Again: (copy 2); a copy of the copy too.
+  assert.equal(s.duplicate(a.id, { now: T0 + 7000 }).entry.name, 'FL410 point (copy 2)');
+  assert.equal(s.duplicate(d.id, { now: T0 + 8000 }).entry.name, 'FL410 point (copy 3)');
+  assert.equal(s.duplicate(b.id, { name: 'Named', now: T0 + 9000 }).entry.name, 'Named');
+  assert.deepEqual(s.duplicate('nope'), { ok: false, error: 'missing' });
+});
+
+test('duplicate: the legacy Scenario 1 makes an ordinary copy; a full storage makes none and changes nothing', () => {
+  const st = mem({ [LASTFLIGHT_KEY]: JSON.stringify({ ...DEFAULT_PLAN }) }), s = new ScenarioStore(st);
+  const leg = migrate(st, T0);
+  const d = s.duplicate(leg.id, { now: T0 + 1 });
+  assert.equal(d.ok, true);
+  assert.equal(d.entry.legacy, undefined);
+  assert.equal(legacyId(s.list()), leg.id);
+  // The copy's record fits (it's the original's size), but not the index with two long entries.
+  const full = mem({}, 600), f = new ScenarioStore(full);
+  const a = f.create('Alpha', state(), { where: 'w'.repeat(250) }, { now: T0 });
+  assert.equal(a.ok, true);
+  const before = [...full.m.entries()];
+  assert.deepEqual(f.duplicate(a.id, { now: T0 + 1 }), { ok: false, error: 'quota' });
+  assert.deepEqual([...full.m.entries()], before, 'nothing changed');
 });
 
 test('a refused write leaves the index and the previous record as they were', () => {

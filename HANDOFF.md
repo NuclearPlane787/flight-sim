@@ -15,12 +15,14 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | v0.2.1 | Taxiways that stop at the runways' edges (no more clipping), changing the route in flight from the map, dragged waypoints that show, the view switch (Cockpit, Nose, 3rd person; 1, 2, 3), one-finger drag to look around or orbit, more stars | yes (`0c22ce4`) |
 | v0.2.2 | The engine sound rebuilt from the LEAP-1A's real tones; the A/THR moving the thrust lever (and the N1 ring), R/F taking it over smoothly; Cockpit (1) no longer swaps seats | yes (`7d9a20d`) |
 | v0.3.0 | Aircraft types, the Boeing 787-9 and 777-300ER, with Boeing's law, trim, autothrottle, MCP and screens, code E stands, the picker | yes (`12921f2`) |
-| v0.3.1 | The main gear carried by the wing with the flaps out (and the A321's wing where Airbus draws it), no gaps at the slats and flaps, the seat swap back on Cockpit (1), louder engines in the cockpit, gear doors with an inside | not yet: Shane pushes with `sh tools/push.sh v0.3.1` |
+| v0.3.1 | The main gear carried by the wing with the flaps out (and the A321's wing where Airbus draws it), no gaps at the slats and flaps, the seat swap back on Cockpit (1), louder engines in the cockpit, gear doors with an inside | yes (`1530e48`) |
+| v0.3.2 | The Boeings' ALT window to 45,000 ft, past their 43,100 ft ceiling; Duplicate a scenario (and the pause menu's Save a copy); the Weight tab: passengers, cargo and fuel changed in flight | not yet: Shane pushes with `sh tools/push.sh v0.3.2` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
 - **v0.3.0's evidence** is in `STATUS.md` (from "2026-11-04, 04:36 KST"), its final entry says what's weak, and ROADMAP has the leftovers.
 - **v0.3.1's** is in its `STATUS.md` entry ("2026-11-08, 03:40 KST"): 506 unit tests, `route-views.cjs`, `audio-render.mjs` 30/30 on each type, and before/after close-ups of every type's wing, gear and doors (`tests/cloud/models.cjs`).
+- **v0.3.2's** is in its two `STATUS.md` entries ("2026-11-08, 15:05 KST" and the one after): 521 unit tests, `tests/cloud/weight-copy.cjs` (new) and `route-views.cjs`.
 - **Passing at v0.2.0's hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers; v0.2.1's and v0.2.2's checks are in their STATUS entries):
   - 262 unit tests in 34 files (`node --test tests/*.test.mjs`);
   - every `.js`/`.mjs` in `src/` and `tests/` checked **as a module** (copy to `.mjs`, then `node --check`; a plain `node --check file.js` checks it as a script and missed a broken `if … else` once);
@@ -105,6 +107,17 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | `tests/cloud/models.cjs`, `tests/dev-aircraft.html`, `tests/dev-widebody.html` | Close-ups of each type's wing, gear and doors (landing, clean, doors), from the dev pages' `window.dev.look()` and `png()`. |
 | `tests/dev-audio-render.html` | `renderClip(name, { noeng: true })` renders a clip with the engines stopped, to tell them from the rest of a mix. |
 
+### v0.3.2: 45,000 ft, Duplicate, the Weight tab
+
+| Where | What |
+|---|---|
+| `ALT_TOP` in `src/ui/boeing/mcp.js`, `setAlt()` in `src/sim/autopilot-boeing.js` | 45,000 ft, both. Nothing else stops at the 43,100 ft ceiling: the ISA, the thrust lapse and the Mach buffet carry on above it. |
+| `duplicate()`, `copyName()` in `src/scenarios.js` | A copy is `create()` with the original's state, summary and type, named "(copy)", "(copy 2)", … (a copy of a copy counts on from the same name). It's saved now, so it heads the list; never legacy; the logbook's flights stay with the original. |
+| `src/ui/menu.js` (Load scenario), `saveCopy()` in `src/main.js` | Duplicate on each row (a note over the list says what happened; storage full makes no copy and changes nothing). The pause menu's Save a copy saves, then duplicates the current scenario; the flight goes on in the original. |
+| `setLoad()` in `src/sim/sim.js` | Payload and fuel within the sim's limits, the fuel put in as at a reset (wings first). The reference point stays put (the CG moves inside the airframe, so the core's CG position moves by the change); speeds and attitude don't change; `thsTakeoff` follows the CG. `paxN`, `cargoKg` and `fuelAddedKg` are core fields (null, null, 0 by default; `restore()` defaults them for older saves), shown in `state`. The logbook's fuel used is `fuelAtStart + fuelAddedKg − fuel`. |
+| `src/ui/load-window.js`, `src/ui/sky-window.js`, `sky-window.css` | The Weight window: the Sky window's frame and place, with tabs in the title bar (`createSkyWindow({ tabs })`, `ontab`); `showLTab()`, `toggleL()` in `main.js`, and L opens the tab last shown. Its sums use the sim's own OEW and tanks (`loadNow()`; the A321's setup still shows v0.1.0's, 400 kg lighter with 354 kg more fuel). Its fields take the keys (the flight's keys pause while one has the cursor; Apply, Esc or a click outside give them back). `loadCheck()` and `maxFuel()` are pure, tested in `tests/load.test.mjs`. |
+| `src/main.js` | Skip to final keeps the present load (it used the plan's payload); the plan isn't changed by the Weight tab, so Restart the flight and New flight start from the setup's load. |
+
 ## Working from a Cowork session
 
 Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When it's connected, it's `$HOME/mnt/GameDump` in the device shell.
@@ -130,6 +143,8 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
      - `route-views.cjs` (v0.2.1): the view switch, a dragged waypoint, Change route, then a landing at the new destination. About 15 minutes.
      - `camera-drag.cjs` (v0.2.1): the one-finger camera with the real mouse: each view, the limits, clicks, double-clicks, drags over the HUD and the map, the swipe and the pinch. About 2 minutes.
      - `athr-lever.cjs` (v0.2.2): on a 15 nm final with A/THR on, the lever and the ring at its thrust, a one-frame tap of R (the frame clock held and stepped), A/THR off with the toast, X giving it back. About 2 minutes.
+     - `models.cjs` (v0.3.1): close-ups of each type's wing, gear and doors.
+     - `weight-copy.cjs` (v0.3.2): the Weight tab (tabs, fields, checks, Max, Enter, keys, the live fuel, Esc, skip to final), Save a copy, Load scenario → Duplicate, and a copy flying on from the same point; at 1440×900 and 1280×720. About 4 minutes.
      - The sound: `FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ NODE_PATH=$(npm root -g) node tests/audio-render.mjs` (the measured checks; 30 of them) and `… node tests/audio-clips.mjs outDir` (the flight phases as WAV and MP3 to listen to; `SYNTH=<url>` renders another copy of the synth, to compare).
   4. **Re-stage every file you change** on the Mac before the next run. Then compare the two copies (the same hash on both sides):
      ```

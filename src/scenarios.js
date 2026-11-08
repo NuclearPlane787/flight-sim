@@ -20,6 +20,17 @@ export const NAME_MIN = 3, NAME_MAX = 40;
 export const cleanName = (name) => String(name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim();
 export const nameOk = (name) => cleanName(name).length >= NAME_MIN;
 
+// A copy's name (v0.3.2): "Name (copy)", then "Name (copy 2)", "Name (copy 3)", the lowest not in
+// `taken`. A copy of a copy counts on from the same name, and a long name is cut to fit NAME_MAX.
+export function copyName(name, taken = new Set()) {
+  const base = cleanName(name).replace(/ \(copy(?: \d+)?\)$/, '');
+  for (let n = 1; ; n++) {
+    const tail = n === 1 ? ' (copy)' : ` (copy ${n})`;
+    const out = base.slice(0, NAME_MAX - tail.length).trim() + tail;
+    if (!taken.has(out)) return out;
+  }
+}
+
 // v0.1.x's default flight, for a player who has a logbook but no lastflight.
 export const DEFAULT_PLAN = { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway', pax: 190, cargoKg: 1500, fuelKg: 4000, waypoints: [] };
 
@@ -124,6 +135,17 @@ export class ScenarioStore {
     idx[i] = { ...idx[i], name: clean };
     if (!this.put(INDEX_KEY, idx)) { this.undo(k, old); return { ok: false, error: 'quota' }; }
     return { ok: true };
+  }
+
+  // Duplicate (v0.3.2: Load scenario → Duplicate, and the pause menu's Save a copy): a new scenario
+  // with the same state, summary and type, named by copyName() unless a name is given. It's saved
+  // now, so it heads the list. It's never the legacy scenario, and the logbook's flights stay with
+  // the original. → create()'s result, or { ok: false, error: 'missing' }.
+  duplicate(id, { now = Date.now(), name } = {}) {
+    const e = this.entry(id), rec = this.get(id);
+    if (!e || !rec || rec.state == null) return { ok: false, error: 'missing' };
+    const taken = new Set(this.index().map((x) => x.name));
+    return this.create(name ?? copyName(e.name, taken), rec.state, { ...e.summary, type: e.type }, { now });
   }
 
   // Delete a scenario (its logbook entries stay, under the name they carry).

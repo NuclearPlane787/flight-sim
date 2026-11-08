@@ -1,6 +1,9 @@
 // The Sky window (L, or Cmd/Ctrl+L): the time of day, like Satisfactory's Sky window.
-// createSkyWindow(root, { clock, place: () => ({ lat, lon }) })
-//   -> { open(), close(), toggle(), isOpen, update(), onclose }
+// createSkyWindow(root, { clock, place: () => ({ lat, lon }), tabs? })
+//   -> { open(), close(), toggle(), isOpen, update(), onclose, ontab }
+// tabs (v0.3.2): [{ id, label, icon?, title? }], this window's being id 'sky'. Given, the title bar
+// shows them in place of the title, and a click on another calls ontab(id) (the Weight window,
+// src/ui/load-window.js, is the second).
 // clock is createClock() from src/clock.js. In the window: a little sky (the sun's and the
 // Moon's paths over the KST day at the aircraft's position, the horizon, the twilight bands,
 // the Moon's phase), the time, the date with a day back, a day forward and Today, a 24-hour
@@ -147,7 +150,7 @@ function linkCss() {
   document.head.appendChild(l);
 }
 
-export function createSkyWindow(root, { clock, place } = {}) {
+export function createSkyWindow(root, { clock, place, tabs } = {}) {
   linkCss();
   const getPlace = () => {
     const p = place?.() || {};
@@ -159,8 +162,15 @@ export function createSkyWindow(root, { clock, place } = {}) {
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Sky: time of day');
   const ticks = [0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => `<span style="left:${(h / 24) * 100}%">${pad(h)}</span>`).join('');
+  const title = Array.isArray(tabs) && tabs.length
+    ? `<div class="fssw-tabs" role="tablist">${tabs.map((t) => {
+      const on = t.id === 'sky';
+      return `<button class="fssw-tab${on ? ' on' : ''}" data-tab="${t.id}" role="tab" aria-selected="${on}"${t.title ? ` title="${t.title}"` : ''}>`
+        + `<span class="fssw-ico${on ? '' : ` fssw-ico--${t.id}`}">${on ? ICON.sun : t.icon || ''}</span>${t.label}</button>`;
+    }).join('')}</div>`
+    : `<span class="fssw-ico">${ICON.sun}</span><h2>Sky</h2>`;
   el.innerHTML = `
-    <div class="fssw-head"><span class="fssw-ico">${ICON.sun}</span><h2>Sky</h2><span class="fssw-sub">Time of day · KST</span>
+    <div class="fssw-head">${title}<span class="fssw-sub">Time of day · KST</span>
       <button class="fssw-x" data-a="close" title="Close (L or Esc)">${ICON.x}</button></div>
     <div class="fssw-body">
       <canvas class="fssw-view"></canvas>
@@ -201,6 +211,7 @@ export function createSkyWindow(root, { clock, place } = {}) {
   let open = false, lastKey = '', lastCtl = '';
   const win = {
     onclose: null,
+    ontab: null,
     get isOpen() { return open; },
     open() {
       if (open) return;
@@ -414,6 +425,7 @@ export function createSkyWindow(root, { clock, place } = {}) {
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b || b.disabled) return;
+    if (b.dataset.tab) { if (b.dataset.tab !== 'sky') win.ontab?.(b.dataset.tab); return; }
     const p = getPlace(), d = dayData(clock.ms, p);
     switch (b.dataset.a) {
       case 'close': win.close(); break;
