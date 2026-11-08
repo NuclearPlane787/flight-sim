@@ -15,7 +15,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import {
-  Builder, grid, cylBetween, boxAt, lathe, sphereAt, foilPoint, foilPiece, plateOffset, toModel, SIGNS,
+  Builder, grid, slab, cylBetween, boxAt, lathe, sphereAt, foilPoint, foilPiece, plateOffset, toModel, SIGNS, SHROUD_LIFT,
 } from './aircraft.js';
 import { UV } from './livery.js';
 import { createWidebodyLivery, finBoxFor, fuseUVFor } from './livery-widebody.js';
@@ -32,6 +32,7 @@ const C = {
   metal: '#9aa0a8', gear: '#c9cdd2', chrome: '#e2e5e8', tyre: '#1a1b1d', hub: '#62676e',
   core: '#767b83', plug: '#3a3d43', fanFace: '#25282e', blade: '#5a6068', pylon: '#d5d9de',
   cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117',
+  doorIn: '#b9bec5',   // the inside of the gear doors (v0.3.1)
 };
 
 // The nacelle's profile, in fractions: x of half the cowl's length from its centre, r of its radius.
@@ -60,6 +61,17 @@ function tyre(c, R, W, segs = 20) {
     return row;
   });
   return grid(rows, { expect: (q) => q.clone().sub(c) });
+}
+
+// The inboard flap's leading edge (v0.3.1), body x at span y: straight from 0.45 m behind the main
+// gear's leg (or hingeF, if that's further aft) at the flap's inboard end to hingeF at its outboard
+// end. Pure, so the tests can check it clears the gear.
+export function inboardFlapLE(spec) {
+  const WS = spec.wing, le = curve(WS.le), te = curve(WS.te), HF = WS.hingeF;
+  const xHF = (y) => le(y) - HF * Math.max(0.05, le(y) - te(y));
+  const [y0, y1] = WS.flapIn;
+  const x0 = Math.min(xHF(y0), spec.geo.GEAR.left.x - 0.45), x1 = xHF(y1);
+  return { y0, y1, x0, x1, xAt: (y) => x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
 }
 
 export function createWidebody(spec, opts = {}) {
@@ -267,8 +279,19 @@ export function createWidebody(spec, opts = {}) {
     const ws = (y) => wingSec(y, side);
     const secs = (ys2) => ys2.map(ws);
     const LAST = WS.aileron[1];
-    // Fixed structure, then the fixed parts of the leading and trailing edges.
-    b.add(foilPiece(secs([0.6, ...WS.stations.filter((y) => y <= LAST)]), LF, HF, { caps: [false, false], nf: 6 }), ROOT, C.wing);
+    // The inboard flap's leading edge (v0.3.1). At hingeF of the chord it ran through the main gear's
+    // leg, so with the flaps out the leg hung from the empty flap cove. It now runs straight from
+    // behind the leg (0.45 m clear of its axis) at the flap's inboard end to hingeF at its outboard
+    // end, and the fixed structure ahead of it (the rear spar and the gear beam) carries the leg.
+    const fAt = (y, x) => { const w = ws(y); return (w.le.x - x) / w.chord; };
+    const xAt = (y, f) => { const w = ws(y); return w.le.x - f * w.chord; };
+    const FL = inboardFlapLE(spec), [FI0, FI1] = WS.flapIn;
+    const inFin = (y) => y >= FI0 - 1e-6 && y <= FI1 + 1e-6;
+    const fFlapLE = (y) => (inFin(y) ? fAt(y, FL.xAt(y)) : HF);
+    // Fixed structure, then the fixed parts of the leading and trailing edges. The fixed leading edge
+    // behind the slats is rounded, so a slat that's out shows a slot in front of a nose, not a cut.
+    const fixYs = [...new Set([0.6, ...WS.stations.filter((y) => y <= LAST), FI0, FI1])].sort((p, q) => p - q);
+    b.add(foilPiece(secs(fixYs), LF, fixYs.map(fFlapLE), { caps: [false, false], nf: 6, nose: 0.9 }), ROOT, C.wing);
     b.add(foilPiece(secs(stationsBetween(LAST, tipY)), 0, 1, { caps: [true, true], nf: 8 }), ROOT, C.wing);
     let y = 0.6;
     for (const [y0, y1] of WS.slatSegments) {
@@ -276,39 +299,68 @@ export function createWidebody(spec, opts = {}) {
       y = y1;
     }
     b.add(foilPiece(secs(stationsBetween(y, LAST)), 0, LF, { caps: [false, true], nf: 5 }), ROOT, C.wingDark);
-    b.add(foilPiece(secs(stationsBetween(0.6, WS.flapIn[0])), HF, 1, { caps: [false, true], nf: 5 }), ROOT, C.wing);
+    b.add(foilPiece(secs(stationsBetween(0.6, FI0)), HF, 1, { caps: [false, true], nf: 5 }), ROOT, C.wing);
 
-    // Slats, one bone a wing, hinged along the straight leading edge.
+    // Slats, one bone a wing, hinged along the straight leading edge. Two tracks a slat run back into
+    // the fixed leading edge (hidden there when the slats are in), so a slat that's out hangs on them.
     const seg0 = WS.slatSegments[0][0], segN = WS.slatSegments[WS.slatSegments.length - 1][1];
     const slatA = foilPoint(ws(seg0), LF, 0), slatB = foilPoint(ws(segN), LF, 0);
     const SL = bone('slats' + S, 'root', slatA, slatB.clone().sub(slatA).multiplyScalar(side).normalize());
-    for (const [y0, y1] of WS.slatSegments) b.add(foilPiece(secs(stationsBetween(y0, y1)), 0, LF, { nf: 5 }), SL, C.metal);
+    for (const [y0, y1] of WS.slatSegments) {
+      b.add(foilPiece(secs(stationsBetween(y0, y1)), 0, LF, { nf: 5 }), SL, C.metal);
+      for (const q of [0.25, 0.75]) {
+        const w = ws(y0 + q * (y1 - y0)), mid = foilPoint(w, LF, 0);
+        const xf = w.le.x - 0.05 * w.chord, xb = mid.x - WS.slatTravel - 0.25;
+        b.add(boxAt((xf + xb) / 2, mid.y, mid.z, xf - xb, 0.07, 0.11), SL, C.metal);
+      }
+    }
 
-    // Trailing-edge surfaces: hinged at the surface's leading edge, mid-thickness.
+    // Trailing-edge surfaces: hinged at the surface's leading edge, mid-thickness. f0 and f1 may be
+    // functions of the span (the inboard flap's leading edge, the spoilers over it).
     const hinged = (name, y0, y1, f0, f1, color, o = {}) => {
-      const pa = o.plate ? plateOffset(ws(y0), f0, -1) : foilPoint(ws(y0), f0, 0);
-      const pb = o.plate ? plateOffset(ws(y1), f0, -1) : foilPoint(ws(y1), f0, 0);
+      const F0 = typeof f0 === 'function' ? f0 : () => f0, F1 = typeof f1 === 'function' ? f1 : () => f1;
+      const pa = o.plate ? plateOffset(ws(y0), F0(y0), -1) : foilPoint(ws(y0), F0(y0), 0);
+      const pb = o.plate ? plateOffset(ws(y1), F0(y1), -1) : foilPoint(ws(y1), F0(y1), 0);
       const idx = bone(name + S, o.parent ? o.parent + S : 'root', pa, pb.clone().sub(pa).multiplyScalar(side).normalize());
-      b.add(foilPiece(secs(stationsBetween(y0, y1)), f0, f1, { plate: o.plate, nf: o.plate ? 3 : 5 }), idx, color);
+      const ys2 = stationsBetween(y0, y1);
+      b.add(foilPiece(secs(ys2), ys2.map(F0), ys2.map(F1), { plate: o.plate, nf: o.plate ? 3 : 5, nose: o.nose || 0 }), idx, color);
       return idx;
     };
-    // A double-slotted inboard flap (spec.wing.flapInAftF, the chord fraction where its aft flap starts)
-    // is two pieces: the aft one rides on the main one and opens further (update()).
-    const FIN_ = hinged('flapIn', WS.flapIn[0], WS.flapIn[1], HF, WS.flapInAftF ?? 1, C.wing);
-    if (WS.flapInAftF) hinged('flapInAft', WS.flapIn[0], WS.flapIn[1], WS.flapInAftF, 1, C.wing, { parent: 'flapIn' });
+    // A double-slotted inboard flap (spec.wing.flapInAftF, the chord fraction where its aft flap starts
+    // at hingeF) is two pieces: the aft one rides on the main one and opens further (update()). With
+    // the leading edge moved, the aft flap keeps its share of the flap's chord.
+    const aftShare = WS.flapInAftF ? (WS.flapInAftF - HF) / (1 - HF) : 0;
+    const fAftF = (y) => fFlapLE(y) + aftShare * (1 - fFlapLE(y));
+    hinged('flapIn', FI0, FI1, fFlapLE, WS.flapInAftF ? fAftF : 1, C.wing, { nose: 1 });
+    if (WS.flapInAftF) hinged('flapInAft', FI0, FI1, fAftF, 1, C.wing, { parent: 'flapIn', nose: 1 });
     hinged('flaperon', WS.flaperon[0], WS.flaperon[1], HF, 1, C.wing);
-    const FOUT = hinged('flapOut', WS.flapOut[0], WS.flapOut[1], HF, 1, C.wing);
+    hinged('flapOut', WS.flapOut[0], WS.flapOut[1], HF, 1, C.wing, { nose: 1 });
     hinged('aileron', WS.aileron[0], WS.aileron[1], HF, 1, C.wing);
-    WS.spoilers.forEach(([y0, y1], i) => hinged('spoiler' + (i + 1), y0, y1, WS.spoilerF ?? 0.56, HF + 0.005, C.wingDark, { plate: true }));
+    // Spoilers: plates on the upper surface whose trailing edges overhang the flaps by about what the
+    // flaps travel (less a slot), as the real ones do, so a flap that's out leaves a slot under them,
+    // not an open gap. Each keeps its drawn width, moved aft by the overhang. Under them a fixed shroud
+    // runs each flap's whole span, so there's no light between spoilers, nor a gap where there's none.
+    const SPF = WS.spoilerF ?? 0.56, OV = { in: WS.flapTravel.in - 0.15, out: WS.flapTravel.out - 0.15 };
+    const overhang = (y) => Math.min(inFin(y) ? OV.in : OV.out, 0.6 * ws(y).chord * (1 - fFlapLE(y)));
+    const spAft = (y) => fAt(y, xAt(y, fFlapLE(y)) - overhang(y));
+    const spFront = (y) => spAft(y) - (HF - SPF);
+    WS.spoilers.forEach(([y0, y1], i) => hinged('spoiler' + (i + 1), y0, y1, spFront, (y) => spAft(y) + 0.005, C.wingDark, { plate: true }));
+    for (const [f0y, f1y] of [WS.flapIn, WS.flapOut]) {
+      const ys2 = stationsBetween(f0y, f1y);
+      b.add(foilPiece(secs(ys2), ys2.map((q) => fFlapLE(q) - 0.02), ys2.map((q) => spAft(q) + 0.005), { plate: true, nf: 3, lift: SHROUD_LIFT }), ROOT, C.wingDark);
+    }
 
-    // Flap track fairings: the aft part rides on the flap. They reach well past the trailing edge.
-    for (const [yc, which] of WS.canoes) {
+    // Flap track fairings: the aft part hinges down from the fixed front as the flaps run out (update()),
+    // rather than riding away with the flap and leaving the front part hanging. They reach well past the
+    // trailing edge.
+    WS.canoes.forEach(([yc], i) => {
       const w = ws(yc), L = 0.62 * w.chord + 1.2, xs2 = w.le.x - 0.52 * w.chord, zc = w.le.z - 0.055 * w.chord - 0.05;
       const r = 0.2 + 0.016 * w.chord;
       const prof = [[0, 0.0], [0.07, 0.55], [0.22, 0.9], [0.42, 1], [0.7, 0.72], [0.9, 0.32], [1, 0.02]].map(([t, k]) => ({ x: -t * L, r: k * r }));
       b.add(lathe(prof.slice(0, 4), 14, xs2, side * yc, zc), ROOT, C.wingDark);
-      b.add(lathe(prof.slice(3), 14, xs2, side * yc, zc), which === 'flapIn' ? FIN_ : FOUT, C.wingDark);
-    }
+      const CB = bone('canoe' + i + S, 'root', V(xs2 - 0.42 * L, side * yc, zc + r), V(0, 1, 0));
+      b.add(lathe(prof.slice(3), 14, xs2, side * yc, zc), CB, C.wingDark);
+    });
 
     // --- Engine ---
     const E = G.NACELLES[side > 0 ? 0 : 1];
@@ -445,7 +497,10 @@ export function createWidebody(spec, opts = {}) {
         }
         rows.push(row);
       }
-      b.add(grid(rows, { expect: () => V(0, 0, -1) }), DR, C.navy);
+      // With some thickness and an inside (v0.3.1): a single surface didn't show from inside the bay.
+      const door = slab(rows, 0.045, () => V(0, 0, -1));
+      b.add(door.outer, DR, C.navy);
+      b.add(door.back, DR, C.doorIn);
     }
 
     // Lights: nav at the tip, and the landing lamp under the inner wing.
@@ -544,7 +599,9 @@ export function createWidebody(spec, opts = {}) {
     const hingeTh = -90 + side * 17.5;
     const h = fusePoint((xa + xb) / 2, hingeTh, 0.02, new THREE.Vector3());
     const D = bone('noseDoor' + (side > 0 ? 'L' : 'R'), 'root', h, V(1, 0, 0));
-    b.add(grid(rows, { uvs, expect: () => V(0, 0, -1) }), D, '#ffffff', 'keep');
+    const door = slab(rows, 0.04, () => V(0, 0, -1), { uvs });   // two-sided, as the belly doors (v0.3.1)
+    b.add(door.outer, D, '#ffffff', 'keep');
+    b.add(door.back, D, C.doorIn);
   }
 
   // Tail light, beacons.
@@ -679,6 +736,7 @@ export function createWidebody(spec, opts = {}) {
       }
       rot(fo, -fd * DEG);
       move(fo, -FT.out * tr, 0, -0.14 * tr);
+      for (let i = 0; i < WS.canoes.length; i++) rot('canoe' + i + S, -fd * DEG * 0.55);
     }
 
     // Gear.

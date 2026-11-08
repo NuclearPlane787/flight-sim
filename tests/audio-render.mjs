@@ -63,7 +63,10 @@ check('no clicks (worst step < 8x local typical step)', scen.every((v) => v.clic
   Object.entries(r.scen).filter(([, v]) => v.click.ratio >= 8).map(([k, v]) => `${k} ${v.click.ratio}@${v.click.at}`).join(', '));
 check('idle is not silent (outside > -40 dB, inside > -45 dB)', S.idleOut.rms > -40 && S.idleIn.rms > -45, `${f1(S.idleOut.rms)} / ${f1(S.idleIn.rms)}`);
 check('TOGA louder than idle by 10+ dB outside', S.togaOut.rms - S.idleOut.rms > 10, `${f1(S.togaOut.rms - S.idleOut.rms)} dB`);
-check('inside quieter than outside at TOGA (6+ dB)', S.togaOut.rms - S.togaIn.rms > 6, `${f1(S.togaOut.rms - S.togaIn.rms)} dB`);
+// v0.3.1: 3+ dB, was 6+. Shane: "I can't hear the engines much at all from the cockpit. They should be
+// muffled and quieter than the outside, but not almost absent." So the cockpit went up about 6 dB at
+// TOGA (more at idle and on an approach); it stays quieter than outside, and duller (the next check).
+check('inside quieter than outside at TOGA (3+ dB)', S.togaOut.rms - S.togaIn.rms > 3, `${f1(S.togaOut.rms - S.togaIn.rms)} dB`);
 check('inside duller than outside at TOGA (centroid lower)', S.togaIn.centroid < S.togaOut.centroid * 0.8, `${Math.round(S.togaIn.centroid)} vs ${Math.round(S.togaOut.centroid)} Hz`);
 // (At idle the cockpit's air-conditioning hiss dominates inside, so idle is compared on level only.)
 check('inside quieter than outside at idle', S.idleIn.rms < S.idleOut.rms, `${f1(S.idleIn.rms)} vs ${f1(S.idleOut.rms)} dB`);

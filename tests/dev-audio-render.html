@@ -159,7 +159,9 @@ Object.assign(SCEN, CLIPS);
 
 const timing = { calls: 0, ms: 0, max: 0 };
 
-async function render(name) {
+// noeng (v0.3.1): the same clip with the engines stopped, to tell the engines from the rest (wind,
+// packs, rolling) in a mix.
+async function render(name, { noeng = false } = {}) {
   const sc = SCEN[name];
   const len = Math.round(sc.dur * SR);
   const ctx = new OfflineAudioContext(2, len, SR);
@@ -174,6 +176,7 @@ async function render(name) {
     ctx.suspend(t).then(() => {
       s.t = t; o.timeScale = 1; o.paused = false;
       sc.step(s, t, o);
+      if (noeng) { n1(s, 0); rev(s, 0); }
       const t0 = performance.now();
       synth.update(s, o);
       const dt = performance.now() - t0;
@@ -359,8 +362,8 @@ window.doorTrials = async (n) => {
 
 // A scenario or clip as a 16-bit stereo WAV file, base64 (tests/audio-clips.mjs saves them),
 // with its level and peak.
-window.renderClip = async (name) => {
-  const pcm = await render(name);
+window.renderClip = async (name, opts = {}) => {
+  const pcm = await render(name, opts);
   const [L, R] = pcm, n = L.length;
   const bytes = new Uint8Array(44 + n * 4), dv = new DataView(bytes.buffer);
   const str = (o, s) => { for (let i = 0; i < s.length; i++) bytes[o + i] = s.charCodeAt(i); };

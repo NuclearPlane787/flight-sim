@@ -572,7 +572,9 @@ async function boot() {
   function selectView(which) {
     const cur = rig.view.id;
     let id = which;
-    if (which === 'cockpit') id = isSeat(cur) ? cur : 'captain';
+    // Cockpit (or 1) from outside goes to the captain's seat; pressed again in a seat, it swaps to the
+    // other one (v0.3.1: Shane wanted the swap; v0.2.2 had taken it out).
+    if (which === 'cockpit') id = cur === 'captain' ? 'fo' : cur === 'fo' ? 'captain' : 'captain';
     if (id === cur) return;
     rig.viewId = id;
     toast(rig.view.name, 1000);

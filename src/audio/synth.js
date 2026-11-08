@@ -58,16 +58,24 @@ const TONE2 = 0.65;
 const PRE = 0.7;
 const CAV_PEAK = 0.3, CHIME = 0.4, CRICKET = 0.3, STALL_TONE = 0.2;
 
-// How loud each source is in the cockpit vs outside (before the shared low-pass).
+// How loud each source is in the cockpit vs outside (before the shared low-pass). v0.3.1 (Shane:
+// "I can't hear the engines much at all from the cockpit. They should be muffled and quieter than
+// the outside, but not almost absent."): at idle and on an approach the engines sat 5–12 dB under
+// the air conditioning and the wind, on all three types. Now the engines' "in" levels are up (the
+// low roar and rumble most, which the structure carries best, so the cockpit stays duller than
+// outside), the cockpit's low-pass is at INSIDE_LP (was 900 Hz), and the wind and the air
+// conditioning are trimmed to sound as before through it. Measured on rendered clips (A-weighted):
+// the engines alone +7 to +8 dB at idle and on an approach, level with the air conditioning at idle
+// and 1.5–2 dB over the rest on an approach; take-off in the cockpit 4–6 dB under 3rd person's.
 const MIX = {
-  fan: { in: 0.22, out: 1.00 },       // the fan's tones
-  buzz: { in: 0.38, out: 1.00 },      // the buzz-saw
-  whine: { in: 0.04, out: 0.50 },     // the core's whine
-  fanNoise: { in: 0.25, out: 1.00 },  // the fan's broadband
-  jet: { in: 0.25, out: 1.00 },       // the jet's roar
-  core: { in: 0.38, out: 0.70 },      // combustion rumble
+  fan: { in: 0.50, out: 1.00 },       // the fan's tones (v0.3.0: 0.22)
+  buzz: { in: 0.45, out: 1.00 },      // the buzz-saw (0.38)
+  whine: { in: 0.30, out: 0.50 },     // the core's whine (0.04): much of what you hear at idle
+  fanNoise: { in: 0.30, out: 1.00 },  // the fan's broadband (0.25)
+  jet: { in: 0.42, out: 1.00 },       // the jet's roar (0.25): low, so the walls pass more of it
+  core: { in: 0.70, out: 0.70 },      // combustion rumble (0.38): the lowest, through the structure
   reverser: { in: 0.35, out: 1.00 },
-  wind: { in: 0.55, out: 0.25 },
+  wind: { in: 0.48, out: 0.25 },      // in: 0.55 until v0.3.1, under the old 900 Hz low-pass
   spoiler: { in: 0.45, out: 0.35 },
   rolling: { in: 0.30, out: 0.45 },
   gear: { in: 0.30, out: 0.20 },
@@ -78,6 +86,10 @@ const MIX = {
   clunk: { in: 0.5, out: 0.6 },
   packs: { in: 1, out: 0 }, // cockpit air conditioning; outside the engines cover it
 };
+
+// The cockpit's low-pass (Hz): the walls take the top off, but the fan's tone and the buzz-saw's
+// lower orders still come through (v0.3.1; it was 900 Hz).
+const INSIDE_LP = 1300;
 
 // The master gain at 100% on the pause menu's volume slider (main.js scales it).
 export const FULL_VOLUME = 0.8;
@@ -401,8 +413,8 @@ export function createSynth({ context = null } = {}) {
     set(n.worldBus.gain, paused || fast ? 0 : near, 0.05);
     set(n.warnBus.gain, paused ? 0 : fast ? 0.25 : 1, 0.05);
     // The cockpit's walls; outside, the air dulls a distant aircraft.
-    set(n.muffle.frequency, inside ? 900 : Math.max(3500, 16000 * Math.min(1, 120 / Math.max(dist, 1))), 0.1);
-    set(n.packs.gain, mix('packs') * 0.035, 0.2);
+    set(n.muffle.frequency, inside ? INSIDE_LP : Math.max(3500, 16000 * Math.min(1, 120 / Math.max(dist, 1))), 0.1);
+    set(n.packs.gain, mix('packs') * 0.02, 0.2);   // 0.035 under the old 900 Hz low-pass (v0.3.1)
 
     const ias = s.ias || 0;
     const iasKt = ias * KT;

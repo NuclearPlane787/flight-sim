@@ -46,7 +46,10 @@ export const NACELLE_LENGTH = 5.0;
 export const NACELLES = ENGINES.map((e) => ({ x: e.x, y: e.y, z: 0.45 + NACELLE_DIAMETER / 2 - GROUND_Z }));
 
 // Wing: root and tip leading edges, sweep 25° at the quarter chord.
-export const WING = { rootX: 4.6, rootChord: 6.1, tipChord: 1.6, dihedralDeg: 5.1, sweepDeg: 25 };
+// v0.3.1: rootX from Airbus's AC top view (2-2-0, sheet 2), where the root's trailing edge is 1.33 m
+// behind the main gear (23.30 m from the nose against the gear's 21.97 m) and the root chord 6.07 m.
+// Until v0.3.0 the wing sat 1.03 m further forward, which put the main gear under the flaps.
+export const WING = { rootX: 3.57, rootChord: 6.1, tipChord: 1.6, dihedralDeg: 5.1, sweepDeg: 25 };
 
 // Camera eye points.
 export const EYES = {
@@ -62,6 +65,6 @@ export const CRASH_POINTS = [
   { x: TAIL_STRIKE_POINT.x, y: 0, z: TAIL_STRIKE_POINT.z, why: 'tail strike' },
   { x: NACELLES[0].x, y: NACELLES[0].y, z: NACELLES[0].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
   { x: NACELLES[1].x, y: NACELLES[1].y, z: NACELLES[1].z - NACELLE_DIAMETER / 2, why: 'engine strike' },
-  { x: -4.6, y: 17.9, z: 0.6, why: 'wingtip strike' },
-  { x: -4.6, y: -17.9, z: 0.6, why: 'wingtip strike' },
+  { x: WING.rootX - 9.2, y: 17.9, z: 0.6, why: 'wingtip strike' },   // the sharklet's foot
+  { x: WING.rootX - 9.2, y: -17.9, z: 0.6, why: 'wingtip strike' },
 ];

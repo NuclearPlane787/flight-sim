@@ -347,7 +347,7 @@ const KEYS = [
   ['6 7 8 9 0', 'flaps 0, 1, 2, 3, FULL', 'G', 'gear'],
   ['C / Shift+C', 'speed brakes / arm ground spoilers', 'Z / X', 'autopilot / autothrust'],
   ['= / −', 'time compression', 'M', 'map, jumps, skip to final'],
-  ['1 2 3', 'cockpit, nose, 3rd person', 'F3 or `', 'performance readout'],
+  ['1 2 3', 'cockpit (1 again: other seat), nose, 3rd person', 'F3 or `', 'performance readout'],
   ['drag / pinch', 'look or orbit / zoom', 'double-click', 'recentre'],
   ['T', 'rewind 30 s (paused or crashed)', 'P', 'pushback (= speeds it up)'],
   ['FCU window', 'scroll it, or click, type, Enter', 'map', 'click the bright path (AP on) to jump'],
@@ -392,7 +392,7 @@ export function createControlsPage(root, { sky = false } = {}) {
         Drag the magenta line to add a waypoint. “Change route”, or a click on an airport, picks a new destination and runway;
         the line then goes direct from where you are.</p>
       <p><b>Views:</b> the switch at the top right (or 1, 2, 3) picks the cockpit (the captain's seat), the nose or the 3rd person view.
-        V steps through all four, the first officer's seat too.
+        In the cockpit, Cockpit (or 1) again swaps to the first officer's seat and back. V steps through all four.
         Press and drag on the view (one finger) to look around, or in 3rd person to go round the aircraft; a two-finger swipe does the same.</p>
     </div>`);
   // The keys of the family being flown (a registry entry's `family`); any other is the common page.

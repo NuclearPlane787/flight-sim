@@ -1,6 +1,6 @@
 // v0.2.1's checks in headless Chromium, through the real game loop (main.js), in the cloud
-// container: the view switch (its place, clicks, 1 2 3; since v0.2.2 Cockpit in a seat stays
-// put, and V reaches the first officer's seat), a waypoint dragged
+// container: the view switch (its place, clicks, 1 2 3; since v0.3.1 Cockpit in a seat swaps
+// to the other seat again, as before v0.2.2, and V steps through all four), a waypoint dragged
 // onto the magenta line, Change route on the map (to RKSI 33L, and a click on Jeju), then skip
 // to final at the new destination and a landing there by tests/e2e-controller.js, the logbook,
 // and Change route refused after landing. Pictures go to outDir as v021-*.png.
@@ -65,11 +65,11 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   }
   console.log('  ' + steps.join('\n  '));
   ok(steps.join('|') === [
-    'nose → nose [on: nose]', 'cockpit → captain (CPT) [on: cockpit]', 'cockpit → captain (CPT) [on: cockpit]', 'orbit → orbit [on: orbit]',
-    'key 1 → captain (CPT) [on: cockpit]', 'key 1 → captain (CPT) [on: cockpit]', 'key 2 → nose [on: nose]', 'key 3 → orbit [on: orbit]',
-    'key v → captain (CPT) [on: cockpit]', 'key v → fo (F/O) [on: cockpit]', 'key 1 → fo (F/O) [on: cockpit]', 'cockpit → fo (F/O) [on: cockpit]',
-  ].join('|'), 'clicks and keys pick the views; Cockpit in a seat stays put (v0.2.2); V reaches the first officer\'s seat; the lit button follows V too');
-  // In the first officer's seat (from V).
+    'nose → nose [on: nose]', 'cockpit → captain (CPT) [on: cockpit]', 'cockpit → fo (F/O) [on: cockpit]', 'orbit → orbit [on: orbit]',
+    'key 1 → captain (CPT) [on: cockpit]', 'key 1 → fo (F/O) [on: cockpit]', 'key 2 → nose [on: nose]', 'key 3 → orbit [on: orbit]',
+    'key v → captain (CPT) [on: cockpit]', 'key v → fo (F/O) [on: cockpit]', 'key 1 → captain (CPT) [on: cockpit]', 'cockpit → fo (F/O) [on: cockpit]',
+  ].join('|'), 'clicks and keys pick the views; Cockpit (or 1) in a seat swaps seats (v0.3.1); V steps through all four; the lit button follows');
+  // In the first officer's seat (from the last click).
   await shot('v021-view-switch-cockpit');
   await page.click('.fsui-views [data-v="orbit"]');
   await page.waitForTimeout(250);

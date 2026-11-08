@@ -216,6 +216,15 @@ window.dev = {
     sun.intensity = 2.6 * (1 - n); hemi.intensity = 2.2 * (1 - 0.92 * n);
   },
   hideGround(on) { ground.visible = !on; },
+  // A free orbit camera (v0.3.1): yaw° from the nose (+ towards the left wing), pitch° up, distance m,
+  // target [x_body, z_body, y_body] as VIEWS; and the canvas as a PNG data URL, for tests/cloud/models.cjs.
+  look(yaw, pitch, dist, target = [0, 0, 0], fov = 40) {
+    camera = persp; seat = null; aircraft.setCockpitView(false); aircraft.object.rotation.x = standing;
+    camera.fov = fov; camera.updateProjectionMatrix();
+    orbit.yaw = yaw * DEG; orbit.pitch = pitch * DEG; orbit.dist = dist;
+    orbit.target.copy(toModel(target[0], target[2], target[1]));
+  },
+  png() { render(0); return renderer.domElement.toDataURL('image/png'); },
   flex(m) { aircraft.setWingFlex(m); },
   info() {
     render(0);

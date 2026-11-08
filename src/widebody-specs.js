@@ -73,7 +73,9 @@ export const B787_9 = {
     // Seven spoilers a side, the 787's; the sim's five values map onto them.
     spoilers: [[3.6, 5.1, 0], [5.2, 6.7, 0], [6.8, 8.3, 1], [8.4, 9.6, 1], [12.7, 14.7, 2], [14.8, 16.8, 3], [16.9, 19.0, 4]],
     slatSegments: [[3.5, 8.5], [11.4, 14.2], [14.26, 17.0], [17.06, 19.8], [19.86, 22.6], [22.66, 25.4]],
-    flapTravel: { in: 1.7, out: 1.25 }, slatTravel: 0.55,
+    // Flap travel (m, at full flap): v0.3.1 cut it from 1.7 and 1.25 so the spoilers, which overhang the
+    // flaps by the travel less a slot, cover it without growing past a believable width.
+    flapTravel: { in: 1.3, out: 1.0 }, slatTravel: 0.55,
     landingLightY: 4.6, landingLightF: 0.1,
   },
 
@@ -207,7 +209,8 @@ export const B777_300ER = {
     // Seven spoilers a side [ACAP]: two inboard of the engine, five outboard; the sim gives five values.
     spoilers: [[4.0, 6.2, 0], [6.3, 8.7, 1], [12.4, 14.2, 2], [14.3, 16.2, 2], [16.3, 18.2, 3], [18.3, 20.0, 3], [20.1, 21.9, 4]],
     slatSegments: [[3.8, 8.4], [10.4, 13.9], [13.95, 17.4], [17.45, 20.6], [20.65, 23.9], [23.95, 27.4], [27.45, 30.9]],
-    flapTravel: { in: 1.9, out: 1.45 }, slatTravel: 0.6,
+    // Flap travel (m): cut from 1.9 and 1.45 in v0.3.1, as the 787's.
+    flapTravel: { in: 1.5, out: 1.1 }, slatTravel: 0.6,
     landingLightY: 5.0, landingLightF: 0.1,
     // [EST] The sim's detents (5, 15, 20, 25, 30) run out along the tracks by 20 and then rotate. The inboard
     // flap is double-slotted [PUB]: the aft flap (the last 13% of chord here) opens past flaps 15; the

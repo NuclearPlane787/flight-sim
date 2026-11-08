@@ -241,39 +241,88 @@ export function foilPoint(s, f, side, plate = 0) {
   const h = plate ? (side > 0 ? 0.022 : 0.004) + halfThick(f, s.t) + cam : cam + side * halfThick(f, s.t);
   return s.le.clone().addScaledVector(s.c, f * s.chord).addScaledVector(s.n, h * s.chord + (plate ? 0 : 0));
 }
-export function plateOffset(s, f, side) {
-  // Spoiler plate: follows the upper surface, 4…22 mm above it.
+export function plateOffset(s, f, side, lift = PLATE_LIFT) {
+  // Spoiler plate: follows the upper surface, 6…30 mm above it (lift: [underside, top], m).
   const cam = (s.camber || 0) * 4 * f * (1 - f);
   const up = s.le.clone().addScaledVector(s.c, f * s.chord).addScaledVector(s.n, (cam + halfThick(f, s.t)) * s.chord);
-  return up.addScaledVector(s.n, side > 0 ? 0.03 : 0.006);
+  return up.addScaledVector(s.n, side > 0 ? lift[1] : lift[0]);
 }
+const PLATE_LIFT = [0.006, 0.03];
+// A thinner plate just on the surface, under the spoilers: the fixed shroud over a flap's nose
+// (v0.3.1), which closes the gaps between spoilers and covers the flap where there are none.
+export const SHROUD_LIFT = [0.001, 0.004];
 
 // A wing-like piece across sections secs[], from chord fraction f0 to f1. Returns geometries.
-export function foilPiece(secs, f0, f1, { nf = 7, caps = [true, true], plate = false } = {}) {
-  const fs = [];
-  for (let i = 0; i <= nf; i++) {
-    const s = i / nf;
-    fs.push(f0 === 0 ? f0 + (f1 - f0) * (1 - Math.cos(s * Math.PI / 2)) : f0 + (f1 - f0) * s);
-  }
-  const P = (s, f, side) => (plate ? plateOffset(s, f, side) : foilPoint(s, f, side));
+// f0 and f1 may also be arrays, one fraction per section (v0.3.1: a flap whose leading edge runs
+// behind the main gear isn't at one fraction of the chord). nose > 0 rounds the front face into a
+// half-ellipse that bulges forward by nose × the half-thickness there: a flap's nose, or the fixed
+// leading edge behind a slat, which shows when the slat runs out.
+export function foilPiece(secs, f0, f1, { nf = 7, caps = [true, true], plate = false, nose = 0, lift = PLATE_LIFT } = {}) {
+  const F0 = (k) => (Array.isArray(f0) ? f0[k] : f0), F1 = (k) => (Array.isArray(f1) ? f1[k] : f1);
+  const fsAt = (k) => {
+    const a = F0(k), b = F1(k), fs = [];
+    for (let i = 0; i <= nf; i++) {
+      const s = i / nf;
+      fs.push(a === 0 ? a + (b - a) * (1 - Math.cos(s * Math.PI / 2)) : a + (b - a) * s);
+    }
+    return fs;
+  };
+  const P = (s, f, side) => (plate ? plateOffset(s, f, side, lift) : foilPoint(s, f, side));
   const out = [];
   const nAvg = secs[0].n.clone().add(secs[secs.length - 1].n).normalize();
   const cAvg = secs[0].c.clone();
-  const up = secs.map((s) => fs.map((f) => P(s, f, 1)));
-  const lo = secs.map((s) => fs.map((f) => P(s, f, -1)));
+  const FS = secs.map((s, k) => fsAt(k));
+  const up = secs.map((s, k) => FS[k].map((f) => P(s, f, 1)));
+  const lo = secs.map((s, k) => FS[k].map((f) => P(s, f, -1)));
   out.push(grid(up, { expect: () => nAvg }));
   out.push(grid(lo, { expect: () => nAvg.clone().negate() }));
   // front and rear faces
-  const t0 = halfThick(Math.max(f0, 1e-4), secs[0].t);
-  if (f0 > 0.001 || plate) out.push(grid(secs.map((s, k) => [up[k][0], lo[k][0]]), { expect: () => cAvg.clone().negate() }));
-  if (f1 < 0.999 || plate) out.push(grid(secs.map((s, k) => [up[k][nf], lo[k][nf]]), { expect: () => cAvg }));
-  void t0;
-  // end caps
-  const spanDir = secs[secs.length - 1].le.clone().sub(secs[0].le).normalize();
-  if (caps[0]) out.push(grid([up[0], lo[0]], { expect: () => spanDir.clone().negate() }));
   const L = secs.length - 1;
-  if (caps[1]) out.push(grid([up[L], lo[L]], { expect: () => spanDir }));
+  let noseRows = null;
+  if (secs.some((s, k) => F0(k) > 0.001) || plate) {
+    if (nose > 0 && !plate) {
+      const NJ = 6;
+      noseRows = secs.map((s, k) => {
+        const a = up[k][0], b = lo[k][0], mid = a.clone().add(b).multiplyScalar(0.5), h = a.clone().sub(mid);
+        const fwd = s.c.clone().negate(), r = h.length() * nose, row = [];
+        for (let j = 0; j <= NJ; j++) {
+          const ph = (j / NJ) * Math.PI;
+          row.push(mid.clone().addScaledVector(h, Math.cos(ph)).addScaledVector(fwd, r * Math.sin(ph)));
+        }
+        return row;
+      });
+      out.push(grid(noseRows, { expect: () => cAvg.clone().negate() }));
+    } else out.push(grid(secs.map((s, k) => [up[k][0], lo[k][0]]), { expect: () => cAvg.clone().negate() }));
+  }
+  if (secs.some((s, k) => F1(k) < 0.999) || plate) out.push(grid(secs.map((s, k) => [up[k][nf], lo[k][nf]]), { expect: () => cAvg }));
+  // end caps (and the rounded nose's ends, closed upper half to lower half)
+  const spanDir = secs[L].le.clone().sub(secs[0].le).normalize();
+  const capNose = (row, dir) => {
+    const n = row.length - 1, half = n / 2;
+    out.push(grid([row.slice(0, half + 1), row.slice(half).reverse()], { expect: () => dir }));
+  };
+  if (caps[0]) { out.push(grid([up[0], lo[0]], { expect: () => spanDir.clone().negate() })); if (noseRows) capNose(noseRows[0], spanDir.clone().negate()); }
+  if (caps[1]) { out.push(grid([up[L], lo[L]], { expect: () => spanDir })); if (noseRows) capNose(noseRows[L], spanDir); }
   return out;
+}
+
+// A panel with some thickness from a grid surface (a gear door): the outer surface as given, an
+// inner one `thick` inward (against expect), and the four rims, so it shows from both sides when it
+// opens (v0.3.1: the Boeings' doors were single surfaces, invisible from inside). Returns
+// { outer, back }: the outer surface (with uvs, if given), and the inner surface with the rims.
+export function slab(rows, thick, expect, { uvs = null } = {}) {
+  const inner = rows.map((row) => row.map((p) => p.clone().addScaledVector(expect(p).clone().normalize(), -thick)));
+  const back = [grid(inner, { expect: (c) => expect(c).clone().negate() })];
+  const nr = rows.length, nc = rows[0].length;
+  const col = (rs, i) => rs.map((r) => r[i]);
+  const edges = [
+    [rows[0], inner[0], rows[0][Math.floor(nc / 2)].clone().sub(rows[1][Math.floor(nc / 2)])],
+    [rows[nr - 1], inner[nr - 1], rows[nr - 1][Math.floor(nc / 2)].clone().sub(rows[nr - 2][Math.floor(nc / 2)])],
+    [col(rows, 0), col(inner, 0), rows[Math.floor(nr / 2)][0].clone().sub(rows[Math.floor(nr / 2)][1])],
+    [col(rows, nc - 1), col(inner, nc - 1), rows[Math.floor(nr / 2)][nc - 1].clone().sub(rows[Math.floor(nr / 2)][nc - 2])],
+  ];
+  for (const [a, b, dir] of edges) back.push(grid([a, b], { expect: () => dir }));
+  return { outer: grid(rows, { uvs, expect }), back };
 }
 
 // Wing sections. side +1 = left (body +y), −1 = right. y is the distance from the centreline.
@@ -307,6 +356,16 @@ function stabSec(y, side) {
 const FIN_TIP_Z = 11.76 - GROUND_Z; // overall height 11.76 m on the ground
 // The landing lights: span (m from the centreline) and chord fraction on the wing's underside.
 const LAND_Y = 3.6, LAND_F = 0.12;
+// High-lift surfaces (v0.3.1): the inner flap's span (its leading edge runs behind the main gear),
+// the flap track fairings' stations (Airbus AC 2-2-0), the slats' and flaps' travel at full
+// extension, m, and how far the spoilers overhang each flap (the travel less a slot).
+const FIN_Y = [2.02, 6.38], CANOE_Y = [4.87, 8.30, 11.91];
+const SLAT_TRAVEL = 0.34, FLAP_TRAVEL = { in: 0.7, out: 0.55 }, OVERHANG = { in: 0.6, out: 0.45 };
+// The nav lights and strobes sit at the sharklet's root, 7.6 m behind the wing root's leading edge.
+const NAV_X = WING.rootX - 7.6;
+// The inner flap's leading edge, body x (straight across its span): the 0.75-chord point at its
+// outboard end. The tests check it clears the main gear.
+export const FLAP_IN_LE_X = foilPoint(wingSec(FIN_Y[1], 1), 0.75, 0).x;
 function finSec(z) {
   const xle = -15.0 - (z - 1.9) * Math.tan(36 * DEG);
   const xte = -21.2 - (z - 1.9) * ((21.9 - 21.2) / (FIN_TIP_Z - 1.9));
@@ -440,8 +499,17 @@ export function createAircraft(opts = {}) {
     const S = side > 0 ? 'L' : 'R';
     const ws = (y) => wingSec(y, side);
     const secs = (ys) => ys.map(ws);
-    // fixed structure
-    b.add(foilPiece(secs([0.6, Y_SIDE, 4, KINK_Y, 9, 12, 14.5, 16.6]), 0.13, 0.75, { caps: [false, false] }), ROOT, C.wing);
+    // The trailing edge (v0.3.1). The flaps' leading edges were at 0.75 of the chord, which ran
+    // through the main gear's leg: with the flaps out, the leg hung from the empty flap cove. The
+    // inner flap's leading edge now runs straight across, behind the leg, at the 0.75-chord point of
+    // its outboard end, so the fixed structure ahead of it (the rear spar and the gear beam) carries
+    // the leg, as on the real one.
+    const fAt = (y, x) => { const w = ws(y); return (w.le.x - x) / w.chord; };
+    const X_FIN_LE = FLAP_IN_LE_X;
+    const fFlapLE = (y) => (y >= FIN_Y[0] - 1e-6 && y <= FIN_Y[1] + 1e-6 ? fAt(y, X_FIN_LE) : 0.75);
+    // fixed structure: its leading edge behind the slats is rounded, so the slot shows a nose, not a cut
+    const fixYs = [0.6, Y_SIDE, FIN_Y[0], 4, FIN_Y[1], KINK_Y, 9, 12, 14.5, 16.6];
+    b.add(foilPiece(secs(fixYs), 0.13, fixYs.map((y) => (y < FIN_Y[0] - 1e-6 ? 0.75 : fFlapLE(y))), { caps: [false, false], nose: 0.9 }), ROOT, C.wing);
     b.add(foilPiece(secs([0.6, Y_SIDE, 2.58]), 0, 0.13, { caps: [false, true] }), ROOT, C.wingDark);
     b.add(foilPiece(secs([5.22, 6.28]), 0, 0.13), ROOT, C.wingDark);
     b.add(foilPiece(secs([0.6, 2.0]), 0.75, 1, { caps: [false, true] }), ROOT, C.wing);
@@ -472,39 +540,60 @@ export function createAircraft(opts = {}) {
       b.add(foilPiece(sk, 0, 1, { caps: [false, true] }), ROOT, C.navy);
     }
 
-    // Slats: one bone per wing, hinged along the leading edge.
+    // Slats: one bone per wing, hinged along the leading edge. Two tracks a slat run back into the
+    // fixed leading edge (hidden there when the slats are in), so a slat that's out hangs on them.
     const slatA = foilPoint(ws(2.62), 0.13, 0), slatB = foilPoint(ws(16.6), 0.13, 0);
     const slatAxis = slatB.clone().sub(slatA).multiplyScalar(side).normalize();
     const SL = bone('slats' + S, 'root', slatA, slatAxis);
-    b.add(foilPiece(secs([2.62, 5.18]), 0, 0.13), SL, C.metal);
-    for (let i = 0; i < 4; i++) {
-      const y0 = 6.32 + (i * (16.58 - 6.32)) / 4, y1 = 6.32 + ((i + 1) * (16.58 - 6.32)) / 4 - 0.04;
+    const slatSegs = [[2.62, 5.18]];
+    for (let i = 0; i < 4; i++) slatSegs.push([6.32 + (i * (16.58 - 6.32)) / 4, 6.32 + ((i + 1) * (16.58 - 6.32)) / 4 - 0.04]);
+    for (const [y0, y1] of slatSegs) {
       b.add(foilPiece(secs([y0, y1]), 0, 0.13), SL, C.metal);
+      for (const q of [0.25, 0.75]) {
+        const w = ws(y0 + q * (y1 - y0)), mid = foilPoint(w, 0.13, 0);
+        const xf = w.le.x - 0.06 * w.chord, xb = mid.x - SLAT_TRAVEL - 0.15;
+        b.add(boxAt((xf + xb) / 2, mid.y, mid.z, xf - xb, 0.05, 0.08), SL, C.metal);
+      }
     }
 
-    // Trailing-edge surfaces: hinge at the surface's leading edge, mid-thickness.
+    // Trailing-edge surfaces: hinge at the surface's leading edge, mid-thickness. f0 may be a
+    // function of the span (the inner flap's).
     const hinged = (name, y0, y1, ys, f0, f1, color, opts2 = {}) => {
-      const pa = opts2.plate ? plateOffset(ws(y0), f0, -1) : foilPoint(ws(y0), f0, 0);
-      const pb = opts2.plate ? plateOffset(ws(y1), f0, -1) : foilPoint(ws(y1), f0, 0);
+      const F0 = typeof f0 === 'function' ? f0 : () => f0, F1 = typeof f1 === 'function' ? f1 : () => f1;
+      const pa = opts2.plate ? plateOffset(ws(y0), F0(y0), -1) : foilPoint(ws(y0), F0(y0), 0);
+      const pb = opts2.plate ? plateOffset(ws(y1), F0(y1), -1) : foilPoint(ws(y1), F0(y1), 0);
       const axis = pb.clone().sub(pa).multiplyScalar(side).normalize(); // +y component
-      const idx = bone(name + S, 'root', pa, axis);
-      b.add(foilPiece(secs(ys), f0, f1, { plate: opts2.plate, nf: opts2.plate ? 3 : 6 }), idx, color);
+      const idx = bone(name + S, opts2.parent || 'root', pa, axis);
+      b.add(foilPiece(secs(ys), ys.map(F0), ys.map(F1), { plate: opts2.plate, nf: opts2.plate ? 3 : 6, nose: opts2.nose || 0 }), idx, color);
       return idx;
     };
-    const FIN = hinged('flapIn', 2.02, 6.38, [2.02, 4.2, 6.38], 0.75, 1, C.wing);
-    const FOUT = hinged('flapOut', 6.42, 12.38, [6.42, 9.4, 12.38], 0.75, 1, C.wing);
-    // Flap track fairings ("canoes") under the trailing edge; the aft part rides on the flap.
-    for (const [y, fb] of [[4.0, FIN], [8.4, FOUT], [11.0, FOUT]]) {
+    hinged('flapIn', FIN_Y[0], FIN_Y[1], [FIN_Y[0], 4.2, FIN_Y[1]], fFlapLE, 1, C.wing, { nose: 1 });
+    hinged('flapOut', 6.42, 12.38, [6.42, 9.4, 12.38], 0.75, 1, C.wing, { nose: 1 });
+    // Flap track fairings ("canoes") under the trailing edge, at Airbus's stations (AC 2-2-0: 4.87,
+    // 8.30 and 11.91 m). The aft part hinges down from the fixed front as the flaps run out, rather
+    // than riding away with the flap and leaving the front part hanging.
+    CANOE_Y.forEach((y, i) => {
       const w = ws(y), L = 0.8 * w.chord, xs = w.le.x - 0.5 * w.chord;
       const zc = w.le.z - 0.06 * w.chord;
       const prof = [[0, 0], [0.08, 0.1], [0.25, 0.17], [0.45, 0.17], [0.7, 0.13], [0.9, 0.06], [1, 0.005]]
         .map(([t, r]) => ({ x: -t * L, r }));
       b.add(lathe(prof.slice(0, 4), 12, xs, side * y, zc), ROOT, C.wingDark);
-      b.add(lathe(prof.slice(3), 12, xs, side * y, zc), fb, C.wingDark);
-    }
+      const CB = bone('canoe' + i + S, 'root', V(xs - 0.45 * L, side * y, zc + 0.17), V(0, 1, 0));
+      b.add(lathe(prof.slice(3), 12, xs, side * y, zc), CB, C.wingDark);
+    });
     hinged('aileron', 12.42, 16.58, [12.42, 14.5, 16.58], 0.75, 1, C.wing);
-    const spY = [[3.0, 6.2], [6.6, 7.97], [8.0, 9.37], [9.4, 10.77], [10.8, 12.2]];
-    spY.forEach(([y0, y1], i) => hinged('spoiler' + (i + 1), y0, y1, [y0, y1], 0.6, 0.755, C.wingDark, { plate: true }));
+    // Spoilers: plates on the upper surface whose trailing edges overhang the flaps by about what
+    // the flaps travel, as the real ones do, so a flap that's out leaves a slot under them, not an
+    // open gap. Each keeps its 0.155-chord width. Under them, a fixed shroud runs the flaps' whole
+    // span, so there's no light between spoilers, nor a gap where there's no spoiler.
+    const flapChord = (y) => ws(y).chord * (1 - fFlapLE(y));
+    const overhang = (y) => Math.min(fFlapLE(y) < 0.751 ? OVERHANG.out : OVERHANG.in, 0.65 * flapChord(y));
+    const spAft = (y) => fAt(y, ws(y).le.x - fFlapLE(y) * ws(y).chord - overhang(y));
+    const spYs = [[3.0, 6.2], [6.6, 7.97], [8.0, 9.37], [9.4, 10.77], [10.8, 12.2]];
+    spYs.forEach(([y0, y1], i) => hinged('spoiler' + (i + 1), y0, y1, [y0, (y0 + y1) / 2, y1], (y) => spAft(y) - 0.155, spAft, C.wingDark, { plate: true }));
+    for (const ys of [[FIN_Y[0], 4.2, FIN_Y[1]], [6.42, 9.4, 12.38]]) {
+      b.add(foilPiece(secs(ys), ys.map((y) => fFlapLE(y) - 0.03), ys.map(spAft), { plate: true, nf: 3, lift: SHROUD_LIFT }), ROOT, C.wingDark);
+    }
     parts[S] = true;
 
     // Engine: nacelle, pylon, fan and the translating cowl of the thrust reverser.
@@ -581,7 +670,7 @@ export function createAircraft(opts = {}) {
     b.add(boxAt(gm.x, side * 0.85, -2.37, 1.7, 1.15, 0.03), DR, C.navy);
 
     // Lights: navigation (red left, green right) and strobe at the sharklet root.
-    b.add(sphereAt(V(-3.0, side * 17.3, 0.42), 0.08), ROOT, side > 0 ? C.red : C.green);
+    b.add(sphereAt(V(NAV_X, side * 17.3, 0.42), 0.08), ROOT, side > 0 ? C.red : C.green);
     // Retractable landing light, under the inner wing between the fuselage and the engine.
     b.add(sphereAt(foilPoint(wingSec(LAND_Y, side), LAND_F, -1).add(V(0, 0, 0.02)), 0.11), ROOT, C.lamp);
   }
@@ -704,13 +793,13 @@ export function createAircraft(opts = {}) {
   const taxiP = nPivot.clone().lerp(nAxle, 0.5).add(V(0.22, 0, 0));
   const taxiDirBody = [Math.cos(9 * DEG), 0, -Math.sin(9 * DEG)];
   const LAMPS = [
-    { key: 'navL', pos: M(V(-3.0, 17.35, 0.42)), color: C.red, size: 3.0, px: [2.5, 9] },
-    { key: 'navR', pos: M(V(-3.0, -17.35, 0.42)), color: C.green, size: 3.0, px: [2.5, 9] },
+    { key: 'navL', pos: M(V(NAV_X, 17.35, 0.42)), color: C.red, size: 3.0, px: [2.5, 9] },
+    { key: 'navR', pos: M(V(NAV_X, -17.35, 0.42)), color: C.green, size: 3.0, px: [2.5, 9] },
     { key: 'tail', pos: M(V(TAIL_X - 0.1, 0, 0.85)), color: '#ffffff', size: 2.4, px: [2, 7] },
     { key: 'beaconTop', pos: M(V(-1.5, 0, fuseTop(-1.5) + 0.12)), color: C.red, size: 5.0, px: [4, 14] },
     { key: 'beaconBottom', pos: M(V(1.5, 0, -2.47)), color: C.red, size: 5.0, px: [4, 14] },
-    { key: 'strobe', pos: M(V(-3.2, 17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
-    { key: 'strobe', pos: M(V(-3.2, -17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
+    { key: 'strobe', pos: M(V(NAV_X - 0.2, 17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
+    { key: 'strobe', pos: M(V(NAV_X - 0.2, -17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
     { key: 'strobe', pos: M(V(TAIL_X - 0.15, 0, 0.75)), color: '#ffffff', size: 7.0, px: [6, 20] },
     ...landP.map((p) => ({ key: 'landing', pos: M(p), color: '#fff4e0', size: 7.0, px: [4, 22], dir: Md(...landDirBody) })),
     { key: 'taxi', pos: M(taxiP), color: '#fff4e0', size: 4.5, px: [3, 16], dir: Md(...taxiDirBody) },
@@ -753,13 +842,15 @@ export function createAircraft(opts = {}) {
       // Slats: forward and down on their tracks, nose down.
       const sl = clamp((state.slatDeg || 0) / 27, 0, 1.2);
       rot('slats' + S, (state.slatDeg || 0) * DEG * 0.85);
-      move('slats' + S, 0.34 * sl, 0, -0.1 * sl);
+      move('slats' + S, SLAT_TRAVEL * sl, 0, -0.1 * sl);
       // Fowler flaps: mostly aft travel first, then rotation.
       const fd = state.flapDeg || 0, tr = clamp(fd / 20, 0, 1);
       rot('flapIn' + S, -fd * DEG);
-      move('flapIn' + S, -0.95 * tr, 0, -0.1 * tr);
+      move('flapIn' + S, -FLAP_TRAVEL.in * tr, 0, -0.1 * tr);
       rot('flapOut' + S, -fd * DEG);
-      move('flapOut' + S, -0.72 * tr, 0, -0.08 * tr);
+      move('flapOut' + S, -FLAP_TRAVEL.out * tr, 0, -0.08 * tr);
+      // the flap track fairings' aft parts follow the flaps down
+      for (let i = 0; i < CANOE_Y.length; i++) rot('canoe' + i + S, -fd * DEG * 0.55);
     }
 
     // Gear.

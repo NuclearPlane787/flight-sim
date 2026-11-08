@@ -7,7 +7,7 @@ Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), fl
 - a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
 - gate starts with pushback and a taxi route drawn on the ground;
 - parked aircraft and ground vehicles at the airports;
-- synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
+- synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), muffled but clearly there in the cockpit, warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
 `Updates.md` lists what each version added; the game shows its version in the pause menu.
 
@@ -62,7 +62,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | X | autothrust on / off |
 | = / − | time compression faster / slower: with the AP on and 2,000 ft up, or in a pushback (up to 4×) |
 | M | map (predicted path, jumps, waypoints, Change route, skip to final) |
-| 1 / 2 / 3 | cockpit (the captain's seat), nose, 3rd person view, as the switch at the top right does |
+| 1 / 2 / 3 | cockpit (the captain's seat; 1 again swaps to the first officer's and back), nose, 3rd person view, as the switch at the top right does |
 | V | next view (Nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
 | Esc | pause menu (Resume, Save, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Exit to menu) |
@@ -99,7 +99,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 
 ## Known issues
 
-- No agent has listened to the sound: the levels and the engines' frequencies are measured (`tests/audio-render.mjs`), not judged by ear. `tests/audio-clips.mjs` renders flight phases to listen to.
+- No agent has listened to the sound: the levels and the engines' frequencies are measured (`tests/audio-render.mjs`), not judged by ear. `tests/audio-clips.mjs` renders flight phases to listen to. v0.3.1 raised the engines in the cockpit by about 7 dB, by measurement.
 - On the A321neo the predicted path is a straight line on the selected heading, because its autopilot has holds only (route following is on the roadmap). A Boeing's follows LNAV and its ILS.
 
 ## Types

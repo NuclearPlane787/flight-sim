@@ -4,6 +4,14 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.3.1 · 2026-11-08 · The gear and flaps on the wing, the seat swap, the engines in the cockpit, the gear doors
+
+- **The main gear hangs from the wing again with the flaps out,** on all three aircraft. The inboard flaps used to start in front of the gear's legs, so with them out the legs seemed to hang from thin air. Each inboard flap now starts behind the legs, and the wing ahead of it carries the gear, as on the real aircraft. The A321neo's wing also sits where Airbus's drawings put it, about a metre further back than before.
+- **No more open gaps with the slats and flaps out.** The spoilers overhang the flaps, as real ones do, so a flap that's out leaves a narrow slot under them. The slats run out on tracks in front of a rounded leading edge, the flaps have rounded noses, and the flap track fairings stay in one piece, their tails hinging down with the flaps.
+- **Cockpit (or 1) swaps seats again:** press it in the captain's seat for the first officer's, and again to come back.
+- **The engines in the cockpit:** still muffled and quieter than outside, but now clearly there. At idle they're level with the air conditioning and on an approach above the wind, where before both all but buried them. In cruise the rush of air still leads.
+- **The Boeings' gear doors** have an inside now, so they don't vanish when you see them from the other side.
+
 ## v0.3.0 · 2026-11-04 · The Boeing 787-9 and 777-300ER
 
 - **Two new aircraft, in Nuclear Airlines colours.** The 787-9 (HL7879, GEnx engines) and the 777-300ER (HL7773, GE90-115Bs) join the A321neo, each with its own numbers from its type certificate and Boeing's airport-planning document, its own model and cockpit, and its own engine sound. The A321neo flies exactly as it did.

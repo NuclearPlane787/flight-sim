@@ -22,7 +22,7 @@ const MIN_DT = 1000 / 30;
 // The view switch (v0.2.1). Shane: "Have an easy way to transfer between a cockpit view, a
 // nose view, and a third person view, maybe a switch somewhere." [view, key, label, tooltip]
 const VIEW_BUTTONS = [
-  ['cockpit', '1', 'Cockpit', "Cockpit (1): the captain's seat. V also reaches the first officer's"],
+  ['cockpit', '1', 'Cockpit', "Cockpit (1): the captain's seat. Press it again for the first officer's, and again to swap back"],
   ['nose', '2', 'Nose', 'Nose (2)'],
   ['orbit', '3', '3rd person', '3rd person (3): drag to orbit, pinch to zoom'],
 ];
@@ -55,7 +55,7 @@ export function createHud(root, { airports, coast } = {}) {
   let pfd = airbus.pfd, nd = airbus.nd, eng = airbus.eng, fcu = airbus.fcu, isBoeing = false;
 
   // The view switch, level with the FCU at the top right. In a seat, Cockpit shows which one
-  // (CPT or F/O; V reaches the first officer's). Clicks go to main.js → selectView.
+  // (CPT or F/O), and pressing it again swaps seats. Clicks go to main.js → selectView.
   const views = document.createElement('div');
   views.className = 'fsui-views fsui-panel';
   views.innerHTML = VIEW_BUTTONS.map(([v, key, label, tip]) =>

@@ -26,7 +26,7 @@ import { EYES, GROUND_Z } from '../src/geometry.js';
 
 const DEG = Math.PI / 180;
 // Same renderer settings as main.js.
-const renderer = new THREE.WebGLRenderer({ antialias: true, reversedDepthBuffer: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, reversedDepthBuffer: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -222,6 +222,15 @@ window.dev = {
     return { triangles: i.triangles, calls: i.calls, modelTriangles: aircraft.triangles, buildMs, bones: Object.keys(aircraft.bones).length };
   },
   hideGround(on) { ground.visible = line.visible = !on; },
+  // A free orbit camera (v0.3.1): yaw° from the nose (+ towards the left wing), pitch° up, distance m,
+  // target [x_body, z_body, y_body] as VIEWS; and the canvas as a PNG data URL, for tests/cloud/models.cjs.
+  look(yaw, pitch, dist, target = [0, 0, 0], fov = 40) {
+    seat = null; aircraft.setCockpitView(false); cockpit.object.visible = false;
+    camera.fov = fov; camera.updateProjectionMatrix();
+    orbit.yaw = yaw * DEG; orbit.pitch = pitch * DEG; orbit.dist = dist;
+    orbit.target.copy(toModel(target[0], target[2], target[1]));
+  },
+  png() { render(0); return renderer.domElement.toDataURL('image/png'); },
   ready: true,
 };
 </script>

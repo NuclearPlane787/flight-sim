@@ -199,6 +199,13 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 - **Model:**
   - built in code, with no model files, at about 20–40k triangles;
   - the gear, flaps, slats, spoilers, ailerons, elevator, rudder and reversers all move.
+  - **The high-lift surfaces stay connected (v0.3.1;** Shane: "The landing gear on all three planes look strange when flaps are fully down. They seem to attach to thin air. I don't [think] there should be air gaps in the wing when the surfaces on the front of the wing and the flaps are extended."):
+    - each inboard flap's leading edge runs behind the main gear's leg (`FLAP_IN_LE_X` in `aircraft.js`, `inboardFlapLE()` in `widebody.js`), so fixed structure carries the gear, as on the real aircraft;
+    - the A321neo's wing sits where Airbus's AC top view draws it (`WING.rootX`, 1.03 m further aft than v0.1.0 to v0.3.0 had it): its root's trailing edge 1.33 m behind the main gear;
+    - the spoilers overhang the flaps by the flaps' travel less a slot, with fixed shrouds where there's no spoiler, so a flap that's out leaves a slot, not an open gap;
+    - the fixed leading edge behind the slats is rounded, and each slat runs on two tracks; the flaps have rounded noses;
+    - the flap track fairings' aft parts hinge down from their fixed fronts, instead of riding away with the flaps.
+  - **Gear doors** are panels with an inside (`slab()` in `aircraft.js`), so they show from both sides when they open (v0.3.1).
 - **Nuclear Airlines:**
   - **Base:** a white fuselage, and a deep navy tail, belly and engines.
   - **Accents:** a mix of Satisfactory's uranium-waste green (glowing lime) and Cherenkov blue (the blue glow of a reactor pool).
@@ -277,6 +284,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 
 - **Synthesised in WebAudio, no audio files:**
   - engines: fan whine and combustion rumble following N1, mixed differently inside and outside. **Rebuilt in v0.2.2** (Shane: "The current engine sounds don't sound accurate to a real A321.") from the LEAP-1A's real frequencies (FAA TCDS E00089EN; 18 fan blades): the fan's blade-passing tone and harmonics, the buzz-saw above ~75 % N1, the core's whine, the fan's broadband, the jet's roar and the combustion rumble; the tones waver and the two engines beat; outside, the direction (ahead: fan and buzz-saw; behind: jet) and 3rd person's distance change the mix (`src/audio/synth.js`'s header);
+  - **in the cockpit** (v0.3.1; Shane: "I can't hear the engines much at all from the cockpit. They should be muffled and quieter than the outside, but not almost absent."): the engines are muffled (a 1.3 kHz low-pass, the low roar and rumble passing best) and 4–6 dB quieter than 3rd person's at take-off, but clearly there: level with the air conditioning at idle and over the wind on an approach (before, 5–12 dB under both); in cruise the air outside still leads, by 2–3 dB (`MIX` and `INSIDE_LP` in `src/audio/synth.js`);
   - wind with airspeed;
   - gear and flap motors, and spoilers;
   - touchdown and tyres, reversers and brakes.
