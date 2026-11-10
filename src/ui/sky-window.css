@@ -129,6 +129,43 @@
 .fslw-apply:not(:disabled) { background: #0f6e86; border-color: #2fe3ff; }
 .fslw-apply:not(:disabled):hover { background: #148aa8; }
 
+/* v0.4.0: the Weather window (weather-window.js), the L window's third tab */
+.fssw-sub { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fssw-x, .fssw-tabs { flex: none; }
+.fssw-head:has(.fssw-tab:nth-child(3)) .fssw-tab { padding: 0 8px; }
+.fssw-head:has(.fssw-tab:nth-child(3)) { gap: 6px; }
+/* Three tabs leave no room for the Sky's and the Weight's subtitle; the tabs' tooltips say the same. */
+.fssw:not(.fswx) .fssw-head:has(.fssw-tab:nth-child(3)) .fssw-sub { display: none; }
+.fswx .fssw-sub { letter-spacing: 0.04em; }
+.fswx-ico { color: #bfe2ff; filter: drop-shadow(0 0 4px rgba(120, 190, 255, 0.6)); }
+.fswx-body { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+.fswx-metar { font: 600 13px/1.25 var(--font-mono, monospace); color: #3cff4e; letter-spacing: 0.01em; user-select: text; -webkit-user-select: text; word-spacing: 0.1em; }
+.fswx-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.fswx-presets .fssw-b { padding: 5px 2px; font-size: 12px; white-space: nowrap; }
+.fswx-scroll { overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding-right: 3px;
+  max-height: calc(100vh - min(43vh, 27vw, 560px) - clamp(38px, 5.2vh, 56px) - 258px); min-height: 90px; }
+@media (max-height: 800px) { .fswx-scroll { max-height: calc(100vh - min(43vh, 27vw, 560px) - clamp(38px, 5.2vh, 56px) - 232px); } }
+.fswx-grid { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 5px 8px; }
+.fswx-grid label { font: 600 13px var(--font); color: #d8dde1; }
+.fswx-v { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
+.fswx-v input { box-sizing: border-box; width: 52px; font: 600 14px var(--font); font-variant-numeric: tabular-nums; color: #f0f0f0;
+  background: #0a0e11; border: 1px solid #44505a; border-radius: 4px; padding: 3px 4px; color-scheme: dark;
+  user-select: text; -webkit-user-select: text; touch-action: auto; -moz-appearance: textfield; appearance: textfield; }
+.fswx-v input::-webkit-outer-spin-button, .fswx-v input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fswx-v input.wide { width: 66px; }
+.fswx-v input:focus { outline: none; border-color: #2fe3ff; }
+.fswx-v input.edited { border-color: #1f9fbc; background: #0b1a20; }
+.fswx-v input:disabled { opacity: 0.4; }
+.fswx-v select { font: 600 13px var(--font); color: #f0f0f0; background: #0a0e11; border: 1px solid #44505a; border-radius: 4px; padding: 3px 2px; color-scheme: dark; }
+.fswx-v select:focus { outline: none; border-color: #2fe3ff; }
+.fswx-u { font: 600 12px var(--font); color: #8a9097; white-space: nowrap; }
+.fswx-dim { color: #6f7b85; }
+.fswx-seg { display: inline-flex; border: 1px solid #33414f; border-radius: 4px; overflow: hidden; }
+.fswx-seg button { font: 600 12px/1 var(--font); color: #c9ced2; background: #1b2530; border: 0; padding: 4px 7px; cursor: pointer; }
+.fswx-seg button + button { border-left: 1px solid #33414f; }
+.fswx-seg button.on { background: #0f6e86; color: #fff; }
+.fswx-seg button:disabled { color: #5d6c78; cursor: default; }
+
 /* A short window (1280x720): no footer, a smaller clock, so the panel stays under the PFD. */
 @media (max-height: 800px) {
   .fssw-foot { display: none; }

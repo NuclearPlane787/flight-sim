@@ -5,6 +5,17 @@
 
 import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from './common.js';
 
+// The altitude the tapes show, ft: the altimeter's reading (state.altInd), which depends on the setting.
+export const shownAltFt = (st) => (st.altInd ?? st.pos.z) * FT;
+// The ground's place on a tape, ft, in the altimeter's terms: the true height above it, under the reading.
+export const shownGroundFt = (st) => shownAltFt(st) - (st.pos.z - st.groundH) * FT;
+// The altimeter setting from the view (main.js's view.sim). With no sim attached it's the old fixed 1013.
+export function baroLabel(view) {
+  const b = view?.sim?.baro;
+  if (b?.std) return { std: true, hpa: Math.round(b.hpa) };
+  return { std: false, hpa: Math.round(b?.hpa ?? 1013.25) };
+}
+
 export function createPfd(cv) {
   const { ctx } = cv;
   let trend = 0, lastIas = null, lastT = null; // filtered speed trend (kt per 10 s)
@@ -42,7 +53,7 @@ export function createPfd(cv) {
 
     drawAttitude(s, st, yc, now);
     drawSpeed(s, st, ap, yc, view);
-    drawAlt(s, st, ap, yc);
+    drawAlt(s, st, ap, yc, view);
     drawVs(s, st, yc);
     drawHeading(s, st, ap, ils);
     drawFma(s, st, ap, now);
@@ -148,6 +159,7 @@ export function createPfd(cv) {
     // Warnings: red words across the sphere.
     const w = st.warnings || {};
     const words = [];
+    if (w.windshear) words.push(['WINDSHEAR', C.red]);   // v0.4.0
     if (w.pullUp) words.push(['PULL UP', C.red]);
     if (w.stall) words.push(['STALL', C.red]);
     if (w.overspeed) words.push(['OVERSPEED', C.red]);
@@ -264,9 +276,9 @@ export function createPfd(cv) {
   }
 
   // ---- altitude tape ----
-  function drawAlt(s, st, ap, yc) {
+  function drawAlt(s, st, ap, yc, view) {
     const x0 = 0.715 * s, x1 = 0.81 * s, top = 0.17 * s, bot = 0.79 * s;
-    const alt = st.pos.z * FT;
+    const alt = shownAltFt(st);
     const pf = (bot - top) / 1150; // px per ft
     const Y = (a) => yc - (a - alt) * pf;
     ctx.save();
@@ -274,7 +286,7 @@ export function createPfd(cv) {
     ctx.beginPath(); ctx.rect(x0, top, x1 - x0 + 0.02 * s, bot - top); ctx.clip();
     // Ground (red ribbon below the terrain or runway height).
     if (st.groundH !== undefined) {
-      const gy = Y(st.groundH * FT);
+      const gy = Y(shownGroundFt(st));
       if (gy < bot) { ctx.fillStyle = C.red; ctx.fillRect(x0, gy, 0.012 * s, bot - gy); }
     }
     ctx.strokeStyle = C.white; ctx.fillStyle = C.white; ctx.lineWidth = Math.max(1.2, s * 0.003);
@@ -327,9 +339,23 @@ export function createPfd(cv) {
     }
     ctx.restore();
 
-    // QNH: always STD-free; we fly the standard atmosphere, so it reads QNH 1013.
-    ctx.fillStyle = C.cyan; ctx.font = font(s * 0.036); ctx.textAlign = 'center';
-    ctx.fillText('QNH 1013', (x0 + x1) / 2 + 0.01 * s, bot + 0.06 * s);
+    // The altimeter setting, Airbus's way: QNH in white and its value in cyan, or STD in a yellow box.
+    const baro = baroLabel(view), mid = (x0 + x1) / 2 + 0.01 * s, by2 = bot + 0.06 * s;
+    // The transition reminder: Airbus's setting pulses.
+    const pulse = !!view?.state?.baroAlert && Math.floor(performance.now() / 400) % 2 === 0;
+    ctx.font = font(s * 0.036);
+    if (baro.std) {
+      ctx.fillStyle = C.cyan; ctx.textAlign = 'center';
+      if (!pulse) ctx.fillText('STD', mid, by2);
+      const w = ctx.measureText('STD').width + 0.02 * s;
+      ctx.strokeStyle = C.yellow; ctx.lineWidth = Math.max(1.5, s * 0.004);
+      ctx.strokeRect(mid - w / 2, by2 - 0.026 * s, w, 0.052 * s);
+    } else {
+      const lab = 'QNH ', val = String(baro.hpa), lw = ctx.measureText(lab).width, x = mid - (lw + ctx.measureText(val).width) / 2;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = C.white; ctx.fillText(lab, x, by2);
+      ctx.fillStyle = C.cyan; if (!pulse) ctx.fillText(val, x + lw, by2);
+    }
   }
 
   // ---- vertical speed (needle on a non-linear scale, ±6,000 ft/min) ----

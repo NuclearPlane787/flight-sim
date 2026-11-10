@@ -9,13 +9,19 @@
 // points are converted with y → −y, z → −z. state.pos is the body reference point (the
 // origin of geometry.js), not the CG; state.cgX is the CG's body x (m, + forward).
 
-import { isaInto, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
+import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
+import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind } from './weather.js';
 import { leverToPhi } from './engines.js';
 import { typeById, kitFor, DEFAULT_TYPE } from './types.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const approach = (x, target, rate) => (x < target ? Math.min(target, x + rate) : Math.max(target, x - rate));
+
+// The windshear warning: the F-factor averaged over 1 km of flight [0.103, as patents citing the FAA give it;
+// TSO-C117a's own curve not seen], below 1,500 ft.
+const TRANSITION_M = 14000 * 0.3048;
+const WS_F_WARN = 0.105, WS_AVG_M = 1000, WS_MAX_AGL = 1500 * 0.3048, WS_HOLD_S = 6;
 
 const defaultGround = () => FLAT;
 const FLAT = { h: 0, kind: 'runway' };
@@ -26,6 +32,10 @@ function newCore(A, boeing) {
     px: 0, py: 0, pz: 0, vn: 0, ve: 0, vd: 0,
     q0: 1, q1: 0, q2: 0, q3: 0, p: 0, q: 0, r: 0,
     payload: 15000,
+    // v0.4.0: the altimeter's setting (an instrument's, so it's in the core): hPa, or standard.
+    baroHpa: 1013.25, baroStd: false,
+    // v0.4.0: the windshear detector's F-factor (filtered over about a kilometre) and its alert's timer.
+    wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
     // v0.3.2: the load's parts as the Weight window shows them (null: not known, so the plan's), and the
     // fuel added (or taken off) since the flight began, so the logbook's fuel used stays the burn. In the
     // core, so a save, a rewind and a copy carry them.
@@ -86,6 +96,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     hdg: 0, pitch: 0, roll: 0, quat: { x: 0, y: 0, z: 0, w: 1 },
     p: 0, q: 0, r: 0, alpha: 0, beta: 0,
     ias: 0, cas: 0, tas: 0, gs: 0, mach: 0, vs: 0, nz: 1, agl: 0, groundH: 0,
+    // v0.4.0: the altimeter's reading (m), the outside air (°C), the wind in map axes (m/s, going towards; z up),
+    // its mean part, the surface wind the tower gives (at 10 m, m/s, with the gusts' peak in kt), and the drift
+    // (track less heading, rad).
+    altInd: 0, baroAlert: false, sat: 15, airP: 0, airA: 0, airSigma: 0, wind: { x: 0, y: 0, z: 0, meanX: 0, meanY: 0, sfcX: 0, sfcY: 0, gustKt: 0 }, drift: 0,
     onGround: true, wow: { nose: false, left: false, right: false },
     mass: 0, fuelKg: 0, fuel: { left: 0, right: 0, center: 0 }, cgMac: 0.25, cgX: 0,
     payloadKg: 0, paxN: null, cargoKg: null, fuelAddedKg: 0,   // v0.3.2 (the core's)
@@ -103,11 +117,40 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     speedbrake: 0, groundSpoilers: 0,
     brakes: { left: 0, right: 0 }, parkingBrake: false, law: 'normal',
     vls: 0, vmax: 0, vfeNext: 0, vsw: 0, valphaProt: 0, valphaMax: 0,
-    warnings: { stall: false, overspeed: false, apDisc: false, sinkRate: false, pullUp: false, tooLowGear: false, master: false },
+    warnings: { stall: false, overspeed: false, apDisc: false, sinkRate: false, pullUp: false, tooLowGear: false, master: false, windshear: false },
     crashed: null,
     // Extras (not in the agreed interface, handy for screens and tests):
     gamma: 0, protAlpha: false, protSpeed: false, alphaFloor: false, flare: false, fuelFlowKgS: 0, cl: 0, cd: 0,
   };
+
+  // v0.4.0: the weather. wxS is the settings (null: the default weather), wxC what the step reads.
+  let wxS = null, wxC = null;
+  const Wd = newWind();
+  const windOn = () => wxC !== null && wxC.windOn;
+  // The air here: ISA by the very same arithmetic as before unless the day isn't standard.
+  function atmAt(h, out) {
+    return wxC !== null && wxC.atmOn ? columnInto(h, wxC.dT, wxC.qnhPa, out) : isaInto(h, out);
+  }
+  // The wind at the CG into Wd: exactly zero with no wind, so that subtracting it changes nothing.
+  function windHere(gh) {
+    if (windOn()) windAt(wxC, X.px, X.py, X.pz, X.pz - gh, X.t, R[1], R[4], A.SPAN, Wd);
+    else Wd.n = Wd.e = Wd.d = Wd.p = Wd.meanN = Wd.meanE = Wd.sn = Wd.se = Wd.sd = 0;
+  }
+  // The flat rating: up to ISA + 15 the engine makes the thrust it makes at ISA for that pressure, so a cold day
+  // doesn't give more (the FADEC holds the rating) and a hot one gives less only past ISA + 15.
+  const flatSigma = (s, T) => (wxC !== null && wxC.dT !== 0 ? s * T / (T - Math.min(wxC.dT, 15)) : s);
+  const trendIas = (a) => casFromTasP(Math.sqrt((X.vn - Wd.sn) ** 2 + (X.ve - Wd.se) ** 2 + (X.vd - Wd.sd) ** 2), a.p, a.a);
+  function setWeather(s) {
+    if (!s || isDefaultWeather(s)) { wxS = null; wxC = null; } else { wxS = normalizeWeather(s); wxC = compileWeather(wxS); }
+  }
+  const baroPa = () => (X.baroStd ? 101325 : X.baroHpa * 100);
+  const atm2 = { T: 0, p: 0, rho: 0, a: 0 };
+  // The altimeter at height z. With the air and the baro both standard it IS z: no round trip.
+  function altimeter(z) {
+    const pa = baroPa();
+    if ((wxC === null || !wxC.atmOn) && pa === 101325) return z;
+    return indicatedAltitude(atmAt(z, atm2).p, pa);
+  }
 
   const core = { X, state, events };
   const ap = kit.auto.createAp(core);
@@ -146,7 +189,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   };
   mkLegs();
   const kctx = {
-    R, px: 0, py: 0, pz: 0, u: 0, v: 0, w: 0, p: 0, q: 0, r: 0, brake: 0, steer: 0, F, M,
+    R, px: 0, py: 0, pz: 0, u: 0, v: 0, w: 0, p: 0, q: 0, r: 0, brake: 0, steer: 0, F, M, tyres: null,
     groundAt(x, y, leg) { const g = groundFn(x, y); leg.gh = g.h; leg.kind = g.kind; },
   };
 
@@ -228,18 +271,30 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (X.crashed) return;
     massProps();
     computeR();
-    isaInto(X.pz, atm);
+    atmAt(X.pz, atm);
     const sigma = atm.rho / RHO0, sqrtTheta = Math.sqrt(atm.T / T0);
+    const g0 = groundFn(X.px, X.py);
+    const gh = g0.h;
 
-    // ---- air data (no wind) ----
-    const u = R[0] * X.vn + R[3] * X.ve + R[6] * X.vd;
-    const v = R[1] * X.vn + R[4] * X.ve + R[7] * X.vd;
-    const w = R[2] * X.vn + R[5] * X.ve + R[8] * X.vd;
+    // ---- air data: the velocity relative to the air (inertial less wind), in the body frame ----
+    windHere(gh);
+    const vnA = X.vn - Wd.n, veA = X.ve - Wd.e, vdA = X.vd - Wd.d;
+    const u = R[0] * vnA + R[3] * veA + R[6] * vdA;
+    const v = R[1] * vnA + R[4] * veA + R[7] * vdA;
+    const w = R[2] * vnA + R[5] * veA + R[8] * vdA;
     const V = Math.sqrt(u * u + v * v + w * w);
-    const alpha = V > 2 ? Math.atan2(w, u) : 0;
-    const beta = V > 2 ? Math.asin(clamp(v / V, -1, 1)) : 0;
+    let alpha = V > 2 ? Math.atan2(w, u) : 0;
+    let beta = V > 2 ? Math.asin(clamp(v / V, -1, 1)) : 0;
+    // Standing or rolling slowly, the wind can come from anywhere: the coefficients are for flight, so keep
+    // their angles in range. The drag still acts along the real wind (u, v, w).
+    if (V < 40 && windOn()) {
+      if (u < 0) alpha = Math.atan2(w, -u);
+      alpha = clamp(alpha, -0.35, 0.35); beta = clamp(beta, -0.5, 0.5);
+    }
     const mach = V / atm.a;
     const ias = casFromTasP(V, atm.p, atm.a);
+    // The speed trend leaves the turbulence out: a real one is filtered, and the noise would trip the overspeed logic.
+    const iasTrendBase = wxC !== null && wxC.modes ? trendIas(atm) : ias;
     const qbar = 0.5 * atm.rho * V * V;
     const gs = Math.sqrt(X.vn * X.vn + X.ve * X.ve);
     const theta = Math.asin(clamp(-R[6], -1, 1));
@@ -247,9 +302,22 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const psi = Math.atan2(R[3], R[0]);
     const gamma = gs + Math.abs(X.vd) > 0.5 ? Math.atan2(-X.vd, gs) : 0;
 
+    // ---- the reactive windshear detector ----
+    // F = (dWx/dt)/g − Wh/V, positive when the air is taking energy away, averaged over about a kilometre of
+    // flight. The turbulence is left out, as a real detector's filters leave it.
+    if (windOn()) {
+      const gsNow = gs > 1 ? gs : 1;
+      if (!X.wsValid) { X.wsPrevN = Wd.sn; X.wsPrevE = Wd.se; X.wsValid = true; }
+      // The wind's own change, along the track: a turn in a steady wind isn't a shear.
+      const dTail = ((Wd.sn - X.wsPrevN) * X.vn + (Wd.se - X.wsPrevE) * X.ve) / gsNow;
+      const fInst = dTail / dt / G + Wd.sd / Math.max(V, 40);
+      X.wsPrevN = Wd.sn; X.wsPrevE = Wd.se;
+      X.wsF += (fInst - X.wsF) * Math.min(1, dt * Math.max(V, 40) / WS_AVG_M);
+      if (X.wsF > WS_F_WARN && !X.tdPending && X.everAirborne && X.airTime > 2 && X.pz - gh < WS_MAX_AGL) X.wsT = WS_HOLD_S;
+      else if (X.wsT > 0) X.wsT = Math.max(0, X.wsT - dt);
+    } else if (X.wsT > 0) X.wsT = Math.max(0, X.wsT - dt);
+
     // ---- ground below the CG ----
-    const g0 = groundFn(X.px, X.py);
-    const gh = g0.h;
     const refZ = X.pz + cgX * R[6];            // ref point is cgX behind the CG along body x
     const aglEst = refZ - GROUND_Z - gh;
     const wowAny = wowN || wowL || wowR;
@@ -284,7 +352,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (ap.ap) {
       const firm = Math.abs(controls.pitch) > 0.5 || Math.abs(controls.roll) > 0.5;
       if (firm) ap.disconnectAp('stick');
-      else if (X.protAlpha || X.protSpeed) ap.disconnectAp('protection');
+      // Decision 7: an autoland always tries, so gusts that dip into the protections don't take it off.
+      else if ((X.protAlpha || X.protSpeed) && !(windOn() && kit.boeing && ap.lateral === 'LOC' && (ap.vertical === 'G/S' || ap.vertical === 'FLARE'))) ap.disconnectAp('protection');
       else if (onGround && !(kit.boeing && kit.boeing.staysOnGround(ap))) ap.disconnectAp('ground');
       else if (controls.law === 'alternate' && Math.abs(phi) > 45 * A.DEG) ap.disconnectAp('attitude');
     }
@@ -304,13 +373,15 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const fuelTotal = X.fuelL + X.fuelR + X.fuelC;
     eng[0].n1 = X.n1L; eng[0].rev = X.revL; eng[0].fuelOk = fuelTotal > 0;
     eng[1].n1 = X.n1R; eng[1].rev = X.revR; eng[1].fuelOk = fuelTotal > 0;
-    engineStep(eng[0], phiFwd, revSel, revCmd, sigma, mach, sqrtTheta, dt);
-    engineStep(eng[1], phiFwd, revSel, revCmd, sigma, mach, sqrtTheta, dt);
+    // A flat rating: up to ISA + 15 the engine makes its thrust as if the air were at ISA for that pressure.
+    const sigmaT = flatSigma(sigma, atm.T);
+    engineStep(eng[0], phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
+    engineStep(eng[1], phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
     X.n1L = eng[0].n1; X.n1R = eng[1].n1; X.revL = eng[0].rev; X.revR = eng[1].rev;
     X.n1tL = eng[0].n1Target; X.n1tR = eng[1].n1Target; X.thrL = eng[0].thrustN; X.thrR = eng[1].thrustN;
     X.ffL = eng[0].ffKgS; X.ffR = eng[1].ffKgS;
     // The N1 the lever asks for here and now (the panel's ring): where the needle settles.
-    X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigma, mach)) : X.n1tL;
+    X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigmaT, mach)) : X.n1tL;
 
     // Spoilers: speed brakes (inhibited in FULL, α prot, TOGA/MCT), ground spoilers.
     const leverIdle = lever <= 0.02;
@@ -337,7 +408,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // ---- aerodynamics (elevator and roll controls handled by the FBW below) ----
     const Vn = Math.max(V, 1);
     cs.alpha = alpha; cs.beta = beta; cs.M = mach;
-    cs.phat = X.p * A.SPAN / (2 * Vn); cs.qhat = X.q * A.MAC / (2 * Vn); cs.rhat = X.r * A.SPAN / (2 * Vn);
+    cs.phat = (X.p - Wd.p) * A.SPAN / (2 * Vn); cs.qhat = X.q * A.MAC / (2 * Vn); cs.rhat = X.r * A.SPAN / (2 * Vn);
     const adot = (alpha - X.prevAlpha) / dt;
     cs.adothat = clamp(adot, -1, 1) * A.MAC / (2 * Vn);
     cs.slat = X.slat; cs.flap = X.flap; cs.gear = X.gearPos; cs.doors = X.gearDoors;
@@ -372,8 +443,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     let peakComp = 0;
     if (aglEst < 15 && X.gearPos > 0.98) {
       kctx.px = X.px; kctx.py = X.py; kctx.pz = X.pz;
-      kctx.u = u; kctx.v = v; kctx.w = w; kctx.p = X.p; kctx.q = X.q; kctx.r = X.r;
+      // The gear rolls on the ground, not in the air: inertial velocities here.
+      kctx.u = R[0] * X.vn + R[3] * X.ve + R[6] * X.vd;
+      kctx.v = R[1] * X.vn + R[4] * X.ve + R[7] * X.vd;
+      kctx.w = R[2] * X.vn + R[5] * X.ve + R[8] * X.vd;
+      kctx.p = X.p; kctx.q = X.q; kctx.r = X.r;
       kctx.steer = X.steer;
+      kctx.tyres = wxC !== null ? wxC.tyres : null;
       for (let i = 0; i < 3; i++) {
         const L = legs[i];
         L.rx = L.bx - cgX; L.ry = -L.by; L.rz = -L.bz;
@@ -388,7 +464,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
     // ---- fly-by-wire: invert the moments for the elevator and the roll controls ----
     E.myOther = M[1];
-    E.lOther = M[0];
+    // v0.4.0: the roll gust is the one moment the law can't see coming, so it isn't inverted away: the wings
+    // feel it, and the roll-rate feedback catches it. Exactly M[0] with no turbulence.
+    E.lOther = M[0] - qS * A.SPAN * A.CL_ROLL.p * (-Wd.p * A.SPAN / (2 * Vn));
     E.elevScale = qS * A.MAC * co.CmElev;
     E.rollScale = qS * A.SPAN * (A.CL_ROLL.aileron * A.AIL_MAX + A.CL_ROLL.spoiler);
     const iasKt = ias / A.KT;
@@ -437,9 +515,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.nzF += (nz - X.nzF) * Math.min(1, dt / 0.1);
     X.fAlong = V > 2 ? (F[0] * u + F[1] * v + F[2] * w) * iv : 0;
     X.prevAlpha = alpha;
-    const iasDotRaw = (ias - X.prevIas) / dt;
+    const iasDotRaw = (iasTrendBase - X.prevIas) / dt;
     X.iasDot += (iasDotRaw - X.iasDot) * Math.min(1, dt / 0.5);
-    X.prevIas = ias;
+    X.prevIas = iasTrendBase;
     X.t += dt;
 
     // ---- fuel: centre tank first, then each engine from its own wing ----
@@ -557,7 +635,24 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       Qt.w = (m10 - m01) / s; Qt.x = (m02 + m20) / s; Qt.y = (m12 + m21) / s; Qt.z = 0.25 * s;
     }
     S.p = X.p; S.q = X.q; S.r = X.r; S.alpha = alpha; S.beta = beta;
-    const V = Math.sqrt(X.vn * X.vn + X.ve * X.ve + X.vd * X.vd);
+    const vnA = X.vn - Wd.n, veA = X.ve - Wd.e, vdA = X.vd - Wd.d;
+    const V = Math.sqrt(vnA * vnA + veA * veA + vdA * vdA);
+    S.altInd = altimeter(S.pos.z); S.sat = atmo.T - 273.15;
+    // The transition reminder: a QNH (other than 1013, which reads the same) still set above the Korean transition
+    // altitude, climbing or level (it stays until STD is set, as on both makers' PFDs), or STD still set descending
+    // below the transition level (both 14,000 ft / FL140: eAIP ENR 1.7).
+    S.baroAlert = !S.onGround && (X.baroStd ? S.altInd < TRANSITION_M && S.vs < -1 : X.baroHpa !== 1013.25 && S.altInd > TRANSITION_M);
+    // The day's air for the screens' Mach conversions: 0 on a standard day, when they use ISA as they always did.
+    const dayAir = wxC !== null && wxC.atmOn;
+    S.airP = dayAir ? atmo.p : 0; S.airA = dayAir ? atmo.a : 0; S.airSigma = dayAir ? atmo.rho / RHO0 : 0;
+    S.wind.x = Wd.e; S.wind.y = Wd.n; S.wind.z = -Wd.d; S.wind.meanX = Wd.meanE; S.wind.meanY = Wd.meanN;
+    S.wind.sfcX = wxC !== null ? wxC.sfE : 0; S.wind.sfcY = wxC !== null ? wxC.sfN : 0;
+    S.wind.gustKt = wxS !== null && wxS.wind.gustKt > wxS.wind.kt ? wxS.wind.gustKt : 0;
+    if (windOn() && X.vn * X.vn + X.ve * X.ve > 1) {
+      let dr = Math.atan2(X.ve, X.vn) - S.hdg;
+      if (dr > Math.PI) dr -= 2 * Math.PI; else if (dr < -Math.PI) dr += 2 * Math.PI;
+      S.drift = dr;
+    } else S.drift = 0;
     S.ias = ias; S.cas = ias; S.tas = V; S.gs = Math.sqrt(X.vn * X.vn + X.ve * X.ve); S.mach = mach; S.vs = -X.vd; S.nz = nz;
     S.gamma = gs + Math.abs(X.vd) > 0.5 ? Math.atan2(-X.vd, gs) : 0;
     // AGL: the lower main-gear tyre above the ground.
@@ -619,6 +714,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     W.sinkRate = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(998 + 1.67 * aglFt);
     W.pullUp = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(1710 + 2.17 * (aglFt - 50));
     W.tooLowGear = air && aglFt < 500 && X.gearPos < 0.99 && ias < 190 * A.KT && vsFpm < 0;
+    W.windshear = X.wsT > 0;
     if (kit.boeing) kit.boeing.updateState(S, X, lc, atm);
     W.master = W.stall || W.overspeed || W.apDisc || W.sinkRate || W.pullUp || W.tooLowGear;
     S.crashed = X.crashed;
@@ -698,17 +794,18 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     }
     massProps();
     computeR();
-    updateState(isaInto(X.pz, atm), casFromTasP(Math.hypot(X.vn, X.ve, X.vd), atm.p, atm.a),
-      Math.hypot(X.vn, X.ve, X.vd) / atm.a, X.prevAlpha, 0, 1, 0, g.h, X.pz - GROUND_Z - g.h);
+    windHere(g.h);
+    const Va = Math.hypot(X.vn - Wd.n, X.ve - Wd.e, X.vd - Wd.d);
+    updateState(atmAt(X.pz, atm), casFromTasP(Va, atm.p, atm.a), Va / atm.a, X.prevAlpha, 0, 1, 0, g.h, X.pz - GROUND_Z - g.h);
     state.gs = Math.hypot(X.vn, X.ve);
-    if (kit.boeing) { kit.boeing.afterReset(X, ap, state, controls, ic); updateState(isaInto(X.pz, atm), state.ias, state.mach, X.prevAlpha, 0, 1, state.gs, g.h, X.pz - GROUND_Z - g.h); }
+    if (kit.boeing) { kit.boeing.afterReset(X, ap, state, controls, ic); updateState(atmAt(X.pz, atm), state.ias, state.mach, X.prevAlpha, 0, 1, state.gs, g.h, X.pz - GROUND_Z - g.h); }
   }
 
   // Steady level flight at the given IAS: α from the lift needed, the stabiliser from the
   // pitching moment, thrust from the drag.
   function trimAirborne(ic, hdg, g) {
     const zRef = ic.z ?? 3000;
-    isaInto(zRef, atm);
+    atmAt(zRef, atm);
     const ias = ic.iasMs ?? 250 * A.KT;
     const V = tasFromCasP(ias, atm.p, atm.a);
     const Mn = V / atm.a;
@@ -737,13 +834,25 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       ths = clamp(ths, -A.THS_DN, A.THS_UP);
     }
     X.ths = ths; X.elev = 0;
-    setEuler(hdg, alpha, 0);
+    // v0.4.0: `hdg` is the track asked for; the aircraft trims in the air mass, crabbed to hold it. With no wind
+    // the crab is exactly 0. The crab is the mean wind's (the review of 2026-11-10: a turbulent gust at the start
+    // gave a crab a few degrees off, so the heading held drifted off the centreline); the aircraft starts in the
+    // whole wind, gusts and all.
+    let crab = 0, wn = 0, we = 0;
+    if (windOn()) {
+      X.px = ic.x || 0; X.py = ic.y || 0; X.pz = zRef;
+      windAt(wxC, X.px, X.py, X.pz, zRef - g.h, X.t, 0, 0, 0, Wd);
+      wn = Wd.n; we = Wd.e;
+      crab = Math.asin(clamp((Wd.meanN * -Math.sin(hdg) + Wd.meanE * Math.cos(hdg)) / V, -0.7, 0.7));
+    }
+    const psi = hdg - crab;
+    setEuler(psi, alpha, 0);
     computeR();
-    X.vn = V * Math.cos(hdg); X.ve = V * Math.sin(hdg); X.vd = 0;
-    X.px = (ic.x || 0) + cgX * Math.sin(hdg) * Math.cos(alpha); X.py = (ic.y || 0) + cgX * Math.cos(hdg) * Math.cos(alpha);
+    X.vn = V * Math.cos(psi) + wn; X.ve = V * Math.sin(psi) + we; X.vd = 0;
+    X.px = (ic.x || 0) + cgX * Math.sin(psi) * Math.cos(alpha); X.py = (ic.y || 0) + cgX * Math.cos(psi) * Math.cos(alpha);
     X.pz = zRef - cgX * R[6];
     // Engines at the N1 that gives that thrust.
-    const sigma = atm.rho / RHO0;
+    const sigma = flatSigma(atm.rho / RHO0, atm.T);
     const toga = togaThrust(sigma, Mn);
     const idleT = A.T_IDLE * Math.pow(sigma, A.LAPSE_SIGMA_EXP) * Math.max(0, 1 - 1.2 * Mn);
     const per = thrust / 2;
@@ -762,7 +871,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     controls.parkingBrake = false;
     X.flt = 1; X.everAirborne = true; X.airTime = 100; X.groundTime = 0;
     X.holdLatched = true; X.gammaRef = 0; X.rollLatched = true; X.phiRef = 0;
-    X.prevAlpha = alpha; X.prevIas = ias; X.nzPrev = 1;
+    X.prevAlpha = alpha; X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : ias; X.nzPrev = 1;
     X.fAlong = 0;
     wowN = wowL = wowR = false;
   }
@@ -771,7 +880,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   function snapshot() {
     const apSnap = {};
     for (const k of AP_FIELDS) apSnap[k] = ap[k];
-    return { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
+    const snap = { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
+    if (wxS) snap.weather = wxS;   // the default weather writes nothing: absent means calm
+    return snap;
   }
   // Changes the aircraft type. The sim's objects stay the same; the core goes back to a fresh
   // one, so call reset() or restore() next.
@@ -787,21 +898,31 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     kit.auto.createAp(core, ap);
     state.type = def.id;
   }
-  function restore(snap) {
+  // keepWeather: the weather set now stays (a rewind or a jump: it's the world's, not the aircraft's).
+  function restore(snap, { keepWeather = false } = {}) {
+    if (!keepWeather) setWeather(snap.weather || null);
     // A save from before v0.3.0 has no type: it's the A321neo.
     setType(snap.type || DEFAULT_TYPE);
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
-    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0 }, snap.core);
+    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
+      ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false } : null) }, snap.core);
     Object.assign(controls, snap.controls);
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
     [wowN, wowL, wowR] = snap.wow;
     events.length = 0;
     massProps(); computeR();
-    isaInto(X.pz, atm);
-    const V = Math.hypot(X.vn, X.ve, X.vd);
+    atmAt(X.pz, atm);
     const g = groundFn(X.px, X.py);
+    windHere(g.h);
+    const V = Math.hypot(X.vn - Wd.n, X.ve - Wd.e, X.vd - Wd.d);
     updateState(atm, casFromTasP(V, atm.p, atm.a), V / atm.a, X.prevAlpha, 0, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
+    // A rewind into air that has changed since the snapshot: the change isn't an acceleration or a shear. (In the
+    // same air nothing is touched, so a restored flight still flies on exactly.)
+    if (keepWeather && JSON.stringify(snap.weather || null) !== JSON.stringify(wxS)) {
+      X.wsValid = false;
+      X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : casFromTasP(V, atm.p, atm.a);
+    }
   }
 
   // v0.3.2: change the load, in flight or on the ground (the Weight window). payloadKg and fuelKg
@@ -848,13 +969,34 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.vn = speed * Math.cos(hdg); X.ve = speed * Math.sin(hdg); X.vd = 0;
     X.p = X.q = X.r = 0;
     computeR();
-    isaInto(X.pz, atm);
-    const V = Math.abs(speed);
+    atmAt(X.pz, atm);
     const g = groundFn(X.px, X.py);
+    windHere(g.h);
+    const V = windOn() ? Math.hypot(X.vn - Wd.n, X.ve - Wd.e, X.vd - Wd.d) : Math.abs(speed);
     updateState(atm, casFromTasP(V, atm.p, atm.a), V / atm.a, 0, 0, 1, V, g.h, X.pz - GROUND_Z - g.h);
   }
 
+  // v0.4.0: the altimeter's setting. setBaro(hPa) takes it off STD; setBaroStd(on); setLocalQnh() is the K key.
+  function setBaro(hpa) { X.baroHpa = clamp(hpa, 900, 1100); X.baroStd = false; state.altInd = altimeter(state.pos.z); }
+  function setBaroStd(on = true) { X.baroStd = !!on; state.altInd = altimeter(state.pos.z); }
+  function setLocalQnh() { setBaro(wxS ? wxS.qnh : 1013.25); }
+  // In flight it applies at once: the aircraft doesn't move, it's flying in the new air.
+  function applyWeather(s) {
+    if (wxS === null && (!s || isDefaultWeather(s))) return;   // calm to calm: nothing at all happens
+    setWeather(s);
+    X.wsValid = false;
+    massProps(); computeR();
+    const g = groundFn(X.px, X.py);
+    atmAt(X.pz, atm); windHere(g.h);
+    const V = Math.hypot(X.vn - Wd.n, X.ve - Wd.e, X.vd - Wd.d);
+    const ias = casFromTasP(V, atm.p, atm.a);
+    // The new air isn't an acceleration: without this the speed-trend logic reads the change as one and trips the protections.
+    X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : ias;
+    updateState(atm, ias, V / atm.a, X.prevAlpha, state.beta, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
+  }
+
   return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad,
+    setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, get weather() { return wxS; }, get baro() { return { hpa: X.baroHpa, std: X.baroStd }; },
     get type() { return typeDef; }, get leverClimb() { return LEVER_CL; }, _core: X };
 }
 

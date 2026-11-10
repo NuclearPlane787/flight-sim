@@ -212,6 +212,7 @@ export function createTrees(scene, uniforms, chunks) {
           #include <logdepthbuf_fragment>
           vec3 n = normalize(vNormal);
           vec3 alb = vKind < 0.5 ? vec3(0.05, 0.035, 0.02) : vCol;
+          if (uSnow > 0.0) alb = mix(alb, vec3(0.45, 0.48, 0.52), uSnow * 0.5 * smoothstep(0.3, 0.85, n.y));   // v0.4.0: snow on the canopies
           float ndl = max(dot(n, uSunDir), 0.0);
           vec3 col = alb * (uSunColor * ndl * 2.4 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1);
           gl_FragColor = vec4(applyHaze(col, vRel), 1.0);

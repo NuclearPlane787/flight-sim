@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flight Sim: Weather tab dev page</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../src/ui/ui.css">
+  <link rel="stylesheet" href="../src/ui/sky-window.css">
+  <style>
+    #app { background: linear-gradient(#3a6fa8, #9cc3e3 55%, #5b6b4a 55%, #2f3a26); }
+    .mock { position: absolute; background: rgba(3, 5, 7, 0.84); border: 1px solid #2b3238; border-radius: 6px;
+      color: #5d6c78; font: 12px var(--font-mono); display: grid; place-items: center; }
+  </style>
+</head>
+<body>
+  <!-- The L window's three tabs without WebGL, against a mock of the sim's weather, and the setup.
+       window.__win is the Weather window, __show(tab) the L window's showLTab, __applied every onapply,
+       __keys the keys that reached the game's window listener; __setup the flight setup. -->
+  <div id="app">
+    <div class="mock" data-m="pfd">PFD</div><div class="mock" data-m="nd">ND</div><div class="mock" data-m="eng">ENG</div>
+    <div id="skywin-root"></div>
+    <div id="setup-root"></div>
+  </div>
+  <script type="module">
+    import { createClock, kstMs } from '../src/clock.js';
+    import { createSkyWindow } from '../src/ui/sky-window.js';
+    import { createLoadWindow, TAB_ICONS } from '../src/ui/load-window.js';
+    import { createWeatherWindow, WEATHER_TAB, addWeatherTab } from '../src/ui/weather-window.js';
+    import { weatherContext } from '../src/sim/weather-presets.js';
+    import { isDefaultWeather, normalizeWeather } from '../src/sim/weather.js';
+    import { createSetup } from '../src/ui/setup.js';
+
+    const airports = await Promise.all(['RKSS', 'RKPC', 'RKSI'].map((i) => fetch(`../data/airports/${i}.json`).then((r) => r.json())));
+    const plan = { dest: 'RKPC', arrRunway: '07' };
+
+    function layout() {
+      const W = innerWidth, H = innerHeight, fcuH = Math.max(38, Math.min(56, H * 0.052)), top = fcuH + 16, pad = 12;
+      const s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560)), sr = Math.min(s, (H - fcuH - 16 - pad * 2 - 8) / 1.62);
+      const put = (n, x, y, w, h) => Object.assign(document.querySelector(`[data-m="${n}"]`).style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      put('pfd', pad, top, s, s); put('nd', W - sr - pad, top, sr, sr); put('eng', W - sr - pad, top + sr + 8, sr, sr * 0.62);
+    }
+    layout(); addEventListener('resize', layout);
+
+    const root = document.getElementById('skywin-root');
+    const clock = createClock({ ms: kstMs(2026, 11, 10, 13, 0), speed: 1, running: false });
+    const skyWin = createSkyWindow(root, { clock, place: () => ({ lat: 33.5, lon: 126.5 }),
+      tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }, WEATHER_TAB] });
+    const L = { PAX_MAX: 244, PAX_KG: 84, CARGO_MAX: 6000, FUEL_MAX: 23000, OEW: 50000, MZFW: 75000, MTOW: 97000, MLW: 79000 };
+    const loadWin = createLoadWindow(root, { get: () => ({ limits: L, pax: 190, cargoKg: 1500, fuelKg: 9000, gross: 80000, cgMac: 0.27, crashed: false }), onapply: () => ({ ok: true, text: 'done' }) });
+    addWeatherTab(loadWin.el);
+
+    let wx = null;
+    window.__applied = [];
+    const weatherWin = createWeatherWindow(root, {
+      get: () => ({ settings: wx, ctx: weatherContext(airports, plan), crashed: !!window.__crashed }),
+      onapply: (s) => { window.__applied.push(s); wx = !s || isDefaultWeather(s) ? null : normalizeWeather(s); },
+    });
+    window.__setWx = (s) => { wx = s; };
+
+    const wins = { sky: skyWin, load: loadWin, weather: weatherWin };
+    let tab = 'weather';
+    window.__tab = () => tab;
+    function show(t) { for (const k in wins) if (k !== t && wins[k].isOpen) wins[k].close(); tab = t; wins[t].open(); wins[t].update(); }
+    skyWin.ontab = loadWin.ontab = weatherWin.ontab = show;
+    window.__show = show;
+    window.__win = weatherWin;
+    window.__keys = [];
+    addEventListener('keydown', (e) => { if (e.code === 'KeyL' && !e.repeat && !/INPUT|SELECT/.test(e.target.tagName)) { e.preventDefault(); if (wins[tab].isOpen) wins[tab].close(); else show(tab); } }, true);
+    addEventListener('keydown', (e) => { if (!/INPUT|SELECT/.test(e.target.tagName)) window.__keys.push(e.code); });   // as input.js
+    show('weather');
+
+    const setup = createSetup(document.getElementById('setup-root'), { airports });
+    window.__setup = setup;
+    window.__showSetup = async (defaults, opts) => { window.__plan = undefined; window.__plan = await setup.show(defaults, opts); };
+
+    setInterval(() => { for (const k in wins) wins[k].update(); }, 100);
+    await document.fonts.ready;
+    window.__ready = true;
+  </script>
+</body>
+</html>

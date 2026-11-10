@@ -74,7 +74,12 @@ const COMMON_VERT = /* glsl */ `
   }`;
 
 const LIGHT_GLSL = /* glsl */ `
-  vec3 groundLight(vec3 col) { return col * (uSunColor * max(uSunDir.y, 0.0) * 2.4 + uSkyAmb * 1.1); }
+  // v0.4.0: the pavement under the weather: it follows the runway's state (white when the runways are, cleared and dark otherwise).
+  vec3 groundLight(vec3 col) {
+    if (uRwySnow > 0.0) col = mix(col, vec3(0.42, 0.44, 0.48), 0.72 * uRwySnow);
+    else if (uWet > 0.0) col *= 1.0 - 0.35 * uWet;
+    return col * (uSunColor * max(uSunDir.y, 0.0) * 2.4 + uSkyAmb * 1.1);
+  }
   // Night light on the pavement at loc (map m from the airport origin), scene position p:
   // the floodlights' pools and the aircraft's lamps (multiply by the albedo).
   uniform sampler2D uFlood;
@@ -263,6 +268,7 @@ const BLDG_FRAG = /* glsl */ `
     }
     if (bandF > 0.5 && bandF < 1.5) alb *= 0.62;   // the roofline band
     float ndl = max(dot(n, uSunDir), 0.0);
+    if (uSnow > 0.0) alb = mix(alb, vec3(0.55, 0.57, 0.60), uSnow * 0.75 * smoothstep(0.55, 0.9, n.y));   // v0.4.0: snow on the roofs
     vec3 col = alb * (uSunColor * ndl * 2.2 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1);
     // Glass reflects the sky.
     vec3 vd = vRel / max(dist, 1e-3);

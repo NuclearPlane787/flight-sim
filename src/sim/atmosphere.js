@@ -60,3 +60,37 @@ export function mach(tas, h) { isaInto(h, tmp); return tas / tmp.a; }
 export function machFromIas(ias, h) { isaInto(h, tmp); return tasFromCasP(ias, tmp.p, tmp.a) / tmp.a; }
 // Calibrated airspeed for a Mach number at altitude h.
 export function iasFromMach(M, h) { isaInto(h, tmp); return casFromTasP(M * tmp.a, tmp.p, tmp.a); }
+
+// ---- v0.4.0: a day that isn't standard ----
+
+// Fills `out` as isaInto does, for a column dT warmer than ISA at every height, with the pressure qnhPa at
+// sea level: hydrostatic through that column. Colder air packs the pressure surfaces down, so an altimeter
+// reads high aloft on a cold day, as a real one does.
+export function columnInto(h, dT, qnhPa, out) {
+  const Ts = T0 + dT;
+  let T, p;
+  if (h < H_TROP) {
+    T = Ts + LAPSE * h;
+    p = qnhPa * Math.pow(T / Ts, EXP_TROP);
+  } else {
+    T = T_TROP + dT;
+    const Tt = T;
+    p = qnhPa * Math.pow(Tt / Ts, EXP_TROP) * Math.exp(-G0 * (h - H_TROP) / (R_AIR * Tt));
+  }
+  out.T = T;
+  out.p = p;
+  out.rho = p / (R_AIR * T);
+  out.a = Math.sqrt(GAMMA * R_AIR * T);
+  return out;
+}
+
+// The height in the standard atmosphere at which the pressure is p (m): what an altimeter's capsule measures.
+export function pressureAltitude(p) {
+  if (p > P_TROP) return (T0 / LAPSE) * (Math.pow(p / P0, 1 / EXP_TROP) - 1);
+  return H_TROP + (R_AIR * T_TROP / G0) * Math.log(P_TROP / p);
+}
+
+// The altimeter's reading (m) at static pressure p with the baro set to baroPa.
+export function indicatedAltitude(p, baroPa) {
+  return pressureAltitude(p) - pressureAltitude(baroPa);
+}

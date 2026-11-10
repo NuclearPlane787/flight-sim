@@ -188,6 +188,9 @@ export function createTerrain(scene, uniforms, chunks) {
         float beach = (1.0 - smoothstep(10.0, 35.0 + aa, sea)) * (1.0 - smoothstep(4.0, 10.0, vRawH)) * (1.0 - urban);
         alb = mix(alb, mix(vec3(0.33, 0.29, 0.21), vec3(0.25, 0.22, 0.16), smoothstep(0.0, 12.0, sea) * 0.0 + tex2 * 0.3), beach);
 
+        // v0.4.0: wet ground darkens; snow whitens the land (the forests less: it falls through; steep rock stays bare).
+        if (uWet > 0.0) alb *= 1.0 - 0.28 * uWet;
+        if (uSnow > 0.0) alb = mix(alb, vec3(0.50, 0.53, 0.58) * (0.92 + 0.12 * tex2), uSnow * (1.0 - 0.5 * forest) * (1.0 - 0.45 * urban) * (1.0 - smoothstep(0.6, 0.85, slope)));
         float ndl = max(dot(n, uSunDir), 0.0);
         vec3 light = uSunColor * ndl * 2.4 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1;
         // The A321's landing and taxi lamps (glsl.js), a pool on the grass and fields; lost in

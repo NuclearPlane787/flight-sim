@@ -21,7 +21,7 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 
 const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
-let r;
+let r, wx;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
@@ -33,6 +33,7 @@ try {
   await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html' + (query.size ? '?' + query : ''));
   await page.waitForFunction(() => typeof window.runAudio === 'function', null, { timeout: 30000 });
   r = await page.evaluate(() => window.runAudio());
+  wx = await page.evaluate(() => window.runWeather());   // v0.4.0
   check('no page errors', errors.length === 0, errors.join(' | '));
 } finally {
   await browser.close();
@@ -102,6 +103,28 @@ check('stall warning clearly over TOGA inside (+6 dB)', S.stall.rms - S.stallBas
 check('paused is silent (< -80 dB)', S.paused.rms < -80, `${f1(S.paused.rms)} dB (before ${f1(S.pausedBefore.rms)})`);
 check('time compression: world gone, warnings quieter (10+ dB down)', S.fastBefore.rms - S.fast.rms > 10 && S.fast.rms > -60, `${f1(S.fastBefore.rms)} → ${f1(S.fast.rms)} dB`);
 check('update() under 0.05 ms on average', r.timing.avgMs < 0.05, `${r.timing.avgMs.toFixed(4)} ms`);
+
+// ---- v0.4.0: the weather ----
+const X = wx.seg, T = wx.thunder, near = T['wx-near'], cold = T['wx-near-cold'], far = T['wx-far'];
+console.log(`\nweather (v0.4.0):`);
+console.log(`rain heavy in ${f1(X.rainIn.rms)} dB (band ${f1(X.rainIn.bandDb)}, centroid ${Math.round(X.rainIn.centroid)} Hz); out ${f1(X.rainOut.rms)} (centroid ${Math.round(X.rainOut.centroid)}); light in ${f1(X.rainLight.rms)}; no rain in ${f1(X.noRain.rms)}; approach ${f1(X.noRainAppr.rms)} → ${f1(X.rainAppr.rms)}`);
+for (const [k, v] of Object.entries(T)) console.log(`${k.padEnd(14)} flash ${v.flash.toFixed(2)} s, ${(v.d / 1000).toFixed(2)} km, delay predicted ${v.delay.toFixed(2)} s, measured ${v.delayMeasured.toFixed(2)} s, length ${v.lenS.toFixed(1)} s, centroid ${Math.round(v.centroid)} Hz, peak ${v.peak.toFixed(3)}`);
+console.log(`gust swing ${f1(X.gustSwing)} dB (no weather ${f1(X.noGustSwing)} dB); siren ${f1(X.sirenBase.rms)} → ${f1(X.siren.rms)} dB`);
+const scenW = Object.values(wx.scen);
+check('weather: no NaN, no clipping, no clicks', scenW.every((v) => v.nan === 0 && v.peak < 0.98 && v.click.ratio < 8),
+  Object.entries(wx.scen).filter(([, v]) => v.nan || v.peak >= 0.98 || v.click.ratio >= 8).map(([k, v]) => `${k} peak ${v.peak.toFixed(3)} click ${v.click.ratio}@${v.click.at}`).join(', '));
+check('rain: heavy in the cockpit is well over the bed (+10 dB)', X.rainIn.rms - X.noRain.rms > 10, `${f1(X.noRain.rms)} → ${f1(X.rainIn.rms)} dB`);
+check('rain: heavy heard over an approach in the cockpit (+1.5 dB)', X.rainAppr.rms - X.noRainAppr.rms > 1.5, `${f1(X.noRainAppr.rms)} → ${f1(X.rainAppr.rms)} dB`);
+check('rain: 3+ dB louder in the cockpit than outside', X.rainIn.rms - X.rainOut.rms > 3, `${f1(X.rainIn.rms)} vs ${f1(X.rainOut.rms)} dB`);
+check('rain: light rain 6+ dB under heavy', X.rainIn.rms - X.rainLight.rms > 6, `${f1(X.rainLight.rms)} vs ${f1(X.rainIn.rms)} dB`);
+check('rain: its energy is in the 1.5–12 kHz band (> -3 dB of the total)', X.rainIn.bandDb > -3 && X.rainOut.bandDb > -3, `in ${f1(X.rainIn.bandDb)}, out ${f1(X.rainOut.bandDb)} dB`);
+check('rain: duller in the cockpit than outside (centroid lower)', X.rainIn.centroid < X.rainOut.centroid, `${Math.round(X.rainIn.centroid)} vs ${Math.round(X.rainOut.centroid)} Hz`);
+for (const [k, v] of Object.entries(T)) check(`thunder delay: ${k} heard ${v.delay.toFixed(2)} s after the flash, ±0.25 s`, Math.abs(v.delayMeasured - v.delay) < 0.25, `${v.delayMeasured.toFixed(2)} s measured, ${v.delay.toFixed(2)} s predicted (${(v.d / 1000).toFixed(2)} km)`);
+check('thunder delay: the far strike later in proportion to its distance (±5 %)', Math.abs(far.delayMeasured / near.delayMeasured - far.delay / near.delay) < 0.05 * (far.delay / near.delay), `${f1(far.delayMeasured / near.delayMeasured)}x (distance ratio ${f1(far.d / near.d)}x)`);
+check('thunder delay: colder air is slower (the sound\'s speed from the temperature)', cold.delayMeasured > near.delayMeasured, `+15 °C ${near.delayMeasured.toFixed(2)} s, −20 °C ${cold.delayMeasured.toFixed(2)} s`);
+check('thunder: near loud and short, far quieter, longer and duller', far.peakDb < near.peakDb - 6 && far.lenS > near.lenS * 1.3 && far.centroid < near.centroid * 0.7, `near ${f1(near.peakDb)} dB, ${near.lenS.toFixed(1)} s, ${Math.round(near.centroid)} Hz; far ${f1(far.peakDb)} dB, ${far.lenS.toFixed(1)} s, ${Math.round(far.centroid)} Hz`);
+check('gusts: the wind\'s noise swings 6+ dB, 4+ dB more than without the weather', X.gustSwing > 6 && X.gustSwing - X.noGustSwing > 4, `${f1(X.gustSwing)} dB (no weather ${f1(X.noGustSwing)} dB)`);
+check('Boeing siren over the quiet cockpit (+15 dB)', X.siren.rms - X.sirenBase.rms > 15, `${f1(X.sirenBase.rms)} → ${f1(X.siren.rms)} dB`);
 
 const failed = results.filter((x) => !x).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

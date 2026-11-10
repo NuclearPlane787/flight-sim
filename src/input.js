@@ -22,6 +22,7 @@ const ACTIONS = {
   KeyM: 'map', KeyV: 'view', KeyP: 'pushback', Escape: 'pause', F3: 'perf', Backquote: 'perf',
   Digit6: 'flap0', Digit7: 'flap1', Digit8: 'flap2', Digit9: 'flap3', Digit0: 'flap4',
   KeyT: 'rewind',
+  KeyK: 'localQnh',
   // v0.3.0: the flap lever a step at a time (every type; a Boeing has more detents than keys).
   BracketLeft: 'flapUp', BracketRight: 'flapDown',
   // The Boeings' TO/GA switches (nothing on the A321, whose TO/GA is the lever).

@@ -14,6 +14,7 @@
 // A touchdown that isn't on a runway costs 2.3 (×0.1) more, and says so.
 
 import { GROUND_Z } from './geometry.js';
+import { gridToMag } from './world/frame.js';
 
 const FT = 3.28084;
 const DEG = 180 / Math.PI;
@@ -33,6 +34,27 @@ export function runwayFrame(end, other) {
 export function alongCross(rf, x, y) {
   const rx = x - rf.x, ry = y - rf.y;
   return { along: rx * rf.ux + ry * rf.uy, cross: rx * rf.uy - ry * rf.ux };
+}
+
+// v0.4.0: the wind at touchdown, as the tower gives it (the surface wind at 10 m: magnetic, "from", knots, and the
+// gusts' peak, gustKt, 0 for none), with its parts along and across the runway landed on (rf: its frame, or null).
+// head is + for a headwind; side is the side the wind comes from. (The review of 2026-11-10 moved it from the mean
+// wind at the aircraft's height, which read about 13 kt in a 15 kt wind, to the tower's figure, which the panel and
+// its METAR line give.) The score's costs don't use it: a crosswind is harder, not scored differently.
+export function windAtTouchdown(s, rf) {
+  const w = s.wind;
+  if (!w) return null;
+  const mx = w.sfcX ?? w.meanX, my = w.sfcY ?? w.meanY, ms = Math.hypot(mx, my);
+  if (ms < 0.25) return { fromDeg: 0, kt: 0, gustKt: 0, head: 0, cross: 0, side: '' };
+  const fromDeg = gridToMag(Math.atan2(-mx, -my), s.pos.x, s.pos.y) * 180 / Math.PI;
+  const out = { fromDeg, kt: ms * 1.943844, gustKt: w.gustKt || 0, head: 0, cross: 0, side: '' };
+  if (rf) {
+    const along = mx * rf.ux + my * rf.uy, across = mx * rf.uy - my * rf.ux;
+    out.head = -along * 1.943844;
+    out.cross = Math.abs(across) * 1.943844;
+    out.side = out.cross < 0.5 ? '' : across > 0 ? 'L' : 'R';
+  }
+  return out;
 }
 
 // The aiming point per ICAO Annex 14 by available landing distance.
@@ -311,6 +333,7 @@ export function createScorer() {
           td = { vsFpm: -e.vsMs * 60 * FT, g: e.g, along: ac.along, cross: ac.cross,
             bank: Math.abs(e.bank) * DEG, pitch: e.pitch * DEG, ias: s.ias * 1.943844, t: s.t, onRunway: !!rf,
             surface: e.surface || 'runway',
+            wind: windAtTouchdown(s, rf),
             approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0, groundZ) : null };
           peakG = e.g;
         } else if (e.type === 'touchdown' && td && !result) {

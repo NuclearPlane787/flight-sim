@@ -4,7 +4,7 @@ Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D airliner sim of Sout
 
 **Picking the game up? Read `HANDOFF.md` first:** where things stand, what's next (v0.2.0's decisions), and how the Cowork sessions checked their work (`tests/cloud/`).
 
-**Building v0.3.0 overnight? `V030.md` is the brief:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
+**Briefing a Claude Code run? `V040.md` (v0.4.0, the weather) is the latest brief to model it on:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
 
 ## Files
 
@@ -13,6 +13,7 @@ Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D airliner sim of Sout
 | `HANDOFF.md` | Where things stand, what's next, and how to work on the game from a Cowork session. Read it first. |
 | `V020.md` | The brief for v0.2.0 (the main menu and scenarios, then night), an overnight Claude Code run. |
 | `V030.md` | The brief for v0.3.0 (aircraft types, then the Boeing 787-9 and 777-300ER), an overnight Claude Code run. |
+| `V040.md` | The brief for v0.4.0 (the weather), a Claude Code run on the Mac. |
 | `PLAN.md` | The design: Shane's decisions (final) and how each part is built. The spec for everything. |
 | `STATUS.md` | The progress log. Append a checkpoint after every step, and read it after any context compaction. |
 | `ROADMAP.md` | Milestones M1–M3 with a Done column, and the future additions. |
@@ -39,7 +40,8 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **v0.3.0** (2026-11-04, an overnight Claude Code run; `V030.md` was the brief): aircraft types (`src/sim/types.js`, `src/type-assets.js`, `useType()` in `main.js`), with the A321neo unchanged (`tests/golden-a321.test.mjs`), then the Boeing 787-9 and 777-300ER: their numbers (`src/sim/b787-9.js`, `b777-300er.js`), Boeing's law and autoflight (`fbw-boeing.js`, `autopilot-boeing.js`), `src/widebody*.js`, `src/cockpit-boeing.js`, `src/ui/boeing/`, `src/audio/engine-sounds.js`, code E stands (`standsFor()`). `STATUS.md` has the evidence and what's weak.
 - **v0.3.1** (2026-11-08, a Cowork session): Shane's four fixes. The main gear carried by fixed structure with the flaps out (each inboard flap's leading edge behind the leg: `FLAP_IN_LE_X` in `aircraft.js`, `inboardFlapLE()` in `widebody.js`; the A321's wing 1.03 m aft, to Airbus's drawing), spoilers that overhang the flaps over a fixed shroud, slat tracks, rounded noses, flap track fairings that hinge; Cockpit (1) swaps seats again (`selectView()` in `main.js`); the engines about 7 dB up in the cockpit (`MIX`, `INSIDE_LP` in `audio/synth.js`); the Boeings' gear doors two-sided (`slab()` in `aircraft.js`).
 - **v0.3.2** (2026-11-08, the same Cowork session): Shane's one change, then two more. The Boeings' MCP altitude goes to 45,000 ft, from 43,000, past their 43,100 ft ceiling on purpose (`ALT_TOP` in `ui/boeing/mcp.js`, `setAlt()` in `sim/autopilot-boeing.js`; the ceiling, `MAX_ALT_FT`, is data only). Duplicate a scenario (`duplicate()` and `copyName()` in `scenarios.js`, the Load list's Duplicate in `ui/menu.js`, the pause menu's Save a copy, `saveCopy()` in `main.js`). The weights in flight: the L window's Weight tab (`src/ui/load-window.js`, beside the Sky window, which takes `tabs`), and `sim.setLoad()`; the load's parts and the fuel added live in the sim's core, so saves, rewinds and copies carry them.
-- **Next:** nothing is decided. The future additions are in `ROADMAP.md`, with v0.3.0's leftovers in their own section.
+- **v0.4.0** (2026-11-10, a Claude Code run in two sittings, briefed and reviewed by a Cowork session; `V040.md` was the brief): the weather. The settings and the wind field (`src/sim/weather.js`: the mean wind by height, gusts, Dryden turbulence, shear and microbursts, all functions of position and time, seeded, in the snapshot), the air (`columnInto()` and `indicatedAltitude()` in `sim/atmosphere.js`; the flat rating, the air-relative velocity and the windshear detector in `sim/sim.js`), the Boeings flying the track and decrabbing (`sim/autopilot-boeing.js`), the runways' state (`RUNWAY_TYRES`, `k.tyres` in `sim/gear.js`), the presets and the METAR line (`sim/weather-presets.js`), the Weather tab (`ui/weather-window.js`), the screens' wind and BARO, K, the wind at touchdown (`score.js`), the look (the haze as uniforms in `world/sky.js` and `glsl.js`, `world/clouds.js`, `world/precip.js`, wet runways in `world/airports.js`) and the sound (`audio/synth.js`). The review set the altimeter to the day's QNH at each flight's start, held the crab on a final start, flat-rated the engines on cold days too, kept the transition reminder on in level flight, and put the tower's wind on the card. Calm is v0.3.2 exactly: the golden flight to 1e-9, and clear weather draws as v0.3.2 did.
+- **Next:** v0.5.0 in `ROADMAP.md`'s version plan (the parts model and a first warehouse), taken from start to finish by a new session; `HANDOFF.md`'s first section is its handoff. `ROADMAP.md`'s "The long term" (Shane, 2026-11-10: MSFS, KSP and Besiege) has the plan after it, to v0.18.0.
 
 ## Versions, Updates.md and pushing
 
@@ -54,9 +56,15 @@ This is the same system as Satisfactory's.
   - log the details in `STATUS.md`.
 - **The commit's title is the version number alone** (`v0.1.1`). What changed lives in `Updates.md`.
 - **Shane commits and pushes,** with `sh tools/push.sh v0.1.1` from this folder. The repository is public: github.com/NuclearPlane787/flight-sim. Agents never run git here.
-- **Who builds a version** (Shane, 2026-11-01: "if a job is very big, it is probably better to hand it to a Claude Code agent. ... This is for when you increment the second decimal. For the third decimal, doing it directly from cowork is fine."):
-  - a patch (the third decimal, such as v0.1.4) is built directly in a Cowork session;
-  - a minor version (the second decimal, such as v0.2.0) goes to a Claude Code agent on the Mac. A Cowork session writes its brief (Shane's decisions, the scope and a definition of done) and gives Shane the starting prompt. The agent starts only once the last patch is pushed, so two agents never edit the same files.
+- **Who builds a version is a judgment per job.** Shane, 2026-11-01: "if a job is very big, it is probably better to hand it to a Claude Code agent. ... This is for when you increment the second decimal. For the third decimal, doing it directly from cowork is fine." And on 2026-11-10: "Note that the second decimal Claude Code thing is more a suggestion than a rule. Whether the job is such that a CC session would work better if handed to them is your judgment to make."
+  - A long, unattended build that wants the Mac's own GPU and Chrome for its checks (most second-decimal versions) suits a Claude Code run on the Mac: the session writes its brief (Shane's decisions, the scope and a definition of done) and gives Shane the starting prompt.
+  - A focused change (most patches) is done directly in the Cowork session.
+  - A run starts only once the last version is pushed, so two agents never edit the same files.
+- **One session takes an update from end to end** (Shane, 2026-11-10: "I would rather a new session work completely from end to end of an update."). A new session starts each update and:
+  - settles its scope with Shane;
+  - builds it, or briefs a Claude Code run, gives Shane the starting prompt and reviews what the run did;
+  - checks it, fixes what's wrong, writes it up, and hands it to Shane to push;
+  - last, rewrites `HANDOFF.md`'s first section for the next session.
 - **What a public repository rules out:**
   - third-party documents (the Airbus and EASA PDFs stay git-ignored);
   - absolute paths with the Mac's user name (build paths from `__file__` or `import.meta.url`);

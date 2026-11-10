@@ -268,6 +268,7 @@ export function createCities(scene, uniforms, chunks) {
         } else {
           alb = vRoof;
         }
+        if (uSnow > 0.0) alb = mix(alb, vec3(0.55, 0.57, 0.60), uSnow * 0.75 * smoothstep(0.55, 0.9, n.y));   // v0.4.0: snow on the roofs
         float ndl = max(dot(n, uSunDir), 0.0);
         vec3 col = alb * (uSunColor * ndl * 2.2 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1) + glow;
         gl_FragColor = vec4(applyHaze(col, vRel), 1.0);

@@ -222,7 +222,7 @@ export function createFbwBoeing(A) {
         boSpdCmd: 0, boTogaSpd: 0,                   // the speed the AP and A/T work to, m/s
         boHoldHdg: 0, boHoldLatched: false,          // HDG HOLD
         boTrack: 0,                                  // TO/GA: the track held
-        boFlareTau: 0, boRollout: false, boRolloutYaw: 0, boYawClear: false,
+        boFlareTau: 0, boRollout: false, boRolloutYaw: 0, boYawClear: false, boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false,
       };
     },
 
@@ -240,7 +240,7 @@ export function createFbwBoeing(A) {
       X.boGam = state.gamma;
       X.boHoldHdg = state.hdg; X.boHoldLatched = true; X.boTrack = state.hdg;
       X.boAltTgt = ap.altFt * A.FT;
-      if (ic.ap && ic.ap.ap && ap.vertical === 'ALT') X.boAltTgt = state.pos.z;
+      if (ic.ap && ic.ap.ap && ap.vertical === 'ALT') X.boAltTgt = state.altInd;
       X.boSpdCmd = ap.spdKt * KT;
     },
 
@@ -268,7 +268,10 @@ export function createFbwBoeing(A) {
 
     // After apStep: ROLLOUT steers through the pedals' control; once it ends, they let go once.
     applyControls(X, controls) {
+      if (X.boRolloutRoll && X.boRollout) { controls.roll = X.boRolloutRoll; X.boRollHeld = true; }
+      else if (X.boRollHeld) { controls.roll = 0; X.boRollHeld = false; }
       if (X.boRollout) controls.yaw = X.boRolloutYaw;
+      else if (X.boAlign) controls.yaw = X.boAlignYaw;
       else if (X.boYawClear) { controls.yaw = 0; X.boYawClear = false; }
     },
   };

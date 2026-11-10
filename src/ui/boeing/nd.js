@@ -1,12 +1,21 @@
 // The Boeings' ND, MAP mode: the compass arc across the top with the heading in a box, a white
 // aircraft triangle with its track line, dashed range arcs, the magenta route, airports as cyan
-// circles. Heading up, as the A321's (a real one is track up by default; with no wind they're the same).
+// circles. Heading up, as the A321's (a real one is track up by default), so in a crosswind the track
+// line leans off the top of the arc by the drift.
 //
 // Same interface as ../nd.js: createBoeingNd(cv, { airports, coast }) -> { range, setRange, zoom,
 // cycle, coast, draw(view) }, and it reads the same view (waypoints, dest, taxiRoute).
 
 import { C, font, KT, NM, DEG, clamp, wrap360, angDiff, magDeg, airportList, thresholdOf, traceRings, route } from '../common.js';
-import { ND_RANGES } from '../nd.js';
+import { ND_RANGES, windReadout, drawWindArrow, WIND_MIN_TAS_KT } from '../nd.js';
+
+// The wind's digits read above 100 kt TAS and blank in calm air; the arrow goes under 6 kt.
+const ARROW_MIN_KT = 6;
+export function boeingWindText(w, tasKt) {
+  if (!w || tasKt < WIND_MIN_TAS_KT || w.kt < 1) return '';
+  return `${String(w.dirDeg).padStart(3, '0')}°/ ${w.kt}`;
+}
+export const boeingWindArrow = (w, tasKt) => !!w && tasKt >= WIND_MIN_TAS_KT && w.kt >= ARROW_MIN_KT;
 
 export function createBoeingNd(cv, { airports, coast }) {
   const { ctx } = cv;
@@ -189,7 +198,7 @@ export function createBoeingNd(cv, { airports, coast }) {
     ctx.fillStyle = '#000';
     ctx.beginPath(); ctx.moveTo(cx, cy - 0.006 * s); ctx.lineTo(cx - 0.024 * s, cy + 0.052 * s); ctx.lineTo(cx + 0.024 * s, cy + 0.052 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
 
-    // Top left: GS and TAS (no wind is modelled, so no wind readout).
+    // Top left: GS and TAS, then the wind's direction/speed and its arrow (Boeing's way).
     ctx.textAlign = 'left';
     const row = (t, v, x, y) => {
       ctx.fillStyle = C.white; ctx.font = font(s * 0.028); ctx.fillText(t, x, y);
@@ -198,6 +207,9 @@ export function createBoeingNd(cv, { airports, coast }) {
     };
     row('GS', String(Math.round(st.gs * KT)), 0.022 * s, 0.04 * s);
     row('TAS', String(Math.round(st.tas * KT)), 0.022 * s, 0.085 * s);
+    const wind = windReadout(st.wind, px, py), tasKt = st.tas * KT, wt = boeingWindText(wind, tasKt);
+    if (wt) { ctx.fillStyle = C.white; ctx.font = font(s * 0.036); ctx.fillText(wt, 0.022 * s, 0.13 * s); }
+    if (boeingWindArrow(wind, tasKt)) drawWindArrow(ctx, 0.05 * s, 0.185 * s, wind.goingRad - h, 0.055 * s, C.white, Math.max(1.5, s * 0.004));
     // Top right: the next point, its distance and the time to the destination.
     if (dest) {
       let dist = 0, ax = px, ay = py;

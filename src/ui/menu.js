@@ -368,6 +368,7 @@ const KEYS = [
   ['T', 'rewind 30 s (paused or crashed)', 'P', 'pushback (= speeds it up)'],
   ['FCU window', 'scroll it, or click, type, Enter', 'map', 'click the bright path (AP on) to jump'],
   ['V', 'next view', 'Esc', 'pause menu'],
+  ['K', 'set the altimeter to the local QNH', '', ''],
 ];
 
 // Keys only one family of aircraft has (types.js `family`), in the same four cells as KEYS, under its own

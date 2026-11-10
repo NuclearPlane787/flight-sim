@@ -1583,3 +1583,305 @@ Worked in the workspace copy (it matched the Mac's v0.3.2 tree) and synced to th
 **Written up:** `Updates.md` (v0.3.2's entry, retitled), `README.md` (scenarios, the weights, the keys, the code map), `AGENTS.md` (State), `HANDOFF.md` (the table, the evidence, "v0.3.2: 45,000 ft, Duplicate, the Weight tab", the cloud tools), `ROADMAP.md` (found after v0.3.1; seen while building v0.3.2).
 
 **Next:** Shane pushes with `sh tools/push.sh v0.3.2`, then "Empty Cache and Hard Reload" (a plain reload can mix the old and new modules).
+
+## 2026-11-10, 01:50 KST: the long-term plan (Cowork session, the second agent)
+
+v0.3.2 is pushed (`45e495f`). Shane set the game's direction and asked for it in the roadmap: "As a general thing, I want it to be a mix of MSFS (for the visuals and groundwork) + Kerbal Space Program (for the sandbox) + Besiege (for the physical realism) ... I won't copy game assets or anything one to one, just morphing the 'ideas' to fit my own." His seven ideas: weather with a control panel; a warehouse for changing base models; a failure panel; special aircraft (Concorde, Antonov, SR-71, B-2, C-17); walking the cabin with people; crash animations; other aircraft in the sky, formation flying and collisions that break aircraft apart. Then: "Slot the new planes and airports into the updates and we can add it to roadmap."
+
+- **Decided:** v0.4.0 is the weather; no joystick or gamepad (keyboard and touchpad, or a mouse); people in a crash are humanoid dolls that get thrown around and don't break apart; the aircraft sturdier than Besiege's (Claude's proposal, from the certification rules: the gear unharmed to 10 ft/s and collapsing past about 15 ft/s, as `GEAR_BREAK_VS` does now; the wings unharmed to their limit load and broken only past 1.5 times it); airports in three regions beyond Korea (Europe: EGLL, LFPG, EDDF, LEMD, LSZH; North America: KSFO, KLAX, KSEA, CYVR, KIAD, KJFK, KBOS, KORD, CYYZ; Oceania: YSSY, YMML, YPPH, NZAA), each its own world, with flights inside a region.
+- **Asked whether crashes and mid-air breakups are a problem for Claude:** no; aircraft damage and collisions are simulation. Graphic injury stays out, which the dolls settle.
+- **Written to `ROADMAP.md`:** a new section, "The long term: MSFS, KSP and Besiege", with the rule (ideas, never assets), the parts model as the foundation, the decisions, rows 12 (special aircraft) and 13 (airports beyond Korea), how the regions would work (a map frame each, terrain in tiles, ESA WorldCover for land cover, local time, the World Magnetic Model, the altimeter's units), and the version plan: v0.4.0 weather, v0.5.0 the parts model and warehouse, v0.6.0 the regions and Europe, v0.7.0 failures, v0.8.0 Concorde and An-225, v0.9.0 and v0.10.0 North America's west and east, v0.11.0 crash physics, v0.12.0 SR-71, C-17 and B-2, v0.13.0 Oceania, v0.14.0 traffic, ATC, formation and collisions, v0.15.0 the A330, 737 and 747, v0.16.0 the cabin. Notes on rows 1, 2, 3, 7 (now with collisions), 9, 10 and 11; the joystick moved to "Not planned"; Claude's suggestions (replays and a flight recorder, challenges, damage that stays, more Korean airports, an X-15-style rocket plane) listed as candidates; a new open decision (region data in git or baked locally).
+- **Also:** `AGENTS.md` (State: Next), `HANDOFF.md` (v0.3.2 pushed; Next). These doc changes go in with the next push.
+- **Next:** v0.4.0's brief (`V040.md`) and starting prompt, when Shane wants the run.
+
+## 2026-11-10, 02:40 KST: the plan revised, and the handoff for v0.4.0 (Cowork session, the second agent)
+
+Shane, on the earlier entry's plan:
+
+- On Claude's suggestions: "the replay and black box feature can stay, as well as the challenges. Though, I don't think more Korean airports would add much. If anything, adding more varied airports like Shanghai Pudong or Haneda + Narita might be better, since that with Korea can be considered one region. The X-15 rocket-type plane can stay, I think. Adding the region map to git is reasonable, I think."
+- On who builds a version: "Note that the second decimal Claude Code thing is more a suggestion than a rule. Whether the job is such that a CC session would work better if handed to them is your judgment to make."
+- On v0.4.0: "instead of writing the 0.4.0 brief, write a handoff document for the next agent who will write the brief for the claude code run. I would rather a new session work completely from end to end of an update."
+
+**`ROADMAP.md`:**
+
+- **Rows 14 and 15:** replays and a flight recorder, and challenges; both unslotted ("any time" in the plan).
+- **Row 12:** gains the X-15-style rocket plane.
+- **Row 13:** gains East Asia (ZSPD, RJTT, RJAA) in Korea's region. Korea's Lambert frame holds Shanghai and Tokyo to a fraction of a percent, so it stays, and saved scenarios keep their coordinates.
+- **The region data goes in git,** in tiles under 100 MB each; that open decision is closed.
+- **More Korean airports** moved to "Not planned".
+- **The version plan, revised:** v0.4.0 weather; v0.5.0 the parts model and warehouse; v0.6.0 East Asia, with the terrain moving to tiles; v0.7.0 the regions and Europe; v0.8.0 failures; v0.9.0 Concorde and An-225; v0.10.0 and v0.11.0 North America's west and east; v0.12.0 crash physics; v0.13.0 SR-71 and the rocket plane; v0.14.0 C-17 and B-2; v0.15.0 Oceania; v0.16.0 traffic, ATC, formation and collisions; v0.17.0 A330, 737, 747; v0.18.0 the cabin. The rows' notes follow the new numbers.
+
+**`AGENTS.md`:**
+
+- **Versions:** who builds a version is a judgment per job, and one session takes an update from end to end. Its last act is to rewrite `HANDOFF.md`'s first section.
+- **State:** Next points to the handoff.
+
+**`HANDOFF.md`:** its first section is now "The next session: v0.4.0, the weather, from start to finish":
+
+- where things stand;
+- Shane's words on weather;
+- eight questions to settle with him, each with a default;
+- how to write `V040.md` (modelled on `V030.md`, with an order of parts and a definition of done to start from);
+- a table of where weather plugs into the code, from a read of it today:
+  - the body velocities in `sim.step()`, which the gear also uses;
+  - `updateState()`'s TAS;
+  - the prediction worker's snapshots;
+  - the Boeings' heading-based LOC and LNAV, which would sit about 100 m off the localizer at 5° of drift;
+  - the gear's friction factors;
+  - the haze constants written into the shaders;
+  - the NDs' missing wind and the PFDs' fixed QNH;
+- what to do after the run.
+
+Elsewhere in `HANDOFF.md`: "Working with Shane" (who builds, his controls, syncing in one batch), new pitfalls (the cloud checks' fake frame clock, `rm` with a variable, the two `.fssw` windows, the A321's setup weights), and the first message for a new chat.
+
+**Next:** a new session takes v0.4.0 from start to finish. The first message for it is at the end of `HANDOFF.md`.
+
+## 2026-11-10, 08:51 KST: v0.4.0's scope settled (Cowork session, the third agent)
+
+Picked up from `HANDOFF.md`'s first section. v0.3.2 is pushed (`45e495f`); the 2026-11-10 changes to `ROADMAP.md`, `AGENTS.md`, `HANDOFF.md` and `STATUS.md` are still uncommitted, as planned. (One slip: a `git status --short` ran on the Mac, read-only with `GIT_OPTIONAL_LOCKS=0`, and left no lock files; nothing else but `git log`.)
+
+**Shane's answers to the handoff's eight questions** (2026-11-10, by picking options): every default.
+
+1. **The scope:** everything, with flat cloud layers: wind that changes with height, gusts, turbulence, wind shear and microbursts; visibility and fog; cloud layers (cover and base); rain and snow, lightning and thunder; wet, snowy and icy runways; temperature and QNH. Volumetric clouds come later, as a step of their own.
+2. **The panel:** a third tab in the L window (Sky · Weight · Weather), with presets (clear, few clouds, overcast, rain, thunderstorm, snow, fog, a gusty crosswind) and the settings under them.
+3. **Over time:** the weather stays as set, apart from gusts and turbulence. Moving fronts and storms come later.
+4. **A new scenario:** clear, with the presets in the setup next to the start time.
+5. **The altimeter:** real and settable. The indicated altitude comes from the pressure and the QNH set; a BARO box on the FCU and the MCP (scroll, type, STD); K sets the local QNH (B is the parking brake).
+6. **The landing card and the logbook:** they show the wind at touchdown, with its crosswind and head/tailwind parts.
+7. **The autoland:** it always tries, whatever the wind.
+8. **The sound:** all three: rain on the skin, thunder after the flash (late by the strike's distance), gusts in the wind's noise.
+
+**Who builds it:** a Claude Code run on the Mac, as the 2026-11-10 session judged: weather reaches the sim, every ground shader, the screens, the sound and the saves, and its 60 fps checks need the M5's GPU in Chrome. The brief is `V040.md`. The answers came in overnight while the session was stopped, so no run started overnight.
+
+**Next:** `V040.md` and the starting prompt; Shane starts the run; this session reviews it, fixes, writes it up and hands it over.
+
+
+## 2026-11-10, 10:38 KST: v0.4.0, first session, Part 1 and the Boeings' track and decrab (Claude Code)
+
+Shane set this first session to stop at 11:25 KST (V040.md's rule: start the wrap-up 30 minutes before). Parts 1 and part of 2 only; the game still flies calm by default, with no panel.
+
+**Done and tested:**
+
+- `src/sim/weather.js` (new): the settings (JSON-safe, `calmWeather()`, `normalizeWeather()`), the wind by height, gusts, turbulence, shear, microbursts. All functions of position and time, seeded, no state.
+- `src/sim/atmosphere.js`: `columnInto()` (ISA + ΔT with the QNH), `pressureAltitude()`, `indicatedAltitude()`.
+- `src/sim/sim.js`: the air-relative velocity; `state.altInd`, `state.sat`, `state.wind`, `state.drift`; the flat rating; snapshots carry the weather (absent = calm); `sim.setWeather()`, `setBaro()`, `setBaroStd()`, `setLocalQnh()`, `sim.baro`, `sim.weather`. `restore(snap, { keepWeather: true })` for a rewind and a jump.
+- The autopilots read `state.altInd`; the Boeings' LNAV, LOC and ROLLOUT fly the track; the Boeing autoland decrabs (`autopilot-boeing.js`, runway alignment from 500 ft) with aileron into the wind on the rollout.
+
+**Evidence** (`node --test tests/*.test.mjs` through the guard, 10:37): 553 tests, 553 pass, 0 fail (521 from before with their assertions unchanged, including the golden A321 flight to 1e-9; 28 in `tests/weather.test.mjs`, 4 in `tests/weather-autoland.test.mjs`).
+
+- Prediction vs live after 120 s: calm 0.00 m, turbulent about 3 m. A prediction with severe turbulence: about 140 ms (ended by the map edge).
+- Autoland in 20 kt of crosswind, from either side, on both Boeings: LOC within 6 m, touchdown crab under 3°, 5 to 6 m off the centreline at the wheels, 6 to 8 m at the stop. Node sim only, on a flat "runway everywhere": **not yet flown in Chrome**.
+
+**Decisions made in the run (v0.4.0):**
+
+1. A rewind and a jump keep the weather set now (it's the world's); a loaded save brings its own, and a save without weather is calm.
+2. The wind's direction is converted once, at the settings' reference point (`refX`, `refY`, the arrival airport), so the wind is one vector everywhere.
+3. Veer: the panel sets the surface wind and the wind aloft separately, and the profile blends between them as vectors (a power-law shape, exponent 0.16, up to 900 m). Presets should give the wind aloft some veer. There's no separate over-land veer.
+4. Turbulence is a sum of 20 fixed sine waves per axis whose amplitudes change with height, so changing height never shifts a phase. East and north use the longitudinal Dryden correlation (so the lateral axis is simplified) and the vertical the transverse one. The field is advected with the surface wind only.
+5. Gusts are patches 500 m across that grow and die over 10 s. Tying their length to the wind speed made them 70 m long at 15 kt, which reached an airliner as noise.
+6. The roll gust isn't inverted away by the fly-by-wire (`E.lOther` leaves it out), or the wings wouldn't feel turbulence at all.
+7. The speed trend (`X.iasDot`) leaves the turbulence out, as a filtered real trend would, or it trips the overspeed protection. Setting the weather resets `X.prevIas`, so a change isn't read as an acceleration.
+8. At under 40 m/s airspeed in wind, α and β are clamped for the coefficients (a parked aircraft in a tailwind would otherwise see α = 180°).
+9. In a wind, a Boeing's autoland isn't taken off by the protections (decision 7, it always tries). Calm is unchanged.
+10. A flat rating to ISA + 15 is in (a Should).
+
+**Sources:** MIL-F-8785C's exceedance curves checked against JSBSim's copy of figure 7. **Not verified at the source:** Oseguera and Bowles' microburst equations (both NASA PDFs are scanned, and this Mac has no PDF renderer, which I didn't install). They're from memory, and `tests/weather.test.mjs` checks them for mass continuity, the peak outflow and the zero vertical wind at the ground. The Boeing runway alignment: the 777's start at 500 ft with a forward slip is from TAIC's Auckland report as summarised online; the 5° crab limit is a 747 figure, EST here. The Cowork session may want to check these.
+
+**Not done yet:** see the final entry of this session.
+
+
+## 2026-11-10, 11:10 KST: v0.4.0, first session, final entry (Claude Code)
+
+Shane stopped this session at 11:25 KST (started 10:22). **v0.4.0 isn't finished, and `src/version.js`, `Updates.md`, `ROADMAP.md` and `PLAN.md` are untouched.** Part 1 is done; Part 2 is mostly done; Parts 3 to 6 aren't started. With no panel yet, the game flies calm by default, as v0.3.2 did, and it's pushable as it stands.
+
+**Added since the 10:38 entry:**
+
+- The screens (`nd.js`, `boeing/nd.js`, `pfd.js`, `boeing/pfd.js`, `fcu.js`, `boeing/mcp.js`, by a helper): each maker's wind readout and arrow; the PFDs read `altInd` and show the setting or STD; the BARO box on the FCU and the MCP (scroll, type, STD), through `view.sim` (`main.js`). The tracks already showed the drift (`st.vel`).
+- The K key (`input.js`, `main.js`, the Controls page, `README.md`).
+- The windshear warning: `state.warnings.windshear`, a red WINDSHEAR on both PFDs, spoken through `callouts.js` (Airbus three times, a Boeing once). The Boeing's siren waits for Part 5.
+- The wind at touchdown: `windAtTouchdown()` in `score.js`, the landing card's line, the logbook's column ("Wind at landing").
+- `tests/browser-weather-landing.mjs` (new), and `E2E_XWIND` in `browser-keyboard-landing.mjs`.
+
+**Reviewer subagent (fresh eyes, its own context): 7 behaviour bugs and 5 weak tests, all fixed.** TO/GA held a heading rather than the track; a windshear alert could stick for ever; the microburst had a hard edge at 6R; the MCP's Mach used ISA on a non-standard day; a rewind into changed air read as a shear; a turn counted as shear; the hot-day trim used the wrong σ. It didn't run the suite, and it didn't check the exceedance table or the windshear threshold against a source.
+
+**Evidence** (Chrome on the M5, port 8014, Playwright's own temporary profile):
+
+| Check | Result | On the final code? |
+|---|---|---|
+| `node --test tests/*.test.mjs`, through the guard, 11:04 | **567 tests, 567 pass, 0 fail** (the 521 old, assertions unchanged, with the golden A321 to 1e-9) | yes |
+| `browser-weather-landing.mjs b777-300er 15`, 11:10 | C 68 (278 ft/min, 3.1 m off the centreline, bank 5.6°, no crash, no console errors) | yes |
+| `browser-weather-landing.mjs b787-9 15` | C 72 (299 ft/min, 2.6 m off the centreline, no crash, no console errors) | before the review's fixes |
+| `browser-weather-landing.mjs a321neo 15` | C 71 (208 ft/min, 2.8 m, bank 5.1°, no crash, no console errors) | before the review's fixes |
+| `E2E_XWIND=15 browser-keyboard-landing.mjs` (A321, real keys only) | **B 83** (254 ft/min, 1.52 g, 3.9 m off the centreline, no crash). It ended the rollout 24 m from the centreline | before the review's fixes |
+| `browser-e2e.mjs`, calm, 11:19 | 12/12, landing B 88 | yes |
+| `browser-scenarios.mjs`, calm, 11:19 | 23/23 | yes |
+
+Pictures, looked at: `v040-xwind-b787-9-card.png` (the MCP's BARO box, the PFD's `1013 HPA`, the card's wind line). The others from the same runs, not looked at: `v040-xwind-*-final.png`, `v040-xwind-a321neo-card.png`, `v040-keyboard-xwind-15kt-card.png`.
+
+**Against the definition of done:**
+
+- **Not met:** `e2e-controller.js` in 15 kt of crosswind has to score B or better; it scores C on all three types (the wing-down flare took the centreline error from 6.7 m to under 3 m, but the bank and the sink rate now cost points).
+- **Not run:** the Boeing autoland in Chrome (only in node: 20 kt, 5 to 6 m off the centreline at the wheels and 6 to 8 m at the stop, under 3° of crab, on a flat runway everywhere). `browser-types.mjs`, `browser-boeing-flight.mjs` and `audio-render.mjs` in calm. The FPS, draw-call and other Chrome checks, which only mean something once Part 4 exists.
+- **Weak spot:** the alignment doesn't reach its 5° of crab by 200 ft (about 6.5° at 200 ft in a 20 kt crosswind; under 3° at the wheels), and `tests/weather-autoland.test.mjs` only asserts that it has begun.
+- **Not done in Part 2:** the transition reminder (a Should); the predictive windshear (a Nice).
+
+**More decisions made in the run (v0.4.0):**
+
+11. The windshear threshold is F > 0.105 over 1 km, below 1,500 ft, with the turbulence left out. The 0.103 behind it is from patents citing the FAA; TSO-C117a's own text wasn't found, so this is unverified.
+12. The landing card and logbook show the wind at the CG's height (the mean), so a 15 kt surface wind reads about 13 kt there. Part 6 may want the 10 m figure.
+13. The rollout in a wind aims harder at the centreline (`ROLLOUT_XTE_L`), and holds aileron into the wind (`boRolloutRoll`).
+14. Airbus's wind shows `000/0` in the air and `---/---` below 100 kt TAS; a Boeing's digits are blank in calm or below 100 kt TAS, from memory and not checked against a manual. Scrolling or typing on STD takes it off STD (no preselect).
+15. `tests/browser-weather-landing.mjs` sets the weather through `sim.setWeather()` until the panel exists.
+
+**The next session starts at:** finishing Part 2 (the C scores above, the Boeing autoland in Chrome, `browser-types.mjs`, `browser-boeing-flight.mjs` and `audio-render.mjs` in calm), then Part 3. Weather can be tried from the console: `__fs.sim.setWeather({ preset: 'custom', wind: { fromDeg: 90, kt: 20, gustKt: 30 }, aloft: { fromDeg: 110, kt: 35 }, turbulence: 'light' })`.
+
+**Everything started is stopped** (11:19): the server on 8014 is stopped, and `cpu-guard.py --status` shows no slots in use. `--sweep` lists only macOS's own `duetexpertd`, which this session didn't start.
+
+
+## 2026-11-10, 13:12 KST: v0.4.0, second session, checkpoint (Claude Code)
+
+Shane gave a new stop of 14:45 KST, so the wrap-up starts at 14:15. The session started at 12:45.
+
+**Decision 16 (a departure from the brief's order):** V040.md says each part starts only when the one before is done. With two hours left, Parts 4 to 6 were built at the same time by helpers in separate files, while Part 2's checks finished and Part 3 was done. The Weather tab, the only way to turn the weather on, was wired in only when its work was tested, so the game stayed pushable throughout.
+
+**Part 2's definition of done (Chrome, port 8014):** the test pilot in 15 kt of crosswind scores **A321 B 81** (198 ft/min, 3.2 m off the centreline, bank 1.3°) and **787 B 87** (282 ft/min, 0.1 m, bank 0.8°). **A 787 autoland in 20 kt of crosswind:** decrabbed to 3.1° at the wheels, 6.5 m off the centreline at touchdown, 3.9 m at the card, no console errors (`v040-xwind-b787-9-autoland-card.png`).
+
+The test pilot's flare (`tests/e2e-controller.js`): wings nearly level at the wheels, about 3° of crab left for the gear, and aiming a little upwind (A321 2.5 m, Boeings 0.5 m; tuned in a node copy of the loop).
+
+**Part 2's Should, done:** the transition reminder (`state.baroAlert`): Airbus's setting pulses, a Boeing's gets an amber box. Korea's numbers are from the eAIP's ENR 1.7: **14,000 ft and FL140**, not the FL150 sometimes assumed. It stays quiet with the baro at exactly 1013, so the default world doesn't nag.
+
+**Part 3 done:** `RUNWAY_TYRES`, `runwayStateOf()`, `runwayTyresOf()` in `weather.js`, and `k.tyres` in `gear.js`. Rolls from 70 m/s (`tests/weather-runways.test.mjs`): dry 628 m, wet 965 m, snow 1,268 m, ice 2,815 m. **Sources:** only AC 25-32's 0.16 for a slippery wet runway and CS-25's 0.20 ceiling were seen; the 0.08 for ice and the wet curve's mid-speed value are EST. Hydroplaning (a Nice) isn't built.
+
+`src/sim/lightning.js` (new): seeded strikes for the picture and the sound. Cloud bases are taken as above sea level in the settings (decision 17).
+
+
+## 2026-11-10, 14:06 KST: v0.4.0, the run's final entry (Claude Code)
+
+**All six parts are built and verified** except as listed below. The Cowork session's review, `src/version.js`, `Updates.md`, `ROADMAP.md`, `PLAN.md` and `AGENTS.md`'s State are still to do, as the brief says. `sh tools/push.sh v0.4.0` is Shane's when the review is done.
+
+**Added in this session:** Part 3 (runways); Part 4 (`sky.js`, `glsl.js`, `terrain.js`, `airports.js`, `apron.js`, `cities.js`, `citylights.js`, `detail.js`, `taxilights.js`; `clouds.js` and `precip.js`, new): visibility, fog, overcast light, wet and snowy ground, cloud layers, lightning, rain and snow, windshield drops, rain shafts under storm cells, runway lights reflected on a wet runway at night; Part 5 (`synth.js`, `callouts.js`): rain, thunder, gusts, the Boeing's windshear siren; Part 6 (`weather-window.js`, `weather-presets.js`, `setup.js`): the Weather tab, the eight presets, the METAR line, the setup's choice. README's weather section and code map.
+
+**Reviewer subagents:** two, fresh eyes, their own context. The second found 1 bug against decision 4 (a new scenario inherited the last flight's weather), 2 visual bugs (the taxiway lights ignored the fog; a broken layer fogged the whole view, gaps included), 2 mismatches (cloud drift read a magnetic direction as grid; the rain's sound and picture stopped at different heights) and 4 weak tests. All fixed.
+
+**Evidence on the final code** (Chrome on the M5, port 8014, Playwright's own temporary profile):
+
+| Check | Result |
+|---|---|
+| `node --test tests/*.test.mjs`, 14:04 | **625 tests, 625 pass, 0 fail** (the 521 old ones with assertions unchanged, including the golden A321 flight to 1e-9) |
+| `browser-e2e.mjs`, calm | 12/12, landing B 88 |
+| `browser-scenarios.mjs`, calm | 23/23 |
+| `browser-weather-integration.mjs` (the real tab, K, saves, a v0.3.2 state, the plan's weather) | all pass, no console errors |
+| `browser-weather-landing.mjs a321neo 15` (`e2e-controller.js`) | **B 81** (197 ft/min, 3.2 m off the centreline) |
+| `browser-weather-landing.mjs b787-9 20 autoland` | decrabbed to 3.1° at the wheels, 6.5 m off the centreline at the wheels, 3.9 m after the rollout |
+| `browser-weather-shots.mjs`: heavy rain, thunderstorm, fog at night | 60.0, 59.8 (min 59.0), 60.0 fps; 42, 45, 38 draws; 0.60, 0.62, 0.58 M triangles |
+| Same run: clear, day | 60.0 fps, 30 draws, 0.58 M triangles |
+| Prediction, severe turbulence (`tests/weather.test.mjs`) | about 140 ms |
+
+The same checks ran earlier in the session, before the last two additions (the rain shafts and the wet-runway reflections, each in its own shader and hidden in clear weather): `browser-keyboard-landing.mjs` in 15 kt of crosswind, real keys only, **B 85** (221 ft/min, 3.7 m off the centreline); `browser-weather-landing.mjs b787-9 15`, B 87; `browser-types.mjs` on both Boeings, all passed; `browser-boeing-flight.mjs b787-9 flight2`, 2/2, B 86; `audio-render.mjs`, 45/45 on all three types (two old checks, the A321's door clunk and the spool-up step, fail now and then, by a helper's five-run count; their traces match v0.3.2's).
+
+**Pictures** (`Claude outputs/flight-sim/`), looked at unless noted: `v040-<preset>-<day|night>-<cockpit|3rd>.png` for all eight (32); `v040-fog-final-night.png`; `v040-clouds-day-in-cloud.png`, `v040-clouds-day-above-ovc.png` (above and inside a layer; shot before the last fog tweaks); `v040-clouds-storm-night-flash.png`, `-bolt.png`; `v040-weather-tab-*.png`, `v040-setup-weather.png`; `v040-boeing-nd-wind-mcp-baro.png`; `v040-logbook-wind-column.png` (a logbook entry injected for the picture); `v040-xwind-*-card.png` (the landing card); `v040-wet-runway-reflections-night*.png`; `v040-thunderstorm-shafts.png`.
+
+**Clips for Shane to listen to** (no agent can): `v040-rain-cockpit`, `v040-rain-3rd`, `v040-thunder-near-cockpit`, `v040-thunder-near-3rd`, `v040-thunder-far-cockpit` (58 s, the rumble arrives about 45 s in), `v040-gusty-approach`, as WAV and MP3. The 690 and 960 Hz siren and the 1.6 s voice delay are the helper's choice.
+
+**Not done, or weak:**
+
+- **Not measured against v0.3.2:** clear weather's draw calls and pixels. No v0.3.2 build could be run without git. They rest on every new object being hidden and on the uniforms' defaults being the old constants (the picture comparison isn't possible here).
+- **Sources not seen:** Oseguera and Bowles' equations (from memory, checked for continuity), TSO-C117a's windshear curve (0.105 from patents citing the FAA), AC 25-32's full table (ice 0.08 and the wet curve's mid-speed value EST), the Boeing alignment's 5° (a 747 figure). The transition altitude and level (14,000 ft, FL140) are from a 2022 copy of Korea's eAIP.
+- **Known limits:** the alignment reaches about 6.5° of crab by 200 ft, not 5°, and under 3° at the wheels. The approach lights make no wet reflections. Broken layers look close to overcast from far off. Hydroplaning, wipers, spray and predictive windshear (the Nices) aren't built.
+- **The Should items** are all in: the flat rating, the METAR line, the transition reminder, wet-runway reflections.
+
+**More decisions made in the run (v0.4.0):**
+
+18. Only a layer of 7 oktas or more fogs the whole view; a broken one is solid in its own clouds (`clouds.js`).
+19. A thunderstorm's general visibility is 8 km; the thick weather is in the shafts. At the helper's first value of 3 km the shafts couldn't be seen.
+20. The test pilot's crosswind technique: wings nearly level at the wheels, about 3° of crab left, and aiming a little upwind.
+21. Tab edits in flight don't change `plan.weather`: Restart goes back to the setup's preset, as the Weight tab does with the load.
+
+**Everything started is stopped:** see the sweep in the session's last command.
+
+## 2026-11-10, 17:05 KST: v0.4.0 reviewed, fixed and written up (Cowork session, the third agent)
+
+Shane: "CC finished. Up to your review, then bump the version to 0.4.0 yourself." The run took two sittings (10:22–11:25 and 12:45–14:45 KST; its entries are above, from "2026-11-10, 10:38 KST"), and all six parts are built.
+
+### The definition of done (`V040.md`), against the evidence
+
+| Item | Result | Evidence |
+|---|---|---|
+| Calm is exact | pass | The golden A321 flight to 1e-9, in the 626 below. No `*.test.mjs` from v0.3.2 changed: 521 old tests byte for byte, 105 new. |
+| A turbulent flight restored flies on; the prediction agrees | pass | `tests/weather.test.mjs`: within 1e-6 m. The prediction against the live sim after 120 s: 0.00 m in calm, about 3 m in turbulence (the run's). |
+| Drift = asin(crosswind / TAS), GS = TAS − headwind | pass | `tests/weather.test.mjs` |
+| A wet runway's roll longer by the friction's share | pass | `tests/weather-runways.test.mjs`: from 70 m/s, dry 628 m, wet 965, snow 1,268, ice 2,815 |
+| A Boeing autoland in 20 kt of crosswind ends on the centreline, decrabbed | pass, with a margin | The run, in Chrome: 787, 3.1° of crab at the wheels, 6.5 m off the centreline at touchdown (inside the 27 ft CAT III autolands are certified to), 3.9 m at the stop |
+| The test pilot in 15 kt of crosswind, B or better | pass | The run: A321 B 81, 787 B 87. The review, in the cloud: A321 B 78 in 15 kt gusting 22 with light turbulence |
+| The keyboard-only landing in 15 kt of crosswind | B 85 | The run (`E2E_XWIND=15 browser-keyboard-landing.mjs`) |
+| 60 fps in heavy rain at night, a thunderstorm and fog | pass | The run (`browser-weather-shots.mjs`, the M5's GPU): 60.0, 59.8 (min 59.0) and 60.0 fps; 42, 45 and 38 draws; 0.60, 0.62 and 0.58 M triangles |
+| Clear weather's draws equal v0.3.2's | pass | The review (below): the same draws and triangles at six views, the same pixels but the fan blades |
+| The prediction's CPU with turbulence | about 140 ms | The run (`tests/weather.test.mjs`) |
+| Pictures of every preset, by day and at night, cockpit and 3rd person; fog, clouds, lightning, the screens | all there | 96 `v040-*.png` in `Claude outputs/flight-sim/`, every one looked at by the review on contact sheets |
+| Clips of rain and thunder | rendered | `v040-rain-{cockpit,3rd}`, `v040-thunder-near-{cockpit,3rd}`, `v040-thunder-far-cockpit`, `v040-gusty-approach` (WAV and MP3). Nobody has listened |
+| Nothing old broken | pass | The run: `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12 (B 88), `browser-types.mjs` on both Boeings, `browser-boeing-flight.mjs b787-9 flight2`. The review's cloud checks below |
+| A reviewer subagent | done | The run had two (12 bugs and 9 weak tests between them, all fixed); this review is a third pass |
+| CPU | clean | The run's sweep; this review's guard below |
+
+### What the review did
+
+- **The inventory:** GitHub's `45e495f` cloned in the container, and the Mac's tree hashed against it: 24 new files and 45 changed (40 of them code and tests). The container's copy then matched the Mac's (one hash over `src`, `tests`, `data`, `vendor`, `assets`, `tools` and the docs).
+- **Unit tests on the Mac through the guard, as the run left them:** 625/625 (12.9 s). Every `.js`/`.mjs` checked as a module.
+- **The code, read:**
+  - `src/sim/weather.js`: the microburst against Oseguera and Bowles's published form (mass continuity, no vertical wind at the ground, the downdraft above the outflow, the peak's scaling); the Dryden scales; the exceedance table against MIL-F-8785C's figure 7 as JSBSim carries it.
+  - The rest: the step's air-relative velocity and the gear's inertial one, the windshear detector, the ISA + ΔT column and the altimeter, the autopilots, the gear's factors, the presets, `main.js`'s wiring, and the screens.
+- **Sources the run couldn't see, checked:**
+  - **The windshear threshold:** NASA's certification database for forward-look systems (Switzer et al., 1994) uses the F-factor averaged over 1 km, with 0.105 as the hazard; patents cite the FAA's 0.103 over 1 km. The run's 0.105 over 1 km stands.
+  - **Korea's transition altitude and level:** 14,000 ft and FL140, in the eAIP's ENR 1.7 and on its en-route chart.
+- **Clear weather against v0.3.2,** in the container (both versions served side by side, a fresh browser context each, the clock fixed): RKSI, the nose from 13 m, 900 m up, and the captain's seat, by day and at night.
+  - The draws and triangles are identical: 41, 39 and 44 by day, 50, 48 and 53 at night; 0.90 to 0.95 M triangles.
+  - The pixels are identical but the spinning fan blades (0.17 % of the nose view's pixels).
+- **Pictures looked at:** all 96 of the run's, on contact sheets by preset and topic. The rain and snow presets' shots are taken at about 1,000 ft on final, inside or under their low layers, so they show cloud more than rain. The run's precipitation shots show the streaks, the windshield drops and the wet runway's sheen and reflections.
+
+### Fixed in the review
+
+1. **The flat rating cut thrust only on hot days.** On a cold one the denser air gave more, about 10 % at ISA − 30. Now the thrust is flat on both sides of ISA, up to ISA + 15, as the brief defined it (`flatSigma()` in `sim.js`). New assertion: no more thrust at −15 °C.
+2. **The transition reminder went out in level flight** above 14,000 ft with a QNH still set: only a climb counted. Now it stays until STD is set, as on both makers' PFDs; the STD-in-descent half is unchanged. Its test's comment said level flight shouldn't remind: changed, and the test extended.
+3. **Every flight started with the altimeter at 1013.25,** whatever the day's QNH: the rain preset's 1006 read about 200 ft off from the start. Now each flight's start (`startFlight()`, skip to final) sets the day's QNH, as a crew does before departure and approach. In calm air it's 1013.25, as before.
+4. **A final start held the runway's heading.** In a crosswind the A321's HDG, and a Boeing's before APP, drifted off the extended centreline with the whole crosswind: about 1.2 km a minute at 5,000 ft in the Gusty crosswind preset (its wind aloft has about 40 kt across the runway). A first fix that held the crab from the start's own wind still drifted 240 m a minute, from a turbulent sample. Now:
+   - the FCU's heading is the crabbed one;
+   - the trim crabs for the mean wind (a turbulent sample at the start had put it 2.6° off);
+   - the AP's ALT comes from the altimeter. It was the true altitude, so on a cold day the AP descended to make the altimeter agree.
+
+   Over 60 s of the Gusty crosswind preset on the AP, the aircraft now moves 25 m across the centreline. In calm air, still the runway's heading and the true altitude.
+5. **The card and the logbook gave the mean wind at the aircraft's few metres** (the run's decision 12): a 15 kt wind read 13 kt. Now they give the tower's wind (10 m, as the panel and its METAR line give it), with its gusts. The card: "Wind 156° at 15 kt, gusting 22 · 15 kt crosswind from the right"; the logbook: "156°/15G22 kt". New test.
+6. **The METAR line printed "Q998" under 1000 hPa;** now it's always four digits ("Q0998").
+7. **`tests/cloud/weight-copy.cjs`:** its Sky-window selector also matched the new Weather window. It's scoped now (`.fssw:not(.fslw):not(.fswx)`) and expects the third tab.
+
+New: **`tests/cloud/weather-final.cjs`**, the review's check of 2 to 5 through the real game.
+
+### Checks on the final code
+
+- **Unit tests: 626/626** on the Mac through the guard (13.1 s, peak 0.61 GB; `--status` no slots in use, `--sweep` clean) and in the container. Every changed file checked as a module.
+- **In the cloud container:**
+  - `weather-final.cjs` 20/20: the day's QNH at the start, the ALT at the altimeter's reading, the crab held (25 m across in 60 s), K, skip to final, a landing in 15 kt gusting 22 (B 78), the card and the logbook, and calm as before;
+  - `weight-copy.cjs` 40/40;
+  - `route-views.cjs` 16/16 (landing B 89);
+  - `athr-lever.cjs` 9/9;
+  - `audio-render.mjs` 45/45 on each type (run before the review's fixes, which don't touch the sound).
+
+  No console errors.
+- **Picture:** `v040-review-xwind-card.jpg`, the card after that landing (the FCU's BARO 1016, the PFD's QNH 1016, the wind line), looked at.
+
+### Not checked by anyone
+
+- **Listening:** nobody has listened to the rain, the thunder or the gusts. The clips are in `Claude outputs/flight-sim/`.
+- **Flying it:** no person has flown it on the keyboard yet.
+- **The M5's GPU after the review's fixes:** they don't touch the rendering.
+
+### Written up
+
+- `src/version.js`: `Flight Sim v0.4.0 · CL#261110`;
+- `Updates.md`, `README.md`;
+- `PLAN.md`: decision 14 superseded, and "The weather (v0.4.0)";
+- `ROADMAP.md`: row 10 done, the plan's v0.4.0 done, and "Found while building v0.4.0";
+- `AGENTS.md`: State and Next;
+- `HANDOFF.md`: the table, the evidence, "v0.4.0: the weather", the cloud tools and the comparison with the pushed version, new pitfalls, and a new first section for v0.5.0's session (the parts model and a first warehouse: Shane's words, seven questions with defaults, where it plugs in);
+- the Games project doc.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.4.0`, then Empty Cache and Hard Reload. Then v0.5.0 from `HANDOFF.md`'s first section.

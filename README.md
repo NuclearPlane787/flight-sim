@@ -31,6 +31,8 @@ New scenario opens the flight setup with a name: the origin, destination, runway
 
 **Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
+**Weather** (v0.4.0): the L window has a third tab, Weather (Sky · Weight · Weather). Pick a preset (clear, few clouds, overcast, rain, thunderstorm, snow, fog, gusty crosswind), or change any setting under it: the wind by height, gusts, turbulence, a low-level shear, a microburst on final, the visibility and fog, up to three cloud layers, rain or snow, lightning, the runway's state, the temperature and the QNH. It applies at once in flight. The setup picks a preset for the flight, clear by default. The wind is felt as a crosswind, a headwind or a tailwind, and the altimeter is real: each flight starts with the day's QNH set, K sets it again, and the BARO box on the FCU or the MCP sets it too (scroll it, type into it, or STD). Above the transition altitude (14,000 ft) with a QNH set, or below FL140 on STD in a descent, the setting flashes until you change it. The landing card and the logbook give the wind at touchdown as the tower does.
+
 From a gate:
 
 1. Press P to push back. Q/E steer the turn, and P again holds the push.
@@ -51,6 +53,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | R / F | thrust levers forward / back; on the ground at idle, keep holding F for reverse |
 | Space (hold) | wheel brakes |
 | B | parking brake |
+| K | set the altimeter to the local QNH |
 | G | gear lever |
 | 6 / 7 / 8 / 9 / 0 | flap lever: A321neo 0, 1, 2, 3, FULL; Boeings UP, 5, 15, 20, 30 |
 | [ / ] | flap lever one detent up / down (every type) |
@@ -133,6 +136,9 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/camera.js` | the four views and the touchpad camera |
 | `src/geometry.js` | A321neo body-frame geometry shared by the sim, the model and the cameras |
 | `src/sim/` | atmosphere, A321neo data (with sources), flight model, engines, gear, fly-by-wire, autopilot, prediction worker |
+| `src/sim/weather.js`, `src/sim/weather-presets.js`, `src/sim/lightning.js` | the weather's settings and the wind field (mean wind, gusts, Dryden turbulence, microbursts, all stateless and seeded), the runway's state, the presets, the seeded strikes |
+| `src/ui/weather-window.js` | the Weather tab |
+| `src/world/clouds.js`, `src/world/precip.js` | the cloud layers and lightning; rain, snow and windshield drops (the haze, fog and overcast light are in `sky.js` and `glsl.js`) |
 | `src/world/frame.js` | the map frame: Lambert conformal conic, magnetic variation, headings |
 | `src/world/` | terrain clipmap, sea, sky, surface detail, cities, runways; `heightfield.js` and `runways.js` are the pure data helpers |
 | `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`, `src/cockpit-windows.js` | the procedural A321neo in Nuclear Airlines colours, the simple cockpit, and the six cockpit windows (shared by the outside, the livery and the cockpit) |

@@ -31,6 +31,22 @@
 //   synth.volume = 0.8;
 // aft: where the listener is, outside: −1 ahead of the engines, 0 abeam, 1 behind. dist: metres
 // from the aircraft (3rd person's orbit; 0 for the nose).
+//
+// v0.4.0, the weather (null weather: none of this runs, no nodes, and the sound is v0.3.2's exactly;
+// tests/audio-render.mjs renders both and compares them sample by sample):
+//   synth.setWeather(settings);   // sim.weather: normalizeWeather()'s shape, or null
+//   - rain on the skin: louder on the windshield than outside;
+//   - thunder: strikesBetween() (the seeded lightning the picture draws) gives where and when; the
+//     clap comes late by the distance to the bolt's nearest part, at 331.3 + 0.606 T m/s. Near ones
+//     crack, far ones rumble longer and duller. Thunder's samples are made here (no third-party sound).
+//   - gusts: the gusts and the buffet (state.wind against its mean, the airspeed against its own
+//     slow average) move the wind's noise, and a low rumble when it's rough.
+//   - a Boeing's windshear siren (a two-tone siren, then the voice in callouts.js).
+// The weather's nodes are made when setWeather() asks for them (only those it asks for) and stopped
+// when the weather goes. Thunder's claps are BufferSources started when a clap is due, the
+// only nodes made after that; sim time drives it, so paused, nothing moves.
+
+import { strikesBetween } from '../sim/lightning.js';
 
 const KT = 1.943844; // m/s → kt
 
@@ -85,7 +101,22 @@ const MIX = {
   brake: { in: 0.35, out: 0.5 },
   clunk: { in: 0.5, out: 0.6 },
   packs: { in: 1, out: 0 }, // cockpit air conditioning; outside the engines cover it
+  rain: { in: 1, out: 0.3 },   // v0.4.0: on the windshield, a metre from your head
+  buffet: { in: 1, out: 0.3 }, // v0.4.0: the airframe's shake is felt inside
 };
+
+// ---- v0.4.0: the weather's sound ----
+const RAIN_HISS = 0.08, RAIN_PATTER = 0.24;  // at the heaviest rain, in the cockpit (tuned by measurement)
+const THUNDER_MAX_M = 25000;     // not heard beyond this
+const THUNDER_LOOK_S = 0.1;      // a clap is started this long before it is due
+const THUNDER_VOICES = 4;
+const CLAP_CRACK = 0.9;          // at 1 km and full power, outside (before the airframe)
+const CLAP_RUMBLE = 1.1;         // at 1 km, full power
+const GUST_TAU_S = 3;            // the airspeed's slow average
+const SHAKE_TAU_S = 0.25;        // the fast part of the wind's deviation, for the buffet
+const GUST_FULL_MS = 12;         // a wind this far off its mean is a full gust
+const SIREN = 0.26, SIREN_CYCLE_S = 6, SIREN_LOW = 690, SIREN_HIGH = 960, SIREN_NOTE_S = 0.26, SIREN_NOTES = 6;
+const speedOfSound = (tempC) => 331.3 + 0.606 * tempC;  // m/s
 
 // The cockpit's low-pass (Hz): the walls take the top off, but the fan's tone and the buzz-saw's
 // lower orders still come through (v0.3.1; it was 900 Hz).
@@ -100,6 +131,13 @@ export function createSynth({ context = null } = {}) {
   let vol = FULL_VOLUME;
   let inside = true;
   let SND = LEAP_1A;  // the engine's numbers (v0.3.0: setType)
+  let boeing = false;  // v0.4.0: a Boeing sounds a siren with its windshear warning
+  // v0.4.0: the weather settings (null: none) and its nodes, made only when asked for.
+  let wxSet = null;
+  let wx = null;       // { bus, rain, thunder, buffet }: only what the settings need
+  let siren = null;
+  const dying = [];    // fading groups: disconnected a moment later, in update()
+  let gustIas = -1, gustDev = 0, gustT = -1;   // the gusts' filters
   const G = (voice) => SND.gain[voice] ?? 1;
 
   // Edge detectors and state between updates.
@@ -343,7 +381,7 @@ export function createSynth({ context = null } = {}) {
     chain(stallOsc, filter('lowpass', 1800), stallTone, warnBus);
 
     return {
-      master, warnBus, worldBus, muffle, engines, windBp, wind, spoilerLp, spoiler, rollLp, rolling,
+      pre, master, warnBus, worldBus, muffle, engines, windBp, wind, spoilerLp, spoiler, rollLp, rolling,
       gearOsc, gear, flapOsc, flap, thump, thumpNoise, squeal, cav, cavOsc, chime, cricket, stallTone,
       packs, brakeRumble, brakeSqueal, clunk, clunkNoise,
     };
@@ -386,6 +424,254 @@ export function createSynth({ context = null } = {}) {
       g.setTargetAtTime(CAV_PEAK, t, 0.004);
       g.setTargetAtTime(0, t + 0.095, 0.01);
     });
+  }
+
+  // ---- v0.4.0: the weather's nodes ----
+
+  // Fade a group out, then stop it (polled in update(): the context may be suspended).
+  function retire(g) {
+    if (!g) return;
+    const now = ctx.currentTime;
+    g.out.gain.cancelScheduledValues(now);
+    g.out.gain.setTargetAtTime(0, now, 0.05);
+    for (const s of g.src) { try { s.stop(now + 0.4); } catch { /* already stopped */ } }
+    dying.push({ node: g.out, at: now + 0.5 });
+  }
+  function reap(now) {
+    while (dying.length && dying[0].at <= now) dying.shift().node.disconnect();
+  }
+
+  // Rain drops on a surface: a 3 s loop of short decaying ticks (90 a second).
+  function dropsBuffer() {
+    const sr = ctx.sampleRate, len = Math.floor(3 * sr);
+    const buf = ctx.createBuffer(1, len, sr), x = buf.getChannelData(0);
+    for (let d = 0, count = 270; d < count; d++) {
+      const at = Math.floor(Math.random() * len);
+      const amp = 0.2 + 0.8 * Math.pow(Math.random(), 3);
+      const dur = Math.max(8, Math.floor((0.002 + 0.006 * Math.random()) * sr));
+      // A soft start (a sharp edge reads as a click), then a quick decay.
+      for (let i = 0; i < dur; i++) x[(at + i) % len] += amp * (Math.random() * 2 - 1) * Math.min(1, i / (0.15 * dur)) * Math.exp(-6 * i / dur);
+    }
+    let peak = 1e-6;
+    for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(x[i]));
+    for (let i = 0; i < len; i++) x[i] *= 0.9 / peak;
+    return buf;
+  }
+
+  function buildRain() {
+    const out = gain(1);
+    const hissBp = filter('bandpass', 3200, 0.5), hiss = gain(0);
+    const hissSrc = noise(noiseBuffer(false));
+    chain(hissSrc, hissBp, hiss, out);
+    const patterSrc = noise(dropsBuffer()), patterHp = filter('highpass', 500, 0.5), patterLp = filter('lowpass', 4500, 0.5), patter = gain(0);
+    chain(patterSrc, patterHp, patterLp, patter, out);
+    out.connect(wx.bus);
+    return { out, hissBp, hiss, patterHp, patterLp, patter, src: [hissSrc, patterSrc] };
+  }
+
+  // Thunder's samples, made here (at the lower sample rate for the rumble: nothing in it is high).
+  // Rumble: brown noise under a train of swelling, overlapping rolls, decaying over T seconds, as the
+  // sound of a bolt's kilometres of channel arrives bit by bit.
+  function rumbleBuffer(T, rolls) {
+    const sr = 16000, len = Math.floor(T * sr);
+    const buf = ctx.createBuffer(1, len, sr), x = buf.getChannelData(0);
+    const env = new Float32Array(len);
+    for (let k = 0; k < rolls; k++) {
+      const at = k === 0 ? 0 : Math.random() * Math.random() * T * 0.75;    // the first at once, more of them early
+      const rise = 0.04 + 0.15 * Math.random(), fall = 0.25 + 0.7 * Math.random() * (T / 5);
+      const amp = (0.4 + 0.6 * Math.random()) * Math.exp(-2.2 * at / T);
+      const a = Math.floor(at * sr), b = Math.min(len, a + Math.floor((rise + fall * 5) * sr));
+      for (let i = a; i < b; i++) {
+        const u = (i - a) / sr;
+        env[i] += amp * (u < rise ? u / rise : Math.exp(-(u - rise) / fall));
+      }
+    }
+    let lp = 0, peak = 1e-6;
+    for (let i = 0; i < len; i++) {
+      lp = (lp + 0.04 * (Math.random() * 2 - 1)) / 1.04;       // brown
+      x[i] = lp * Math.pow(env[i], 1.1) * Math.exp(-3.5 * i / len);
+      peak = Math.max(peak, Math.abs(x[i]));
+    }
+    for (let i = 0; i < len; i++) x[i] *= 0.9 / peak;
+    return buf;
+  }
+
+  // The crack of a nearby bolt: a few sharp, decaying bursts of noise in the first 120 ms.
+  function crackBuffer() {
+    const sr = ctx.sampleRate, len = Math.floor(0.45 * sr);
+    const buf = ctx.createBuffer(1, len, sr), x = buf.getChannelData(0);
+    const bursts = 3 + Math.floor(Math.random() * 3);
+    let peak = 1e-6;
+    for (let b = 0; b < bursts; b++) {
+      const at = b === 0 ? 0 : Math.floor(Math.random() * 0.12 * sr);
+      const decay = (0.006 + 0.04 * Math.random()) * sr, amp = b === 0 ? 1 : 0.4 + 0.6 * Math.random();
+      for (let i = at; i < len; i++) x[i] += amp * (Math.random() * 2 - 1) * Math.exp(-(i - at) / decay);
+    }
+    for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(x[i]));
+    for (let i = 0; i < len; i++) x[i] *= 0.9 / peak;
+    return buf;
+  }
+
+  function buildThunder() {
+    const out = gain(1); out.connect(wx.bus);
+    const voices = [];
+    for (let k = 0; k < THUNDER_VOICES; k++) {
+      const lp = filter('lowpass', 1000, 0.6), g = gain(1), crack = gain(0), rumble = gain(0);
+      crack.connect(lp); rumble.connect(lp); chain(lp, g, out);
+      voices.push({ lp, g, crack, rumble, until: 0, src: [] });
+    }
+    return {
+      out, voices, src: [],
+      cracks: [crackBuffer(), crackBuffer()],
+      near: [rumbleBuffer(5, 14), rumbleBuffer(5, 14)],
+      far: [rumbleBuffer(14, 22), rumbleBuffer(14, 22)],
+      pending: [], strikes: [], lastT: -1,
+    };
+  }
+
+  // A low shake for the rough air, driven in update().
+  function buildBuffet() {
+    const out = gain(0);
+    const src = noise(noiseBuffer(true));
+    chain(src, filter('lowpass', 75, 0.8), out, n.worldBus);
+    return { out, src: [src] };
+  }
+
+  // Make or stop what the settings ask for. Null weather leaves none of it.
+  function applyWeather() {
+    if (!n) return;
+    const s = wxSet;
+    const wantRain = !!s && s.precip?.kind === 'rain' && s.precip.rate > 0;
+    const wantThunder = !!s && s.lightning > 0;
+    const wantBuffet = !!s && (s.wind?.gustKt > 0 || (s.turbulence && s.turbulence !== 'none') || s.shear || s.microbursts?.length > 0);
+    if (!wx && (wantRain || wantThunder || wantBuffet)) {
+      wx = { bus: gain(0), rain: null, thunder: null, buffet: null };
+      wx.bus.connect(n.pre);
+    }
+    if (!wx) return;
+    if (wantRain && !wx.rain) wx.rain = buildRain();
+    if (!wantRain && wx.rain) { retire(wx.rain); wx.rain = null; }
+    if (wantThunder && !wx.thunder) wx.thunder = buildThunder();
+    if (!wantThunder && wx.thunder) {
+      for (const v of wx.thunder.voices) if (v.until > ctx.currentTime) for (const src of v.src) { try { src.stop(ctx.currentTime + 0.3); } catch { /* ended */ } }
+      retire(wx.thunder); wx.thunder = null;
+    }
+    if (wantBuffet && !wx.buffet) wx.buffet = buildBuffet();
+    if (!wantBuffet && wx.buffet) { retire(wx.buffet); wx.buffet = null; }
+    if (!wx.rain && !wx.thunder && !wx.buffet) {
+      dying.push({ node: wx.bus, at: ctx.currentTime + 0.5 });
+      wx.bus.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      wx = null;
+    }
+    if (!s && siren) { retire(siren); siren = null; }
+  }
+
+  // A clap: at `at` (context time), from `d` metres.
+  function fireClap(at, d, power, now) {
+    const th = wx.thunder;
+    let v = null;
+    for (const c of th.voices) if (c.until <= now) { v = c; break; }
+    if (!v) {
+      if (d > 8000) return;                 // busy: a far one can go
+      v = th.voices.reduce((a, b) => (a.until < b.until ? a : b));
+      for (const src of v.src) { try { src.stop(at); } catch { /* ended */ } }
+    }
+    const nearK = clamp01((4000 - d) / 3000);   // 1 at 1 km, 0 from 4 km
+    const farK = clamp01((d - 2000) / 13000);
+    const level = (1 - 0.4 * farK) / (1 + Math.pow(d / 3000, 2));   // 1 km: 0.9; 3.4 km: 0.4; 15 km: 0.023; 25 km: 0.009
+    const walls = inside ? 0.55 : 1;
+    const hz = (300 + 4800 * Math.pow(1 - clamp01(d / 15000), 2)) * (inside ? 0.35 : 1);
+    const rate = 1 - 0.45 * farK;
+    const list = d > 6000 ? th.far : th.near;
+    const rumble = list[Math.floor(Math.random() * list.length)];
+    const srcR = ctx.createBufferSource();
+    srcR.buffer = rumble; srcR.playbackRate.value = rate; srcR.connect(v.rumble);
+    v.src = [srcR];
+    v.rumble.gain.setValueAtTime(CLAP_RUMBLE * power * level * walls, at);
+    v.lp.frequency.setValueAtTime(hz, at);
+    srcR.start(at);
+    if (nearK > 0) {
+      const srcC = ctx.createBufferSource();
+      srcC.buffer = th.cracks[Math.floor(Math.random() * th.cracks.length)]; srcC.connect(v.crack);
+      v.crack.gain.setValueAtTime(CLAP_CRACK * nearK * power * walls, at);
+      srcC.start(at);
+      v.src.push(srcC);
+    } else v.crack.gain.setValueAtTime(0, at);
+    v.until = at + rumble.duration / rate + 0.1;
+  }
+
+  // Each frame: this frame's strikes join the queue; what's due is started. Sim time drives it.
+  function thunderStep(s, now, fast) {
+    const th = wx.thunder, t = s.t || 0;
+    if (th.lastT < 0) th.lastT = t;
+    const dt = t - th.lastT;
+    if (dt === 0) return;                 // paused
+    if (dt < 0 || dt > 0.5 || fast) { th.pending.length = 0; th.lastT = t; return; }  // a rewind, a jump, or skipped time
+    const px = s.pos?.x ?? 0, py = s.pos?.y ?? 0, pz = s.pos?.z ?? 0;
+    strikesBetween(wxSet, th.lastT, t, px, py, th.strikes);
+    for (const st of th.strikes) {
+      const h = Math.hypot(st.x - px, st.y - py);
+      if (h > THUNDER_MAX_M) continue;
+      // The first sound comes from the channel's nearest part: to the ground from 3 km, or in the cloud 3–6 km.
+      const bottom = st.ground ? 0 : 3000, top = st.ground ? 3000 : 6000;
+      const dz = pz > top ? pz - top : pz < bottom ? bottom - pz : 0;
+      const d = Math.hypot(h, dz);
+      if (d > THUNDER_MAX_M) continue;
+      const c = speedOfSound(s.sat ?? 15);
+      th.pending.push({ arrive: st.t + d / c, d, power: st.power });
+      if (th.pending.length > 16) th.pending.shift();
+    }
+    th.lastT = t;
+    for (let i = th.pending.length - 1; i >= 0; i--) {
+      const p = th.pending[i];
+      if (p.arrive - t <= THUNDER_LOOK_S) {
+        fireClap(Math.max(now, now + p.arrive - t), p.d, p.power, now);
+        th.pending.splice(i, 1);
+      }
+    }
+  }
+
+  // Rain, the bus, the buffet: only with weather.
+  function weatherStep(s, now, paused, fast, shake) {
+    set(wx.bus.gain, paused || fast ? 0 : 1, 0.05);
+    if (wx.rain) {
+      const R = wx.rain, rate = clamp01(wxSet.precip.rate);
+      // The fall stops at the lowest layer's base, as the particles' does (world/precip.js ceilingM).
+      const lay = (wxSet.clouds || []).filter((c) => c.okta > 0);
+      const alt = s.pos?.z ?? 0, top = lay.length ? Math.min(...lay.map((c) => c.baseFt * 0.3048)) : 6000;
+      const under = top === Infinity ? 1 : 1 - smooth(top - 100, top + 100, alt);   // above the layer it isn't raining
+      const body = Math.pow(rate, 0.8) * under * (0.75 + 0.5 * clamp01((s.ias || 0) / 120)) * mix('rain');
+      set(R.hiss.gain, RAIN_HISS * body, 0.3);
+      set(R.patter.gain, RAIN_PATTER * body, 0.3);
+      set(R.hissBp.frequency, inside ? 3200 : 6000, 0.2);
+      set(R.patterHp.frequency, inside ? 500 : 1800, 0.2);
+      set(R.patterLp.frequency, inside ? 4500 : 9000, 0.2);
+    }
+    if (wx.thunder) thunderStep(s, now, fast);
+    if (wx.buffet) set(wx.buffet.out.gain, paused || fast ? 0 : mix('buffet') * shake * 0.5, 0.04);
+  }
+
+  // The Boeing's windshear siren: a two-tone siren, once a cycle (then the voice, callouts.js).
+  function sirenStep(active, now) {
+    if (!active) {
+      if (siren && siren.next) { silence(siren.out); siren.next = 0; }
+      return;
+    }
+    if (!siren) {
+      const o = osc('square', SIREN_LOW);
+      const out = gain(0);
+      chain(o, filter('lowpass', 2800, 0.7), out, n.warnBus);
+      siren = { o, out, src: [o], next: 0 };
+    }
+    if (!siren.next || now + 0.05 >= siren.next) {
+      const t0 = Math.max(now, siren.next || now);
+      const f = siren.o.frequency, g = siren.out.gain;
+      f.cancelScheduledValues(t0); g.cancelScheduledValues(t0);
+      g.setValueAtTime(0, t0); g.setTargetAtTime(SIREN, t0, 0.01);
+      for (let i = 0; i < SIREN_NOTES; i++) f.setValueAtTime(i % 2 ? SIREN_HIGH : SIREN_LOW, t0 + i * SIREN_NOTE_S);
+      g.setTargetAtTime(0, t0 + SIREN_NOTES * SIREN_NOTE_S, 0.02);
+      siren.next = t0 + SIREN_CYCLE_S;
+    }
   }
 
   // ---- update ----
@@ -450,8 +736,26 @@ export function createSynth({ context = null } = {}) {
 
     // Wind and spoilers with airspeed.
     const q = clamp01(iasKt / 320);
-    set(n.wind.gain, mix('wind') * q * q * 0.6);
-    set(n.windBp.frequency, inside ? 200 + iasKt * 2.5 : 300 + iasKt * 6, 0.2); // cockpit: a lower roar
+    let gust = 1, gustFloor = 0, gustHz = 0, shake = 0;
+    if (wxSet && s.wind) {
+      // v0.4.0: the gusts (the wind off its mean, the airspeed off its own slow average) swell the
+      // wind's noise and brighten it; the fast part is the buffet's rumble.
+      const W = s.wind, t = s.t || 0;
+      const dev = Math.hypot((W.x || 0) - (W.meanX || 0), (W.y || 0) - (W.meanY || 0), W.z || 0);
+      if (gustIas < 0 || t < gustT) { gustIas = ias; gustDev = dev; gustT = t; }
+      const dt = Math.min(0.2, t - gustT);
+      gustT = t;
+      gustIas += (ias - gustIas) * (1 - Math.exp(-dt / GUST_TAU_S));
+      gustDev += (dev - gustDev) * (1 - Math.exp(-dt / SHAKE_TAU_S));
+      const g = clamp01(dev / GUST_FULL_MS);
+      const rel = Math.max(-0.3, Math.min(0.3, (ias - gustIas) / Math.max(ias, 30)));
+      gust = 1 + 2.5 * rel + 1.4 * g;
+      gustFloor = 0.1 * g * g;
+      gustHz = 300 * g;
+      shake = clamp01(Math.abs(dev - gustDev) / 2.5);
+    }
+    set(n.wind.gain, wxSet && s.wind ? mix('wind') * (q * q * gust + gustFloor) * 0.6 : mix('wind') * q * q * 0.6);   // (written apart: without weather, to the bit)
+    set(n.windBp.frequency, inside ? 200 + iasKt * 2.5 + gustHz * 0.6 : 300 + iasKt * 6 + gustHz, 0.2); // cockpit: a lower roar
     const spl = Math.max(s.speedbrake || 0, s.groundSpoilers || 0);
     set(n.spoiler.gain, mix('spoiler') * spl * clamp01(iasKt / 250) * 1.2);
     set(n.spoilerLp.frequency, 100 + iasKt * 0.8, 0.2);
@@ -526,6 +830,11 @@ export function createSynth({ context = null } = {}) {
       }
     } else if (stallNext) { silence(n.cricket); silence(n.stallTone); stallNext = 0; }
 
+    // v0.4.0: the weather's own parts; with null weather none of them exist and nothing here runs.
+    if (dying.length) reap(now);
+    if (wx) weatherStep(s, now, paused, fast, shake);
+    if (wxSet || siren) sirenStep(boeing && !!w.windshear && !paused, now);
+
     hasPrev = true; pT = s.t; pGear = gearPos; pFlap = flapDeg; pSlat = slatDeg; pGround = !!s.onGround; pRev = rev0;
   }
 
@@ -537,6 +846,7 @@ export function createSynth({ context = null } = {}) {
         if (!context && !AC) return Promise.resolve(false);
         ctx = context || new AC(); // tests pass an OfflineAudioContext
         n = build();
+        applyWeather();
       }
       if (context) return Promise.resolve(true); // offline: rendering drives it
       n.master.gain.cancelScheduledValues(ctx.currentTime);
@@ -545,9 +855,16 @@ export function createSynth({ context = null } = {}) {
       return ctx.resume().then(() => true, () => false);
     },
     update,
+    // v0.4.0: the weather settings (sim.weather; null: none). Call it when they change.
+    setWeather(settings) {
+      wxSet = settings || null;
+      if (!wxSet) gustIas = -1;
+      applyWeather();
+    },
     // The aircraft type's engine (v0.3.0): new waveforms if the sound has started already.
     setType(def) {
       SND = def?.sound || LEAP_1A;
+      boeing = def?.family === 'boeing';
       if (!n) return;
       const fanWave = harmonicWave(fanAmps(), 11), buzzWave = harmonicWave(buzzAmps(), 23);
       for (const E of n.engines) { E.fanOsc.setPeriodicWave(fanWave); E.buzzOsc.setPeriodicWave(buzzWave); }

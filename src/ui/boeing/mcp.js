@@ -8,6 +8,7 @@
 
 import { clamp, wrap360 } from '../common.js';
 import { bindKnobs } from '../knobs.js';
+import { baroOf, baroText, typedBaro, turnBaro, toggleStd } from '../fcu.js';
 import { mcpLights, usesMach, machOfKt, ktOfMach, machText, typedSpeedKt } from './logic.js';
 
 const FPM = 196.85;     // ft/min per m/s
@@ -17,6 +18,9 @@ const ALT_TOP = 45000;
 
 // [kind, key, label, tooltip, ap method]. A label's <br> makes the button two lines tall.
 const STRIP = [
+  // The EFIS panel's altimeter setting, outboard of the MCP, as on the aircraft.
+  ['w', 'baro', 'BARO'],
+  ['b', 'std', 'STD', 'Altimeter: standard (1013) or back to the setting in the BARO window', null],
   ['b', 'at', 'A/T', 'Autothrottle: arm or off (X). Pushing the levers past it overrides it', 'toggleAthr'],
   ['w', 'spd', 'IAS/MACH'],
   ['b', 'lnav', 'LNAV', 'Lateral navigation: follow the route', 'lnav'],
@@ -39,6 +43,7 @@ const TIPS = {
   hdg: 'Heading',
   alt: 'Altitude (ft; 350 = FL350)',
   vs: 'Vertical speed (ft/min; −15 = −1,500)',
+  baro: 'Altimeter setting (hPa)',
 };
 
 export function createMcp(root, hud) {
@@ -78,25 +83,28 @@ export function createMcp(root, hud) {
     hdg: { step: 1, big: 10 },
     alt: { step: 100, big: 1000 },
     vs: { step: 100, big: 500 },
+    baro: { step: 1, big: 5 },
   };
 
   function current(k) {
     const ap = view?.ap || {};
     if (k === 'spd') {
       const kt = ap.spdKt ?? 250;
-      return mach() ? Math.round(machOfKt(kt, view.state.pos.z) * 100) : Math.round(kt);
+      return mach() ? Math.round(machOfKt(kt, view.state.pos.z, view.state) * 100) : Math.round(kt);
     }
     if (k === 'hdg') return Math.round(ap.hdgDeg ?? 0);
     if (k === 'alt') return Math.round(ap.altFt ?? 5000);
+    if (k === 'baro') return Math.round(baroOf(view)?.hpa ?? 1013);
     return vsMode() ? ap.vsFpm ?? 0 : vsPreset ?? presentVs();
   }
 
   function setValue(k, v) {
     if (k === 'spd') {
-      const kt = mach() ? ktOfMach(v / 100, view.state.pos.z) : v;
+      const kt = mach() ? ktOfMach(v / 100, view.state.pos.z, view.state) : v;
       call('setSpd', clamp(Math.round(kt), 100, 399));
     } else if (k === 'hdg') { const h = wrap360(Math.round(v)); call('setHdg', h === 0 ? 360 : h); }
     else if (k === 'alt') call('setAlt', clamp(Math.round(v / 100) * 100, 100, ALT_TOP));
+    else if (k === 'baro') turnBaro(view, v);
     else if (k === 'vs') {
       const s = clamp(Math.round(v / 100) * 100, -6000, 6000);
       if (vsMode()) call('setVs', s); else { vsPreset = s; vsPresetAt = performance.now(); }
@@ -109,7 +117,10 @@ export function createMcp(root, hud) {
   }
 
   function commit(k, text) {
-    if (k === 'spd') {
+    if (k === 'baro') {
+      const v = typedBaro(text);
+      if (v !== null) turnBaro(view, v);
+    } else if (k === 'spd') {
       const kt = typedSpeedKt(text, view?.state?.pos?.z ?? 0);
       if (kt !== null) call('setSpd', clamp(Math.round(kt), 100, 399));
     } else {
@@ -138,6 +149,7 @@ export function createMcp(root, hud) {
       if (!b) return;
       const k = b.dataset.k;
       if (k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'mcp'); else call('engageAp'); }
+      else if (k === 'std') toggleStd(view);
       else if (k === 'vs') engageVs();
       else if (methods[k]) call(methods[k]);
       hud.poke();
@@ -159,7 +171,7 @@ export function createMcp(root, hud) {
     const shown = (k, text) => (edit && edit.k === k && edit.text ? edit.text : text);
     const m = usesMach(v.state);
     if (m !== labMach) { parts.spd.lab.textContent = m ? 'MACH' : 'IAS'; labMach = m; }
-    const spdText = m ? machText(machOfKt(ap.spdKt ?? 0, v.state.pos.z)) : String(Math.round(ap.spdKt ?? 0)).padStart(3, '0');
+    const spdText = m ? machText(machOfKt(ap.spdKt ?? 0, v.state.pos.z, v.state)) : String(Math.round(ap.spdKt ?? 0)).padStart(3, '0');
     // In VNAV the MCP's window is blank: the FMC has the speed.
     const fmcSpeed = /^VNAV/.test(ap.vertical || '');
     set(parts.spd, shown('spd', fmcSpeed ? '' : spdText), (ap.athr ? ' lit' : '') + sel('spd') + ed('spd'));
@@ -169,7 +181,10 @@ export function createMcp(root, hud) {
     const vsv = vsMode() ? ap.vsFpm ?? 0 : vsPreset;
     const vsText = vsv === null || vsv === undefined ? '-----' : (vsv >= 0 ? '+' : '−') + String(Math.abs(Math.round(vsv / 100) * 100)).padStart(4, '0');
     set(parts.vs, shown('vs', vsText), (on && vsMode() ? ' lit' : '') + (vsPreset !== null && !vsMode() ? ' pre' : '') + sel('vs') + ed('vs'));
+    const baro = baroOf(v);
+    set(parts.baro, shown('baro', baroText(baro)), (baro?.std ? ' lit' : '') + sel('baro') + ed('baro'));
     mcpLights(ap, lights);
+    lights.std = baro?.std ? 2 : 0;
     for (const k in btns) {
       const b = btns[k], lit = lights[k];
       if (b.lit !== lit) { b.el.classList.toggle('on', lit === 2); b.el.classList.toggle('arm', lit === 1); b.lit = lit; }

@@ -211,7 +211,8 @@ const TAXI_VERT = /* glsl */ `
       I *= smoothstep(-0.1, 0.3, dot(toCam, tdir.xy));
     }
     // In-pavement lights are dimmer than the runway's and fade sooner with distance.
-    float od = 2.6e-5 * dist * exp(-max(min(uCamAlt, wp.y + 0.5 * r.y), 0.0) / 1500.0);
+    float od = uHazeSigma0 * dist * exp(-max(min(uCamAlt, wp.y + 0.5 * r.y), 0.0) / uHazeH);
+    od += fogDepth(r, dist);   // v0.4.0: the weather's fog and cloud
     I *= exp(-od) * 1.2;
     float px = tdir.z * uPxScale / max(dist, 1.0);
     float minPx = 2.2;

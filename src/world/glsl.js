@@ -9,6 +9,7 @@ import * as THREE from '../../vendor/three.module.js';
 import { PATCH_BLEND, FLAT_MARGIN_U, FLAT_MARGIN_V, FLAT_BLEND, PAVE_BLEND_M } from './heightfield.js';
 import { RUNWAY_SHOULDER_M } from './runways.js';
 import { EARTH_RADIUS } from './frame.js';
+import { HAZE_SIGMA0, HAZE_HEIGHT } from './sky.js';
 
 export const MAX_PATCHES = 4;
 export const MAX_RUNWAYS = 12;
@@ -164,6 +165,13 @@ export function createWorldUniforms(hf) {
     uLandDir: { value: new THREE.Vector3(0, 0, -1) },
     uLandOn: { value: 0 },
     uTaxiOn: { value: 0 },
+    // v0.4.0, the weather (sky.setWeather writes these; the defaults are v0.3.2's air, exactly).
+    uHazeSigma0: { value: HAZE_SIGMA0 }, uHazeH: { value: HAZE_HEIGHT },   // the haze, sea-level extinction and scale height
+    uFogSigma: { value: 0 }, uFogBase: { value: 0 }, uFogTop: { value: 0 },   // a slab of fog or cloud (extinction, base and top m MSL)
+    uFogMix: { value: 0 }, uFogColor: { value: new THREE.Vector3() },       // how far the haze's colour goes to the fog's, neutral grey
+    uLightCarry: { value: 1 }, uFogLights: { value: 0 },                     // lights carry further than objects; halos in fog
+    uSunVis: { value: 1 },                                                   // how much of the disc shows through the cloud
+    uWet: { value: 0 }, uSnow: { value: 0 }, uRwySnow: { value: 0 },         // the ground: wet, snow on the land, snow on the runways
   };
 }
 
@@ -190,6 +198,17 @@ uniform vec3 uSunDir, uSunColor, uSkyAmb;
 uniform float uNight;
 uniform vec3 uLandPos, uLandDir;
 uniform float uLandOn, uTaxiOn;
+uniform float uHazeSigma0, uHazeH, uFogSigma, uFogBase, uFogTop, uFogMix, uLightCarry, uFogLights, uSunVis, uWet, uSnow, uRwySnow;
+uniform vec3 uFogColor;
+
+// The fog or cloud slab's optical depth along the ray from the camera to rel (0 with no slab: one branch in clear air).
+float fogDepth(vec3 rel, float dist) {
+  if (uFogSigma <= 0.0) return 0.0;
+  float h0 = uCamAlt, h1 = h0 + rel.y, lo = min(h0, h1), hi = max(h0, h1);
+  float inside = hi - lo < 0.5 ? step(uFogBase, lo) * step(lo, uFogTop)
+                               : clamp((min(hi, uFogTop) - max(lo, uFogBase)) / (hi - lo), 0.0, 1.0);
+  return uFogSigma * dist * inside;
+}
 `;
 
 // The aircraft's landing and taxi lights on a surface at scene position p with normal n: the

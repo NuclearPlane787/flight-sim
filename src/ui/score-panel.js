@@ -140,6 +140,17 @@ export function touchdownText(along, cross, aimM) {
   return `${a}, ${c}`;
 }
 
+// v0.4.0: the wind at touchdown, on the card when there was any.
+function windLine(w) {
+  if (!w || w.kt < 1) return '';
+  const dir = String(Math.round(w.fromDeg) % 360 || 360).padStart(3, '0');
+  const parts = [];
+  if (w.cross >= 1) parts.push(`${Math.round(w.cross)} kt crosswind from the ${w.side === 'L' ? 'left' : 'right'}`);
+  if (Math.abs(w.head) >= 1) parts.push(`${Math.round(Math.abs(w.head))} kt ${w.head > 0 ? 'headwind' : 'tailwind'}`);
+  const gust = Math.round(w.gustKt || 0) > Math.round(w.kt) ? `, gusting ${Math.round(w.gustKt)}` : '';
+  return `<div class="fssc-td fssc-wind">Wind ${dir}° at ${Math.round(w.kt)} kt${gust}${parts.length ? ` · ${parts.join(', ')}` : ''}</div>`;
+}
+
 export function createScorePanel(root, { onclose, onnewflight } = {}) {
   root.classList.add('fssc-root');
   root.hidden = true;
@@ -179,6 +190,7 @@ export function createScorePanel(root, { onclose, onnewflight } = {}) {
       </div>
       ${Number.isFinite(td.along) ? runwaySvg({ along: td.along, cross: td.cross, lengthM: extras.runwayLengthM || 3000, widthM: extras.runwayWidthM || 45, aimM }) : ''}
       <div class="fssc-td">${esc(touchdownText(td.along, td.cross, aimM))}</div>
+      ${windLine(td.wind)}
       ${partsHtml(parts)}
       <div class="fssc-foot">
         <button class="fsui-b" data-k="close">Close</button>

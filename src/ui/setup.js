@@ -7,6 +7,8 @@
 // defaults.type sets the aircraft at the start (missing: the A321neo).
 // plan.time = { mode: 'now' } (the real time in Korea, the default) | { mode: 'set', ms } (a date and a
 // KST time picked here, KST whatever the Mac's timezone); defaults.time sets the start.
+// plan.weather = a preset's id in src/sim/weather-presets.js (v0.4.0; 'clear' by default). It stays with the
+// plan (defaults.weather), so a New flight keeps it, but a new scenario starts clear: it isn't kept in lastPlan.
 // opts = { title, name, nameField, cancel, lockType }: the dialog's title ("New scenario", "New flight"),
 // a Name field at the top (3–40 characters; the plan gets `name`, cleaned), a Cancel button (resolves null),
 // and lockType: a scenario keeps its aircraft, so a New flight inside one shows only defaults.type's card.
@@ -19,6 +21,7 @@ import { kstFieldValues, kstFromFields } from './sky-window.js';
 import { esc } from './score-panel.js';
 import { standList } from '../ground/gate-flow.js';
 import { TYPE_LIST, typeById, DEFAULT_TYPE } from '../sim/types.js';
+import { PRESETS } from '../sim/weather-presets.js';
 
 const KEY = 'gamedump:flight-sim:settings';
 
@@ -123,11 +126,12 @@ export function createSetup(root, { airports, coast, types } = {}) {
           <canvas class="fsui-mini"></canvas>
           <div class="fsui-mini-help">Click an airport to set it. Runways are listed on the left.</div>
         </div>
-        <div class="fsui-sec"><h3>Time</h3>
+        <div class="fsui-sec"><h3>Time and weather</h3>
           <div class="fsui-row"><div class="fsui-seg" data-seg="time">
             <button data-v="now" title="The real time in Korea">Now</button><button data-v="set" title="A date and a time (KST)">Set</button>
           </div><span class="fsui-note" data-o="timeNote"></span></div>
           <div class="fsui-row" data-o="timeRow" hidden><input type="date" data-t="date" class="fsui-date"><input type="time" data-t="time" step="60" class="fsui-time"><span class="fsui-note">KST</span></div>
+          <div class="fsui-row"><label>Weather</label><select data-f="weather" aria-label="Weather">${PRESETS.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
         </div>
       </div>
     </div>
@@ -193,6 +197,7 @@ export function createSetup(root, { airports, coast, types } = {}) {
     return d / NM;
   };
 
+  const weatherNote = () => PRESETS.find((p) => p.id === plan.weather)?.note || '';
   function fill() {
     const aps = list().map((a) => [a.icao, `${a.icao} · ${a.name || ''}`]);
     plan.origin = opt(f('origin'), aps, plan.origin);
@@ -205,6 +210,8 @@ export function createSetup(root, { airports, coast, types } = {}) {
     f('pax').value = f('paxR').value = plan.pax;
     f('cargoKg').value = plan.cargoKg;
     f('fuelKg').value = plan.fuelKg;
+    plan.weather = opt(f('weather'), PRESETS.map((p) => [p.id, p.name]), plan.weather);
+    f('weather').title = weatherNote();
     seg('start', plan.start); seg('pick', pick);
     refresh();
   }
@@ -306,6 +313,7 @@ export function createSetup(root, { airports, coast, types } = {}) {
     else if (n === 'stand') { plan.stand = e.target.value; }
     else if (n === 'dest') { plan.dest = e.target.value; plan.arrRunway = ''; fill(); }
     else if (n === 'depRunway' || n === 'arrRunway') { plan[n] = e.target.value; refresh(); }
+    else if (n === 'weather') { plan.weather = e.target.value; f('weather').title = weatherNote(); }
     else if (e.target === f('name') || e.target.dataset.t) { /* read on Fly */ }
     else if (e.target.matches('input')) { readInputs(e.target); fill(); }
   });
@@ -393,6 +401,7 @@ export function createSetup(root, { airports, coast, types } = {}) {
     saveStored(out);
     if (opts.nameField) out.name = cleanName(f('name').value);
     out.time = timeMode === 'set' ? { mode: 'set', ms: startMs } : { mode: 'now' };
+    out.weather = plan.weather || 'clear';
     setWaypoints(out.waypoints);
     hide();
     const r = resolver; resolver = null; r?.(out);
@@ -409,6 +418,7 @@ export function createSetup(root, { airports, coast, types } = {}) {
     type = findType(defaults?.type ?? DEFAULT_TYPE, !!opts.lockType);
     // The last plan's load and stand belong to its own type: they don't carry over to another.
     const last = { ...(loadStored().lastPlan || {}) };
+    delete last.weather;   // a new scenario starts clear; only the given defaults carry a weather
     if ((last.type || DEFAULT_TYPE) !== type.id) { delete last.pax; delete last.cargoKg; delete last.fuelKg; delete last.stand; }
     plan = { ...BASE, ...type.defaults, ...last, ...(defaults || {}), type: type.id };
     delete plan.name;

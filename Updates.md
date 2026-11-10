@@ -4,6 +4,32 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.4.0 · 2026-11-10 · The weather
+
+- **Weather, from the L window's new Weather tab** (Sky · Weight · Weather). It has eight presets: clear, few clouds, overcast, rain, thunderstorm, snow, fog, and a gusty crosswind straight across your arrival runway. Every setting is under them:
+  - the wind at the surface and aloft, gusts and turbulence;
+  - a low-level shear, and a microburst on final;
+  - the visibility and fog, and up to three cloud layers;
+  - rain or snow, and lightning;
+  - the runway's state, the temperature and the QNH.
+
+  A METAR-style line at the top sums it up, and a change applies at once in flight. The setup has the presets too, next to the start time; a new scenario starts clear.
+- **You feel it.** The wind changes with height and blows you sideways, so a crosswind landing means crabbing on the approach and straightening up in the flare. A tailwind makes the landing longer. Gusts and turbulence bump you about. A microburst on final gives you a headwind, then a downdraft and a tailwind, with a WINDSHEAR warning in each maker's voice. Hot air is thinner, so take-offs are longer; the engines hold their thrust up to ISA + 15.
+- **The altimeter is real:** it reads the air's pressure against the QNH you set. Each flight starts with the day's QNH set; K sets it again, or use the BARO box on the FCU or the MCP (scroll it, type into it, or STD). Above 14,000 ft with a QNH still set, the setting flashes (an amber box on the Boeings) until you set STD; below FL140 on STD in a descent, the same. On a cold day you're lower than the altimeter says, as in a real aircraft.
+- **On the screens:** the ND shows the wind, with an arrow, and the drift between your heading and your track; the PFD shows the altimeter's setting. The landing card and the logbook give the wind at touchdown as the tower does, gusts included, with its crosswind and its head or tailwind part.
+- **The Boeings' autopilot flies the track:** LNAV and LOC hold their course in a crosswind, and the autoland lines up from 500 ft and lands decrabbed. It always tries, whatever the wind. On a 15 nm final the heading held is the crabbed one, so the A321's HDG keeps you on the centreline too.
+- **Wet, snowy and icy runways,** from the rain, the snow and the temperature, or set by hand. You stop much later on them and slide sideways more easily.
+- **The look:**
+  - haze and fog to the visibility you set;
+  - cloud layers to fly through and above: a white floor in the sun, lit orange by the cities at night;
+  - grey overcast light;
+  - rain streaks and drops on the windshield, snow falling and lying;
+  - lightning that lights up the clouds, and rain shafts under the storm cells;
+  - the runway lights reflected in a wet runway at night.
+
+  Clear weather looks exactly as it did.
+- **The sound:** rain drumming on the skin, louder in the cockpit; thunder after the flash, as late as the strike is far; gusts in the wind's noise.
+
 ## v0.3.2 · 2026-11-08 · The Boeings to 45,000 ft, duplicating a scenario, changing the weights in flight
 
 - **The 787's and 777's ALT window now goes to 45,000 ft** (it stopped at 43,000), 1,900 ft past their certified ceiling, so you can take them up there and see what happens. A light one climbs there and levels off; a heavy one runs out of thrust before it. The A321neo's still stops at 39,800 ft.

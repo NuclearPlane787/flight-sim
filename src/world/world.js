@@ -20,6 +20,8 @@ import { createRunways } from './airports.js';
 import { maskAirportCover } from './airport-mask.js';
 import { createAprons } from './apron.js';
 import { createTraffic } from './traffic.js';
+import { createClouds } from './clouds.js';
+import { createPrecip } from './precip.js';
 
 export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfield = null, airports = null } = {}) {
   const hf = heightfield || await loadHeightfield(baseUrl);
@@ -32,6 +34,9 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
   const chunks = { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, ATMOS_GLSL, WATER_GLSL, FIELDS_GLSL, AIRCRAFT_LIGHTS_GLSL, MAX_PATCHES, MAX_RUNWAYS };
 
   const sky = createSky(scene, uniforms, chunks);
+  // v0.4.0: the weather's own objects (nothing is drawn in clear weather).
+  const clouds = createClouds(scene, uniforms);
+  const precip = createPrecip(scene, uniforms);
   const terrain = createTerrain(scene, uniforms, chunks);
   const trees = createTrees(scene, uniforms, chunks);
   const cities = createCities(scene, uniforms, chunks, ap);
@@ -54,7 +59,9 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
   const world = {
     heightfield: hf, airports: ap, uniforms, sun: sky.sun.clone(), sky, terrain, trees, cities, runways, aprons, traffic, cityLights, taxiLights, stats,
 
-    update({ camera, origin, dt = 1 / 60, paused = false }) {
+    // v0.4.0: the settings (normalizeWeather()'s shape, or null for the default weather), whenever they change.
+    setWeather(settings) { sky.setWeather?.(settings); clouds.setWeather(settings); precip.setWeather(settings); },
+    update({ camera, origin, state, dt = 1 / 60, paused = false }) {
       time += dt;
       camera.updateMatrixWorld();
       camScene.setFromMatrixPosition(camera.matrixWorld);
@@ -73,6 +80,8 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       u.uPxScale.value = h / (2 * Math.tan((camera.fov || 60) * Math.PI / 360));
 
       sky.update(camera, camScene.y);
+      clouds.update({ camera, origin, state, dt, paused });
+      precip.update({ camera, origin, state, dt, paused });
       const t = terrain.update(camMap, origin, agl);
       const treeTris = trees.update(camMap, origin, agl);
       const c = cities.update(camMap, origin, agl);

@@ -9,6 +9,7 @@
 
 import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from '../common.js';
 import { fmaModes, createBoxes, altAlert, speedLow, speedText, machText } from './logic.js';
+import { shownAltFt, shownGroundFt, baroLabel } from '../pfd.js';
 
 const TAPE = 'rgba(70,76,82,0.92)';
 const SKY = '#1b6fc0', GROUND = '#7a4a24';
@@ -50,7 +51,7 @@ export function createBoeingPfd(cv) {
     attitude(s, st, cx, yc);
     if (ils && ils.visible) ilsScales(s, cx, yc, ils);
     speedTape(s, st, ap, yc);
-    altTape(s, st, ap, yc);
+    altTape(s, st, ap, yc, view);
     vsScale(s, st, ap, yc);
     compass(s, st, ap, cx, ils);
     fma(s, st, ap, cx, now);
@@ -287,16 +288,16 @@ export function createBoeingPfd(cv) {
   }
 
   // ---- altitude ----
-  function altTape(s, st, ap, yc) {
+  function altTape(s, st, ap, yc, view) {
     const x0 = 0.742 * s, x1 = 0.868 * s, top = 0.135 * s, bot = 0.75 * s;
-    const alt = st.pos.z * FT, pf = (bot - top) / 1150;
+    const alt = shownAltFt(st), pf = (bot - top) / 1150;
     const Y = (a) => yc - (a - alt) * pf;
     ctx.save();
     ctx.fillStyle = TAPE; ctx.fillRect(x0, top, x1 - x0, bot - top);
     ctx.beginPath(); ctx.rect(x0 - 0.014 * s, top, x1 - x0 + 0.014 * s, bot - top); ctx.clip();
     // The ground: an amber strip below the terrain or the runway's height.
     if (st.groundH !== undefined) {
-      const gy = Y(st.groundH * FT);
+      const gy = Y(shownGroundFt(st));
       if (gy < bot) { ctx.fillStyle = C.amber; ctx.fillRect(x0, gy, 0.012 * s, bot - gy); }
     }
     ctx.strokeStyle = C.white; ctx.fillStyle = C.white; ctx.lineWidth = Math.max(1.2, s * 0.003);
@@ -350,10 +351,17 @@ export function createBoeingPfd(cv) {
     ctx.fillText((neg ? '-' : '') + (th > 0 ? String(th) : ''), tx - 0.001 * s, yc);
     drum(bx + bw - dw, yc, dw, bh * 1.44, A0, 20, 2, s * 0.033, 1.05);
 
-    // The altimeter setting: we fly the standard atmosphere.
+    // The altimeter setting, Boeing's way: green, "1013 HPA", or STD.
+    const baro = baroLabel(view), baroT = baro.std ? 'STD' : `${baro.hpa} HPA`;
     ctx.fillStyle = C.green; ctx.textAlign = 'center';
     fit('1013 HPA', s * 0.03, x1 - x0, false);
-    ctx.fillText('1013 HPA', (x0 + x1) / 2, bot + 0.03 * s);
+    ctx.fillText(baroT, (x0 + x1) / 2, bot + 0.03 * s);
+    // The transition reminder: Boeing's amber box around the setting.
+    if (st.baroAlert) {
+      const w = ctx.measureText(baroT).width + 0.016 * s;
+      ctx.strokeStyle = C.amber; ctx.lineWidth = Math.max(1.5, s * 0.004);
+      ctx.strokeRect((x0 + x1) / 2 - w / 2, bot + 0.008 * s, w, 0.044 * s);
+    }
   }
 
   // ---- vertical speed ----
@@ -508,6 +516,7 @@ export function createBoeingPfd(cv) {
       ctx.fillStyle = col; ctx.fillText(t, cx, y);
     };
     if (st.crashed) word('CRASH', C.red);
+    if (w.windshear) word('WINDSHEAR', C.red);   // v0.4.0
     if (w.pullUp) word('PULL UP', C.red);
     if (w.stall || st.shaker) word('STALL', C.red);
     if (w.overspeed) word('OVERSPEED', C.red);

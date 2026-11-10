@@ -45,7 +45,8 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
     console.log('shot', name);
   };
   const st = () => page.evaluate(() => { const s = window.__fs.sim.state; return { mass: s.mass, fuel: s.fuelKg, pax: s.paxN, cargo: s.cargoKg, payload: s.payloadKg, added: s.fuelAddedKg, x: s.pos.x, y: s.pos.y, z: s.pos.z, crashed: !!s.crashed }; });
-  const W = '.fslw', S = '.fssw:not(.fslw)';
+  // v0.4.0: the Weather window (.fssw.fswx) shares the frame too, so the Sky window is the one that's neither.
+  const W = '.fslw', S = '.fssw:not(.fslw):not(.fswx)';
   const val = (k) => page.$eval(`${W} [data-f="${k}"]`, (e) => e.value);
   const msg = () => page.$eval(`${W} [data-o="msg"]`, (e) => e.textContent);
   const wins = () => page.evaluate(() => ({ sky: !!window.__fs.skyWin?.isOpen, load: !!window.__fs.loadWin?.isOpen, paused: window.__fs.paused }));
@@ -56,7 +57,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   let w = await wins();
   ok(w.sky && !w.load, `L opens the Sky window: ${JSON.stringify(w)}`);
   const tabs = await page.$$eval(`${S} .fssw-tab`, (b) => b.map((x) => x.textContent.trim() + (x.classList.contains('on') ? '*' : '')));
-  ok(tabs.join('|') === 'Sky*|Weight', `its tabs: ${tabs.join(' | ')}`);
+  ok(tabs.join('|') === 'Sky*|Weight|Weather', `its tabs: ${tabs.join(' | ')}`);
   await shot('v032-sky-tabs');
   const skyBox = await page.$eval(S, (e) => { const r = e.getBoundingClientRect(); return { l: r.left, b: r.bottom }; });
   await page.click(`${S} [data-tab="load"]`);

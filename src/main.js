@@ -9,6 +9,8 @@ import { createCameraRig } from './camera.js';
 import { createCallouts } from './audio/callouts.js';
 import { createScorer, runwayFrame, aimingPoint, landingRunway, runwayEndRefs } from './score.js';
 import { createLogbook } from './ui/logbook.js';
+import { createWeatherWindow, WEATHER_TAB, addWeatherTab } from './ui/weather-window.js';
+import { presetWeather, weatherContext } from './sim/weather-presets.js';
 import { createScorePanel } from './ui/score-panel.js';
 import * as store from './store.js';
 import { createGateFlow } from './ground/gate-flow.js';
@@ -199,9 +201,11 @@ async function boot() {
   const clock = createClock({ ms: Date.now(), running: true, speed: 1 });
   let skyWin = null;   // the Sky window (src/ui/sky-window.js), once it's loaded
   let loadWin = null;  // v0.3.2: the Weight window (src/ui/load-window.js), the Sky window's second tab
+  let weatherWin = null;  // v0.4.0: the Weather tab (src/ui/weather-window.js)
+  let shownWeather = null;   // v0.4.0: the settings the world last drew
   let lTab = 'sky';    // the L window's tab last shown
   // Both of the L window's tabs closed (a new flight, the menu: else an Esc handler would still catch).
-  function closeLWindow() { if (skyWin?.isOpen) skyWin.close(); if (loadWin?.isOpen) loadWin.close(); }
+  function closeLWindow() { if (skyWin?.isOpen) skyWin.close(); if (loadWin?.isOpen) loadWin.close(); if (weatherWin?.isOpen) weatherWin.close(); }
   const geo = [0, 0];
   function placeNow() { const s = sim.state; const g = toGeo(s.pos.x, s.pos.y); return { lat: g[0], lon: g[1] }; }
 
@@ -277,9 +281,13 @@ async function boot() {
     // The lever at the trim thrust (sim.reset puts it there), at most CL: the A/THR takes it
     // from there and moves it (v0.2.2; before, it sat in CL).
     input.lever = sim.controls.thrust = Math.min(sim.controls.thrust, sim.leverClimb);
-    ap.setHdg(Math.round(gridToMag(ax.hdg, x, y) / DEG) % 360 || 360);
+    // v0.4.0: the crew has the arrival's QNH set, and the heading held is the one the aircraft flies, crabbed into
+    // any crosswind, so HDG keeps it on the extended centreline. In calm air both are as before, exactly.
+    sim.setLocalQnh();
+    const hdgNow = sim.state.drift !== 0 ? sim.state.hdg : ax.hdg;
+    ap.setHdg(Math.round(gridToMag(hdgNow, x, y) / DEG) % 360 || 360);
     ap.hdgSel?.();       // a Boeing's window is only the mode once it's selected
-    ap.setAlt(Math.round((z * FT) / 100) * 100);
+    ap.setAlt(Math.round(((z + (sim.state.altInd - sim.state.pos.z)) * FT) / 100) * 100);   // the altimeter's reading there
     ap.setSpd(finalKt);
     ap.engageAp();
     if (!ap.athr) ap.toggleAthr();
@@ -311,6 +319,8 @@ async function boot() {
   function startFlight(p, { keepClock = false } = {}) {
     plan = p;
     useType(p.type);
+    // v0.4.0: the plan's weather, before the aircraft is placed (the reset and the trim read the wind).
+    sim.setWeather(presetWeather(p.weather || 'clear', weatherContext(airports, p)));
     store.save('lastflight', p);
     map.setWaypoints(p.waypoints || []);
     // The time of day: Now (the real time in Korea), or the one picked in the setup. Restart the
@@ -334,6 +344,7 @@ async function boot() {
       if (p.start === 'final' && dest) placeOnFinal(null);
       else placeOnRunway(p.origin, p.depRunway, null);
     }
+    sim.setLocalQnh();   // v0.4.0: the altimeter set to the day's QNH before the flight, as a crew sets it (1013.25 in calm)
     syncNav();
     // The FCU heading starts at the aircraft's own heading (else Z would turn it to 360).
     if (p.start !== 'final') ap.setHdg(Math.round(gridToMag(sim.state.hdg, sim.state.pos.x, sim.state.pos.y) / DEG) % 360 || 360);
@@ -471,7 +482,8 @@ async function boot() {
   async function newScenario() {
     menu.hide();
     const last = store.load('lastflight', null);
-    const p = await setup.show(last || { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' },
+    // Decision 4: a new scenario starts clear, whatever the last flight flew in.
+    const p = await setup.show(last ? { ...last, weather: 'clear' } : { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' },
       { title: 'New scenario', name: scenarios ? scenarios.defaultName() : 'Scenario 1', nameField: true, cancel: true });
     if (!p) { menu.show(); menu.refresh(); return; }
     const name = p.name; delete p.name;
@@ -545,7 +557,7 @@ async function boot() {
 
   function jumpTo(sample) {
     fadeThen(() => {
-      sim.restore(sample.snap);
+      sim.restore(sample.snap, { keepWeather: true });
       setTimeScale(1);
       afterJump(); // a new prediction runs from the new spot
     });
@@ -631,7 +643,7 @@ async function boot() {
     for (let i = rewind.length - 1; i >= 0; i--) if (rewind[i].t <= target) { snap = rewind[i].snap; clockMs = rewind[i].clockMs; rewind.length = i + 1; break; }
     if (!snap && rewind.length) { snap = rewind[0].snap; clockMs = rewind[0].clockMs; rewind.length = 1; }
     if (!snap) { toast('Nothing to rewind to yet'); return; }
-    sim.restore(snap);
+    sim.restore(snap, { keepWeather: true });
     if (Number.isFinite(clockMs)) clock.set(clockMs);   // the time of day goes back too
     afterJump(true);
     landed = gate.phase === 'taxi-in' || gate.phase === 'arrived';
@@ -681,6 +693,7 @@ async function boot() {
       case 'ap': if (ap.ap) ap.disconnectAp('pilot'); else ap.engageAp(); break;
       case 'toga': ap.toga?.(); break;
       case 'athr': ap.toggleAthr(); break;
+      case 'localQnh': sim.setLocalQnh(); toast(`QNH ${Math.round(sim.baro.hpa)} set`, 1200); break;
       case 'faster': changeRate(1); break;
       case 'slower': changeRate(-1); break;
       case 'map': map.toggle(); if (map.isOpen) apKey = ''; else predictor.cancel(); break;
@@ -861,6 +874,7 @@ async function boot() {
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,
       fuelUsedKg: Math.round(fuelAtStart + (s.fuelAddedKg || 0) - s.fuelKg),   // the burn: fuel put in or taken off in flight doesn't count
       score: { points: res.points, grade: res.grade, parts: res.parts, ...(res.offRunway ? { offRunway: true } : {}) },
+      wind: res.touchdown?.wind && res.touchdown.wind.kt >= 1 ? res.touchdown.wind : null,   // v0.4.0
     });
     window.__fsLastScore = res;
     saveNow('landed');   // so a reload never scores (and logs) the same landing again
@@ -884,6 +898,7 @@ async function boot() {
   const camMap = { x: 0, y: 0, z: 0 };
   const scenePos = [0, 0, 0];
   const view = { state: sim.state, ap, controls: sim.controls, dest: null, timeScale: 1, timeScaleActual: 1, paused: false };
+  view.sim = sim;   // v0.4.0: the PFDs' and the FCU's/MCP's BARO read and set the altimeter through it
   let last = performance.now(), lastRender = 0, raf = 0;
   let fpsFrames = 0, fpsT = performance.now(), fps = 0, cpuMs = 0, mapSkip = 0;
   let simMs = 0, stepsAvg = 0, drawMs = 0, perfShownAt = 0; // for the performance readout
@@ -980,6 +995,7 @@ async function boot() {
     updateAircraftLights(s);
     if (skyWin?.isOpen && ++skyWinTick % 6 === 0) skyWin.update();
     if (loadWin?.isOpen && ++skyWinTick % 6 === 0) loadWin.update();   // the fuel as it burns
+    if (weatherWin?.isOpen && ++skyWinTick % 6 === 0) weatherWin.update();
   }
   // The A321's lights by phase (src/aircraft-lights.js), and its lamps' beam for the ground's shaders.
   const lampP = new THREE.Vector3(), lampD = new THREE.Vector3();
@@ -1028,6 +1044,7 @@ async function boot() {
     if (!map.isOpen || ++mapSkip % 10 === 0) {
       updateSky(dt);
       const tDraw = performance.now();
+      if (sim.weather !== shownWeather) { shownWeather = sim.weather; world.setWeather(shownWeather); synth?.setWeather?.(shownWeather); }   // v0.4.0
       world.update({ camera, origin, state: s, dt, paused });
       renderer.render(scene, camera);
       drawMs += (performance.now() - tDraw - drawMs) * 0.1;
@@ -1115,7 +1132,7 @@ async function boot() {
   // Weight window as its second tab. Both stand at the bottom-left; L opens the tab last shown. ----
   if (skyWinMod?.createSkyWindow) {
     skyWin = skyWinMod.createSkyWindow($('skywin-root'), { clock, place: placeNow,
-      tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }] });
+      tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }, WEATHER_TAB] });
     skyWin.onclose = () => requestFrame();
     skyWin.ontab = (t) => showLTab(t);
     // A time set in the window shows at once, also while paused (the game draws on demand then).
@@ -1126,21 +1143,38 @@ async function boot() {
   loadWin.onclose = () => requestFrame();
   loadWin.ontab = (t) => showLTab(t);
   if (!skyWin) loadWin.el.querySelector('[data-tab="sky"]')?.remove();
+  // v0.4.0: the Weather tab, made after the Sky window so `.fssw` still finds that first.
+  addWeatherTab(loadWin.el);
+  weatherWin = createWeatherWindow($('skywin-root'), { get: weatherNow, onapply: applyWeather });
+  weatherWin.onclose = () => requestFrame();
+  weatherWin.ontab = (t) => showLTab(t);
+  function weatherNow() {
+    return { settings: sim.weather, ctx: weatherContext(airports, plan), crashed: !!(crashed || sim.state.crashed) };
+  }
+  function applyWeather(settings) {
+    if (!plan || crashed || sim.state.crashed) return { ok: false, text: 'Crashed: rewind or restart to change the weather.' };
+    sim.setWeather(settings);
+    apKey = '';              // the predicted path depends on the weather
+    saveNow('weather');
+    if (paused) renderOnce(); else requestFrame();
+    return { ok: true };
+  }
   // Open the L window on a tab ('sky' or 'load'), closing the other.
   function showLTab(t) {
     if (inMenu || !plan) return;
-    const win = t === 'load' ? loadWin : skyWin, other = t === 'load' ? skyWin : loadWin;
+    const wins = { sky: skyWin, load: loadWin, weather: weatherWin };
+    const win = wins[t];
     if (!win) return;
     lTab = t;
-    if (other?.isOpen) other.close();
+    for (const k in wins) if (k !== t && wins[k]?.isOpen) wins[k].close();
     if (!win.isOpen) win.open();
     win.update(); requestFrame();
   }
   function openSky() { showLTab('sky'); }
   function toggleL() {
     if (inMenu || !plan) return;
-    if (skyWin?.isOpen || loadWin?.isOpen) closeLWindow();
-    else showLTab(lTab === 'load' || !skyWin ? 'load' : 'sky');
+    if (skyWin?.isOpen || loadWin?.isOpen || weatherWin?.isOpen) closeLWindow();
+    else showLTab(lTab === 'sky' && !skyWin ? 'load' : lTab);
   }
   // Cmd/Ctrl+L is the one Ctrl binding (PLAN.md): it can't lose anything, so it's the exception.
   window.addEventListener('keydown', (e) => {
@@ -1195,7 +1229,7 @@ async function boot() {
     get current() { return current; }, get inMenu() { return inMenu; }, get lastSaveMs() { return lastSaveMs; }, get frames() { return renderer.info.render.frame; },
     get landed() { return landed; }, get plan() { return plan; }, setTimeScale: (r) => { if (r === 1 || canCompress()) setTimeScale(r); return timeScale; },
     setPaused, rewindNow, requestPredict: () => { predictor.request(sim.snapshot(), {}); },
-    get skyWin() { return skyWin; }, get loadWin() { return loadWin; }, showLTab, toggleL, applyLoad, saveCopy,   // v0.3.2
+    get skyWin() { return skyWin; }, get loadWin() { return loadWin; }, get weatherWin() { return weatherWin; }, get weatherCtx() { return weatherContext(airports, plan); }, showLTab, toggleL, applyLoad, saveCopy,   // v0.3.2
     renderOnce, runwayEnds, runwayAxis,
     gridToMagDeg: (h, x, y) => gridToMag(h, x, y) / DEG,
   };

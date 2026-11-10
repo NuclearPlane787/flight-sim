@@ -213,8 +213,9 @@ const VERT = /* glsl */ `
     float e0 = exp(-max(uCamAlt, 0.0) / HAZE_H);
     float od = abs(rel.y) < 1.0 ? HAZE_SIGMA0 * e0 * d3
              : HAZE_SIGMA0 * HAZE_H * d3 / rel.y * (e0 - exp(-max(uCamAlt + rel.y, 0.0) / HAZE_H));
-    vec3 ext = exp(-0.6 * od * vec3(0.85, 1.0, 1.2));
-    I *= uNight;
+    od += fogDepth(rel, d3);
+    vec3 ext = exp(-0.6 * od * mix(vec3(0.85, 1.0, 1.2), vec3(1.0), uFogMix));
+    I *= uNight * (1.0 + 0.6 * uSnow);   // v0.4.0: snow on the ground lifts the city's light
     vCol = c * ext * I * 1.6;
     // At least about a pixel; nearer lights a little bigger (a 4 m glow).
     float px = (kind == 3.0 ? 6.0 : 4.0) * uPxScale / max(d3, 1.0);

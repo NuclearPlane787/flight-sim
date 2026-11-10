@@ -31,7 +31,7 @@ function createAp(core, target = {}) {
       if (S.onGround || S.agl < 100 * A.FT || core.X.airTime < 5) return false;
       ap.ap = true;
       ap.lateral = 'HDG';
-      const dh = ap.altFt * A.FT - S.pos.z;
+      const dh = ap.altFt * A.FT - S.altInd;
       if (Math.abs(dh) < 60 * A.FT) ap.vertical = 'ALT';
       else {
         ap.vertical = 'V/S';
@@ -61,7 +61,7 @@ function createAp(core, target = {}) {
       if (ap.athr) ap.thrustMode = 'SPEED';
     },
     levelChange() {
-      const dh = ap.altFt * A.FT - core.state.pos.z;
+      const dh = ap.altFt * A.FT - core.state.altInd;
       if (Math.abs(dh) < 60 * A.FT) { ap.vertical = 'ALT'; return; }
       ap.vertical = dh > 0 ? 'OP CLB' : 'OP DES';
       core.X.opGamma = core.state.vs / Math.max(core.state.tas, 50);
@@ -92,7 +92,7 @@ function apStep(X, ap, E, S, dt) {
   E.apBank = clamp(2.2 * dpsi, -25 * A.DEG, 25 * A.DEG);
 
   // Vertical.
-  const h = S.pos.z, tgt = ap.altFt * A.FT, dh = tgt - h;
+  const h = S.altInd, tgt = ap.altFt * A.FT, dh = tgt - h;
   let vsCmd;
   if (ap.vertical === 'V/S' || ap.vertical === 'OP CLB' || ap.vertical === 'OP DES') {
     const towards = (ap.vertical === 'V/S' ? ap.vsFpm * dh > 0 : true) && Math.abs(dh) > 1;

@@ -17,6 +17,7 @@ call <code>runAll()</code> in the console to see the numbers.</p>
 const params = new URLSearchParams(location.search);
 const synthModule = await import(params.get('synth') || '../src/audio/synth.js');
 const { createSynth } = synthModule;
+const { strikesBetween } = await import('../src/sim/lightning.js');   // v0.4.0
 
 // ?type=<id> renders that aircraft type's engine (v0.3.0); without it, the A321neo as always. A
 // widebody reads its entry in the registry; until that entry has its `sound` (or exists at all: the
@@ -46,6 +47,7 @@ const KT = 1 / 1.943844; // kt → m/s
 function baseState() {
   return {
     t: 0, ias: 0, gs: 0, vs: 0, onGround: true, gearPos: 1, flapDeg: 0, slatDeg: 0,
+    pos: { x: 0, y: 0, z: 200 }, sat: 15, wind: { x: 0, y: 0, z: 0, meanX: 0, meanY: 0 },   // v0.4.0 (null weather ignores them)
     speedbrake: 0, groundSpoilers: 0, brakes: { left: 0, right: 0 }, parkingBrake: false,
     engines: [{ n1: 20.5, rev: 0 }, { n1: 20.5, rev: 0 }],
     warnings: { stall: false, overspeed: false, apDisc: false },
@@ -153,6 +155,72 @@ const CLIPS = {
   'clip-approach-3rd': steady('orbitSide', 56, 140, { gear: 1, flap: 25, slat: 27, hunt: true }),
   'clip-landing-cockpit': SCEN['landing-in'],
 };
+// ---- v0.4.0: the weather's scenarios (run by window.runWeather; prepare() fills the rest) ----
+const heavyRain = { precip: { kind: 'rain', rate: 1 }, lightning: 0, wind: { fromDeg: 0, kt: 0, gustKt: 0 }, turbulence: 'none', seed: 1 };
+const lightRain = { ...heavyRain, precip: { kind: 'rain', rate: 0.15 } };
+const gusty = { precip: { kind: 'none', rate: 0 }, lightning: 0, wind: { fromDeg: 0, kt: 15, gustKt: 15 }, turbulence: 'moderate', seed: 2 };
+// A lone ground strike about d metres from the origin, flashing between t0 and t1: a seed whose
+// window has only this strike within earshot.
+function findStrike(dMin, dMax, t0, t1, dur, lightning = 0.04) {
+  const out = [];
+  for (let seed = 1; seed < 2000000; seed++) {
+    const w = { lightning, seed };
+    strikesBetween(w, 0, dur, 0, 0, out);
+    const heard = out.filter((a) => Math.hypot(a.x, a.y) < 26000);
+    if (heard.length !== 1) continue;
+    const a = heard[0], d = Math.hypot(a.x, a.y);
+    if (a.ground && d >= dMin && d <= dMax && a.t >= t0 && a.t <= t1) return { seed, t: a.t, d, power: a.power, x: a.x, y: a.y };
+  }
+  throw new Error('no such strike');
+}
+const stormWeather = (seed, lightning = 0.04) => ({ precip: { kind: 'none', rate: 0 }, lightning, wind: { fromDeg: 0, kt: 0, gustKt: 0 }, turbulence: 'none', seed });
+// Silence but for the sky, from outside (engines stopped, stopped on the ground: nothing else).
+function thunderScen(dur, find, opts = {}) {
+  const sc = { dur, weather: null, strike: null, opts,
+    prepare() { const a = find(); sc.strike = a; sc.weather = stormWeather(a.seed, opts.lightning); },
+    step(s, t, o) { o.inside = !!opts.inside; if (!opts.inside) Object.assign(o, VIEW.orbitSide); n1(s, opts.n1 ?? 0); s.sat = opts.sat ?? 15; s.pos.x = s.pos.y = 0; s.pos.z = 200; } };
+  return sc;
+}
+Object.assign(SCEN, {
+  'wx-rain-heavy-in': { dur: 3, weather: heavyRain, step(s, t, o) { o.inside = true; n1(s, 0); } },
+  'wx-rain-heavy-out': { dur: 3, weather: heavyRain, step(s, t, o) { Object.assign(o, VIEW.orbitSide); n1(s, 0); } },
+  'wx-rain-light-in': { dur: 3, weather: lightRain, step(s, t, o) { o.inside = true; n1(s, 0); } },
+  'wx-norain-in': { dur: 3, step(s, t, o) { o.inside = true; n1(s, 0); } },
+  'wx-rain-approach-in': { dur: 3, weather: heavyRain, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 1; n1(s, 56); s.ias = 140 * KT; } },
+  'wx-norain-approach-in': { dur: 3, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 1; n1(s, 56); s.ias = 140 * KT; } },
+  'wx-near': thunderScen(14, () => findStrike(2500, 3500, 0.5, 2.5, 14)),
+  'wx-near-cold': thunderScen(14, () => findStrike(2500, 3500, 0.5, 2.5, 14), { sat: -20 }),
+  'wx-far': thunderScen(56, () => findStrike(13000, 16000, 0.5, 2.5, 56)),
+  'wx-gust': { dur: 9, weather: gusty, step(s, t, o) { gustStep(s, t, o); } },
+  'wx-nogust': { dur: 9, step(s, t, o) { gustStep(s, t, o); } },
+  'wx-siren': { dur: 4, weather: { ...heavyRain, precip: { kind: 'none', rate: 0 } }, siren: true, step(s, t, o) { o.inside = true; n1(s, 0); s.warnings.windshear = t >= 0.5; } },
+});
+// The wind off its mean by 10 m/s, four seconds round, and the airspeed a little with it.
+function gustStep(s, t, o) {
+  o.inside = true; s.onGround = false; s.gearPos = 1; n1(s, 0);
+  const g = 10 * Math.sin(2 * Math.PI * t / 4);
+  s.wind.x = 5 + g; s.wind.meanX = 5; s.wind.y = 0; s.wind.meanY = 0;
+  s.ias = 140 * KT + 0.5 * g;
+}
+// The listening clips (saved as v040-*.wav).
+function gustedApproach(view) {
+  return { dur: 18, weather: gusty, step(s, t, o) {
+    Object.assign(o, VIEW[view]);
+    s.onGround = false; s.gearPos = 1; s.flapDeg = 25; s.slatDeg = 27;
+    n1(s, 56 + 2.5 * Math.sin(t * 0.7));
+    const g = 7 * Math.sin(t * 1.1) + 5 * Math.sin(t * 0.37 + 1) + 3 * Math.sin(t * 5.3);
+    s.wind.x = 6 + g; s.wind.meanX = 6; s.wind.z = 2.2 * Math.sin(t * 7.1) + 1.4 * Math.sin(t * 13);
+    s.ias = 140 * KT + 0.45 * g;
+  } };
+}
+Object.assign(CLIPS, {
+  'clip-v040-rain-cockpit': { dur: 12, weather: heavyRain, step(s, t, o) { Object.assign(o, VIEW.cockpit); s.onGround = false; s.gearPos = 1; s.flapDeg = 25; s.slatDeg = 27; n1(s, 56 + 2.5 * Math.sin(t * 0.7)); s.ias = 140 * KT; } },
+  'clip-v040-rain-3rd': { dur: 12, weather: heavyRain, step(s, t, o) { Object.assign(o, VIEW.orbitSide); s.onGround = false; s.gearPos = 1; s.flapDeg = 25; s.slatDeg = 27; n1(s, 56 + 2.5 * Math.sin(t * 0.7)); s.ias = 140 * KT; } },
+  'clip-v040-thunder-near-cockpit': thunderScen(15, () => findStrike(1200, 2200, 0.5, 2.5, 15), { inside: true, n1: 20.5 }),
+  'clip-v040-thunder-near-3rd': thunderScen(15, () => findStrike(1200, 2200, 0.5, 2.5, 15), { n1: 20.5 }),
+  'clip-v040-thunder-far-cockpit': thunderScen(58, () => findStrike(14000, 18000, 0.5, 2.5, 58), { inside: true, n1: 20.5 }),
+  'clip-v040-gusty-approach': gustedApproach('cockpit'),
+});
 Object.assign(SCEN, CLIPS);
 
 // ---- rendering ----
@@ -163,10 +231,13 @@ const timing = { calls: 0, ms: 0, max: 0 };
 // packs, rolling) in a mix.
 async function render(name, { noeng = false } = {}) {
   const sc = SCEN[name];
+  sc.prepare?.();
   const len = Math.round(sc.dur * SR);
   const ctx = new OfflineAudioContext(2, len, SR);
   const synth = createSynth({ context: ctx });
   if (def) synth.setType(def);
+  if (sc.siren && !def) synth.setType({ sound: SPEC, family: 'boeing' });   // the siren is a Boeing's
+  if (sc.weather && synth.setWeather) synth.setWeather(sc.weather);
   await synth.start();
   const s = baseState();
   const o = { inside: true, timeScale: 1, paused: false };
@@ -293,7 +364,7 @@ function clicks([L, R]) {
   return { ratio: Math.round(worst * 10) / 10, at: Math.round(at * 1000) / 1000 };
 }
 
-async function runAll(names = Object.keys(SCEN).filter((k) => !k.startsWith('clip-'))) {
+async function runAll(names = Object.keys(SCEN).filter((k) => !k.startsWith('clip-') && !k.startsWith('wx-'))) {
   const res = {};
   for (const name of names) {
     const pcm = await render(name);
@@ -350,6 +421,63 @@ window.runAudio = async () => {
   return out;
 };
 window.runAll = runAll;
+
+// ---- v0.4.0: the weather's measurements ----
+// When a sound starts: the first 20 ms window within 45 dB of the render's loudest 100 ms (the
+// scene before it is digital silence), and how long it stays within 20 dB of that peak.
+function onset([L, R]) {
+  const W = Math.round(SR * 0.02), rms = [];
+  for (let a = 0; a + W <= L.length; a += W) { let s = 0; for (let i = a; i < a + W; i++) { const m = (L[i] + R[i]) / 2; s += m * m; } rms.push(dB(Math.sqrt(s / W))); }
+  const peak = Math.max(...rms);
+  let on = rms.findIndex((v) => v > peak - 45);
+  let last = on;
+  for (let k = on; k < rms.length; k++) if (rms[k] > peak - 20) last = k;
+  return { at: on * 0.02, peak, len: (last - on) * 0.02 };
+}
+// Peak-to-trough of a 300 ms moving RMS over [t0, t1).
+function swing(pcm, t0, t1) {
+  const w = windows(pcm, 20).slice(Math.round(t0 * 50), Math.round(t1 * 50));
+  const avg = [];
+  for (let i = 0; i + 15 <= w.length; i += 3) avg.push(w.slice(i, i + 15).reduce((a, b) => a + b) / 15);
+  return Math.max(...avg) - Math.min(...avg);
+}
+window.runWeather = async () => {
+  const r = {}, names = Object.keys(SCEN).filter((k) => k.startsWith('wx-'));
+  for (const k of names) r[k] = await render(k);
+  const m = (k, t0, t1, lo, hi) => measure(r[k], t0, t1, lo, hi);
+  const out = { seg: {} }, S = out.seg;
+  S.rainIn = m('wx-rain-heavy-in', 1, 3, 1500, 12000);
+  S.rainOut = m('wx-rain-heavy-out', 1, 3, 1500, 12000);
+  S.rainLight = m('wx-rain-light-in', 1, 3, 1500, 12000);
+  S.noRain = m('wx-norain-in', 1, 3, 1500, 12000);
+  S.rainAppr = m('wx-rain-approach-in', 1, 3); S.noRainAppr = m('wx-norain-approach-in', 1, 3);
+  out.thunder = {};
+  const pred = (name) => { const a = SCEN[name].strike, T = SCEN[name].opts.sat ?? 15; return { flash: a.t, d: a.d, delay: a.d / (331.3 + 0.606 * T), power: a.power }; };
+  for (const k of ['wx-near', 'wx-near-cold', 'wx-far']) {
+    const p = pred(k), o = onset(r[k]);
+    const seg = measure(r[k], o.at, Math.min(SCEN[k].dur, o.at + 1), 100, 8000);
+    out.thunder[k] = { ...p, heard: o.at, delayMeasured: o.at - p.flash, peakDb: o.peak, lenS: o.len, centroid: seg.centroid, peak: measure(r[k], 0, SCEN[k].dur).peak };
+  }
+  S.gustSwing = swing(r['wx-gust'], 1, 9); S.noGustSwing = swing(r['wx-nogust'], 1, 9);
+  S.siren = m('wx-siren', 0.6, 2); S.sirenBase = m('wx-siren', 0, 0.45);
+  // Clicks and peaks in all of them.
+  out.scen = {};
+  for (const k of names) { const w = measure(r[k], 0, SCEN[k].dur); out.scen[k] = { peak: w.peak, nan: w.nan, click: clicks(r[k]) }; }
+  return out;
+};
+// v0.4.0: the render of a scenario with Math.random seeded, as a hash of the samples (for a
+// sample-exact comparison of two synths); the node count is the synth's business (tests/audio-weather.test.mjs).
+window.pcmHash = async (name, seed = 12345) => {
+  const real = Math.random;
+  let x = seed >>> 0;
+  Math.random = () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296; };
+  try {
+    const [L, R] = await render(name);
+    let h = 0x811c9dc5, nan = 0;
+    for (const C of [L, R]) { const b = new Uint32Array(C.buffer, C.byteOffset, C.length); for (let i = 0; i < b.length; i++) { if (!Number.isFinite(C[i])) nan++; h = Math.imul(h ^ b[i], 16777619) >>> 0; } }
+    return { hash: h, nan, peak: measure([L, R], 0, SCEN[name].dur).peak };
+  } finally { Math.random = real; }
+};
 // n independent renders of the landing: the door clunk's rise each time (dB), for the noise's spread.
 window.doorTrials = async (n) => {
   const out = [];

@@ -2,7 +2,7 @@
 // lights, the IAS/MACH window, the thrust reference, the flap indicator, the estimated EGT and N2.
 // No DOM: tests/boeing-ui.test.mjs runs these in node.
 
-import { machFromIas, iasFromTas, isa } from '../../sim/atmosphere.js';
+import { machFromIas, iasFromTas, isa, tasFromCasP, casFromTasP } from '../../sim/atmosphere.js';
 
 const KT = 0.514444, FT = 0.3048;
 
@@ -79,10 +79,11 @@ export function mcpLights(ap, out = {}) {
 // selected speed stays one number, in knots (ap.spdKt).
 export const MACH_ABOVE_FT = 26000;
 export const usesMach = (st) => !!st && st.pos.z / FT > MACH_ABOVE_FT;
-export const machOfKt = (kt, altM) => machFromIas(kt * KT, altM);
-export function ktOfMach(m, altM) { return iasFromTas(m * isa(altM).a, altM) / KT; }
+// v0.4.0: `st`, the sim's state, brings the day's air when it isn't standard (st.airP is 0 when it is).
+export const machOfKt = (kt, altM, st) => (st && st.airP ? tasFromCasP(kt * KT, st.airP, st.airA) / st.airA : machFromIas(kt * KT, altM));
+export function ktOfMach(m, altM, st) { return st && st.airP ? casFromTasP(m * st.airA, st.airP, st.airA) / KT : iasFromTas(m * isa(altM).a, altM) / KT; }
 export const machText = (m) => '.' + String(Math.min(99, Math.round(m * 100))).padStart(2, '0');
-export const speedText = (kt, st) => (usesMach(st) ? machText(machOfKt(kt, st.pos.z)) : String(Math.round(kt)).padStart(3, '0'));
+export const speedText = (kt, st) => (usesMach(st) ? machText(machOfKt(kt, st.pos.z, st)) : String(Math.round(kt)).padStart(3, '0'));
 
 // What a typed speed means: 280 is knots at any height; 84, .84 and 0.84 are Mach.
 // Returns knots, or null if it isn't a speed.

@@ -7,6 +7,9 @@
 //     file named v030-sound-<type>-<clip>
 //   FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ node tests/audio-clips.mjs outDir   (the cloud container)
 // SYNTH=<url relative to tests/> renders another copy of the synth (an older one, to compare).
+// v0.4.0, the weather's clips (saved as v040-*.wav):
+//   node tests/audio-clips.mjs "../../Claude outputs/flight-sim" clip-v040-rain-cockpit clip-v040-rain-3rd \
+//     clip-v040-thunder-near-cockpit clip-v040-thunder-near-3rd clip-v040-thunder-far-cockpit clip-v040-gusty-approach
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';

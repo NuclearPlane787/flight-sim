@@ -40,6 +40,10 @@ export function createAutopilotBoeing(A) {
   const GS_K = 0.22;              // 1/s: the glideslope's path gain
   const TCH = 50 * FT;            // the beam crosses the threshold at 50 ft (ref point ≈ the antenna)
   const ROLLOUT_END = 30 * KT;    // m/s
+  // The runway alignment [the 777's begins at 500 ft with a forward slip (TAIC's Auckland report); the 5° is the 747's
+  // figure, EST for these two]. Gains EST, tuned in tests/weather-autoland.test.mjs.
+  const ALIGN_FT = 500, ALIGN_DONE_FT = 200, ALIGN_CRAB = 5 * DEG, ALIGN_KP = 6, ALIGN_KD = 3, ALIGN_L = 0.3;
+  const ROLLOUT_XTE_L = 150, ROLLOUT_XTE_MAX = 6 * DEG;   // m, rad: EST, tuned with the alignment
   const FLARE_FT = 50, RETARD_FT = 25, FLARE_SINK_FPS = 2; // [brief; 777 quiz for the retard]
 
   // ---- the MCP (sim.ap) ----
@@ -74,7 +78,7 @@ export function createAutopilotBoeing(A) {
         X.hdgTimer = 0;
         const keep = ap.vertical === 'FLCH SPD' || ap.vertical === 'VNAV SPD' || ap.vertical === 'TO/GA' || ap.vertical === 'G/S';
         if (!keep) {
-          const dh = ap.altFt * FT - S.pos.z;
+          const dh = ap.altFt * FT - S.altInd;
           if (Math.abs(dh) < 60 * FT) { ap.vertical = 'ALT'; X.boAltTgt = ap.altFt * FT; }
           else { ap.vertical = 'V/S'; ap.vsFpm = Math.round(S.vs / FPM / 100) * 100; }
           clearCapture();
@@ -87,7 +91,8 @@ export function createAutopilotBoeing(A) {
         ap.ap = false;
         const X = X0();
         X.apDiscT = 3;
-        if (X.boRollout) { X.boRollout = false; X.boRolloutYaw = 0; X.boYawClear = true; }
+        if (X.boRollout) { X.boRollout = false; X.boRolloutYaw = 0; X.boRolloutRoll = 0; X.boYawClear = true; }
+        if (X.boAlign) { X.boAlign = false; X.boAlignYaw = 0; X.boYawClear = true; }
         if (ap.lateral === 'ROLLOUT') ap.lateral = 'HDG HOLD';
         if (ap.vertical === 'FLARE') ap.vertical = 'V/S';
         core.events.push({ type: 'apDisconnect', reason });
@@ -120,7 +125,7 @@ export function createAutopilotBoeing(A) {
       },
       levelChange() {
         const S = S0(), X = X0();
-        const dh = ap.altFt * FT - S.pos.z;
+        const dh = ap.altFt * FT - S.altInd;
         // VNAV's speed was the FMC's: the MCP's window opens at the speed flown.
         if (ap.vertical.startsWith('VNAV')) ap.spdKt = clamp(Math.round(S.ias / KT), 100, 399);
         if (Math.abs(dh) < 60 * FT) { ap.vertical = 'ALT'; X.boAltTgt = ap.altFt * FT; clearCapture(); if (ap.athr) ap.thrustMode = 'SPD'; return; }
@@ -137,7 +142,7 @@ export function createAutopilotBoeing(A) {
       hdgHold() { const X = X0(); ap.lateral = 'HDG HOLD'; ap.armedLateral = ''; X.boHoldHdg = S0().hdg; X.boHoldLatched = false; },
       altHold() {
         const X = X0();
-        ap.vertical = 'ALT'; X.boAltTgt = S0().pos.z; clearCapture();
+        ap.vertical = 'ALT'; X.boAltTgt = S0().altInd; clearCapture();
         if (ap.athr) ap.thrustMode = 'SPD';
       },
       lnav() {
@@ -229,7 +234,7 @@ export function createAutopilotBoeing(A) {
   }
 
   function startVnav(ap, X, S) {
-    const dh = ap.altFt * FT - S.pos.z;
+    const dh = ap.altFt * FT - S.altInd;
     ap.armedVertical = '';
     X.boCapture = false; X.capVs = 0;
     if (Math.abs(dh) < 60 * FT) {
@@ -351,12 +356,30 @@ export function createAutopilotBoeing(A) {
       psiCmd = ils ? ils.hdgGrid - Math.atan(xte / LOC_L) : E.psi;
       if (ils && Math.abs(xte) > 2000) psiCmd = ils.hdgGrid - Math.sign(xte) * 30 * DEG;
     }
-    E.apBank = clamp(2.2 * wrapPi(psiCmd - E.psi), -25 * DEG, 25 * DEG);
+    // v0.4.0: the track modes fly the track, so they come out right in a crosswind (the drift is 0 in calm air).
+    // HDG SEL and HDG HOLD stay headings, and drift with the wind as they should.
+    const tracking = ap.lateral === 'LNAV' || ap.lateral === 'LOC' || ap.lateral === 'ROLLOUT' || (ap.lateral === 'TO/GA' && !E.onGround);
+    E.apBank = clamp(2.2 * wrapPi(psiCmd - E.psi - (tracking ? S.drift : 0)), -25 * DEG, 25 * DEG);
+    // v0.4.0: the runway alignment. From 500 ft the rudder yaws the nose towards the runway while the aileron holds
+    // the track: a forward slip that leaves at most ALIGN_CRAB of crab by 200 ft, and the flare takes off the rest.
+    const aligning = ap.ap && ils && S.drift !== 0 && ap.lateral === 'LOC' && !E.onGround && E.aglFt < ALIGN_FT && (ap.vertical === 'G/S' || ap.vertical === 'FLARE');
+    if (aligning) {
+      const crab = wrapPi(E.psi - ils.hdgGrid);
+      if (!X.boAlign) X.boCrab0 = Math.abs(crab);     // the crab it had at 500 ft
+      const limit = E.aglFt > ALIGN_DONE_FT
+        ? ALIGN_CRAB + Math.max(0, X.boCrab0 - ALIGN_CRAB) * (E.aglFt - ALIGN_DONE_FT) / (ALIGN_FT - ALIGN_DONE_FT)
+        : E.aglFt > FLARE_FT ? Math.min(ALIGN_CRAB, X.boCrab0) : Math.min(ALIGN_CRAB, X.boCrab0) * Math.max(0, (E.aglFt - 12) / (FLARE_FT - 12));
+      const want = ils.hdgGrid + clamp(crab, -limit, limit);
+      // The slip pushes the track off, so the beam loop tightens while the nose comes round.
+      E.apBank = clamp(2.2 * wrapPi(ils.hdgGrid - Math.atan(xte / (LOC_L * ALIGN_L)) - E.psi - S.drift), -25 * DEG, 25 * DEG);
+      X.boAlign = true;
+      X.boAlignYaw = clamp(ALIGN_KP * wrapPi(want - E.psi) - ALIGN_KD * E.r, -1, 1);
+    } else if (X.boAlign) { X.boAlign = false; X.boAlignYaw = 0; X.boYawClear = true; }
     // Near the ground the wings stay nearly level.
     if (ap.lateral === 'LOC' && E.aglFt < 200) E.apBank = clamp(E.apBank, -8 * DEG, 8 * DEG);
 
     // ---------------- Vertical ----------------
-    const h = S.pos.z, mcp = ap.altFt * FT, dh = mcp - h;
+    const h = S.altInd, mcp = ap.altFt * FT, dh = mcp - h;
     // The speed the AP and A/T work to: the MCP's, or VNAV's schedule, within the limits.
     const lowAlt = h < 10000 * FT;
     let spdKt = ap.spdKt;
@@ -398,7 +421,13 @@ export function createAutopilotBoeing(A) {
       ap.vertical = 'FLARE'; ap.lateral = 'ROLLOUT'; X.boRollout = true;
     }
     if (X.boRollout) {
-      const r = wrapPi(psiCmd - E.psi);
+      let r = wrapPi(psiCmd - E.psi);
+      // v0.4.0: in a wind the rollout works harder for the centreline, and holds aileron into the wind.
+      if (ils && (S.wind.x !== 0 || S.wind.y !== 0)) {
+        r = wrapPi(ils.hdgGrid - clamp(xte / ROLLOUT_XTE_L, -ROLLOUT_XTE_MAX, ROLLOUT_XTE_MAX) - E.psi);
+        const fromRight = -(S.wind.x * Math.cos(E.psi) - S.wind.y * Math.sin(E.psi));   // + : blowing from the right
+        X.boRolloutRoll = clamp(fromRight / 15, -1, 1) * 0.4;
+      }
       X.boRolloutYaw = clamp(3 * r - 1.5 * E.r, -1, 1);
       // Below taxi speed the rollout is over: the AP lets go, so Q/E steer again (it would otherwise
       // hold the centreline at taxi speed with the route turning off; the pilot's usual disconnect).

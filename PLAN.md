@@ -22,7 +22,7 @@ Numbered as in the planning questions, in his words where it matters.
 11. **Start and finish:** lined up on the runway, or at a gate with pushback and taxi. No cold-and-dark start: "c is for actual trained pilots."
 12. **Route:** pick origin, destination and runways on a map, and drag waypoints. "In the air it is pretty a sandbox, so the map only shows you the path to your destination from where you are, never saying that I am going the wrong way."
 13. **Traffic:** "Just me for now in the air. At the airports, parked aircraft and some moving vehicles should be enough."
-14. **Weather:** "Clear skies for now, and we'll add weather in a future update." Day only; night is on the roadmap.
+14. **Weather:** "Clear skies for now, and we'll add weather in a future update." Day only; night is on the roadmap. **Superseded:** night came in v0.2.0, and the weather in v0.4.0 (2026-11-10; "The weather (v0.4.0)" below, `V040.md`). Clear skies are still the default.
 15. **Goals:** free flight, a landing score and a logbook. Challenges come once weather exists. After a crash: rewind 30 s, or restart the flight.
 16. **Sound:** "hell yeah. Don't forget that hilarious 'retard' callout."
 17. **First build:** M1 below ("Yes, functional").
@@ -59,6 +59,19 @@ Numbered as in the planning questions, in his words where it matters.
 ## The aircraft types (v0.3.0)
 
 `V030.md` was the brief. A type is one data module with every number and its source (`src/sim/<id>.js`), one geometry module (`src/geometry*.js`; same frame and names) and one entry in `src/sim/types.js`. The sim's modules are factories that take the data (`createFlightModel(A)`, `createEngines(A)`, `createGear(A)`, `createFbw(A)` or `createFbwBoeing(A)`, `createAutopilot(A)` or `createAutopilotBoeing(A)`), made once per type by `kitFor()`. `createSim({ type })`, `sim.setType(id)`; a snapshot carries its type, and one without it is the A321neo, so the prediction worker flies the right aircraft. `ready: false` keeps a type out of the picker. `tests/golden-a321.test.mjs` flies a flight recorded from v0.2.2's code and compares it to 1e-9: never re-record it to make a test pass. `main.js`'s `useType()` is the one place everything that reads the type is told. To add a type: copy a Boeing's two modules and its notes file, add its spec (`src/widebody-specs.js`), window design, registry entry and `src/type-assets.js` line, and run the same tests with its id (`BOEING_TYPE=<id>`).
+
+## The weather (v0.4.0)
+
+`V040.md` was the brief; Shane's decisions (2026-11-10) are in it. In short:
+
+- **One weather everywhere,** set on the L window's Weather tab (or a preset in the setup; clear by default) and kept as set: no fronts or moving storms yet. Only the microbursts and storm cells sit at a place.
+- **The settings** (`src/sim/weather.js`, JSON-safe) live in `sim.snapshot()`, so saves, Duplicate and the prediction carry them. A rewind or a jump keeps the weather set now. A save without weather is calm, and the default weather writes nothing, so calm is v0.3.2's arithmetic exactly (`tests/golden-a321.test.mjs`).
+- **The wind** is a function of position and time, seeded, with no state: the mean wind by height (a power law from the 10 m surface wind to the wind aloft at 900 m, and an optional shear layer), gusts (patches carried with the wind), Dryden turbulence (MIL-F-8785C, as a frozen field of 20 waves an axis), and Oseguera and Bowles's microbursts. The live sim (1/120 s) and the prediction (1/30 s) read the same air.
+- **The air:** ISA + ΔT with the QNH at sea level (`columnInto()` in `atmosphere.js`). The engines are flat-rated to ISA + 15. The altimeter reads the static pressure against its setting (`indicatedAltitude()`), and the autopilots fly that; the radio altimeter, the score and the map stay geometric. A flight starts with the day's QNH set; K sets it again; the BARO box on the FCU or MCP sets it or STD. Korea's transition altitude and level are 14,000 ft and FL140 (eAIP ENR 1.7).
+- **The aircraft feel it** through the air-relative velocity in `sim.step()`: the gear rolls on the ground's. The Boeings' LNAV, LOC and rollout fly the track, and the autoland lines up from 500 ft with a forward slip. A reactive windshear warning comes from the F-factor over 1 km (0.105, as NASA's certification database uses).
+- **The runways:** dry, wet, snow-covered or icy, as factors on the tyres' grip, braking and rolling drag (`RUNWAY_TYRES`), automatic from the precipitation and temperature or set.
+- **The look:** the haze's constants became uniforms (visibility by Koschmieder's law, fog with a top), flat cloud layers (`src/world/clouds.js`), the overcast light, rain, snow and windshield drops (`src/world/precip.js`), lightning, wet and snowy ground, and runway lights reflected on a wet runway at night. Clear weather draws exactly as v0.3.2 did. Volumetric clouds are a later step.
+- **The sound:** rain on the skin, thunder late by the strike's distance, gusts in the wind's noise, and the Boeing's windshear siren.
 
 ## The aircraft: A321neo
 

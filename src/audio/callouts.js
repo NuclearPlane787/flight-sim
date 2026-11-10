@@ -17,6 +17,8 @@ export function createCallouts() {
   let retardAt = -Infinity;
   let retardArmed = false;
   let warnAt = -Infinity;
+  let shearAt = -Infinity;
+  let shearCallAt = 0;  // a Boeing's voice follows its two-tone siren (synth.js)
   let muted = false;
   let volume = 1;    // the pause menu's master volume
   const heard = []; // the most recent calls, for tests and the log
@@ -66,6 +68,13 @@ export function createCallouts() {
     if (!leversUp || (s.onGround && s.gs < 40 / 1.944) || (!s.onGround && s.vs > 2.5 && ft > 100)) retardArmed = false;
     if (retardOn && retardArmed && leversUp && ft <= retardFt && now - retardAt > 1.2) { say('retard', true); retardAt = now; }
     const w = s.warnings || {};
+    // v0.4.0: the windshear warning comes first: Airbus's says it three times, a Boeing's once (after its
+    // siren, 1.6 s, in synth.js).
+    if (w.windshear && now - shearAt > 6) {
+      shearAt = now; warnAt = now;
+      if (retardOn) say('windshear, windshear, windshear', true); else shearCallAt = now + 1.6;
+    }
+    if (shearCallAt && now >= shearCallAt) { shearCallAt = 0; say('windshear', true); warnAt = now; }
     if (now - warnAt > 2.5 && !s.onGround) {
       for (const [k, text] of WARNINGS) if (w[k]) { say(text, true); warnAt = now; break; }
     }
@@ -81,6 +90,6 @@ export function createCallouts() {
     get muted() { return muted; },
     set volume(v) { volume = Math.max(0, Math.min(1, v)); },
     get volume() { return volume; },
-    reset() { lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; if (synth) synth.cancel(); },
+    reset() { lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; shearAt = -Infinity; shearCallAt = 0; if (synth) synth.cancel(); },
   };
 }

@@ -37,7 +37,7 @@ export function createEicas(cv) {
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     const e = st.engines || [], xL = 0.095 * s, xR = 0.335 * s, mid = 0.215 * s;
-    const ambient = isa(st.pos?.z || 0).T - 273.15;
+    const ambient = st.sat ?? isa(st.pos?.z || 0).T - 273.15;   // v0.4.0: the day's air
 
     // The thrust reference: its rating and N1 here and now, cyan, above the dials.
     const ref = refN1(st, ap);
@@ -89,7 +89,7 @@ export function createEicas(cv) {
   function refN1(st, ap) {
     const mode = thrustRefMode(st, ap);
     if (!eng) return { mode, n1: st.leverN1 || 0 };
-    const sigma = isa(st.pos?.z || 0).rho / RHO0;
+    const sigma = st.airSigma || isa(st.pos?.z || 0).rho / RHO0;
     return { mode, n1: eng.n1ForPhi(refPhi(mode, A), eng.idleN1(sigma, st.mach || 0)) };
   }
 

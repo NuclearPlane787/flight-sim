@@ -1,10 +1,48 @@
 // The ND: an ARC-mode moving map, heading up. Coastline, airports and runways, the
 // magenta line to the destination through any waypoints, the heading bug, track,
-// GS/TAS and the destination's bearing, distance and time. Range 10…160 nm.
+// GS/TAS, the wind and the destination's bearing, distance and time. Range 10…160 nm.
 
 import { C, font, KT, NM, DEG, clamp, wrap360, angDiff, magDeg, airportList, thresholdOf, traceRings, route } from './common.js';
 
 export const ND_RANGES = [10, 20, 40, 80, 160];
+
+// The wind as the pilot reads it, from the sim's state.wind (map axes, m/s, the direction the air is
+// GOING), using its mean part so the readout doesn't jitter with the gusts and the turbulence:
+// { dirDeg (magnetic, FROM, whole degrees 0-359), kt (whole), goingRad (grid, the way the arrow points) }.
+// Null if there's no wind data.
+export function windReadout(wind, x, y) {
+  if (!wind) return null;
+  const mx = wind.meanX ?? wind.x ?? 0, my = wind.meanY ?? wind.y ?? 0;
+  const kt = Math.round(Math.hypot(mx, my) * KT);
+  const dirDeg = kt > 0 ? Math.round(magDeg(Math.atan2(-mx, -my), x, y)) % 360 : 0;
+  return { dirDeg, kt, goingRad: Math.atan2(mx, my) };
+}
+
+// The wind only reads above 100 kt of true airspeed, on both makers' NDs (the air data can't tell it
+// below that, and it's dashes or blank).
+export const WIND_MIN_TAS_KT = 100;
+const AIRBUS_ARROW_MIN_KT = 2;
+
+// The Airbus ND's text: "270/25", dashes below 100 kt TAS, "000/0" in calm air. Its arrow goes under 2 kt.
+export function airbusWindText(w, tasKt) {
+  if (!w || tasKt < WIND_MIN_TAS_KT) return '---/---';
+  return `${String(w.dirDeg).padStart(3, '0')}/${w.kt}`;
+}
+export const airbusWindArrow = (w, tasKt) => !!w && tasKt >= WIND_MIN_TAS_KT && w.kt >= AIRBUS_ARROW_MIN_KT;
+
+// A wind arrow: a shaft and head centred on (x, y), pointing where the air is going, on a heading-up
+// map (`a` is that direction less the heading, clockwise from up). `len` is the whole length in px.
+export function drawWindArrow(ctx, x, y, a, len, col, lineW) {
+  const sx = Math.sin(a), sy = -Math.cos(a), h = len / 2, hd = len * 0.36;
+  const tipX = x + sx * h, tipY = y + sy * h;
+  ctx.strokeStyle = col; ctx.lineWidth = lineW; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - sx * h, y - sy * h); ctx.lineTo(tipX, tipY);
+  ctx.moveTo(tipX - hd * (sx * 0.82 + sy * 0.57), tipY - hd * (sy * 0.82 - sx * 0.57)); ctx.lineTo(tipX, tipY);
+  ctx.lineTo(tipX - hd * (sx * 0.82 - sy * 0.57), tipY - hd * (sy * 0.82 + sx * 0.57));
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
 
 export function createNd(cv, { airports, coast }) {
   const { ctx } = cv;
@@ -190,7 +228,7 @@ export function createNd(cv, { airports, coast }) {
     ctx.moveTo(cx - 0.015 * s, cy + 0.035 * s); ctx.lineTo(cx + 0.015 * s, cy + 0.035 * s);
     ctx.stroke();
 
-    // Top left: GS and TAS (no wind is modelled, so no wind readout).
+    // Top left: GS and TAS, and under them the wind: direction/speed and its arrow (Airbus's way).
     ctx.textAlign = 'left'; ctx.font = font(s * 0.036);
     const lab = (t, v, x, y) => {
       ctx.fillStyle = C.white; ctx.fillText(t, x, y);
@@ -200,6 +238,10 @@ export function createNd(cv, { airports, coast }) {
     };
     const w1 = lab('GS', String(Math.round(st.gs * KT)), 0.025 * s, 0.04 * s);
     lab('TAS', String(Math.round(st.tas * KT)), 0.025 * s + w1 + 0.03 * s, 0.04 * s);
+    const wind = windReadout(st.wind, px, py), tasKt = st.tas * KT;
+    ctx.fillStyle = C.green; ctx.font = font(s * 0.04); ctx.textAlign = 'left';
+    ctx.fillText(airbusWindText(wind, tasKt), 0.025 * s, 0.09 * s);
+    if (airbusWindArrow(wind, tasKt)) drawWindArrow(ctx, 0.06 * s, 0.15 * s, wind.goingRad - h, 0.06 * s, C.green, Math.max(1.5, s * 0.004));
     // Top right: destination, bearing/distance, time.
     if (dest) {
       const pts = [[px, py], ...wps, dest];

@@ -13,6 +13,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { sunHorizontal, moonHorizontal, moonPhase, j2000ToEnuMatrix, galacticToEquatorial } from '../astro.js';
+import { runwayStateOf } from '../sim/weather.js';
 
 // v0.1.4's fixed afternoon sun: azimuth 230° true (south-west), 35° up.
 export const SUN_AZIMUTH_DEG = 230;
@@ -94,6 +95,65 @@ function lerpTable(t, h, out) {
 const smooth = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
 export const luminance = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 
+// ------------------------------------------------------------------ the weather's air (pure)
+
+const FT = 0.3048;
+export const VIS_CLEAR_M = 150000;         // the default weather's visibility: the old constants, not recomputed
+
+// The air for a visibility (m) and a fog top (ft): Koschmieder's law, sigma = 3.912 / visibility. With no fog top
+// the whole haze thickens; with one, the visibility holds below it (a slab of fog) and the air above is clear.
+export function visibilityAir(visM, fogTopFt = 0) {
+  const vis = Number.isFinite(visM) && visM > 0 ? visM : VIS_CLEAR_M;
+  const clear = vis >= VIS_CLEAR_M;
+  const foggy = !clear && fogTopFt > 0;
+  const sigma = 3.912 / vis;
+  return {
+    sigma0: clear || foggy ? HAZE_SIGMA0 : sigma,
+    fogSigma: foggy ? sigma : 0, fogTopM: foggy ? fogTopFt * FT : 0,
+    // How far the haze's colour and its blue-reddening go to a neutral fog.
+    fogMix: clear ? 0 : 0.95 * smooth(25000, 1500, vis),
+    // Lights are seen further than objects (Allard's law against Koschmieder's), and bloom in fog.
+    lightCarry: clear ? 1 : 1 - 0.65 * smooth(20000, 1500, vis),
+    fogLights: clear ? 0 : smooth(9000, 1500, vis),
+  };
+}
+
+// How much cloud is overhead, 0..1: the largest okta layer above the camera; through a layer it fades, above the top it's gone.
+export function cloudCoverAt(clouds, camAltM) {
+  let c = 0;
+  for (const l of clouds || []) {
+    const base = l.baseFt * FT, top = Math.max(l.topFt * FT, base + 1);
+    c = Math.max(c, (l.okta / 8) * (1 - smooth(base, top, camAltM)));
+  }
+  return c;
+}
+
+// A layer the camera is inside: its extinction (a cloud's visibility is tens of metres, thinner for scattered cloud) and
+// its bounds, with the depth ramped so entering one isn't a pop. null when it's outside every layer.
+const CLOUD_VIS_M = 60;
+export function cloudAtCamera(clouds, camAltM) {
+  for (const l of clouds || []) {
+    const base = l.baseFt * FT, top = Math.max(l.topFt * FT, base + 1);
+    // Only a layer with no real gaps fogs the whole view; a broken one is solid only in its clouds, which clouds.js draws.
+    if (camAltM <= base || camAltM >= top || l.okta < 7) continue;
+    const depth = smooth(0, 120, Math.min(camAltM - base, top - camAltM));
+    const k = (l.okta / 8) * (l.okta / 8);
+    return { sigma: (3.912 / CLOUD_VIS_M) * depth * k, baseM: base, topM: top, mix: depth };
+  }
+  return null;
+}
+
+// The ground for the settings: wet, snow on the land, snow on the runways (the runway's state decides whether they're cleared).
+export function groundState(s) {
+  if (!s) return { wet: 0, snow: 0, rwySnow: 0 };
+  const st = runwayStateOf(s);
+  const rate = s.precip ? s.precip.rate : 0, kind = s.precip ? s.precip.kind : 'none';
+  const snowing = kind === 'snow' && s.tempC <= 0;
+  const snow = snowing ? Math.min(1, 0.45 + rate) : st === 'snow' ? 0.85 : 0;
+  const wet = st === 'wet' ? Math.min(1, 0.6 + 0.5 * rate) : st === 'ice' ? 0.7 : 0;
+  return { wet, snow, rwySnow: st === 'snow' ? 1 : 0 };
+}
+
 // The Moon's light, 0..1: its lit fraction (brightness grows faster than the fraction: the
 // opposition surge) and its height (dimmer through more air, gone below the horizon).
 export function moonLight(moonAltDeg, moonIllum) {
@@ -104,7 +164,7 @@ export function moonLight(moonAltDeg, moonIllum) {
 
 // Everything the light needs from the sun's and the Moon's altitudes (degrees) and the
 // Moon's lit fraction. Pure, for the tests. Colours are linear RGB arrays.
-export function lightingAt(sunAltDeg, moonAltDeg = -90, moonIllum = 0) {
+export function lightingAt(sunAltDeg, moonAltDeg = -90, moonIllum = 0, cover = 0) {
   const h = sunAltDeg;
   const sunColor = lerpTable(SUN_T, h, [0, 0, 0]);
   const skyAmb = lerpTable(AMB_T, h, [0, 0, 0]);
@@ -123,25 +183,44 @@ export function lightingAt(sunAltDeg, moonAltDeg = -90, moonIllum = 0) {
     zenith[c] += mn * MOON_ZEN[c];
     horizon[c] += mn * MOON_HOR[c];
   }
+  // v0.4.0: under cloud (cover 0..1) the sun's direct light falls with the cover, the sky's turns grey and dimmer.
+  const under = 1 - Math.min(cover, 1) * 0.92;   // the sky's clarity, for the Moon, the stars and the twilight colours
+  if (cover > 0) {
+    const direct = 1 - 0.95 * Math.pow(Math.min(cover, 1), 1.6), dim = 1 - 0.40 * Math.min(cover, 1);
+    const k = Math.min(cover, 1), a = luminance(skyAmb), hor = luminance(horizon);
+    const grey = [hor * 0.74, hor * 0.76, hor * 0.80], zGrey = [hor * 0.60, hor * 0.62, hor * 0.66];
+    const ambTint = [0.92, 0.97, 1.05];
+    for (let c = 0; c < 3; c++) {
+      sunColor[c] *= direct;
+      skyAmb[c] = (skyAmb[c] + (a * ambTint[c] - skyAmb[c]) * k) * dim;
+      zenith[c] += (zGrey[c] - zenith[c]) * k;
+      horizon[c] += (grey[c] - horizon[c]) * k;
+      glow[c] *= 1 - k; belt[c] *= 1 - k;
+    }
+  }
   // The haze tends to a colour a little deeper than the horizon (v0.1.4: 0.36, 0.46, 0.62).
   const hazeTint = [horizon[0] * 0.36 / 0.58, horizon[1] * 0.46 / 0.68, horizon[2] * 0.62 / 0.82];
   // The Moon's aureole in the sky and the haze.
-  const moonGlow = [0.010 * mn, 0.011 * mn, 0.013 * mn];
+  const moonGlow = [0.010 * mn * under, 0.011 * mn * under, 0.013 * mn * under];
   // The Earth's shadow: rises opposite the sun as it sets, its top about the sun's depression.
   const shadow = smooth(1, -2.5, h) * smooth(-9, -5, h);
   const shadowTopRad = Math.max(0, -h - 0.5) * 0.9 * RAD;
   // The stars come out below −6° and are all there by −15°.
-  const stars = 1 - smooth(-15, -6, h);
+  const stars = (1 - smooth(-15, -6, h)) * under;
+  // v0.4.0: the colour a neutral fog tends to, following the light (dark at night).
+  const hl = luminance(horizon);
+  const fogColor = [hl * 0.96, hl * 0.98, hl * 1.02];
   return {
+    fogColor,
     sunColor, skyAmb, zenith, horizon, glow, belt, hazeTint, moonGlow, shadow, shadowTopRad,
     night, stars, moon: mn,
     // The disc of the Moon: faint in the day's blue, bright at night.
-    moonDisc: 0.25 + 2.15 * smooth(6, -6, h),
+    moonDisc: (0.25 + 2.15 * smooth(6, -6, h)) * under * under,
     // A suggested renderer.toneMappingExposure: a little more at night, so it isn't crushed.
     exposure: 1 + 0.45 * night,
     // Three's own lights (the aircraft), relative to v0.1.4's: the sun's strength and the Moon's.
     sunScale: luminance(sunColor) / luminance(SUN_T[0].slice(1)),
-    moonScale: 0.05 * mk * smooth(0, -6, h),
+    moonScale: 0.05 * mk * smooth(0, -6, h) * under,
     ambScale: luminance(skyAmb) / luminance(AMB_T[0].slice(1)),
   };
 }
@@ -162,8 +241,8 @@ export function bvColor(bv) {
 // The sky's own uniforms (uSky*) come from createSky; a material made without them (uSkyOn
 // is then 0) gets v0.1.4's fixed day.
 export const ATMOS_GLSL = /* glsl */ `
-const float HAZE_SIGMA0 = ${HAZE_SIGMA0.toExponential()};
-const float HAZE_H = ${HAZE_HEIGHT.toFixed(1)};
+#define HAZE_SIGMA0 uHazeSigma0
+#define HAZE_H uHazeH
 uniform float uSkyOn, uSkyShadow, uSkyShadowTop;
 uniform vec3 uSkyZenith, uSkyHorizon, uSkyGlow, uSkyBelt, uHazeTint, uMoonDir, uMoonGlow;
 
@@ -221,7 +300,7 @@ vec3 skyColor(vec3 dir) {
   // The disc, ~0.5°; low down it reddens and dims (above ~7° it is v0.1.4's).
   float redden = clamp(1.0 - uSunDir.y * 8.0, 0.0, 1.0);
   vec3 disc = uSunColor * mix(vec3(1.0), pow(uSunColor / max(uSunColor.r, 1e-4), vec3(2.0)) * 0.03, redden);
-  c += disc * 30.0 * smoothstep(0.99994, 0.99997, mu);
+  c += disc * 30.0 * smoothstep(0.99994, 0.99997, mu) * uSunVis;
   if (dir.y < horizonDip()) c = hazeColor(dir);
   return c;
 }
@@ -234,11 +313,29 @@ vec3 applyHaze(vec3 col, vec3 rel) {
   float e0 = exp(-max(h0, 0.0) / HAZE_H);
   if (abs(dh) < 1.0) od = HAZE_SIGMA0 * e0 * dist;
   else od = HAZE_SIGMA0 * HAZE_H * dist / dh * (e0 - exp(-max(h0 + dh, 0.0) / HAZE_H));
-  vec3 ext = exp(-od * vec3(0.85, 1.0, 1.2));
+  od += fogDepth(rel, dist);
+  vec3 ext = exp(-od * mix(vec3(0.85, 1.0, 1.2), vec3(1.0), uFogMix));
   // A clear autumn day: the haze is blue-grey, a little deeper than the white-ish horizon sky
   // (at night a dark blue; at sunset it takes the glow through hazeColor).
   vec3 tint = uSkyOn > 0.5 ? uHazeTint : vec3(0.36, 0.46, 0.62);
-  vec3 hc = mix(hazeColor(rel / max(dist, 1e-3)), tint, 0.35);
+  vec3 hc = mix(mix(hazeColor(rel / max(dist, 1e-3)), tint, 0.35), uFogColor, uFogMix);
+  return col * ext + hc * (1.0 - ext);
+}
+
+// v0.4.0: the optical depth above a clear day's air along a ray to space. The sky, the sun, the Moon and the
+// stars grey out into it.
+float skyWeatherDepth(vec3 d) {
+  float h = max(uCamAlt, 0.0), up = max(d.y, 0.0) + 0.02;
+  float od = max(uHazeSigma0 - ${HAZE_SIGMA0.toExponential()}, 0.0) * uHazeH * exp(-h / uHazeH) / up;
+  if (uFogSigma > 0.0 && h < uFogTop) od += uFogSigma * (uFogTop - max(h, uFogBase)) / up;
+  return od;
+}
+bool skyWeatherOn() { return uFogSigma > 0.0 || uHazeSigma0 > ${(HAZE_SIGMA0 * 1.01).toExponential()}; }
+vec3 skyWeather(vec3 col, vec3 d) {
+  if (!skyWeatherOn()) return col;
+  float ext = exp(-skyWeatherDepth(d));
+  vec3 tint = uSkyOn > 0.5 ? uHazeTint : vec3(0.36, 0.46, 0.62);
+  vec3 hc = mix(mix(hazeColor(d), tint, 0.35), uFogColor, uFogMix);
   return col * ext + hc * (1.0 - ext);
 }
 `;
@@ -389,6 +486,7 @@ void main() {
   float ml = clamp(uMoonGlow.r * 100.0, 0.0, 1.0);
   float faint = mix(1.0, smoothstep(0.07, 0.24, max(aCol.r, max(aCol.g, aCol.b))), ml);
   float k = uStarVis * haze * contrast * tw * mix(1.0, 1.55, hi) * moonCut * faint;
+  if (skyWeatherOn()) k *= exp(-skyWeatherDepth(d));
   vCol = aCol * k;
   gl_PointSize = aSize;
   gl_Position = projectionMatrix * viewMatrix * vec4(d * 45000.0 + cameraPosition, 1.0);
@@ -440,6 +538,11 @@ export function createSky(scene, uniforms, chunks) {
     uSkyShadow: { value: 0 }, uSkyShadowTop: { value: 0 },
     uMoonDir: { value: new THREE.Vector3(0, -1, 0) }, uMoonGlow: { value: new THREE.Vector3() },
   });
+  // v0.4.0's uniforms (glsl.js gives them to the shared object; a sky made on its own, as in the tests, gets them here).
+  for (const [k, v] of Object.entries({ uHazeSigma0: HAZE_SIGMA0, uHazeH: HAZE_HEIGHT, uFogSigma: 0, uFogBase: 0, uFogTop: 0, uFogMix: 0, uLightCarry: 1, uFogLights: 0, uSunVis: 1, uWet: 0, uSnow: 0, uRwySnow: 0 })) {
+    if (!uniforms[k]) uniforms[k] = { value: v };
+  }
+  if (!uniforms.uFogColor) uniforms.uFogColor = { value: new THREE.Vector3() };
   const own = {
     uSkyToJ: { value: new THREE.Matrix3() },
     uStarMat: { value: new THREE.Matrix3() },
@@ -492,7 +595,7 @@ export function createSky(scene, uniforms, chunks) {
             col += uMoonGlow * 40.0 * (exp(-th / 0.010) + 0.25 * exp(-th / 0.05)) * smoothstep(-0.01, 0.02, e);
           }
         }
-        gl_FragColor = vec4(col, 1.0);
+        gl_FragColor = vec4(skyWeather(col, d), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -550,6 +653,9 @@ export function createSky(scene, uniforms, chunks) {
   const fog = new THREE.FogExp2(0xa8b8cc, 1e-5);
   scene.fog = fog;
 
+  // v0.4.0: the weather's air (setWeather); wx.active is false in the default weather, so a clear frame costs one test.
+  const wx = { active: false, cover: 0, layers: [], fogSigma: 0, fogTopM: 0, fogMix: 0 };
+  const fogLinear = new THREE.Color();
   const state = { sunAltDeg: SUN_ELEVATION_DEG, sunAzDeg: SUN_AZIMUTH_DEG, moonAltDeg: -90, moonAzDeg: 0, moonIllum: 0, night: 0, exposure: 1 };
   let L = null;
   const moonDir = uniforms.uMoonDir.value;
@@ -557,7 +663,7 @@ export function createSky(scene, uniforms, chunks) {
 
   // Apply the light for the sun's and the Moon's altitudes (lightingAt) to every uniform and light.
   function applyLight(sunAlt, moonAlt, illum) {
-    L = lightingAt(sunAlt, moonAlt, illum);
+    L = lightingAt(sunAlt, moonAlt, illum, wx.cover);
     uniforms.uSunColor.value.setRGB(L.sunColor[0], L.sunColor[1], L.sunColor[2]);
     uniforms.uSkyAmb.value.setRGB(L.skyAmb[0], L.skyAmb[1], L.skyAmb[2]);
     uniforms.uSkyZenith.value.fromArray(L.zenith);
@@ -568,6 +674,8 @@ export function createSky(scene, uniforms, chunks) {
     uniforms.uMoonGlow.value.fromArray(L.moonGlow);
     uniforms.uSkyShadow.value = L.shadow;
     uniforms.uSkyShadowTop.value = L.shadowTopRad;
+    uniforms.uFogColor.value.fromArray(L.fogColor);
+    uniforms.uSunVis.value = (1 - wx.cover) * (1 - wx.cover);
     uniforms.uNight.value = L.night;
     own.uStarVis.value = L.stars;
     own.uMoonDisc.value = L.moonDisc;
@@ -619,16 +727,53 @@ export function createSky(scene, uniforms, chunks) {
       applyLight(s.altRefractedDeg, m.altRefractedDeg, ph.illum);
     },
 
+    // v0.4.0: the weather's settings (normalizeWeather()'s shape), or null for the default.
+    // Sets the air and the ground uniforms that every world shader reads.
+    setWeather(s) {
+      const v = visibilityAir(s ? s.visM : VIS_CLEAR_M, s ? s.fogTopFt : 0);
+      uniforms.uHazeSigma0.value = v.sigma0;
+      uniforms.uHazeH.value = HAZE_HEIGHT;
+      uniforms.uFogSigma.value = v.fogSigma;
+      uniforms.uFogBase.value = 0;
+      uniforms.uFogTop.value = v.fogTopM;
+      uniforms.uFogMix.value = v.fogMix;
+      uniforms.uLightCarry.value = v.lightCarry;
+      uniforms.uFogLights.value = v.fogLights;
+      const g = groundState(s);
+      uniforms.uWet.value = g.wet;
+      uniforms.uSnow.value = g.snow;
+      uniforms.uRwySnow.value = g.rwySnow;
+      wx.layers = (s && s.clouds) || [];
+      wx.fogSigma = v.fogSigma; wx.fogTopM = v.fogTopM; wx.fogMix = v.fogMix;
+      wx.active = v.sigma0 !== HAZE_SIGMA0 || v.fogSigma > 0 || wx.layers.length > 0;
+      if (!wx.active && wx.cover !== 0) { wx.cover = 0; applyLight(state.sunAltDeg, state.moonAltDeg, state.moonIllum); }
+    },
+
     update(camera, camAlt) {
       // Keep the key light's shadowless direction fixed relative to the camera.
       sunLight.position.copy(camera.position).addScaledVector(keyDir, 1000);
       sunLight.target.position.copy(camera.position);
-      // FogExp2: 1 - exp(-(density d)^2). Match the haze's optical depth at 3 km.
-      const sigma = HAZE_SIGMA0 * Math.exp(-Math.max(camAlt, 0) / HAZE_HEIGHT);
-      fog.density = Math.sqrt(sigma * 3000) / 3000;
+      // FogExp2: 1 - exp(-(density d)^2). Match the haze's optical depth at 3 km (nearer when the air is thick,
+      // so the near field isn't washed out: exp2 is nearly clear close to the camera).
+      let sigma = uniforms.uHazeSigma0.value * Math.exp(-Math.max(camAlt, 0) / uniforms.uHazeH.value);
+      let refD = 3000, fogMix = 0;
+      if (wx.active) {
+        const cov = cloudCoverAt(wx.layers, camAlt);
+        if (Math.abs(cov - wx.cover) > 0.003 || (cov === 0 && wx.cover !== 0)) { wx.cover = cov; applyLight(state.sunAltDeg, state.moonAltDeg, state.moonIllum); }
+        // Inside a cloud the fog slab is the layer; otherwise it's the settings' fog.
+        const cl = cloudAtCamera(wx.layers, camAlt);
+        let fs = wx.fogSigma, fb = 0, ft = wx.fogTopM, fm = wx.fogMix;
+        if (cl && cl.sigma > fs) { fs = cl.sigma; fb = cl.baseM; ft = cl.topM; fm = Math.max(fm, 0.95 * cl.mix); }
+        uniforms.uFogSigma.value = fs; uniforms.uFogBase.value = fb; uniforms.uFogTop.value = ft; uniforms.uFogMix.value = fm;
+        if (camAlt >= fb && camAlt <= ft) sigma += fs;
+        if (sigma > 1e-4) refD = Math.min(3000, 2 / sigma);
+        fogMix = fm;
+      }
+      fog.density = Math.sqrt(sigma * refD) / refD;
       // Horizon haze colour in linear RGB (as skyBase gives near the horizon).
       const a = Math.min(Math.max(camAlt / 12000, 0), 1), h = L.horizon;
       fog.color.setRGB(h[0] * (1 + (0.52 / 0.58 - 1) * a), h[1] * (1 + (0.64 / 0.68 - 1) * a), h[2]);
+      if (fogMix > 0) fog.color.lerp(fogLinear.setRGB(L.fogColor[0], L.fogColor[1], L.fogColor[2]), fogMix);
     },
   };
   return sky;

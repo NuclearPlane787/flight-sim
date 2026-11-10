@@ -62,7 +62,7 @@
 .fslb-totals .best small:first-child { flex-basis: 100%; }
 .fslb-totals .best > small:last-child { text-transform: none; letter-spacing: 0; font-size: 13px; color: #c9ced2; margin: 0; }
 .fslb-list { flex: 1; overflow-y: auto; border: 1px solid #2b3238; border-radius: 8px; background: #0b1014; }
-.fslb-row { display: grid; grid-template-columns: 1.5fr 1.1fr 0.8fr 1.1fr 0.75fr 0.85fr 0.85fr; gap: 10px; align-items: center;
+.fslb-row { display: grid; grid-template-columns: 1.4fr 1.05fr 0.75fr 1.05fr 0.7fr 0.8fr 1.1fr 0.85fr; gap: 10px; align-items: center;
   padding: 8px 14px; border-bottom: 1px solid #1c2329; font-size: 14px; cursor: pointer; }
 .fslb-row:hover { background: #141c22; }
 .fslb-row.on { background: #12242c; }

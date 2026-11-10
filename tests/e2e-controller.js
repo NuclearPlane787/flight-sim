@@ -104,9 +104,15 @@
           const vsCmd = -0.6 + (ctl.flareVs0 + 0.6) * k;
           c.pitch = boeing() ? clamp((vsCmd - s.vs) * 0.3 - s.q * 0.5 + ctl.pitchI, -0.3, 0.8)
             : clamp((vsCmd - s.vs) * 0.25 - s.q * 0.8 + ctl.pitchI, -0.3, 0.7);
-          const corr = clamp(-cross * 0.004, -0.1, 0.1);
-          holdTrack(c, s, ax.hdg + corr, 3);
-          c.yaw = clamp(wrap(ax.hdg - s.hdg) / DEG * 0.15, -0.5, 0.5); // decrab
+          // v0.4.0: in a crosswind, wing down into the wind and a firmer pull to the centreline while the crab comes off.
+          const windy = !!s.drift;
+          // Aim a little upwind of the centreline: the last of the crab comes off and the wind carries it back.
+          const aimErr = windy ? cross + (boeing() ? 0.5 : 2.5) * Math.sign(s.drift) : cross;   // tuned in a node copy of this loop
+          const corr = windy ? clamp(-aimErr * 0.015, -0.2, 0.2) : clamp(-cross * 0.004, -0.1, 0.1);
+          holdTrack(c, s, ax.hdg + corr, windy ? (ftAgl < 18 ? 2 : 6) : 3);   // wings nearly level at the wheels
+          // Decrab: fully in calm air's small crabs, and in a crosswind leave about 3° for the gear to take.
+          const crabLeft = windy ? clamp(wrap(s.hdg - ax.hdg), -3 * DEG, 3 * DEG) : 0;
+          c.yaw = clamp(wrap(ax.hdg + crabLeft - s.hdg) / DEG * 0.15, -0.5, 0.5);
           if (ftAgl < 20 && fs.input.lever > 0) { if (ap.athr) ap.toggleAthr(); fs.input.lever = 0; note('retard'); }
         } else {
           if (!ctl.td) { ctl.td = s.t; note('touchdown'); }

@@ -1,4 +1,4 @@
-// The FCU strip at the top: SPD, HDG, ALT and V/S windows, AP1 and A/THR, and a small
+// The FCU strip at the top: SPD, HDG, ALT, V/S and BARO windows, STD, AP1 and A/THR, and a small
 // LAW switch. It calls the `ap` methods from the interface.
 //
 // - Scroll over a window to turn its knob; scroll fast and it turns in big steps (10 kt, 10°,
@@ -23,8 +23,22 @@ const WINDOWS = [
   { k: 'hdg', label: 'HDG', step: 1, big: 10, tip: 'Heading' },
   { k: 'alt', label: 'ALT', step: 100, big: 1000, tip: 'Altitude (ft; 350 = FL350)' },
   { k: 'vs', label: 'V/S', step: 100, big: 500, tip: 'Vertical speed (ft/min; −15 = −1,500)' },
+  { k: 'baro', label: 'BARO', step: 1, big: 5, tip: 'Altimeter setting (hPa)' },
 ];
 const W = Object.fromEntries(WINDOWS.map((w) => [w.k, w]));
+
+// The altimeter setting on the strips (here and on the Boeings' MCP). `sim` is view.sim: its baro and
+// setters are the sim's (sim.js, v0.4.0). A typed setting has to be a real one: out of range it's ignored.
+export const BARO_MIN = 900, BARO_MAX = 1100;
+export const baroOf = (view) => view?.sim?.baro ?? null;
+export const baroText = (b) => (!b ? '1013' : b.std ? 'STD' : String(Math.round(b.hpa)));
+export function typedBaro(text) {
+  if (text === '') return null;
+  const v = Number(text);
+  return Number.isFinite(v) && v >= BARO_MIN && v <= BARO_MAX ? Math.round(v) : null;
+}
+export function turnBaro(view, v) { view?.sim?.setBaro?.(clamp(Math.round(v), BARO_MIN, BARO_MAX)); }
+export function toggleStd(view) { const s = view?.sim; if (s?.baro && s.setBaroStd) s.setBaroStd(!s.baro.std); }
 
 export function createFcu(root, hud) {
   const el = document.createElement('div');
@@ -47,7 +61,8 @@ export function createFcu(root, hud) {
     el.appendChild(d);
     return { el: d, on: null };
   };
-  const apBtn = mkBtn('ap', 'AP1'), athrBtn = mkBtn('athr', 'A/THR');
+  const stdBtn = mkBtn('std', 'STD'), apBtn = mkBtn('ap', 'AP1'), athrBtn = mkBtn('athr', 'A/THR');
+  stdBtn.el.title = 'Altimeter: standard (1013) or back to the setting in the BARO window';
   const law = document.createElement('div');
   law.className = 'fsui-law'; law.title = 'Flight control law (Alternate: no stall protection)';
   el.appendChild(law);
@@ -64,6 +79,7 @@ export function createFcu(root, hud) {
     if (k === 'spd') return Math.round(ap.spdKt ?? 250);
     if (k === 'hdg') return Math.round(ap.hdgDeg ?? 0);
     if (k === 'alt') return Math.round(ap.altFt ?? 5000);
+    if (k === 'baro') return Math.round(baroOf(view)?.hpa ?? 1013);
     return vsMode() ? ap.vsFpm ?? 0 : vsPreset ?? Math.round((view?.state?.vs ?? 0) * 196.85 / 100) * 100;
   }
 
@@ -71,6 +87,7 @@ export function createFcu(root, hud) {
     if (k === 'spd') call('setSpd', clamp(Math.round(v), 100, 399));
     else if (k === 'hdg') { const h = wrap360(Math.round(v)); call('setHdg', h === 0 ? 360 : h); }
     else if (k === 'alt') call('setAlt', clamp(Math.round(v / 100) * 100, 100, 39800));
+    else if (k === 'baro') turnBaro(view, v);
     else if (k === 'vs') {
       const s = clamp(Math.round(v / 100) * 100, -6000, 6000);
       if (vsMode()) call('setVs', s); else { vsPreset = s; vsPresetAt = performance.now(); }
@@ -91,6 +108,7 @@ export function createFcu(root, hud) {
 
   // What was typed: Enter or a second click sets it and pushes the knob.
   function commit(k, text) {
+    if (k === 'baro') { const v = typedBaro(text); if (v !== null) turnBaro(view, v); hud.poke(); return; }
     let v = text === '' || text === '-' ? null : Number(text);
     if (v !== null && Number.isFinite(v)) {
       if (k === 'alt' && Math.abs(v) < 1000) v *= 100;   // a flight level
@@ -109,6 +127,7 @@ export function createFcu(root, hud) {
       const b = e.target.closest('.fsui-btn');
       if (b && b.dataset.k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'fcu'); else call('engageAp'); hud.poke(); }
       else if (b && b.dataset.k === 'athr') { call('toggleAthr'); hud.poke(); }
+      else if (b && b.dataset.k === 'std') { toggleStd(view); hud.poke(); }
       else if (e.target.closest('.fsui-law')) {
         const next = (view?.state?.law || 'normal') === 'normal' ? 'alternate' : 'normal';
         if (view?.controls) view.controls.law = next;
@@ -140,8 +159,10 @@ export function createFcu(root, hud) {
     const vsv = vsMode() ? ap.vsFpm ?? 0 : vsPreset;
     const vsText = vsv === null || vsv === undefined ? '-----' : (vsv >= 0 ? '+' : '−') + String(Math.abs(Math.round(vsv / 100) * 100)).padStart(4, '0');
     set(parts.vs, shown('vs', vsText), (on && vsMode() ? ' lit' : '') + (vsPreset !== null && !vsMode() ? ' pre' : '') + sel('vs') + ed('vs'));
+    const baro = baroOf(v);
+    set(parts.baro, shown('baro', baroText(baro)), (baro?.std ? ' lit' : '') + sel('baro') + ed('baro'));
     const light = (b, isOn) => { if (b.on !== isOn) { b.el.classList.toggle('on', isOn); b.on = isOn; } };
-    light(apBtn, on); light(athrBtn, !!ap.athr);
+    light(apBtn, on); light(athrBtn, !!ap.athr); light(stdBtn, !!baro?.std);
     const lawT = (v.state?.law || 'normal') === 'normal' ? 'LAW NORM' : 'LAW ALTN';
     if (law.textContent !== lawT) { law.textContent = lawT; law.classList.toggle('altn', lawT === 'LAW ALTN'); }
   }

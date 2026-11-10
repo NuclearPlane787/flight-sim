@@ -78,10 +78,13 @@ const RUNWAY_VERT = /* glsl */ `
   uniform vec4 uKnots;      // two (s, h) bends where this runway meets a longer one (s >= 1e8: none)
   attribute vec2 rw;        // (u from end 0's pavement end, v to the left of uDir)
   varying vec2 vRw;
+  varying vec2 vCamRw;      // the camera in the runway's (u, v), for the wet runway's reflected lights
   varying vec3 vRel;
   #include <logdepthbuf_pars_vertex>
   void main() {
     vec2 perp = vec2(-uDir.y, uDir.x);
+    vec2 camRel = vec2(uCamPos.x, -uCamPos.z) - uRelC;
+    vCamRw = vec2(dot(camRel, uDir) + 0.5 * uLen, dot(camRel, perp));
     vec2 rel = uRelC + uDir * (rw.x - 0.5 * uLen) + perp * rw.y;
     float s = rw.x, h;
     if (uKnots.x > 1e8) h = mix(uE0, uE1, clamp(s / uLen, 0.0, 1.0));
@@ -107,7 +110,10 @@ const RUNWAY_FRAG = /* glsl */ `
   uniform vec4 uEnd0, uEnd1;      // per end: displaced m, glyph0, glyph1, letter (-1 = none)
   uniform float uStripes;
   uniform sampler2D uGlyphs;
+  uniform float uClLights;        // 1: this runway has centreline lights
+  const float WET_LIGHTS_GAIN = 0.9;
   varying vec2 vRw;
+  varying vec2 vCamRw;
   varying vec3 vRel;
   #include <logdepthbuf_pars_fragment>
 
@@ -175,6 +181,42 @@ const RUNWAY_FRAG = /* glsl */ `
     return p;
   }
 
+  // v0.4.0, a wet runway at night: one row of lights (at v = vL, every sp m from u0 to u1) reflected
+  // on the pavement. Each light's reflection is a streak from the light towards the camera, so the
+  // streaks of a row fan in towards the viewer. Only the two lights that bracket this pixel's line of
+  // sight are looked at; uL returns the nearer. Once the streaks are closer together than they are
+  // wide (or than a pixel), the row is drawn as the average of the fan, which keeps it from shimmering.
+  float wetRow(vec2 P, vec2 C, float vL, float sp, float u0, float u1, float ell, vec2 fw, out float uL) {
+    float a = vL - C.y, b = P.y - C.y, dv = P.y - vL;
+    float us = abs(b) > 1e-3 ? C.x + (P.x - C.x) * a / b : P.x;    // where the camera's line through P meets the row
+    us = clamp(us, max(u0, P.x - 3.0 * ell), min(u1, P.x + 3.0 * ell));
+    uL = clamp(u0 + sp * floor((us - u0) / sp + 0.5), u0, u1);
+    // Smooth across the row (all from the row point, never the nearest light): the average of the fan.
+    vec2 toRow = P - vec2(us, vL), e = normalize(C - vec2(us, vL) + vec2(1e-3, 0.0));
+    float reach = length(toRow);
+    float w = 0.55 + reach * 0.007;                                  // the streak widens away from its light
+    float wa = max(w, 0.7 * (abs(e.y) * fw.x + abs(e.x) * fw.y));    // never thinner than a pixel; the energy is kept
+    float tau = abs(a) > 1e-3 ? b / a : 9.0;                         // 0 at the camera, 1 at the row
+    float spLat = max(sp * abs(e.y) * clamp(tau, 0.02, 1.0), 1e-3);  // the streaks' spacing, sideways, at P
+    float cov = max(step(0.0, tau) * (1.0 - smoothstep(0.98, 1.03, tau)), exp(-dv * dv / (wa * wa)));
+    float band = cov * min(1.77 * w / spLat, 0.9) * exp(-1.5 * reach / ell);
+    float m = smoothstep(0.5, 1.4, wa / spLat);
+    // The two lights either side of the row point, while the streaks are still apart (the two together,
+    // so that nothing jumps where one light hands over to the next).
+    float one = 0.0;
+    if (m < 1.0) {
+      float k0 = floor((us - u0) / sp);
+      for (int k = 0; k < 2; k++) {
+        vec2 L = vec2(clamp(u0 + sp * (k0 + float(k)), u0, u1), vL), toC = C - L, d = P - L;
+        float dL = max(length(toC), 1.0);
+        vec2 eL = toC / dL;
+        float along = dot(d, eL), perp = abs(d.x * eL.y - d.y * eL.x);
+        if (along > -3.0 && along < dL) one += exp(-perp * perp / (wa * wa)) * (w / wa) * smoothstep(-2.5, 0.5, along) / (1.0 + along * along / (ell * ell));
+      }
+    }
+    return mix(one, band, m);
+  }
+
   void main() {
     if (uCutB.x > 0.0) {
       vec2 dc = vRw - uCutA.xy;
@@ -210,12 +252,46 @@ const RUNWAY_FRAG = /* glsl */ `
     float fp = max(fwidth(vRw.x), fwidth(vRw.y) * 4.0);
     p = mix(p, 0.05, smoothstep(2.0, 12.0, fp));
     col = mix(col, vec3(0.50, 0.50, 0.48) * (0.85 + 0.2 * g), p * (1.0 - 0.6 * rubber));
+    // v0.4.0: a snow-covered runway is white with the paint showing through a little (rutted down the middle);
+    // a wet one is darker.
+    if (uRwySnow > 0.0) {
+      float ruts = 1.0 - 0.22 * (1.0 - smoothstep(7.0, 14.0, abs(v))) * (0.5 + 0.5 * vnoise(vRw * vec2(0.04, 1.0)));
+      col = mix(col, vec3(0.54, 0.56, 0.60) * (0.90 + 0.1 * g) * ruts, 0.92 * uRwySnow);
+    } else if (uWet > 0.0) col *= 1.0 - 0.42 * uWet;
     vec3 n = vec3(0.0, 1.0, 0.0);
     vec3 light = uSunColor * max(uSunDir.y, 0.0) * 2.4 + uSkyAmb * 1.1;
     vec3 c = col * light + col * aircraftLights(vRel + uCamPos, n);
     // A little sheen at grazing angles towards the sun.
     vec3 vd = vRel / max(dist, 1e-3);
     c += uSunColor * 0.08 * pow(max(dot(reflect(vd, n), uSunDir), 0.0), 12.0);
+    // v0.4.0, a wet runway: the sky mirrored at grazing angles (Fresnel), and a hot streak under a low sun.
+    if (uWet > 0.0 && uRwySnow <= 0.0) {
+      vec3 rd = reflect(vd, n);
+      float fres = pow(1.0 - max(-vd.y, 0.0), 3.0) * (0.75 + 0.25 * g);
+      c = mix(c, skyBase(rd), 0.72 * uWet * fres);
+      c += uSunColor * uWet * 0.55 * pow(max(dot(rd, uSunDir), 0.0), 220.0);
+      // At night, the runway's lights in the water (no extra draw call; skipped by day and when dry).
+      if (uNight > 0.0) {
+        float eps = max(-vd.y, 0.0);                                // the sine of the angle we look down at
+        float ell = clamp(6.0 / max(eps, 0.015), 30.0, 220.0);      // m: long streaks at a grazing look
+        float glint = exp(-eps * eps / 0.0144);                     // the ripples only send the light our way near grazing
+        vec2 fw = fwidth(vRw);
+        float nEdge = max(floor(uLen / 60.0 + 0.5), 1.0), uL = 0.0, r;   // as lightLayout's rows
+        vec3 refl = vec3(0.0);
+        for (int i = 0; i < 2; i++) {
+          r = wetRow(vRw, vCamRw, (i == 0 ? -1.0 : 1.0) * (hw + 1.5), uLen / nEdge, 0.0, uLen, ell, fw, uL);
+          float toFar = vCamRw.x > uL ? uL : uLen - uL;             // yellow in the last 600 m, seen from here
+          refl += r * (toFar < 600.0 ? vec3(1.0, 0.72, 0.18) : vec3(1.0, 0.93, 0.80));
+        }
+        if (uClLights > 0.5) {
+          r = wetRow(vRw, vCamRw, 0.6, 15.0, 15.0, (floor(uLen / 15.0) - 1.0) * 15.0, ell, fw, uL);
+          float toFar = vCamRw.x > uL ? uL : uLen - uL;             // red in the last 300 m, alternating to 900 m
+          bool red = toFar < 300.0 || (toFar < 900.0 && mod(floor(uL / 15.0 + 0.5), 2.0) > 0.5);
+          refl += r * (red ? vec3(1.0, 0.10, 0.05) : vec3(1.0, 0.93, 0.80));
+        }
+        c += refl * glint * (0.75 + 0.5 * g) * WET_LIGHTS_GAIN * uWet * uNight;
+      }
+    }
     gl_FragColor = vec4(applyHaze(c, vRel), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -415,8 +491,10 @@ const LIGHT_VERT = /* glsl */ `
       I *= exp(-ph * ph * 500.0) * 3.0;
     }
     // Haze dims the light (no in-scatter: it's an emitter).
-    float od = 2.6e-5 * dist * exp(-max(min(uCamAlt, wp.y + 0.5 * r.y), 0.0) / 1500.0);
-    I *= exp(-od);
+    // (In fog the lights carry further than objects do, and bloom: uLightCarry, uFogLights.)
+    float od = uHazeSigma0 * dist * exp(-max(min(uCamAlt, wp.y + 0.5 * r.y), 0.0) / uHazeH);
+    od += fogDepth(r, dist);
+    I *= exp(-od * uLightCarry);
     float n = uNight;
     float px = size * uPxScale / max(dist, 1.0);
     float minPx = (kind > 1.5 && kind < 2.5 ? 3.0 : 2.0) + 0.5 * n;
@@ -426,13 +504,14 @@ const LIGHT_VERT = /* glsl */ `
     // fast; at night it carries (readable from 15 nm), and it's brighter against the dark.
     float dimDay = clamp(px / minPx, 0.06, 1.0);
     float dimNight = clamp(pow(px / minPx, 0.35), 0.3, 1.0);
-    I *= mix(dimDay, dimNight, n) * (1.0 + 0.4 * n);
+    float nf = max(n, uFogLights);
+    I *= mix(dimDay, dimNight, nf) * (1.0 + 0.4 * n + 1.6 * uFogLights);
     // At night the sprite grows a halo around the same core (small: hundreds overlap).
-    float S = min(sz * (1.0 + 1.6 * n), 12.0 + 14.0 * n);
+    float S = min(sz * (1.0 + 1.6 * nf), 12.0 + 14.0 * nf);
     if (kind > 2.5) S = min(S * (1.0 + 1.5 * n), 48.0);        // the rabbit's flash: a big glow
     gl_PointSize = S * step(0.001, I);
     vCore = sz / S;
-    vHalo = n;
+    vHalo = nf;
     vCol = c * I;
     vAlpha = I;
     vec4 mv = viewMatrix * vec4(wp, 1.0);
@@ -490,6 +569,7 @@ export function createRunways(scene, uniforms, chunks, airports, renderer, hf = 
         uEnd0: { value: endU(0) }, uEnd1: { value: endU(1) },
         uStripes: { value: thresholdStripes(r.widthM) },
         uGlyphs: { value: glyphs },
+        uClLights: { value: r.ends.some((e) => e.centrelineLights !== false) ? 1 : 0 },
       });
       const mat = new THREE.ShaderMaterial({
         uniforms: u,

@@ -50,10 +50,13 @@ export function createGear(A) {
     leg.vRoll = vLong;
     // Off the pavement (grass), the tyres roll heavier and brake and grip less.
     const soft = leg.kind !== 'runway';
-    const mu = soft ? leg.mu * A.SIDE_MU_GRASS : leg.mu;
+    // v0.4.0: k.tyres, the runway's state on the pavement (null when it's dry, so nothing changes).
+    const wet = !soft ? k.tyres : null;
+    const mu = soft ? leg.mu * A.SIDE_MU_GRASS : wet ? leg.mu * wet.side : leg.mu;
     // Rolling resistance and brakes (anti-skid holds the optimum slip: force ≤ BRAKE_MU·N).
     const brake = leg.isNose ? 0 : k.brake;
-    const fLongMax = ((soft ? A.ROLL_RESIST_GRASS : A.ROLL_RESIST) + (soft ? A.BRAKE_MU_GRASS : A.BRAKE_MU) * brake) * fs;
+    const fLongMax = wet ? (A.ROLL_RESIST + wet.rollAdd + A.BRAKE_MU * wet.brake * brake) * fs
+      : ((soft ? A.ROLL_RESIST_GRASS : A.ROLL_RESIST) + (soft ? A.BRAKE_MU_GRASS : A.BRAKE_MU) * brake) * fs;
     const fLong = -fLongMax * Math.tanh(vLong / 0.08);
     // Side force: linear in slip angle up to ~6°, saturating at mu·N.
     const vRef = Math.max(0.25, 0.1 * Math.abs(vLong));

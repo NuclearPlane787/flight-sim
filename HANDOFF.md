@@ -1,6 +1,87 @@
 # Flight Sim: handoff
 
-Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that made v0.1.1, v0.1.2 and v0.1.3, updated on 2026-11-01 by the second Cowork session, which made v0.1.4, again on 2026-11-01 (about 05:30 KST) by the overnight Claude Code run that made v0.2.0, on 2026-11-03 by the Cowork session that made v0.2.1, on 2026-11-04 by the same session, which made v0.2.2, and again on 2026-11-04 by the overnight Claude Code run that made v0.3.0. If you're picking the game up, read this first. Then read `AGENTS.md` (the rules) and the newest entries in `STATUS.md` (what was done, with the evidence).
+Read this first if you're picking the game up. Its first section is the job in hand; the rest is how the game is built and how to work on it. Then read `AGENTS.md` (the rules), `ROADMAP.md`'s "The long term" (where the game is going) and the newest entries in `STATUS.md` (what was done, with the evidence).
+
+It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run and reviewed it. That last session wrote this first section for the next one.
+
+## The next session: v0.5.0, the parts model and a first warehouse, from start to finish
+
+Shane, 2026-11-10: "I would rather a new session work completely from end to end of an update." That's you:
+
+- settle the scope with Shane;
+- get it built (most likely a Claude Code run you brief, as v0.3.0 and v0.4.0 were);
+- check it;
+- write it up;
+- hand it to him to push.
+
+Your last job is to rewrite this section for the session after you (v0.6.0 in the plan: East Asia).
+
+### Where you start
+
+- **v0.4.0, the weather, was written up and ready to push** when this was written (2026-11-10). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't `v0.4.0`, ask Shane to push it first (`sh tools/push.sh v0.4.0`): a run starts only from a pushed version.
+- **Passing at v0.4.0:**
+  - 626 unit tests (`node --test tests/*.test.mjs`, 13 s on the Mac through the guard);
+  - in the cloud container, `tests/cloud/weather-final.cjs` 20/20, `weight-copy.cjs`, `route-views.cjs` and `athr-lever.cjs` all pass, and `audio-render.mjs` 45/45 on each type;
+  - on the Mac's GPU (the run): 60 fps in heavy rain at night, a thunderstorm and fog.
+- **The direction:** `ROADMAP.md` → "The long term". The parts model is the foundation of the KSP and Besiege halves: the warehouse (row 1), failures (v0.8.0), crash physics (v0.12.0) and the new aircraft (v0.9.0 on) all stand on it.
+
+### What Shane has said, in his words
+
+- **2026-11-01** (ROADMAP row 1): "Airplane customisation beyond normal; Similar to MSFS, have a 'warehouse' where you can swap out elements like engines for other planes' parts. So, you can attach GE90 engines to an A321, for example."
+- **2026-11-10:** "a sort of 'warehouse' where I can take base models like the B777-300ER and make changes, whether it be adding more engines for fun, making them more powerful, or any sandbox like changes, then run scenarios on them."
+- **The long term (2026-11-10):** "a mix of MSFS (for the visuals and groundwork) + Kerbal Space Program (for the sandbox) + Besiege (for the physical realism)"; their ideas, never their assets.
+- **Sturdier than Besiege (2026-11-10):** "I think we can make our planes a little more durable than that." ROADMAP has Claude's limits from CS-25 (the gear to 10 ft/s unharmed; the wings to their limit load, broken only past 1.5 times it).
+- **His controls:** the Mac's keyboard and touchpad, or a mouse at most.
+
+### Proposed, not confirmed: ask him first
+
+ROADMAP's v0.5.0 row is Claude's proposal: "the three types rebuilt from parts and flying exactly as now (golden flights, as v0.3.0 did); the warehouse changes engine count and placement, thrust, weight and fuel, and saves designs that show in the aircraft picker. Off-centre thrust yaws, more engines burn more fuel, and too much thrust for a pylon breaks it. Changing the wing (aerodynamics from its shape) comes later." Settle these before you write the brief. Each has a default, so he can answer by picking options (v0.4.0's eight went in two AskUserQuestion calls).
+
+1. **What the first warehouse changes.** Default: the engines (how many: 2, 3, 4 or 6; where along each wing; which of the three: LEAP-1A, GEnx-1B, GE90-115B; a thrust scale), the empty weight and the fuel capacity. Not the wing, the fuselage or the tail.
+2. **Where it lives.** Default: Warehouse on the main menu. The aircraft stands in 3D (orbit and drag, as in 3rd person), with the parts beside it and the numbers that follow (thrust to weight, MTOW, range, each engine's ground clearance). Designs are saved in the browser and picked in New scenario beside the three types.
+3. **A design's base.** Default: always one of the three types. A design changes parts on it, and its name and registration are yours.
+4. **What breaks.** Default: a pylon holds about 1.5 times its base engine's thrust (CS-25's ultimate factor). Past it the warehouse warns, and in flight the engine comes off at full thrust: it stops and disappears (the debris and the crash physics come in v0.12.0). An engine that touches the ground at rotation strikes it, as today.
+5. **The ground clearance.** Default: a GE90 on an A321 scrapes, as it would in reality; the warehouse can lengthen the gear to clear it, and the tail-strike angle follows.
+6. **More engines on the screens and in the sound.** Default: the engine panel and the EICAS draw as many as there are, and each engine gets its own voice in the synth, up to six.
+7. **Who builds it.** Default: a Claude Code run. The three types' golden flights must come out the same from parts, and the model's checks want the M5's GPU.
+
+### The brief: `V050.md`
+
+Model it on `V040.md`, and on `V030.md` for rebuilding the types without changing them. Its parts, in order:
+
+1. **Golden flights for the 787-9 and the 777-300ER,** recorded from v0.4.0's untouched code, as v0.3.0 recorded the A321's (`tests/golden-a321-flight.mjs`).
+2. **The parts model in the sim:** the types as parts (the engines with their position, thrust, weight, fuel burn and sound; the gear; the tanks), with all three golden flights unchanged to 1e-9 and every old assertion unchanged.
+3. **Engines by count:** the sim's core (two engines by name today), the A/THR, the engine panel and the EICAS, the synth; a save from before v0.5.0 loads as it was.
+4. **The warehouse:** its page and 3D view, designs saved and in the picker, scenarios keeping their design.
+5. **A design's physics:** off-centre thrust, the pylon's limit, the clearance and the taller gear.
+
+A definition of done to start from: the three golden flights to 1e-9; a four-engine 777 and a GE90 A321 take off, climb and land with the test pilot; asymmetric thrust yaws by the sum of the moments; a scenario with a design round-trips through a reload; 60 fps with six engines; a reviewer subagent.
+
+### Where the parts model plugs in
+
+From a read of the code on 2026-11-10. Check the line numbers, which drift.
+
+| Where | What to know |
+|---|---|
+| `src/sim/types.js`, `kitFor()` | The registry; each type's data and geometry modules; the sim's factories, made once per type. A design would be a type made from a base and its changes. |
+| `src/sim/a321neo.js`, `b787-9.js`, `b777-300er.js` | Every number with its source. The engines' (`T_IDLE`, `N1_TOGA`, the TSFC) are for one engine of two. Every name `a321neo.js` exports must exist (the data tests check). |
+| `src/geometry*.js` | `ENGINES` (where the thrust acts: the sim's calibration), `NACELLES` (where they're drawn and strike the ground), `GEAR`, `GROUND_Z`, `CRASH_POINTS`. |
+| `src/sim/sim.js` | Two engines by name in the core (`n1L`, `n1R`, `revL`, `revR`, `thrL`, `thrR`, `ffL`, `ffR`, `n1tL`, `n1tR`), stepped as `eng[0]` and `eng[1]` (about lines 374–382) and reported in `state.engines` (about 669). The thrust's moments already loop over `ENGINES` (about 434). `trimAirborne()` splits the thrust by two at `ENGINES[0].z`. The tanks are `fuelL`, `fuelR` and `fuelC`. The core is the snapshot, so older saves need a migration. |
+| `src/sim/engines.js`, `autopilot.js`, `autopilot-boeing.js` | One engine's model; the A/THR reads both engines. |
+| `src/ui/engines-panel.js`, `src/ui/boeing/eicas.js` | Two engines drawn. |
+| `src/audio/synth.js`, `src/audio/engine-sounds.js` | Two engines' voices (`SPLIT` makes their beat); each engine type's tones. |
+| `src/aircraft.js`, `src/widebody.js`, `src/widebody-specs.js`, `src/type-assets.js` | The models: nacelles and pylons at `NACELLES`; which model each type uses. |
+| `src/ui/setup.js`, `src/scenarios.js`, `src/ui/menu.js` | The picker (`TYPE_LIST`), a scenario's `type`, the main menu. |
+| `tests/golden-a321.test.mjs`, `tests/types.test.mjs` | The golden flight and the types' round trips. |
+
+### After the run
+
+1. **Read the run's `STATUS.md` entries,** and go through the definition of done item by item against the evidence.
+2. **Check it yourself:** the unit tests on the Mac through the guard; the cloud checks (`route-views`, `weight-copy`, `athr-lever`, `weather-final`, `audio-render`, and new stills of designs); and, for anything that should be unchanged, a comparison with the pushed version (see "Working from a Cowork session"). Look at every picture, and make clips for Shane.
+3. **Fix what's wrong:** in the session if it's small, as a v0.5.1 patch if it isn't.
+4. **Write it up:** `src/version.js`, `Updates.md`, `README.md`, `PLAN.md`, `ROADMAP.md` (row 1 and the plan), `AGENTS.md` (State), `STATUS.md`, and the Games project doc.
+5. **Hand it to Shane:** `sh tools/push.sh v0.5.0`, then Empty Cache and Hard Reload.
+6. **Rewrite this section** for v0.6.0's session.
 
 ## Where things stand
 
@@ -16,13 +97,16 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | v0.2.2 | The engine sound rebuilt from the LEAP-1A's real tones; the A/THR moving the thrust lever (and the N1 ring), R/F taking it over smoothly; Cockpit (1) no longer swaps seats | yes (`7d9a20d`) |
 | v0.3.0 | Aircraft types, the Boeing 787-9 and 777-300ER, with Boeing's law, trim, autothrottle, MCP and screens, code E stands, the picker | yes (`12921f2`) |
 | v0.3.1 | The main gear carried by the wing with the flaps out (and the A321's wing where Airbus draws it), no gaps at the slats and flaps, the seat swap back on Cockpit (1), louder engines in the cockpit, gear doors with an inside | yes (`1530e48`) |
-| v0.3.2 | The Boeings' ALT window to 45,000 ft, past their 43,100 ft ceiling; Duplicate a scenario (and the pause menu's Save a copy); the Weight tab: passengers, cargo and fuel changed in flight | not yet: Shane pushes with `sh tools/push.sh v0.3.2` |
+| v0.3.2 | The Boeings' ALT window to 45,000 ft, past their 43,100 ft ceiling; Duplicate a scenario (and the pause menu's Save a copy); the Weight tab: passengers, cargo and fuel changed in flight | yes (`45e495f`) |
+| v0.4.0 | The weather: the Weather tab and its presets, the wind by height, gusts, turbulence, shear and microbursts, a real altimeter (K, the BARO boxes), the Boeings flying the track and decrabbing, windshear warnings, the wind on the card and in the logbook, wet, snowy and icy runways, fog, cloud layers, rain, snow, lightning, and their sound | not yet when this was written: `sh tools/push.sh v0.4.0` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
 - **v0.3.0's evidence** is in `STATUS.md` (from "2026-11-04, 04:36 KST"), its final entry says what's weak, and ROADMAP has the leftovers.
 - **v0.3.1's** is in its `STATUS.md` entry ("2026-11-08, 03:40 KST"): 506 unit tests, `route-views.cjs`, `audio-render.mjs` 30/30 on each type, and before/after close-ups of every type's wing, gear and doors (`tests/cloud/models.cjs`).
 - **v0.3.2's** is in its two `STATUS.md` entries ("2026-11-08, 15:05 KST" and the one after): 521 unit tests, `tests/cloud/weight-copy.cjs` (new) and `route-views.cjs`.
+- **v0.4.0's** is in its `STATUS.md` entries: the run's (from "2026-11-10, 10:38 KST") and the review's ("2026-11-10, 17:05 KST"): 626 unit tests, the run's Chrome checks on the Mac (60 fps in rain at night, a thunderstorm and fog; the crosswind landings), and the review's cloud checks (`weather-final.cjs`, new; `weight-copy.cjs`, `route-views.cjs`, `athr-lever.cjs`, `audio-render.mjs`; clear weather against v0.3.2).
+- **The long-term plan** (2026-11-10) is in `ROADMAP.md` → "The long term", and its two `STATUS.md` entries say how it was reached.
 - **Passing at v0.2.0's hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers; v0.2.1's and v0.2.2's checks are in their STATUS entries):
   - 262 unit tests in 34 files (`node --test tests/*.test.mjs`);
   - every `.js`/`.mjs` in `src/` and `tests/` checked **as a module** (copy to `.mjs`, then `node --check`; a plain `node --check file.js` checks it as a script and missed a broken `if … else` once);
@@ -31,7 +115,7 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
   - listened to the synth, or to the volume slider's preview (v0.2.2's engines were built from the LEAP-1A's numbers and checked by measurement; `tests/audio-clips.mjs` renders clips for Shane to judge);
   - played v0.2.0 the way Shane will: a whole evening flight from the menu with the clock running through dusk (the checks set the clock and stop it).
 
-## v0.2.0: what it is, and what's next
+## v0.2.0: the menu, scenarios and night
 
 `V020.md` was the brief; `STATUS.md` (from "2026-11-01, 04:10 KST: v0.2.0 run started") has the log, the decisions made overnight and the evidence. In short:
 
@@ -40,12 +124,11 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 - **The logbook** tags each flight with `scenarioId`/`scenarioName` (`unsaved` for flights without a scenario); untagged v0.1 flights count as the legacy Scenario 1's.
 - **Night:** `src/clock.js` (KST, stepped by the sim time stepped), `src/astro.js` (Meeus), `src/world/sky.js` (`setTime`, `lightingAt`, stars from `data/stars.json`, BSC5), `uNight` and the lamp uniforms in `glsl.js`, `citylights.js`, `taxilights.js`, the light shaders in `airports.js`, floods and windows in `apron.js`, `aircraft-lights.js` (`lightsFor` by phase), the cockpit's `setNight`, and the Sky window (`src/ui/sky-window.js`, L or Cmd/Ctrl+L, the one Ctrl binding).
 
-**Next (after v0.3.0):** nothing is decided. ROADMAP's 2026-11-01 table is the list, and "Found while building v0.3.0" the leftovers; weather (row 10's other half) pairs naturally with the night.
-
 ## Other open items
 
 - **From `ROADMAP.md`:**
-  - nobody has listened to the synth.
+  - nobody has listened to the synth;
+  - v0.4.0's weak points are under "Found while building v0.4.0": the autoland's alignment, broken layers from far off, the approach lights' missing reflections, the Nices not built, the weaker sources.
 - **From v0.2.0** (STATUS's final entry lists them all):
   - the cockpit at night is plain (a warm flood and lit screens, no panel backlighting); the terminal windows read a little like a checkerboard close up; distant taxiway lights merge green and blue into cyan; stop bars are always lit;
   - a moonless night away from the cities is very dark, especially from cruise (the ambient is at the top of the brief's 2–5% of day);
@@ -53,7 +136,7 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
   - an autosave can catch a moment just before a crash (it never saves the crash itself);
   - the old `tests/browser-boot.mjs` expects the setup screen on load; the main menu replaced that, and `browser-scenarios.mjs` covers the boot now.
   - (Jeju's runway seam, Gimpo stand 7's routes, the slow pushback, and Shane's FCU heading and path-pick bugs of 2026-11-01 were all fixed in v0.1.4.)
-- **His 11 future additions of 2026-11-01** are in ROADMAP's newest table: parts swaps, walking the cabin, five more types, detailed terminals, the UI and a font, changing the route in flight, traffic and ATC, lounges, emergencies, all weather and the night sky, crash physics.
+- **His future additions** are in ROADMAP: the 2026-11-01 table (rows 1–11), the additions of 2026-11-10 (rows 12–15: special aircraft, the airports in East Asia and three regions beyond, replays and a flight recorder, challenges), and "The long term" with the version plan.
 - **The score's calibration:**
   - It rests on a rebuilt profile of Shane's described landing (`tests/score.test.mjs`), with his g, bank and pitch assumed.
   - If his next landings score far from what he expects, retune `COST` in `src/score.js` and the anchors in the test, and log why.
@@ -118,12 +201,30 @@ Written at 23:10 KST on 2026-10-31, at the end of a long Cowork session that mad
 | `src/ui/load-window.js`, `src/ui/sky-window.js`, `sky-window.css` | The Weight window: the Sky window's frame and place, with tabs in the title bar (`createSkyWindow({ tabs })`, `ontab`); `showLTab()`, `toggleL()` in `main.js`, and L opens the tab last shown. Its sums use the sim's own OEW and tanks (`loadNow()`; the A321's setup still shows v0.1.0's, 400 kg lighter with 354 kg more fuel). Its fields take the keys (the flight's keys pause while one has the cursor; Apply, Esc or a click outside give them back). `loadCheck()` and `maxFuel()` are pure, tested in `tests/load.test.mjs`. |
 | `src/main.js` | Skip to final keeps the present load (it used the plan's payload); the plan isn't changed by the Weight tab, so Restart the flight and New flight start from the setup's load. |
 
+### v0.4.0: the weather
+
+| Where | What |
+|---|---|
+| `src/sim/weather.js` | The settings (`calmWeather()`, `normalizeWeather()`: JSON-safe, never shared), `compileWeather()` (what the step reads), `windAt()` (the wind at a point and a time: the mean by height, the shear, gusts, microbursts, turbulence and the roll gust), `RUNWAY_TYRES` and `runwayStateOf()`. No state and no `Math.random()`. Directions are converted once, at `refX`, `refY` (the arrival airport). |
+| `src/sim/sim.js` | `setWeather()` (at once, in flight too), `setBaro()`, `setBaroStd()`, `setLocalQnh()`, `sim.weather`, `sim.baro`. The default weather is `null`, which skips every new term. The step's air-relative velocity (the gear keeps the inertial one), the flat rating (`flatSigma()`, both sides of ISA), the windshear detector (`wsF`, `wsT`: F over 1 km), and `state.altInd`, `baroAlert`, `wind` (with `sfcX`, `sfcY` and `gustKt`: the tower's wind) and `drift`. `trimAirborne()` crabs for the mean wind. `restore(snap, { keepWeather })`: a rewind or a jump keeps the weather set now. |
+| `src/sim/atmosphere.js` | `columnInto()` (ISA + ΔT, with the QNH at sea level), `pressureAltitude()`, `indicatedAltitude()`. |
+| `src/sim/autopilot-boeing.js`, `autopilot.js` | The autopilots fly `state.altInd`. The Boeings' LNAV, LOC, ROLLOUT and TO/GA in the air fly the track (`S.drift`); the runway alignment from 500 ft (`ALIGN_*`, `boAlign`); the rollout's aileron into the wind. |
+| `src/sim/weather-presets.js` | `PRESETS`, `presetWeather()`, `weatherContext()`, the tab's form (`weatherForm()`, `weatherFromForm()`, `weatherCheck()`), `finalMicroburst()`, `metarOf()`. |
+| `src/ui/weather-window.js`, `sky-window.css` | The Weather tab, the third window in the L frame (`.fssw.fswx`). |
+| `src/main.js` | `startFlight()` sets the plan's preset, then the day's QNH; `placeOnFinal()` sets the HDG to the crabbed heading and the ALT from the altimeter; `applyWeather()` (the tab); `shownWeather` redraws the world and tells the synth when `sim.weather` changes; K is `localQnh`. |
+| `src/ui/nd.js`, `boeing/nd.js`, `pfd.js`, `boeing/pfd.js`, `fcu.js`, `boeing/mcp.js` | The wind readouts (`windReadout()`), the setting and STD, the BARO boxes (`turnBaro()`, `typedBaro()`, `toggleStd()`), WINDSHEAR and the transition reminder. |
+| `src/score.js`, `ui/score-panel.js`, `ui/logbook.js` | `windAtTouchdown()` (the tower's wind, its gusts and its parts), the card's line, the logbook's column. |
+| `src/world/sky.js`, `glsl.js` and the ground's shaders | The haze as uniforms (the visibility, the fog's top), the overcast light, wet and snowy ground. |
+| `src/world/clouds.js`, `precip.js`, `src/sim/lightning.js` | The flat layers and the lightning; rain, snow, the windshield's drops and the rain shafts; the seeded strikes. |
+| `src/audio/synth.js`, `callouts.js` | Rain, thunder, the gusts, the Boeing's siren; the windshear calls. |
+| `tests/weather*.test.mjs`, `tests/browser-weather-*.mjs`, `tests/cloud/weather-final.cjs` | The run's tests (104 of the 626 unit tests), its Chrome checks on the Mac, and the review's cloud check. |
+
 ## Working from a Cowork session
 
 Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When it's connected, it's `$HOME/mnt/GameDump` in the device shell.
 
 - **Editing:** work on the Mac directly, with a short Python read-modify-write or `sed -i`. Never retype a file from tool output, which can be cut short. The device shell can't delete files, and each call stops at 180 s.
-  - v0.2.1 worked the other way round, which also works: edit the staged copy in the container with the Edit tool, test it there, then copy the changed files to `/mnt/user-data/outputs/` and `device_commit_files` them back with `expectedMtimeMs` from staging, and compare the md5s at the end.
+  - v0.2.1, v0.3.1 and v0.3.2 worked the other way round, which also works: edit the staged copy in the container with the Edit tool, test it there, then copy the changed files to `/mnt/user-data/outputs/` and `device_commit_files` them back with `expectedMtimeMs` from staging, and compare the md5s at the end.
 - **Unit tests on the Mac** go through the guard. Its state folder must be writable in the VM:
   ```
   cd "$HOME/mnt/GameDump/games/flight-sim"
@@ -145,12 +246,14 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
      - `athr-lever.cjs` (v0.2.2): on a 15 nm final with A/THR on, the lever and the ring at its thrust, a one-frame tap of R (the frame clock held and stepped), A/THR off with the toast, X giving it back. About 2 minutes.
      - `models.cjs` (v0.3.1): close-ups of each type's wing, gear and doors.
      - `weight-copy.cjs` (v0.3.2): the Weight tab (tabs, fields, checks, Max, Enter, keys, the live fuel, Esc, skip to final), Save a copy, Load scenario → Duplicate, and a copy flying on from the same point; at 1440×900 and 1280×720. About 4 minutes.
+     - `weather-final.cjs` (v0.4.0's review): a 15 nm final started with the Gusty crosswind preset (the altimeter at the day's QNH, the AP's ALT at its reading, the crabbed heading holding the centreline), K, skip to final, a landing by the test pilot in 15 kt gusting 22 with the card's and the logbook's wind, and the same start in calm air as v0.3.2's. About 3 minutes.
      - The sound: `FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ NODE_PATH=$(npm root -g) node tests/audio-render.mjs` (the measured checks; 30 of them) and `… node tests/audio-clips.mjs outDir` (the flight phases as WAV and MP3 to listen to; `SYNTH=<url>` renders another copy of the synth, to compare).
-  4. **Re-stage every file you change** on the Mac before the next run. Then compare the two copies (the same hash on both sides):
+  4. **Against the last pushed version,** for anything that should be unchanged: `git clone https://github.com/NuclearPlane787/flight-sim` in the container (outside GameDump, so git is fine there), serve the clone beside the new copy (for example as `games/flight-sim-032/` under the same root), and compare `__fs.renderer.info.render` (calls, triangles) and the canvas from the same views and clock, in a fresh browser context each. v0.4.0's review did this for clear weather at six views, day and night: the same draws and triangles, and the same pixels but the spinning fan blades. The clone also gives the list of changed files (hash both trees).
+  5. **Re-stage every file you change** on the Mac before the next run. Then compare the two copies (the same hash on both sides):
      ```
      find src index.html style.css tests/e2e-controller.js tests/cloud -type f ! -path '*/__pycache__/*' | LC_ALL=C sort | xargs md5sum | md5sum
      ```
-  5. **Deliver pictures:** convert them to JPG and copy them to a new folder under `/mnt/user-data/outputs/`. Then `device_commit_files` each one to `Claude outputs/flight-sim/`, named by version and topic (`v013-perf-bar.jpg`). Look at every picture before you describe it.
+  6. **Deliver pictures:** convert them to JPG and copy them to a new folder under `/mnt/user-data/outputs/`. Then `device_commit_files` each one to `Claude outputs/flight-sim/`, named by version and topic (`v013-perf-bar.jpg`). Look at every picture before you describe it.
 - **The project doc** `claude/flight-sim-prototype.md` (the Games project on claude.ai) is a status section per session, newest first, then the plan. Edit a local copy and write it once: `project_write` replaces the whole doc.
 - **Pitfalls with the tools:**
   - **Headless captures hang once the game is running on SwiftShader.** That goes for `page.screenshot` and raw CDP captures, even of another page in the same browser. Read the 3D view off the canvas (`toDataURL` right after `renderOnce()`). Take the page with `tests/cloud/snap.cjs`, with the game's frames throttled or paused.
@@ -159,6 +262,8 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
   - **Caching:** Python's `http.server` sends no Cache-Control, so Chrome on the Mac can keep old modules after an update. Shane needs a hard reload.
   - **Free-camera stills** need `rig.viewId = 'orbit'`. In a seat view the nose is hidden.
   - **The image search tool shows its pictures to Shane.** Don't use it to gather references.
+  - **The cloud checks fake the frame clock:** each frame is 0.1 s of sim, run as fast as the browser can, so a lot of flying happens between two `page.evaluate` calls. Read and act in one `evaluate`, or pause quietly (`setPaused(true, true)`) around an exact check. A quiet pause also hides the pause menu; to picture the menu, capture without one (`shotMenu()` in `tests/cloud/weight-copy.cjs`).
+  - **The container refuses `rm` on a path built from a shell variable** (`rm $OUT/*.png`). Overwrite instead, or write `"${OUT:?}"/*.png`.
   - **The cloud container's files and processes can vanish between turns.** Check the server (`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8765/games/flight-sim/index.html`) and the staged copy before you trust them.
 
 ## Pitfalls already hit in the game
@@ -186,13 +291,21 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
 - **Saves must stay deterministic.** `sim.snapshot()` round-trips through JSON exactly (`tests/scenario-state.test.mjs` flies a restored sim 120 s against the original, within 1e-6 m). New sim state that a step reads must go in the snapshot, or a loaded scenario will drift.
 - **Night needs every ground shader:** new ground surfaces take `uSunColor`/`uSkyAmb` (the light), `uNight` (their own lights) and `aircraftLights()` (the lamp pools; `main.js` already scales the lamps by `uNight`, so don't multiply again).
 - **Night-only objects hide by day** (`visible = false` under uNight 0.01): the day's draw calls must equal the day's before night existed.
+- **Three windows share the Sky window's frame** (`.fssw`): the Weight window is `.fssw.fslw` and the Weather window (v0.4.0) `.fssw.fswx`. The Sky window is created first, so `.fssw [data-…]` still finds its parts first, but scope new selectors: the Sky window alone is `.fssw:not(.fslw):not(.fswx)` (v0.4.0's review had to fix `weight-copy.cjs` for it).
+- **The A321's setup shows v0.1.0's empty weight and tanks** (50,100 kg and 18,864 kg, against the sim's 50,500 and 18,510). The Weight tab sums with the sim's (`loadNow()`); ROADMAP has it under "Seen while building v0.3.2".
 - **The sim's touchdown g follows the sink rate** (about 1.3 g at 200 ft/min, 2.0 g at 360). That's why g weighs little in the score.
+- **Calm is v0.3.2's arithmetic** (v0.4.0). The default weather is `null` in the sim, and every weather term is skipped or exactly zero there; `tests/golden-a321.test.mjs` checks it to 1e-9. New sim code has to keep that, and clear weather must keep drawing as before (weather-only objects hide in clear weather).
+- **Nothing random in the sim:** the live sim steps at 1/120 s and the prediction at 1/30 s, and a jump restores the worker's snapshot, so anything that varies (the gusts, the turbulence, lightning) is a function of position and time, seeded, as `src/sim/weather.js` is.
+- **`sim.weather` is replaced, never changed in place:** `main.js` redraws the world and tells the synth when its identity changes, and snapshots share the object.
+- **The altimeter isn't the altitude** (v0.4.0): the autopilots, the PFDs and the FCU/MCP work in `state.altInd`, from the static pressure and the setting; the radio altimeter, the score, the map and the terrain use `state.pos.z`. An altitude set from geometry (a final start's ALT) has to go through the altimeter, or the AP climbs or descends to make it read right.
 
 ## Working with Shane on this game
 
 - **How he plays and reports:** in Chrome on his M5 MacBook, from his own server (`python3 -m http.server 8001` in GameDump). He reports from playing, often with a screenshot.
 - **Versions:** he names each one ("Package these into v0.1.2", "Call this 0.1.3") and pushes it himself with `sh tools/push.sh vX.Y.Z`. The commit's title is the version alone.
-- **Who builds them** (2026-11-01): patches (v0.1.4) directly in Cowork; minor versions (v0.2.0) by a Claude Code agent on the Mac, briefed from Cowork. See `AGENTS.md` → Versions.
+- **Who builds them:** a judgment per job, and one session takes an update from end to end (2026-11-10; `AGENTS.md` → Versions). Long builds that want the Mac's GPU and Chrome suit a Claude Code run briefed from Cowork; focused changes are done in the Cowork session.
+- **His controls:** the Mac's keyboard and touchpad, or a mouse at most. No joystick (2026-11-10).
+- **He often plays while you work.** Keep your changes in the container and sync them to the Mac in one batch at the end (v0.3.2).
 - **Realism:** he wants it, and he talks like a pilot ("centerline", "touchdown zone", "bob in the air"). Check the A321 against Airbus's documents. They're git-ignored in `reference/docs/`; the numbers used are in `src/sim/a321neo.js` and STATUS's v0.1.2 entry.
 - **Feedback:** he values it direct and unhedged.
 - **Final messages are short:**
@@ -214,4 +327,6 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
 
 A first message that works, in the Games project with the GameDump folder connected:
 
-> Read games/flight-sim/HANDOFF.md and games/flight-sim/AGENTS.md in my GameDump folder, and the newest entries in its STATUS.md. Then: …
+> Read games/flight-sim/HANDOFF.md in my GameDump folder, then its AGENTS.md, ROADMAP.md's "The long term" and the newest entries in its STATUS.md. Then take v0.5.0, the parts model and a first warehouse, from start to finish, as HANDOFF.md's first section says.
+
+For a later update, the last line names that update instead.

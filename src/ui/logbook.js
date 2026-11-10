@@ -137,6 +137,17 @@ export function scenarioOptions(log, scenarios, legacyId = null) {
   return out;
 }
 
+// v0.4.0: the wind at touchdown, with its crosswind and head or tailwind parts. A flight from before v0.4.0, or a calm one: —.
+function windCell(w) {
+  if (!w || !(w.kt >= 1)) return '—';
+  const dir = String(Math.round(w.fromDeg) % 360 || 360).padStart(3, '0');
+  const bits = [];
+  if (w.cross >= 1) bits.push(`${Math.round(w.cross)} kt X-wind ${esc(w.side || '')}`.trim());
+  if (Math.abs(w.head) >= 1) bits.push(`${Math.round(Math.abs(w.head))} kt ${w.head > 0 ? 'head' : 'tail'}`);
+  const gust = Math.round(w.gustKt || 0) > Math.round(w.kt) ? `G${Math.round(w.gustKt)}` : '';
+  return `${dir}°/${Math.round(w.kt)}${gust} kt${bits.length ? `<small>${bits.join(' · ')}</small>` : ''}`;
+}
+
 export function createLogbook(root, { load, save, onclose } = {}) {
   const el = document.createElement('div');
   el.className = 'fslb';
@@ -221,11 +232,12 @@ export function createLogbook(root, { load, save, onclose } = {}) {
           <span class="rwy">${rwys}${e.gate ? `<small>Gate ${esc(e.gate)}</small>` : ''}</span>
           <span class="num">${fmtDuration(e.airTimeS)}</span>
           <span class="num">${fmtKg(e.fuelUsedKg)}</span>
+          <span class="num">${windCell(e.wind)}</span>
           <span class="grade">${badgeHtml(e.score)}</span>
         </div>${on ? detailHtml(e) : ''}`;
     }).join('');
     $('list').innerHTML = `<div class="fslb-row head"><span>Date</span><span>Route${names ? ' · Scenario' : ''}</span><span>Aircraft</span><span>Runways</span>`
-      + `<span class="num">Air time</span><span class="num">Fuel used</span><span class="grade">Landing</span></div>${html}`;
+      + `<span class="num">Air time</span><span class="num">Fuel used</span><span class="num">Wind at landing</span><span class="grade">Landing</span></div>${html}`;
   }
 
   function renderBar() {
