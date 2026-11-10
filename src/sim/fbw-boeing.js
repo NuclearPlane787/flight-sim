@@ -3,6 +3,7 @@
 // speed-stable about a trim reference speed, X.vRef, so hands off it settles back to that speed,
 // a thrust change pitches it, and a steady pull is a steady off-trim condition. There's no auto-trim
 // holding the path, no flare law, and the protections are soft: holding full input overrides them.
+// v0.4.1: unless the auto-trim setting is on (E.autoTrim): then the path holds itself as the A321's.
 // Sources and what's estimated: reference/notes/boeing-fbw-ap.md. Allocation free.
 //
 // Besides the law: the Boeing-only hooks sim.js calls (kit.boeing), so that nothing here touches
@@ -48,6 +49,8 @@ export function createFbwBoeing(A) {
 
   // Ground mode: a held pull asks for a rotation rate; the rest of the time it's direct.
   const ROT_RATE = 2.8 * DEG;
+  // v0.4.1, auto-trim: the flight path's rate at full stick in the landing configuration, as the A321's.
+  const PATH_RATE = 3.5 * DEG;
 
   function fbwStep(X, c, E, dt) {
     // On the mains it's the ground law, whatever the blend says, so the nose comes down by itself.
@@ -121,6 +124,30 @@ export function createFbwBoeing(A) {
       if (E.apOn) {
         nzCmd = clamp(nzBase + V * 0.55 * (E.apGamma - E.gamma) / G, 0.75, 1.3);
         if (Math.abs(sp) > 0.04) nzCmd += nzStick;
+        X.holdLatched = false;
+      } else if (E.autoTrim) {
+        // v0.4.1, auto-trim (a setting, off by default): the flight path holds itself, as the A321's does
+        // (fbw.js). Hands off, the path is held once the pitch rate has settled. In the landing configuration
+        // (gear down, flaps 20 or more) the stick asks for a rate of change of the path, so a tap moves it a
+        // little and it stays there; elsewhere it asks for load factor as without. The speed is the thrust's
+        // (the autothrottle's), and the trim switches have nothing to do.
+        if (E.gearDown && E.flap > 18) {
+          if (!X.holdLatched) { X.holdLatched = true; X.gammaRef = E.gamma; }
+          const rate = sp * PATH_RATE;
+          X.gammaRef = clamp(X.gammaRef + rate * dt, E.gamma - 2 * DEG, E.gamma + 2 * DEG);
+          nzCmd = nzBase + 0.5 * V * rate / G + clamp(V * 0.35 * (X.gammaRef - E.gamma) / G, -0.25, 0.25);
+          X.releaseT = 0;
+        } else if (Math.abs(sp) > 0.04) {
+          nzCmd = nzBase + nzStick;
+          X.holdLatched = false; X.releaseT = 0;
+        } else {
+          X.releaseT += dt;
+          if (!X.holdLatched && (Math.abs(E.q) < 1.0 * DEG || X.releaseT > 3)) { X.holdLatched = true; X.gammaRef = E.gamma; }
+          nzCmd = X.holdLatched ? clamp(nzBase + V * 0.35 * (X.gammaRef - E.gamma) / G, nzBase - 0.25, nzBase + 0.25) : nzBase;
+        }
+        if (E.ias < vmm) { protStall = true; nzCmd -= Math.min(STALL_NZ_MAX, STALL_NZ_K * (vmm - E.ias)); }
+        // The reference follows, so with auto-trim turned off the law carries on from the speed flown now.
+        X.vRef = clamp(E.ias, vmm, vTop); X.boGam = E.gamma;
       } else {
         // The energy loop: hands off, the path that leaves the acceleration back to vRef.
         const aWant = clamp(-KSPD * (E.ias - X.vRef), -ALIM, ALIM);

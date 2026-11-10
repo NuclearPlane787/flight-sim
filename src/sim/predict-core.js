@@ -55,9 +55,10 @@ export function createPredictionRun(snap, opts = {}, hf = null) {
         const autoland = sim.ap.vertical === 'FLARE' || sim.ap.lateral === 'ROLLOUT';
         if (autoland && (S.onGround || S.crashed === 'ditched')) why = 'landed';
         else
-        // Contact with land (a crash, or wheels down off a runway) ends the path at the terrain.
-        if (hf && (S.crashed || S.onGround) && ground(S.pos.x, S.pos.y).kind === 'ground') why = 'terrain';
-        else if (S.crashed) why = 'crash';
+        // Contact with land (a crash, or wheels down off a runway) ends the path at the terrain. v0.4.1: with
+        // Indestructible on nothing crashes, so a skid on the ground (S.scraping) or wheels on the water end it.
+        if (hf && (S.crashed || S.onGround || S.scraping) && ground(S.pos.x, S.pos.y).kind === 'ground') why = 'terrain';
+        else if (S.crashed || S.scraping || (S.onGround && ground(S.pos.x, S.pos.y).kind === 'water')) why = 'crash';
         else if (S.fuelKg <= 0) why = 'fuel';
         else if (S.pos.x < MAP_EXTENT.x0 || S.pos.x > MAP_EXTENT.x1 || S.pos.y < MAP_EXTENT.y0 || S.pos.y > MAP_EXTENT.y1) why = 'map';
         else if (S.t >= tEnd - 1e-9) why = 'time';

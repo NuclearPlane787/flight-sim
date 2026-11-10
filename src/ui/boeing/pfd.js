@@ -214,8 +214,9 @@ export function createBoeingPfd(cv) {
           ctx.fillText(String(next), x1 - 0.016 * s, y + 0.017 * s);
         }
       }
-      // The trim reference speed: the speed the aircraft will settle to when released.
-      const vr = (st.vRef || 0) * KT;
+      // The trim reference speed: the speed the aircraft will settle to when released. Not with auto-trim
+      // on (v0.4.1): the path holds then, and the reference only follows the speed.
+      const vr = st.autoTrim ? 0 : (st.vRef || 0) * KT;
       if (vr > 0) {
         const y = clamp(Y(vr), top + 0.034 * s, bot - 0.012 * s), off = y !== Y(vr);
         ctx.fillStyle = C.green; ctx.strokeStyle = C.green; ctx.lineWidth = Math.max(1.2, s * 0.003);

@@ -136,7 +136,7 @@
 .fssw-head:has(.fssw-tab:nth-child(3)) { gap: 6px; }
 /* Three tabs leave no room for the Sky's and the Weight's subtitle; the tabs' tooltips say the same. */
 .fssw:not(.fswx) .fssw-head:has(.fssw-tab:nth-child(3)) .fssw-sub { display: none; }
-.fswx .fssw-sub { letter-spacing: 0.04em; }
+.fswx .fssw-sub { letter-spacing: 0.02em; font-size: 10px; }
 .fswx-ico { color: #bfe2ff; filter: drop-shadow(0 0 4px rgba(120, 190, 255, 0.6)); }
 .fswx-body { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
 .fswx-metar { font: 600 13px/1.25 var(--font-mono, monospace); color: #3cff4e; letter-spacing: 0.01em; user-select: text; -webkit-user-select: text; word-spacing: 0.1em; }

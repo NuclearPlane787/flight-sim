@@ -158,6 +158,18 @@ async function boot() {
   const settings = store.load('settings', {}) || {};
   const saveSetting = (k, v) => store.save('settings', { ...(store.load('settings', {}) || {}), [k]: v });
   if (settings.muted) callouts.muted = true;
+  // v0.4.1: the settings the flight obeys (Settings): Indestructible (no crash ends a flight) and the Boeings'
+  // auto-trim (the path holds itself). The sim has them from here on, and again after every restore (a save
+  // or a rewind carries those it was made with).
+  const flightOpts = { indestructible: !!settings.indestructible, autoTrim: !!settings.autoTrim };
+  const applyFlightOpts = () => { sim.setIndestructible(flightOpts.indestructible); sim.setAutoTrim(flightOpts.autoTrim); };
+  applyFlightOpts();
+  function setFlightOpt(k, on) {
+    flightOpts[k] = !!on;
+    saveSetting(k, flightOpts[k]);
+    applyFlightOpts();
+    clearPrediction();   // the path ahead may go differently now
+  }
 
   // The fonts (style.css, vendor/fonts): loaded before the canvases first draw, at most 3 s.
   if (document.fonts?.load) {
@@ -432,6 +444,7 @@ async function boot() {
     useType(st.sim?.type || plan.type);       // a save from before v0.3.0 is the A321neo
     gate.deserialize(st.gate, plan);          // may reset the sim (a gate start), so before restore
     sim.restore(st.sim);
+    applyFlightOpts();                        // v0.4.1: the settings', not the save's
     gate.afterLoad();
     const f = st.flight || {};
     landed = !!f.landed; arrivalStand = f.arrivalStand ?? null;
@@ -558,6 +571,7 @@ async function boot() {
   function jumpTo(sample) {
     fadeThen(() => {
       sim.restore(sample.snap, { keepWeather: true });
+      applyFlightOpts();
       setTimeScale(1);
       afterJump(); // a new prediction runs from the new spot
     });
@@ -644,6 +658,7 @@ async function boot() {
     if (!snap && rewind.length) { snap = rewind[0].snap; clockMs = rewind[0].clockMs; rewind.length = 1; }
     if (!snap) { toast('Nothing to rewind to yet'); return; }
     sim.restore(snap, { keepWeather: true });
+    applyFlightOpts();
     if (Number.isFinite(clockMs)) clock.set(clockMs);   // the time of day goes back too
     afterJump(true);
     landed = gate.phase === 'taxi-in' || gate.phase === 'arrived';
@@ -728,9 +743,11 @@ async function boot() {
   // ---- Settings and Controls (from the main menu and the pause menu) ----
   function setCallouts(on) { callouts.muted = !on; saveSetting('muted', callouts.muted); }
   const settingsPage = createSettingsPage($('pages-root'), {
-    get: () => ({ volume: callouts.volume ?? 1, callouts: !callouts.muted, showPerf: !ui.perf.hidden }),
+    get: () => ({ volume: callouts.volume ?? 1, callouts: !callouts.muted, showPerf: !ui.perf.hidden, ...flightOpts }),
     onVolume: (v) => { setVolume(v); previewVolume(); },
     onCallouts: (on) => setCallouts(on),
+    onIndestructible: (on) => setFlightOpt('indestructible', on),
+    onAutoTrim: (on) => setFlightOpt('autoTrim', on),
     onPerf: (on) => setPerf(on),
     ...(skyWinMod?.createSkyWindow ? { onSky: () => {
       if (inMenu || !plan) { toast('The Sky window opens in flight: start or load a scenario'); return; }
@@ -840,6 +857,8 @@ async function boot() {
         setTimeScale(1);
         callouts.reset();
       }
+      // v0.4.1: Indestructible held it together.
+      if (e.type === 'damage') toast(`Indestructible: that was a crash (${e.reason})`, 3500);
       if (e.type === 'apDisconnect') { setTimeScale(1); clearPrediction(); }
       if (e.type === 'apDisconnect' && e.reason === 'rollout') toast('Rollout done: the autopilot’s off, you have the aircraft', 3500);
       if (e.type === 'athrWake') toast('AIRSPEED LOW: the autothrottle woke up', 3000);
@@ -875,6 +894,7 @@ async function boot() {
       fuelUsedKg: Math.round(fuelAtStart + (s.fuelAddedKg || 0) - s.fuelKg),   // the burn: fuel put in or taken off in flight doesn't count
       score: { points: res.points, grade: res.grade, parts: res.parts, ...(res.offRunway ? { offRunway: true } : {}) },
       wind: res.touchdown?.wind && res.touchdown.wind.kt >= 1 ? res.touchdown.wind : null,   // v0.4.0
+      ...(res.indestructible ? { indestructible: true } : {}),   // v0.4.1
     });
     window.__fsLastScore = res;
     saveNow('landed');   // so a reload never scores (and logs) the same landing again

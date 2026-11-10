@@ -49,6 +49,8 @@ export function verdict(result) {
   const g = part(parts, 'Peak g')?.value ?? 1;
   const bounces = part(parts, 'Bounces')?.value ?? 0;
   const along = result?.touchdown?.along;
+  const wreck = part(parts, 'Would have crashed');
+  if (wreck) return `Without Indestructible, that was a crash (${result?.damage?.[0] || wreck.value}).`;
   if (result?.offRunway || part(parts, 'On a runway')) return "That wasn't a runway.";
   if (vs >= 600 || g >= 2.3) return 'That one will need an inspection.';
   if (Number.isFinite(along) && along < 0) return 'Short of the threshold. Far too close.';
@@ -191,6 +193,7 @@ export function createScorePanel(root, { onclose, onnewflight } = {}) {
       ${Number.isFinite(td.along) ? runwaySvg({ along: td.along, cross: td.cross, lengthM: extras.runwayLengthM || 3000, widthM: extras.runwayWidthM || 45, aimM }) : ''}
       <div class="fssc-td">${esc(touchdownText(td.along, td.cross, aimM))}</div>
       ${windLine(td.wind)}
+      ${result.indestructible || td.indestructible ? '<div class="fssc-td fssc-ind">Flown with Indestructible on</div>' : ''}
       ${partsHtml(parts)}
       <div class="fssc-foot">
         <button class="fsui-b" data-k="close">Close</button>

@@ -2,10 +2,10 @@
 
 Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), flown between Incheon, Gimpo and Jeju, over real coastline and elevation with procedural fine detail. It has:
 
-- realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777;
+- realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777 (or, with Boeing auto-trim on in Settings, a path that holds itself as the A321's does);
 - a holds-only autopilot with up to 16× time compression;
 - a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
-- gate starts with pushback and a taxi route drawn on the ground;
+- gate starts with pushback and a taxi route drawn on the ground, and taxiway and runway signs (v0.4.1);
 - parked aircraft and ground vehicles at the airports;
 - synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), muffled but clearly there in the cockpit, warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
@@ -31,7 +31,7 @@ New scenario opens the flight setup with a name: the origin, destination, runway
 
 **Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
-**Weather** (v0.4.0): the L window has a third tab, Weather (Sky · Weight · Weather). Pick a preset (clear, few clouds, overcast, rain, thunderstorm, snow, fog, gusty crosswind), or change any setting under it: the wind by height, gusts, turbulence, a low-level shear, a microburst on final, the visibility and fog, up to three cloud layers, rain or snow, lightning, the runway's state, the temperature and the QNH. It applies at once in flight. The setup picks a preset for the flight, clear by default. The wind is felt as a crosswind, a headwind or a tailwind, and the altimeter is real: each flight starts with the day's QNH set, K sets it again, and the BARO box on the FCU or the MCP sets it too (scroll it, type into it, or STD). Above the transition altitude (14,000 ft) with a QNH set, or below FL140 on STD in a descent, the setting flashes until you change it. The landing card and the logbook give the wind at touchdown as the tower does.
+**Weather** (v0.4.0): the L window has a third tab, Weather (Sky · Weight · Weather). Pick a preset (clear, few clouds, overcast, rain, a light, moderate or severe storm, snow, fog, gusty crosswind), or change any setting under it: the wind by height, gusts, turbulence, a low-level shear, a microburst on final, the visibility and fog, up to three cloud layers, rain or snow, lightning, the runway's state, the temperature and the QNH. It applies at once in flight. The setup picks a preset for the flight, clear by default. The wind is felt as a crosswind, a headwind or a tailwind, and the altimeter is real: each flight starts with the day's QNH set, K sets it again, and the BARO box on the FCU or the MCP sets it too (scroll it, type into it, or STD). Above the transition altitude (14,000 ft) with a QNH set, or below FL140 on STD in a descent, the setting flashes until you change it. The landing card and the logbook give the wind at touchdown as the tower does.
 
 From a gate:
 
@@ -41,7 +41,7 @@ From a gate:
 
 After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and logged with its scenario: the pause menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. The score is strict: 100 takes a landing that's perfect in every part.
 
-Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout.
+Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout, and (v0.4.1) two for practice: **Indestructible**, so no crash ends a flight (the landing card says what would have crashed), and **Boeing auto-trim**, so the 787 and 777 hold their flight path hands off.
 
 ## Controls
 
@@ -98,7 +98,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
   5. Pull the levers to idle when you hear RETARD.
   6. On the ground, hold F for reverse and Space for the brakes.
 - **Levers at TOGA** start a go-around at any point.
-- **On a Boeing:** trim to the speed you want before you let go (H nose up, Y nose down). Pull the flare yourself from about 30 ft, and there's no RETARD call. With APP armed and the autopilot on it lands itself, and hands back below 30 kt: you brake (there's no autobrake).
+- **On a Boeing:** trim to the speed you want before you let go (H nose up, Y nose down), or turn on Boeing auto-trim in Settings and fly the path as on the A321. Pull the flare yourself from about 30 ft, and there's no RETARD call. With APP armed and the autopilot on it lands itself, and hands back below 30 kt: you brake (there's no autobrake).
 
 ## Known issues
 
@@ -110,12 +110,12 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | | A321neo | 787-9 | 777-300ER |
 |---|---|---|---|
 | Engines | CFM LEAP-1A | GE GEnx-1B | GE GE90-115B |
-| Control law | Airbus: load-factor demand, auto-trim, hard protections | Boeing: speed-stable about the trim, soft protections | the same as the 787 |
+| Control law | Airbus: load-factor demand, auto-trim, hard protections | Boeing: speed-stable about the trim, soft protections (Settings' auto-trim: the path holds itself) | the same as the 787 |
 | Flap detents | 0, 1, 1+F, 2, 3, FULL | UP, 1, 5, 10, 15, 17, 18, 20, 25, 30 | UP, 1, 5, 15, 20, 25, 30 |
 | Numbers | `src/sim/a321neo.js`, `reference/notes/a321neo-performance.md` | `src/sim/b787-9.js`, `reference/notes/b787-9-performance.md` | `src/sim/b777-300er.js`, `reference/notes/b777-300er-performance.md` |
 | Sources | EASA TCDS A.064, Airbus AC | EASA TCDS IM.A.115, Boeing D6-58333, EASA TCDS IM.E.102 | EASA TCDS IM.A.003, Boeing D6-58329-2, EASA TCDS IM.E.002 |
 
-**Flying a Boeing:** trim for the speed you want (H, Y), and it holds that speed hands off. Thrust moves the nose, and flaps and gear slow you only if you trim down too. Flare with back pressure; nothing does it for you.
+**Flying a Boeing:** trim for the speed you want (H, Y), and it holds that speed hands off. Thrust moves the nose, and flaps and gear slow you only if you trim down too. Flare with back pressure; nothing does it for you. With Boeing auto-trim on (Settings), it's the A321's way instead: let go and the flight path holds, the thrust (or the autothrottle) sets the speed, and with the flaps for landing W and S nudge the path.
 
 ## Code map
 
@@ -154,6 +154,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/score.js`, `src/store.js` | the landing score (100 × e^(−cost), the approach included); localStorage under `gamedump:flight-sim:` |
 | `src/ground/` | the taxi graph and routing, pushback, the gate flow (gate starts, routes out and in) |
 | `src/world/apron*.js`, `src/world/traffic*.js`, `src/world/liveries-other.js` | taxiways, aprons, stands, jet bridges and terminals; parked aircraft (made-up airlines) and ground vehicles |
+| `src/world/taxisigns.js` | where the taxiway and runway signs stand and what they say, from the taxi graph (v0.4.1; `apron.js` draws them) |
 | `src/world/taxiroute.js`, `src/world/airport-mask.js` | the taxi route line; no trees or city blocks inside the airports |
 | `data/` | baked terrain, water and land-cover grids, coastline, airports |
 | `tools/bake_*.py` | the bake scripts (read `reference/raw/`, write `data/`) |

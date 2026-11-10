@@ -289,31 +289,41 @@ export function createWidebody(spec, opts = {}) {
     const inFin = (y) => y >= FI0 - 1e-6 && y <= FI1 + 1e-6;
     const fFlapLE = (y) => (inFin(y) ? fAt(y, FL.xAt(y)) : HF);
     // Fixed structure, then the fixed parts of the leading and trailing edges. The fixed leading edge
-    // behind the slats is rounded, so a slat that's out shows a slot in front of a nose, not a cut.
-    const fixYs = [...new Set([0.6, ...WS.stations.filter((y) => y <= LAST), FI0, FI1])].sort((p, q) => p - q);
-    b.add(foilPiece(secs(fixYs), LF, fixYs.map(fFlapLE), { caps: [false, false], nf: 6, nose: 0.9 }), ROOT, C.wing);
-    b.add(foilPiece(secs(stationsBetween(LAST, tipY)), 0, 1, { caps: [true, true], nf: 8 }), ROOT, C.wing);
+    // behind the slats is a round nose about the slats' hinge line, so a slat that droops about that
+    // line stays sealed against it (v0.4.1, below).
+    // LAST is one of its sections even where it isn't a station (v0.4.1: the 777's aileron ends at 29.6,
+    // between stations, so the box stopped at 28 and left a hole in front of the aileron).
+    const fixYs = [...new Set([0.6, ...WS.stations.filter((y) => y < LAST), FI0, FI1, LAST])].sort((p, q) => p - q);
+    b.add(foilPiece(secs(fixYs), LF, fixYs.map(fFlapLE), { caps: [false, false], nf: 6, nose: 1 }), ROOT, C.wing);
+    // The tip, outboard of the aileron. Where the outer slat runs on past the aileron (the 777's), the
+    // tip has the same round nose behind it until the slat ends, not a second leading edge in it.
+    const seg0 = WS.slatSegments[0][0], segN = WS.slatSegments[WS.slatSegments.length - 1][1];
+    if (segN > LAST + 0.001) {
+      b.add(foilPiece(secs(stationsBetween(LAST, segN)), LF, 1, { caps: [true, true], nf: 8, nose: 1 }), ROOT, C.wing);
+      b.add(foilPiece(secs(stationsBetween(segN, tipY)), 0, 1, { caps: [true, true], nf: 8 }), ROOT, C.wing);
+    } else b.add(foilPiece(secs(stationsBetween(LAST, tipY)), 0, 1, { caps: [true, true], nf: 8 }), ROOT, C.wing);
+    // The fixed leading edge where there's no slat: from the root, across wide gaps between slats (the
+    // pylon's), and from the last slat to the tip. Each closes its ends, as a slat that's out shows them.
+    // A narrow gap between two slats (a panel line) is a slightly sunken filler on the slats' bone
+    // instead, so it droops with them; it was an open slot before v0.4.1, light through the wing.
+    const slatGaps = [];
     let y = 0.6;
     for (const [y0, y1] of WS.slatSegments) {
-      if (y0 - y > 0.15) b.add(foilPiece(secs(stationsBetween(y, y0)), 0, LF, { caps: [false, true], nf: 5 }), ROOT, C.wingDark);
+      if (y0 - y > 0.15 || y === 0.6) b.add(foilPiece(secs(stationsBetween(y, y0)), 0, LF, { caps: [y > 0.6, true], nf: 5 }), ROOT, C.wingDark);
+      else if (y0 > y) slatGaps.push([y, y0]);
       y = y1;
     }
-    b.add(foilPiece(secs(stationsBetween(y, LAST)), 0, LF, { caps: [false, true], nf: 5 }), ROOT, C.wingDark);
+    if (LAST - y > 0.001) b.add(foilPiece(secs(stationsBetween(y, LAST)), 0, LF, { caps: [true, true], nf: 5 }), ROOT, C.wingDark);
     b.add(foilPiece(secs(stationsBetween(0.6, FI0)), HF, 1, { caps: [false, true], nf: 5 }), ROOT, C.wing);
 
-    // Slats, one bone a wing, hinged along the straight leading edge. Two tracks a slat run back into
-    // the fixed leading edge (hidden there when the slats are in), so a slat that's out hangs on them.
-    const seg0 = WS.slatSegments[0][0], segN = WS.slatSegments[WS.slatSegments.length - 1][1];
+    // Slats, one bone a wing, hinged along the straight line through the fixed nose's centre at the
+    // first and last slats' ends. v0.4.1: they droop about it and no longer run out on tracks, so no
+    // slot opens between slat and wing (Shane: "close it up"); the round nose fills the slat's back.
     const slatA = foilPoint(ws(seg0), LF, 0), slatB = foilPoint(ws(segN), LF, 0);
     const SL = bone('slats' + S, 'root', slatA, slatB.clone().sub(slatA).multiplyScalar(side).normalize());
-    for (const [y0, y1] of WS.slatSegments) {
-      b.add(foilPiece(secs(stationsBetween(y0, y1)), 0, LF, { nf: 5 }), SL, C.metal);
-      for (const q of [0.25, 0.75]) {
-        const w = ws(y0 + q * (y1 - y0)), mid = foilPoint(w, LF, 0);
-        const xf = w.le.x - 0.05 * w.chord, xb = mid.x - WS.slatTravel - 0.25;
-        b.add(boxAt((xf + xb) / 2, mid.y, mid.z, xf - xb, 0.07, 0.11), SL, C.metal);
-      }
-    }
+    for (const [y0, y1] of WS.slatSegments) b.add(foilPiece(secs(stationsBetween(y0, y1)), 0, LF, { nf: 5 }), SL, C.metal);
+    const sunk = (w) => ({ ...w, le: w.le.clone().addScaledVector(w.c, 0.012 * w.chord), chord: w.chord * 0.988, t: w.t * 0.88 });
+    for (const [y0, y1] of slatGaps) b.add(foilPiece([y0, y1].map((q) => sunk(ws(q))), 0, LF + 0.01, { nf: 5 }), SL, C.wingDark);
 
     // Trailing-edge surfaces: hinged at the surface's leading edge, mid-thickness. f0 and f1 may be
     // functions of the span (the inboard flap's leading edge, the spoilers over it).
@@ -336,6 +346,13 @@ export function createWidebody(spec, opts = {}) {
     hinged('flaperon', WS.flaperon[0], WS.flaperon[1], HF, 1, C.wing);
     hinged('flapOut', WS.flapOut[0], WS.flapOut[1], HF, 1, C.wing, { nose: 1 });
     hinged('aileron', WS.aileron[0], WS.aileron[1], HF, 1, C.wing);
+    // The fixed trailing edge between the moving surfaces, closed at its ends (v0.4.1: they were 0.1 m
+    // slots, light through the wing).
+    const teSpans = [WS.flapIn, WS.flaperon, WS.flapOut, WS.aileron];
+    for (let i = 0; i + 1 < teSpans.length; i++) {
+      const [y0, y1] = [teSpans[i][1], teSpans[i + 1][0]];
+      if (y1 - y0 > 0.001) b.add(foilPiece(secs([y0, y1]), HF, 1, { nf: 5 }), ROOT, C.wing);
+    }
     // Spoilers: plates on the upper surface whose trailing edges overhang the flaps by about what the
     // flaps travel (less a slot), as the real ones do, so a flap that's out leaves a slot under them,
     // not an open gap. Each keeps its drawn width, moved aft by the overhang. Under them a fixed shroud
@@ -702,8 +719,8 @@ export function createWidebody(spec, opts = {}) {
   const WHEEL_NAMES = [];
   for (let i = 0; i < NAXLES; i++) WHEEL_NAMES.push('mainWheelL' + i, 'mainWheelR' + i);
   const EMPTY_LIST = [];
-  const FT = WS.flapTravel, ST = WS.slatTravel, REV_T = spec.engine.revTravel;
-  const FLAP_OUT_DEG = WS.flapOutDeg ?? 20, SLAT_OUT_DEG = WS.slatOutDeg ?? 27, FLPRN = WS.flaperonDroop ?? [0.8, 30], AFT_F = WS.flapInAft;
+  const FT = WS.flapTravel, REV_T = spec.engine.revTravel;
+  const FLAP_OUT_DEG = WS.flapOutDeg ?? 20, FLPRN = WS.flaperonDroop ?? [0.8, 30], AFT_F = WS.flapInAft;
   const steerMax = (spec.data?.STEER_TILLER ?? 70 * DEG);
 
   function update(state = EMPTY, dt = 0) {
@@ -722,9 +739,8 @@ export function createWidebody(spec, opts = {}) {
       rot(k ? 'aileronR' : 'aileronL', SIGNS.aileron * ail);
       // The flaperon: an aileron at all speeds, and it droops with the flaps.
       rot(k ? 'flaperonR' : 'flaperonL', SIGNS.aileron * ail * 0.8 - Math.min(fd * FLPRN[0], FLPRN[1]) * DEG);
-      const sl = clamp((state.slatDeg || 0) / SLAT_OUT_DEG, 0, 1.2), sn = k ? 'slatsR' : 'slatsL';
-      rot(sn, (state.slatDeg || 0) * DEG * 0.85);
-      move(sn, ST * sl, 0, -0.16 * sl);
+      // The slats droop about their hinge line, sealed against the fixed nose (v0.4.1: no travel).
+      rot(k ? 'slatsR' : 'slatsL', (state.slatDeg || 0) * DEG * 0.85);
       const fi = k ? 'flapInR' : 'flapInL', fo = k ? 'flapOutR' : 'flapOutL';
       rot(fi, -fd * DEG);
       move(fi, -FT.in * tr, 0, -0.18 * tr);

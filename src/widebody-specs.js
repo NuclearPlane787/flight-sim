@@ -75,7 +75,8 @@ export const B787_9 = {
     slatSegments: [[3.5, 8.5], [11.4, 14.2], [14.26, 17.0], [17.06, 19.8], [19.86, 22.6], [22.66, 25.4]],
     // Flap travel (m, at full flap): v0.3.1 cut it from 1.7 and 1.25 so the spoilers, which overhang the
     // flaps by the travel less a slot, cover it without growing past a believable width.
-    flapTravel: { in: 1.3, out: 1.0 }, slatTravel: 0.55,
+    // The slats droop about their hinge line and don't run out (v0.4.1, src/widebody.js).
+    flapTravel: { in: 1.3, out: 1.0 },
     landingLightY: 4.6, landingLightF: 0.1,
   },
 
@@ -210,13 +211,13 @@ export const B777_300ER = {
     spoilers: [[4.0, 6.2, 0], [6.3, 8.7, 1], [12.4, 14.2, 2], [14.3, 16.2, 2], [16.3, 18.2, 3], [18.3, 20.0, 3], [20.1, 21.9, 4]],
     slatSegments: [[3.8, 8.4], [10.4, 13.9], [13.95, 17.4], [17.45, 20.6], [20.65, 23.9], [23.95, 27.4], [27.45, 30.9]],
     // Flap travel (m): cut from 1.9 and 1.45 in v0.3.1, as the 787's.
-    flapTravel: { in: 1.5, out: 1.1 }, slatTravel: 0.6,
+    flapTravel: { in: 1.5, out: 1.1 },
     landingLightY: 5.0, landingLightF: 0.1,
     // [EST] The sim's detents (5, 15, 20, 25, 30) run out along the tracks by 20 and then rotate. The inboard
     // flap is double-slotted [PUB]: the aft flap (the last 13% of chord here) opens past flaps 15; the
     // outboard one is single-slotted, one surface. The flaperon droops at about half the flap's angle.
     flapInAftF: 0.87, flapInAft: { fromDeg: 15, toDeg: 30, deg: 14, slide: 0.16 },
-    flaperonDroop: [0.6, 30], slatOutDeg: 30,
+    flaperonDroop: [0.6, 30],
   },
 
   // GE90-115B: 22 swept composite blades, a 3.25 m fan [PUB, as src/audio/engine-sounds.js]; no chevrons. The

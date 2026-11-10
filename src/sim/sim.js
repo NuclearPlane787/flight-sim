@@ -21,6 +21,10 @@ const approach = (x, target, rate) => (x < target ? Math.min(target, x + rate) :
 // The windshear warning: the F-factor averaged over 1 km of flight [0.103, as patents citing the FAA give it;
 // TSO-C117a's own curve not seen], below 1,500 ft.
 const TRANSITION_M = 14000 * 0.3048;
+// v0.4.1, Indestructible: the crash points are skids. Per unit of the aircraft's mass, each one's spring (N/m
+// per kg: the belly sits about 0.08 m into the ground on three of them) and damper (N·s/m per kg), and the
+// friction of metal sliding on the ground.
+const SKID = { k: 40, c: 4, mu: 0.4 };
 const WS_F_WARN = 0.105, WS_AVG_M = 1000, WS_MAX_AGL = 1500 * 0.3048, WS_HOLD_S = 6;
 
 const defaultGround = () => FLAT;
@@ -58,6 +62,9 @@ function newCore(A, boeing) {
     grassRun: 0,
     lastTdT: -100, bounceT: 0,
     apDiscT: 0, crashed: null,
+    // v0.4.1, Indestructible: the crash points touching the ground (a bit each), and the last damage
+    // reported (what would have crashed, and when), so a scrape is one event, not one a step.
+    scrapes: 0, dmgReason: '', dmgT: -100,
     prevAlpha: 0, prevIas: 0, iasDot: 0, nzPrev: 1, nzF: 1, fAlong: 0, gspLatched: false,
     ...(boeing ? boeing.coreFields() : null),
   };
@@ -119,12 +126,25 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     vls: 0, vmax: 0, vfeNext: 0, vsw: 0, valphaProt: 0, valphaMax: 0,
     warnings: { stall: false, overspeed: false, apDisc: false, sinkRate: false, pullUp: false, tooLowGear: false, master: false, windshear: false },
     crashed: null,
+    // v0.4.1: the Indestructible and auto-trim settings, whether a crash point is on the ground (a skid)
+    // now, and how far the deepest one is in it (m).
+    indestructible: false, autoTrim: false, scraping: false, scrapeDepth: 0,
     // Extras (not in the agreed interface, handy for screens and tests):
     gamma: 0, protAlpha: false, protSpeed: false, alphaFloor: false, flare: false, fuelFlowKgS: 0, cl: 0, cd: 0,
   };
 
   // v0.4.0: the weather. wxS is the settings (null: the default weather), wxC what the step reads.
   let wxS = null, wxC = null;
+  // v0.4.1: the player's settings the flight obeys (Settings), off by default. Indestructible: nothing ends
+  // the flight; a crash is a damage event, and the crash points are skids on the ground. autoTrim: a Boeing
+  // holds its flight path hands off, as the A321 does (fbw-boeing.js). A snapshot carries those that are on
+  // (for the prediction, so a jump lands on the path); main.js applies its own again after a restore.
+  const opts = { indestructible: false, autoTrim: false };
+  let indestructible = false;
+  function setOption(k, on) {
+    opts[k] = !!on; state[k] = opts[k];
+    if (k === 'indestructible') indestructible = opts[k];
+  }
   const Wd = newWind();
   const windOn = () => wxC !== null && wxC.windOn;
   // The air here: ISA by the very same arithmetic as before unless the day isn't standard.
@@ -167,7 +187,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     p: 0, q: 0, r: 0, nz: 1, nAlpha: 1, vs: 0, gs: 0, aglFt: 0, onGround: false, gearDown: true,
     Ixx: 1, Iyy: 1, Izz: 1, Ixz: 0, myOther: 0, lOther: 0, elevScale: 0, rollScale: 0, rudLim: 0,
     alphaMax: 0.3, vls: 0, vsw: 0, slat: 0, flap: 0, apOn: false, apGamma: 0, apBank: 0,
-    fAlong: 0, mass: 1, iasDot: 0,
+    fAlong: 0, mass: 1, iasDot: 0, autoTrim: false,
   };
   const eng = [
     { n1: 0, n1Target: 0, rev: 0, thrustN: 0, ffKgS: 0, fuelOk: true },
@@ -338,6 +358,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     E.gamma = gamma; E.phi = phi; E.theta = theta; E.psi = psi; E.p = X.p; E.q = X.q; E.r = X.r;
     E.nz = X.nzPrev; E.vs = -X.vd; E.gs = gs; E.aglFt = Math.max(0, aglEst) / A.FT;
     E.onGround = onGround; E.gearDown = X.gearPos > 0.99; E.slat = X.slat; E.flap = X.flap;
+    E.autoTrim = opts.autoTrim;   // v0.4.1: read by the Boeings' law only
     E.Ixx = Ixx; E.Iyy = Iyy; E.Izz = Izz; E.Ixz = Ixz; E.mass = mass; E.fAlong = X.fAlong;
     // Speeds for the protections.
     liftCurve(X.slat, X.flap, lc); machLift(lc, mach);
@@ -462,6 +483,33 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       for (let i = 0; i < 3; i++) { legs[i].wow = false; legs[i].comp = 0; legs[i].normal = 0; legs[i].vRoll *= 0.995; }
     }
 
+    // v0.4.1, Indestructible: a crash point under the ground pushes back (a stiff, damped spring, with the
+    // ground under it) and slides (metal on the ground), so the aircraft scrapes and bounces, and never sinks in.
+    let scrapes = 0, scrapeDepth = 0;
+    if (indestructible && aglEst < 15) {
+      const ui = R[0] * X.vn + R[3] * X.ve + R[6] * X.vd, vi = R[1] * X.vn + R[4] * X.ve + R[7] * X.vd, wi = R[2] * X.vn + R[5] * X.ve + R[8] * X.vd;
+      const kS = mass * SKID.k, cS = mass * SKID.c;
+      for (let i = 0; i < CRASH_POINTS.length; i++) {
+        const c = CRASH_POINTS[i];
+        const rx = c.x - cgX, ry = -c.y, rz = -c.z;
+        const dn = R[0] * rx + R[1] * ry + R[2] * rz, de = R[3] * rx + R[4] * ry + R[5] * rz, dd = R[6] * rx + R[7] * ry + R[8] * rz;
+        const pen = groundFn(X.px + de, X.py + dn).h - (X.pz - dd);
+        if (pen <= 0) continue;
+        scrapes |= 1 << i;
+        if (pen > scrapeDepth) scrapeDepth = pen;
+        // The point's velocity (inertial, body: v + ω × r), then north, east and down.
+        const ub = ui + X.q * rz - X.r * ry, vb = vi + X.r * rx - X.p * rz, wb = wi + X.p * ry - X.q * rx;
+        const vN = R[0] * ub + R[1] * vb + R[2] * wb, vE = R[3] * ub + R[4] * vb + R[5] * wb, vD = R[6] * ub + R[7] * vb + R[8] * wb;
+        const fn = Math.max(0, kS * pen + cS * vD);
+        const vh = Math.hypot(vN, vE), kf = vh > 1e-6 ? (SKID.mu * fn * Math.tanh(vh / 0.5)) / vh : 0;
+        const fN = -kf * vN, fE = -kf * vE, fD = -fn;
+        const fx = R[0] * fN + R[3] * fE + R[6] * fD, fy = R[1] * fN + R[4] * fE + R[7] * fD, fz = R[2] * fN + R[5] * fE + R[8] * fD;
+        F[0] += fx; F[1] += fy; F[2] += fz;
+        M[0] += ry * fz - rz * fy; M[1] += rz * fx - rx * fz; M[2] += rx * fy - ry * fx;
+      }
+    }
+    state.scrapeDepth = scrapeDepth;
+
     // ---- fly-by-wire: invert the moments for the elevator and the roll controls ----
     E.myOther = M[1];
     // v0.4.0: the roll gust is the one moment the law can't see coming, so it isn't inverted away: the wings
@@ -577,7 +625,16 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       }
       if (X.airTime > 0.5) X.groundTime = 0;
     }
-    if (aglEst < 12) {
+    if (indestructible) {
+      // A skid that has just touched: what would have crashed (a tail strike is its own event too).
+      const fresh = scrapes & ~X.scrapes;
+      for (let i = 0; fresh && i < CRASH_POINTS.length; i++) {
+        if (!(fresh & (1 << i))) continue;
+        if (CRASH_POINTS[i].why === 'tail strike') events.push({ type: 'tailstrike' });
+        crash(CRASH_POINTS[i].why);
+      }
+      X.scrapes = scrapes;
+    } else if (aglEst < 12) {
       // Fuselage, tail, engine and wingtip contact against the local ground plane.
       computeR();
       for (let i = 0; i < CRASH_POINTS.length; i++) {
@@ -598,6 +655,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
   function crash(reason) {
     if (X.crashed) return;
+    // Indestructible: a damage event instead, once for as long as it goes on (and again after 3 s of none).
+    if (indestructible) {
+      if (reason !== X.dmgReason || X.t - X.dmgT > 3) events.push({ type: 'damage', reason });
+      X.dmgReason = reason; X.dmgT = X.t;
+      return;
+    }
     X.crashed = reason;
     events.push({ type: 'crash', reason });
     if (ap.ap) { ap.ap = false; }
@@ -718,6 +781,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (kit.boeing) kit.boeing.updateState(S, X, lc, atm);
     W.master = W.stall || W.overspeed || W.apDisc || W.sinkRate || W.pullUp || W.tooLowGear;
     S.crashed = X.crashed;
+    S.scraping = X.scrapes !== 0;
     S.cl = co.CL; S.cd = co.CD;
     S.protAlpha = X.protAlpha; S.protSpeed = X.protSpeed; S.alphaFloor = X.alphaFloorLock; S.flare = X.flare;
   }
@@ -882,6 +946,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     for (const k of AP_FIELDS) apSnap[k] = ap[k];
     const snap = { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
     if (wxS) snap.weather = wxS;   // the default weather writes nothing: absent means calm
+    for (const k in opts) if (opts[k]) (snap.options ??= {})[k] = true;   // only those on: absent means off
     return snap;
   }
   // Changes the aircraft type. The sim's objects stay the same; the core goes back to a fresh
@@ -901,11 +966,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // keepWeather: the weather set now stays (a rewind or a jump: it's the world's, not the aircraft's).
   function restore(snap, { keepWeather = false } = {}) {
     if (!keepWeather) setWeather(snap.weather || null);
+    for (const k in opts) setOption(k, !!snap.options?.[k]);
     // A save from before v0.3.0 has no type: it's the A321neo.
     setType(snap.type || DEFAULT_TYPE);
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
+      scrapes: 0, dmgReason: '', dmgT: -100,
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false } : null) }, snap.core);
     Object.assign(controls, snap.controls);
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
@@ -996,6 +1063,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   }
 
   return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad,
+    setIndestructible: (on) => setOption('indestructible', on), setAutoTrim: (on) => setOption('autoTrim', on),
     setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, get weather() { return wxS; }, get baro() { return { hpa: X.baroHpa, std: X.baroStd }; },
     get type() { return typeDef; }, get leverClimb() { return LEVER_CL; }, _core: X };
 }

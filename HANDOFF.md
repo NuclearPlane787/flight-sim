@@ -2,7 +2,7 @@
 
 Read this first if you're picking the game up. Its first section is the job in hand; the rest is how the game is built and how to work on it. Then read `AGENTS.md` (the rules), `ROADMAP.md`'s "The long term" (where the game is going) and the newest entries in `STATUS.md` (what was done, with the evidence).
 
-It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run and reviewed it. That last session wrote this first section for the next one.
+It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run, reviewed it, and then made v0.4.1 (Shane's fixes after flying it). That last session wrote this first section for the next one.
 
 ## The next session: v0.5.0, the parts model and a first warehouse, from start to finish
 
@@ -18,11 +18,12 @@ Your last job is to rewrite this section for the session after you (v0.6.0 in th
 
 ### Where you start
 
-- **v0.4.0, the weather, was written up and ready to push** when this was written (2026-11-10). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't `v0.4.0`, ask Shane to push it first (`sh tools/push.sh v0.4.0`): a run starts only from a pushed version.
-- **Passing at v0.4.0:**
-  - 626 unit tests (`node --test tests/*.test.mjs`, 13 s on the Mac through the guard);
-  - in the cloud container, `tests/cloud/weather-final.cjs` 20/20, `weight-copy.cjs`, `route-views.cjs` and `athr-lever.cjs` all pass, and `audio-render.mjs` 45/45 on each type;
-  - on the Mac's GPU (the run): 60 fps in heavy rain at night, a thunderstorm and fog.
+- **v0.4.0 is pushed** (`c4aac7c`). **v0.4.1, Shane's fixes after flying it, was written up and ready to push** when this was written (2026-11-11). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't `v0.4.1`, ask Shane to push it first (`sh tools/push.sh v0.4.1`): a run starts only from a pushed version.
+- **Passing at v0.4.1:**
+  - 646 unit tests (`node --test tests/*.test.mjs`, about 14 s on the Mac through the guard);
+  - in the cloud container, `tests/cloud/wing-gaps.cjs` (new: no light through any type's wings), `weather-final.cjs` 20/20, `weight-copy.cjs` and `athr-lever.cjs` all pass;
+  - at v0.4.0, on the Mac's GPU (the run): 60 fps in heavy rain at night, a thunderstorm and fog. v0.4.1's signs add a draw call an airport (four, from three).
+- **Two settings change how a test flight behaves** (v0.4.1, in Settings, saved under `gamedump:flight-sim:settings`): Indestructible (no crash ends a flight) and Boeing auto-trim. A browser check that expects a crash, or Boeing's speed-stable law, must start with them off (a fresh profile has them off).
 - **The direction:** `ROADMAP.md` → "The long term". The parts model is the foundation of the KSP and Besiege halves: the warehouse (row 1), failures (v0.8.0), crash physics (v0.12.0) and the new aircraft (v0.9.0 on) all stand on it.
 
 ### What Shane has said, in his words
@@ -65,7 +66,7 @@ From a read of the code on 2026-11-10. Check the line numbers, which drift.
 |---|---|
 | `src/sim/types.js`, `kitFor()` | The registry; each type's data and geometry modules; the sim's factories, made once per type. A design would be a type made from a base and its changes. |
 | `src/sim/a321neo.js`, `b787-9.js`, `b777-300er.js` | Every number with its source. The engines' (`T_IDLE`, `N1_TOGA`, the TSFC) are for one engine of two. Every name `a321neo.js` exports must exist (the data tests check). |
-| `src/geometry*.js` | `ENGINES` (where the thrust acts: the sim's calibration), `NACELLES` (where they're drawn and strike the ground), `GEAR`, `GROUND_Z`, `CRASH_POINTS`. |
+| `src/geometry*.js` | `ENGINES` (where the thrust acts: the sim's calibration), `NACELLES` (where they're drawn and strike the ground), `GEAR`, `GROUND_Z`, `CRASH_POINTS` (since v0.4.1 also Indestructible's skids: engines moved or added need their points). |
 | `src/sim/sim.js` | Two engines by name in the core (`n1L`, `n1R`, `revL`, `revR`, `thrL`, `thrR`, `ffL`, `ffR`, `n1tL`, `n1tR`), stepped as `eng[0]` and `eng[1]` (about lines 374–382) and reported in `state.engines` (about 669). The thrust's moments already loop over `ENGINES` (about 434). `trimAirborne()` splits the thrust by two at `ENGINES[0].z`. The tanks are `fuelL`, `fuelR` and `fuelC`. The core is the snapshot, so older saves need a migration. |
 | `src/sim/engines.js`, `autopilot.js`, `autopilot-boeing.js` | One engine's model; the A/THR reads both engines. |
 | `src/ui/engines-panel.js`, `src/ui/boeing/eicas.js` | Two engines drawn. |
@@ -98,13 +99,15 @@ From a read of the code on 2026-11-10. Check the line numbers, which drift.
 | v0.3.0 | Aircraft types, the Boeing 787-9 and 777-300ER, with Boeing's law, trim, autothrottle, MCP and screens, code E stands, the picker | yes (`12921f2`) |
 | v0.3.1 | The main gear carried by the wing with the flaps out (and the A321's wing where Airbus draws it), no gaps at the slats and flaps, the seat swap back on Cockpit (1), louder engines in the cockpit, gear doors with an inside | yes (`1530e48`) |
 | v0.3.2 | The Boeings' ALT window to 45,000 ft, past their 43,100 ft ceiling; Duplicate a scenario (and the pause menu's Save a copy); the Weight tab: passengers, cargo and fuel changed in flight | yes (`45e495f`) |
-| v0.4.0 | The weather: the Weather tab and its presets, the wind by height, gusts, turbulence, shear and microbursts, a real altimeter (K, the BARO boxes), the Boeings flying the track and decrabbing, windshear warnings, the wind on the card and in the logbook, wet, snowy and icy runways, fog, cloud layers, rain, snow, lightning, and their sound | not yet when this was written: `sh tools/push.sh v0.4.0` |
+| v0.4.0 | The weather: the Weather tab and its presets, the wind by height, gusts, turbulence, shear and microbursts, a real altimeter (K, the BARO boxes), the Boeings flying the track and decrabbing, windshear warnings, the wind on the card and in the logbook, wet, snowy and icy runways, fog, cloud layers, rain, snow, lightning, and their sound | yes (`c4aac7c`) |
+| v0.4.1 | The 777's wingtip hole and the slats' air gap closed (no light through any wing); Indestructible and Boeing auto-trim in Settings; storms in three strengths, microbursts rare, gusty winds that hold their direction; taxiway and runway signs, and the names painted on the taxiways | not yet when this was written: `sh tools/push.sh v0.4.1` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
 - **v0.3.0's evidence** is in `STATUS.md` (from "2026-11-04, 04:36 KST"), its final entry says what's weak, and ROADMAP has the leftovers.
 - **v0.3.1's** is in its `STATUS.md` entry ("2026-11-08, 03:40 KST"): 506 unit tests, `route-views.cjs`, `audio-render.mjs` 30/30 on each type, and before/after close-ups of every type's wing, gear and doors (`tests/cloud/models.cjs`).
 - **v0.3.2's** is in its two `STATUS.md` entries ("2026-11-08, 15:05 KST" and the one after): 521 unit tests, `tests/cloud/weight-copy.cjs` (new) and `route-views.cjs`.
+- **v0.4.1's** is in its `STATUS.md` entry ("2026-11-11, 00:20 KST"): 646 unit tests, the cloud checks, and before/after pictures of the wings, the signs and the card.
 - **v0.4.0's** is in its `STATUS.md` entries: the run's (from "2026-11-10, 10:38 KST") and the review's ("2026-11-10, 17:05 KST"): 626 unit tests, the run's Chrome checks on the Mac (60 fps in rain at night, a thunderstorm and fog; the crosswind landings), and the review's cloud checks (`weather-final.cjs`, new; `weight-copy.cjs`, `route-views.cjs`, `athr-lever.cjs`, `audio-render.mjs`; clear weather against v0.3.2).
 - **The long-term plan** (2026-11-10) is in `ROADMAP.md` → "The long term", and its two `STATUS.md` entries say how it was reached.
 - **Passing at v0.2.0's hand-off** (all on the Mac, Chrome on its GPU, through the guard; `STATUS.md` has the commands and numbers; v0.2.1's and v0.2.2's checks are in their STATUS entries):
@@ -219,6 +222,22 @@ From a read of the code on 2026-11-10. Check the line numbers, which drift.
 | `src/audio/synth.js`, `callouts.js` | Rain, thunder, the gusts, the Boeing's siren; the windshear calls. |
 | `tests/weather*.test.mjs`, `tests/browser-weather-*.mjs`, `tests/cloud/weather-final.cjs` | The run's tests (104 of the 626 unit tests), its Chrome checks on the Mac, and the review's cloud check. |
 
+### v0.4.1: the wings, Indestructible, auto-trim, storms, signs
+
+| Where | What |
+|---|---|
+| `src/widebody.js`, `src/aircraft.js` | The wing box's sections include `LAST` (the aileron's end): the 777's ended at the last station before it, 28 m, and left a 1.6 m hole in front of the aileron. Where the outer slat runs past the aileron (the 777's), the tip has the box's round nose until the slat ends. The slats droop about one hinge line a wing, through the fixed nose's centre, with no travel: the nose (`nose: 1`, a half-circle) fills the slat's back at any angle. Narrow gaps between slats are sunken fillers on the slats' bone; gaps between trailing-edge surfaces are fixed fillers. The specs' `slatTravel` and `slatOutDeg`, and the slat tracks, are gone. `wingSec` in `aircraft.js` is exported (the wing check reads the planform). |
+| `tests/cloud/wing-gaps.cjs` | Each type's skinned triangles, cut into cross-sections every 2 cm of span, looked through along vertical lines and lines 20° to 65° fore and aft: stowed, across the chord; slats and flaps out, across the front 45% (the flaps' own slots are real). It finds v0.4.0's hole, its slots and its slats' gaps. About 15 s. |
+| `src/sim/sim.js` | `setOption()`: `opts` (`indestructible`, `autoTrim`), `sim.setIndestructible()`, `sim.setAutoTrim()`; a snapshot has `options` only when one is on, and `restore()` takes them from it (`main.js`'s `applyFlightOpts()` puts the player's back after every restore). Indestructible: `crash()` pushes a `damage` event instead (once while it lasts, again after 3 s of none); the crash points are skids before the integration (`SKID`: spring and damper per kg, friction 0.4), `X.scrapes` (which are down) and `state.scraping`, `scrapeDepth`. |
+| `src/sim/predict-core.js` | A path ends at the first skid's touch (`S.scraping`), or wheels on the water, as it would have at the crash. |
+| `src/score.js`, `ui/score-panel.js`, `ui/logbook.js` | `damage` events from 10 s before the touchdown on make the part "Would have crashed" (`COST.crash`, 2.3: as off the runway; `DAMAGE_SHORT` for the value), `result.indestructible`, `result.damage`; the card's line and verdict; the logbook's tag. |
+| `src/sim/fbw-boeing.js` | `E.autoTrim`: hands off, the path held (latched as `fbw.js` does); gear down and flaps over 18°, the stick a path rate (`PATH_RATE`, 3.5°/s); elsewhere load factor; the stall protection as before; `vRef` follows the speed, so turning it off carries on smoothly. The PFD hides the TRIM mark while it's on. |
+| `src/main.js`, `src/ui/menu.js`, `index.html` | `flightOpts`, `setFlightOpt()`: the settings, saved; the Settings page's two rows; the `damage` toast; the crash panel's hint. |
+| `src/sim/weather.js`, `weather-presets.js` | `turbulenceScales(level, ft, out, w20)`: below 1,000 ft W20 is the wind at 20 ft (`C.w20`) × `K_W20` (0.7, 1, 1.4), at least half the level's own; without `w20` it's the standard's categories (the tests' reference). Three storm presets; `stormCells()` gives a severe storm's microbursts, one at about one airport in three. |
+| `src/world/taxisigns.js` | `taxiSignSites(airport)`: arrays from the taxi graph's junctions of two or more names (`walk()` back 32 m along the way in, left side unless that's pavement, clear of the runway strip, 22 m apart at least), the painted names, and the mandatory signs at hold-shorts (pattern A). `SIGN` sizes them. |
+| `src/world/apron.js` | `buildSigns()` (boxes, faces and letters; `SIGN_VERT`/`SIGN_FRAG`: lit by the sun, glowing at night), the painted names in `buildPaint(…, signs)`, the glyph atlas with the taxiways' and runways' characters and eight arrows (`ARROWS`). A fourth draw call an airport. |
+| `tests/indestructible.test.mjs`, `boeing-autotrim.test.mjs`, `taxisigns.test.mjs` | The new tests (20); `weather.test.mjs` and `weather-presets.test.mjs` grew. |
+
 ## Working from a Cowork session
 
 Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When it's connected, it's `$HOME/mnt/GameDump` in the device shell.
@@ -246,6 +265,7 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
      - `athr-lever.cjs` (v0.2.2): on a 15 nm final with A/THR on, the lever and the ring at its thrust, a one-frame tap of R (the frame clock held and stepped), A/THR off with the toast, X giving it back. About 2 minutes.
      - `models.cjs` (v0.3.1): close-ups of each type's wing, gear and doors.
      - `weight-copy.cjs` (v0.3.2): the Weight tab (tabs, fields, checks, Max, Enter, keys, the live fuel, Esc, skip to final), Save a copy, Load scenario → Duplicate, and a copy flying on from the same point; at 1440×900 and 1280×720. About 4 minutes.
+     - `wing-gaps.cjs` (v0.4.1): no light through any type's wings, stowed and with the slats and flaps out (see v0.4.1's table). About 15 s.
      - `weather-final.cjs` (v0.4.0's review): a 15 nm final started with the Gusty crosswind preset (the altimeter at the day's QNH, the AP's ALT at its reading, the crabbed heading holding the centreline), K, skip to final, a landing by the test pilot in 15 kt gusting 22 with the card's and the logbook's wind, and the same start in calm air as v0.3.2's. About 3 minutes.
      - The sound: `FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ NODE_PATH=$(npm root -g) node tests/audio-render.mjs` (the measured checks; 30 of them) and `… node tests/audio-clips.mjs outDir` (the flight phases as WAV and MP3 to listen to; `SYNTH=<url>` renders another copy of the synth, to compare).
   4. **Against the last pushed version,** for anything that should be unchanged: `git clone https://github.com/NuclearPlane787/flight-sim` in the container (outside GameDump, so git is fine there), serve the clone beside the new copy (for example as `games/flight-sim-032/` under the same root), and compare `__fs.renderer.info.render` (calls, triangles) and the canvas from the same views and clock, in a fresh browser context each. v0.4.0's review did this for clear weather at six views, day and night: the same draws and triangles, and the same pixels but the spinning fan blades. The clone also gives the list of changed files (hash both trees).

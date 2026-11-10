@@ -1,12 +1,13 @@
 // Airport ground and buildings (M2): taxiways, aprons, their paint (centrelines, edge
-// lines, hold-shorts, stand lead-ins, stop bars and numbers), terminals, hangars and other
-// buildings, and static jet bridges. All three airports, from data/airports/*.json.
+// lines, hold-shorts, stand lead-ins, stop bars and numbers, v0.4.1 taxiway names), terminals,
+// hangars and other buildings, static jet bridges, and (v0.4.1) the taxiway and runway signs
+// in the grass (taxisigns.js). All three airports, from data/airports/*.json.
 //
 //   const aprons = createAprons(scene, uniforms, chunks, airports, heightfield);
 //   each frame, after world.update():  aprons.update(ctx) -> { drawCalls, triangles }
 //
-// Per airport there are three merged meshes (pavement, paint, buildings), each with one
-// material: three draw calls. Positions are stored relative to the airport's origin and
+// Per airport there are four merged meshes (pavement, paint, buildings, signs), each with one
+// material: four draw calls. Positions are stored relative to the airport's origin and
 // placed camera-relative in the vertex shader (uRelA = airport origin - scene origin,
 // computed in double on the CPU), with the Earth's curvature like the runways.
 //
@@ -31,6 +32,7 @@ import {
   drawnRunwayRects, clipSoupOutside, splitPolyline, refineSoup, refineLine,
 } from './apron-geom.js';
 import { floodMasts } from './taxilights.js';
+import { taxiSignSites, SIGN, panelWidth, arrayWidth } from './taxisigns.js';
 
 export const APRON_RANGE = 25000;          // m from the airport's bounds
 export const APRON_MAX_ALT = 15000 * 0.3048;
@@ -281,7 +283,54 @@ const BLDG_FRAG = /* glsl */ `
     #include <colorspace_fragment>
   }`;
 
+// v0.4.1: the signs in the grass. Boxes on posts, lit by the sun and the sky; the faces' letters from the glyph atlas,
+// and at night the faces glow (they're lit from inside).
+const SIGN_VERT = /* glsl */ `
+  attribute vec3 scol;                // albedo
+  attribute vec3 sbor;                // the face's border colour
+  attribute vec4 sk;                  // kind (0 plain, 1 face, 2 letter), glyph index, glow at night (0..1), border (m)
+  attribute vec4 suv;                 // u, v (a letter: its cell 0..1; a face: m from its corner), the face's w, h
+  varying vec3 vRel, vN, vCol, vBor;
+  varying vec4 vK, vUv;
+  #include <logdepthbuf_pars_vertex>
+  void main() {
+    vec3 wp = placeWorld(position);
+    vRel = wp - uCamPos;
+    vN = normal; vCol = scol; vBor = sbor; vK = sk; vUv = suv;
+    gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
+    #include <logdepthbuf_vertex>
+  }`;
+
+const SIGN_FRAG = (nGlyphs) => /* glsl */ `
+  uniform sampler2D uGlyphs;
+  varying vec3 vRel, vN, vCol, vBor;
+  varying vec4 vK, vUv;
+  #include <logdepthbuf_pars_fragment>
+  void main() {
+    #include <logdepthbuf_fragment>
+    vec3 alb = vCol;
+    if (vK.x > 1.5) {
+      vec2 q = clamp(vUv.xy, 0.0, 1.0);
+      float cov = texture(uGlyphs, vec2((vK.y + 0.04 + 0.92 * q.x) / ${nGlyphs.toFixed(1)}, 0.03 + 0.94 * q.y)).r;
+      if (cov < 0.5) discard;
+    } else if (vK.x > 0.5 && vK.w > 0.0) {
+      vec2 p = vUv.xy, sz = vUv.zw;
+      if (min(min(p.x, p.y), min(sz.x - p.x, sz.y - p.y)) < vK.w) alb = vBor;
+    }
+    vec3 n = normalize(vN);
+    float ndl = max(dot(n, uSunDir), 0.0);
+    vec3 col = alb * (uSunColor * ndl * 2.2 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1);
+    col += alb * vK.z * uNight * 1.0;
+    gl_FragColor = vec4(applyHaze(col, vRel), 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }`;
+
 // ------------------------------------------------------------------ glyph atlas
+
+// v0.4.1: the arrows of the direction signs, as eight characters of the atlas: ARROWS[k] points k eighths of a turn
+// clockwise from up.
+export const ARROWS = Array.from({ length: 8 }, (_, k) => String.fromCharCode(0xe000 + k));
 
 function glyphAtlas(chars) {
   if (typeof document === 'undefined') return null;
@@ -295,9 +344,19 @@ function glyphAtlas(chars) {
   for (let i = 0; i < chars.length; i++) {
     g.save();
     g.translate(i * cw + cw / 2, ch / 2);
-    g.scale(1, 1.5);
-    g.font = 'bold 70px "Helvetica Neue", Helvetica, Arial, sans-serif';
-    g.fillText(chars[i], 0, 3);
+    const k = chars.charCodeAt(i) - 0xe000;
+    if (k >= 0 && k < 8) {
+      // An arrow, drawn so that on a sign's square cell (SIGN.arrowW by SIGN.glyphH) it isn't squashed.
+      g.scale(0.55, 1);
+      g.rotate((k * Math.PI) / 4);
+      g.beginPath();
+      g.moveTo(0, -48); g.lineTo(40, -6); g.lineTo(14, -6); g.lineTo(14, 46); g.lineTo(-14, 46); g.lineTo(-14, -6); g.lineTo(-40, -6);
+      g.closePath(); g.fill();
+    } else {
+      g.scale(1, 1.5);
+      g.font = 'bold 70px "Helvetica Neue", Helvetica, Arial, sans-serif';
+      g.fillText(chars[i], 0, 3);
+    }
     g.restore();
   }
   const t = new THREE.CanvasTexture(c);
@@ -370,7 +429,7 @@ export function buildPavement(a, ox, oy, groundAt, aprons) {
   return g;
 }
 
-export function buildPaint(a, ox, oy, groundAt, aprons, chars) {
+export function buildPaint(a, ox, oy, groundAt, aprons, chars, signs = null) {
   const P = buf(), S = buf(), L = buf(), K = buf(), Y = buf();
   const idx = [];
   let nv = 0;
@@ -449,6 +508,17 @@ export function buildPaint(a, ox, oy, groundAt, aprons, chars) {
     labels.push([s, m]);
     stands++;
   }
+  // v0.4.1: the taxiway's name before each sign array (taxisigns.js), yellow on black, reading the way the traffic goes.
+  for (const pt of signs?.painted || []) {
+    const ref = String(pt.text).toUpperCase().slice(0, 4), n = ref.length, tw = n * GLYPH_W + (n - 1) * GLYPH_GAP;
+    quad(pt.x, pt.y, pt.tx, pt.ty, tw + 1.2, GLYPH_H + 1.2, 0, 1, 0, 1, 3, 0, 0, 2);
+    for (let i = 0; i < n; i++) {
+      const gi = chars.indexOf(ref[i]);
+      if (gi < 0) continue;
+      const off = -tw / 2 + GLYPH_W / 2 + i * (GLYPH_W + GLYPH_GAP);
+      quad(pt.x + pt.ty * off, pt.y - pt.tx * off, pt.tx, pt.ty, GLYPH_W, GLYPH_H, 0, 1, 0, 1, 2, 0, gi, 0);
+    }
+  }
   // Numbers last, so no other stand's line is painted over them.
   for (const [s, m] of labels) {
     const ref = String(s.ref || '').toUpperCase().slice(0, 4);
@@ -486,6 +556,97 @@ function simplify(pts, tol) {
   }
   out.push(pts[pts.length - 1]);
   return out;
+}
+
+// v0.4.1: the taxiway and runway signs (taxisigns.js) as boxes on two posts each array, their faces and letters in
+// front. Exported for tests/taxisigns.test.mjs. → { geo, arrays, mandatory, triangles }
+const SIGN_COL = {
+  black: [0.02, 0.02, 0.02], yellow: [0.80, 0.58, 0.04], red: [0.62, 0.035, 0.03], white: [0.86, 0.86, 0.84], body: [0.22, 0.23, 0.24],
+};
+const FACE = {   // background, letters, border (null: none)
+  loc: [SIGN_COL.black, SIGN_COL.yellow, SIGN_COL.yellow],
+  dir: [SIGN_COL.yellow, SIGN_COL.black, null],
+  mand: [SIGN_COL.red, SIGN_COL.white, SIGN_COL.black],
+};
+export function buildSigns(sites, ox, oy, groundAt, chars) {
+  const P = buf(), N = buf(), C = buf(), B = buf(), K = buf(), U = buf();
+  const idx = [];
+  let nv = 0;
+  const NONE = [0, 0, 0];
+  // Map (x, y) and a height to the scene, a map direction to a scene normal.
+  const sp = (q) => [q[0] - ox, q[2], -(q[1] - oy)];
+  const quad = (pts, n, col, bor, k, uvs) => {
+    const ids = pts.map((q, i) => { P.push(...sp(q)); N.push(...n); C.push(...col); B.push(...bor); K.push(...k); U.push(...uvs[i]); return nv++; });
+    // Counter-clockwise seen from the normal's side, whatever order the corners came in.
+    const [a, b, c] = pts.map(sp), e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    if (cr[0] * n[0] + cr[1] * n[1] + cr[2] * n[2] >= 0) idx.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
+    else idx.push(ids[0], ids[2], ids[1], ids[0], ids[3], ids[2]);
+  };
+  const ZERO_UV = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  // A box round (cx, cy): half sizes hr along r (rx, ry) and ht along t (tx, ty), from h0 up to h1.
+  const box = (cx, cy, rx, ry, tx, ty, hr, ht, h0, h1, col) => {
+    const at = (a, b, h) => [cx + rx * a * hr + tx * b * ht, cy + ry * a * hr + ty * b * ht, h];
+    const k = [0, 0, 0, 0];
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = [rx * a + tx * b, 0, -(ry * a + ty * b)];
+      const u = a !== 0 ? [[a, -1], [a, 1]] : [[-1, b], [1, b]];
+      quad([at(...u[0], h0), at(...u[1], h0), at(...u[1], h1), at(...u[0], h1)], n, col, NONE, k, ZERO_UV);
+    }
+    quad([at(-1, -1, h1), at(1, -1, h1), at(1, 1, h1), at(-1, 1, h1)], [0, 1, 0], col, NONE, k, ZERO_UV);
+  };
+  let arrays = 0, mandatory = 0;
+  for (const site of [...(sites?.arrays || []), ...(sites?.mandatory || [])]) {
+    if (site.panels[0].kind === 'mand') mandatory++; else arrays++;
+    const { tx, ty } = site, rx = ty, ry = -tx;         // the traffic's way, and its right
+    const fn = [-tx, 0, ty];                             // the faces look back at it (scene)
+    const W = arrayWidth(site), g0 = groundAt(site.x, site.y);
+    const h0 = g0 + SIGN.base, h1 = h0 + SIGN.faceH, hd = SIGN.depth / 2;
+    for (const side of [-1, 1]) {
+      const o = side * (W / 2 - 0.3);
+      box(site.x + rx * o, site.y + ry * o, rx, ry, tx, ty, 0.06, 0.06, g0 - 0.3, h0, SIGN_COL.body);
+    }
+    let s0 = -W / 2;
+    for (const p of site.panels) {
+      const w = panelWidth(p), c = s0 + w / 2, cx = site.x + rx * c, cy = site.y + ry * c;
+      s0 += w + SIGN.gap;
+      box(cx, cy, rx, ry, tx, ty, w / 2, hd, h0, h1, SIGN_COL.body);
+      const [bg, fg, bor] = FACE[p.kind];
+      // The face, a hair in front of the box, and the letters a hair in front of it.
+      const fx = cx - tx * (hd + 0.004), fy = cy - ty * (hd + 0.004);
+      const at = (x0, y0, a, h) => [x0 + rx * a, y0 + ry * a, h];
+      quad([at(fx, fy, -w / 2, h0), at(fx, fy, w / 2, h0), at(fx, fy, w / 2, h1), at(fx, fy, -w / 2, h1)], fn, bg, bor || NONE,
+        [1, 0, 1, bor ? SIGN.border : 0], [[0, 0, w, SIGN.faceH], [w, 0, w, SIGN.faceH], [w, SIGN.faceH, w, SIGN.faceH], [0, SIGN.faceH, w, SIGN.faceH]]);
+      const items = [...p.text].map((ch) => ({ ch, w: SIGN.glyphW }));
+      if (p.arrow !== undefined) {
+        const ar = { ch: ARROWS[p.arrow], w: SIGN.arrowW, arrow: true };
+        if (p.arrow >= 5) items.unshift(ar); else items.push(ar);
+      }
+      const total = items.reduce((t, it) => t + it.w, 0) + SIGN.glyphGap * (items.length - 1 + (p.arrow !== undefined ? 1 : 0));
+      const gx = cx - tx * (hd + 0.008), gy = cy - ty * (hd + 0.008), hm = (h0 + h1) / 2;
+      let u = -total / 2;
+      items.forEach((it, i) => {
+        if (it.arrow && i > 0) u += SIGN.glyphGap;
+        const gi = chars.indexOf(it.ch);
+        if (gi >= 0) {
+          const a0 = u, a1 = u + it.w, b0 = hm - SIGN.glyphH / 2, b1 = hm + SIGN.glyphH / 2;
+          quad([at(gx, gy, a0, b0), at(gx, gy, a1, b0), at(gx, gy, a1, b1), at(gx, gy, a0, b1)], fn, fg, NONE, [2, gi, 1, 0],
+            [[0, 0, 0, 0], [1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0]]);
+        }
+        u += it.w + SIGN.glyphGap;
+        if (it.arrow && i === 0) u += SIGN.glyphGap;
+      });
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P.a, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(N.a, 3));
+  g.setAttribute('scol', new THREE.Float32BufferAttribute(C.a, 3));
+  g.setAttribute('sbor', new THREE.Float32BufferAttribute(B.a, 3));
+  g.setAttribute('sk', new THREE.Float32BufferAttribute(K.a, 4));
+  g.setAttribute('suv', new THREE.Float32BufferAttribute(U.a, 4));
+  g.setIndex(idx);
+  return { geo: g, arrays, mandatory, triangles: idx.length / 3 };
 }
 
 const KIND = { terminal: 0, hangar: 1 };
@@ -651,9 +812,15 @@ function floodTexture(a, ox, oy) {
 export function createAprons(scene, uniforms, chunks, airports, heightfield = null) {
   const group = new THREE.Group();
   group.name = 'aprons';
-  // Every character used in a stand number, for the glyph atlas.
-  const set = new Set('0123456789');
-  for (const a of airports || []) for (const s of a.stands || []) for (const ch of String(s.ref || '').toUpperCase()) set.add(ch);
+  // Every character used in a stand number, for the glyph atlas; v0.4.1: and in the signs (taxiway names, runway
+  // idents), with their arrows.
+  const set = new Set('0123456789-');
+  for (const a of airports || []) {
+    for (const s of a.stands || []) for (const ch of String(s.ref || '').toUpperCase()) set.add(ch);
+    for (const t of a.taxiways || []) for (const ch of String(t.ref || '').toUpperCase()) set.add(ch);
+    for (const r of a.runways || []) for (const e of r.ends || []) for (const ch of String(e.ident || '').toUpperCase()) set.add(ch);
+  }
+  for (const ch of ARROWS) set.add(ch);
   const chars = [...set].sort().join('');
   const glyphs = glyphAtlas(chars);
 
@@ -679,7 +846,10 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
     }));
     paveMesh.renderOrder = 1;     // after the terrain and the runways (see "Depth")
     meshes.push(paveMesh);
-    const paint = buildPaint(a, ox, oy, groundAt, aprons, chars);
+    // v0.4.1: the signs, and their names painted on the taxiways.
+    let signSites = null;
+    try { signSites = taxiSignSites(a); } catch { signSites = null; }
+    const paint = buildPaint(a, ox, oy, groundAt, aprons, chars, signSites);
     const paintMesh = new THREE.Mesh(paint.geo, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + PAINT_VERT, fragmentShader: fhead + PAINT_FRAG(chars.length),
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -690,13 +860,18 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
     meshes.push(new THREE.Mesh(bl.geo, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + BLDG_VERT, fragmentShader: fhead + BLDG_FRAG,
     })));
+    const signs = buildSigns(signSites, ox, oy, groundAt, chars);
+    const signMesh = signs.triangles ? new THREE.Mesh(signs.geo, new THREE.ShaderMaterial({
+      uniforms: u, vertexShader: vhead + SIGN_VERT, fragmentShader: fhead + SIGN_FRAG(chars.length),
+    })) : null;
+    if (signMesh) meshes.push(signMesh);
 
     const sub = new THREE.Group();
     sub.name = `aprons-${a.icao}`;
     let t = 0;
     for (const m of meshes) {
       m.frustumCulled = false;
-      m.name = `${sub.name}-${m === paintMesh ? 'paint' : m.geometry === pave ? 'pavement' : 'buildings'}`;
+      m.name = `${sub.name}-${m === paintMesh ? 'paint' : m === signMesh ? 'signs' : m.geometry === pave ? 'pavement' : 'buildings'}`;
       sub.add(m);
       const g = m.geometry;
       t += g.index ? g.index.count / 3 : g.getAttribute('position').count / 3;
@@ -713,7 +888,8 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
     if (!isFinite(x0)) { x0 = x1 = ox; y0 = y1 = oy; }
     sites.push({
       icao: a.icao, group: sub, u, ox, oy, box: [x0, y0, x1, y1], tris: t, drawCalls: meshes.length,
-      info: { holds: paint.holds, syntheticHolds: paint.synthetic, stands: paint.stands, bridges: bl.bridges, buildings: bl.buildings, aprons: aprons.length },
+      info: { holds: paint.holds, syntheticHolds: paint.synthetic, stands: paint.stands, bridges: bl.bridges, buildings: bl.buildings, aprons: aprons.length,
+        signArrays: signs.arrays, signsMandatory: signs.mandatory },
     });
   }
   scene.add(group);

@@ -22,6 +22,7 @@
 .fssc-key b { font-size: 18px; color: #f2f2f2; font-variant-numeric: tabular-nums; margin-right: 3px; }
 .fssc-rw { display: block; margin: 4px 0 0; width: 100%; height: auto; font-family: var(--font); }
 .fssc-td { font-size: 12px; color: #c9ced2; margin: 0 0 8px; }
+.fssc-ind { color: #ffa515; }
 .fssc-parts { display: flex; flex-direction: column; gap: 3px; }
 .fssc-part { display: grid; grid-template-columns: 1fr 96px 62px 30px; gap: 8px; align-items: center; font-size: 12.5px; }
 .fssc-part .n { color: #c9ced2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -73,6 +74,7 @@
 .fslb-row .route small.sc { font-weight: 400; letter-spacing: 0; color: #2fe3ff; opacity: 0.85;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fslb-row .type { white-space: nowrap; color: #c9ced2; }
+.fslb-row .type small { color: #ffa515; }
 .fslb-row .num { text-align: right; font-variant-numeric: tabular-nums; }
 .fslb-row .grade { text-align: right; }
 .fslb-badge { display: inline-block; min-width: 52px; text-align: center; border: 1.5px solid; border-radius: 6px; padding: 2px 8px;

@@ -6,7 +6,7 @@
 //   const menu = createMenu(root, { version, backdrops, scenarios, onContinue(id), onNew(), onLoad(id),
 //                                   onLogbook(), onSettings(), onControls(), onExit? });
 //   menu.show(); menu.hide(); menu.refresh(); menu.isOpen
-//   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky? });
+//   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky?, onIndestructible?, onAutoTrim? });
 //   const controls = createControlsPage(root, { sky? });   controls.setFamily(def.family) for the type flown
 //   page.open(); page.close(); page.isOpen; page.onclose = () => {}
 //
@@ -319,7 +319,7 @@ function createPage(root, cls, title, bodyHtml) {
   return api;
 }
 
-export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky } = {}) {
+export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky, onIndestructible, onAutoTrim } = {}) {
   const seg = (k) => `<div class="fsui-seg" data-seg="${k}"><button data-v="on">On</button><button data-v="off">Off</button></div>`;
   const page = createPage(root, 'fsm-settings', 'Settings', `
     <div class="fsm-set">
@@ -327,6 +327,8 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
         <span class="ctl"><input type="range" min="0" max="100" step="5" data-s="volume"><output data-s="volOut">100%</output></span></label>
       <div class="fsm-set-row"><span class="lab">Callouts<small>The radio-altitude calls on final, “retard” and the ground-proximity warnings</small></span><span class="ctl">${seg('callouts')}</span></div>
       <div class="fsm-set-row"><span class="lab">Performance readout<small>Frame rate, triangles and draw calls along the top (F3 or \`)</small></span><span class="ctl">${seg('perf')}</span></div>
+      ${onIndestructible ? `<div class="fsm-set-row"><span class="lab">Indestructible<small>No crash ends the flight: the gear holds, the aircraft scrapes and slides instead. The landing card says what would have crashed</small></span><span class="ctl">${seg('indestructible')}</span></div>` : ''}
+      ${onAutoTrim ? `<div class="fsm-set-row"><span class="lab">Boeing auto-trim<small>The 787 and 777 hold their flight path when you let go, as the A321 does, and with the flaps for landing W and S nudge the path. Y and H have nothing to do while it’s on</small></span><span class="ctl">${seg('autoTrim')}</span></div>` : ''}
       ${onSky ? `<div class="fsm-set-row"><span class="lab">Time of day<small>The clock, the date and the sun and Moon</small></span><span class="ctl"><button class="fsui-b" data-s="sky">Open the Sky window (L)</button></span></div>` : ''}
     </div>`);
   const el = page.el;
@@ -339,6 +341,8 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
     showVol(Number.isFinite(s.volume) ? s.volume : 1);
     setSeg('callouts', s.callouts !== false);
     setSeg('perf', !!s.showPerf);
+    if (onIndestructible) setSeg('indestructible', !!s.indestructible);
+    if (onAutoTrim) setSeg('autoTrim', !!s.autoTrim);
   };
   q('volume').addEventListener('input', () => { const v = Number(q('volume').value) / 100; showVol(v); onVolume?.(v); });
   el.addEventListener('click', (e) => {
@@ -346,7 +350,8 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
     if (b) {
       const k = b.closest('[data-seg]').dataset.seg, on = b.dataset.v === 'on';
       setSeg(k, on);
-      if (k === 'callouts') onCallouts?.(on); else onPerf?.(on);
+      if (k === 'callouts') onCallouts?.(on); else if (k === 'indestructible') onIndestructible?.(on);
+      else if (k === 'autoTrim') onAutoTrim?.(on); else onPerf?.(on);
       return;
     }
     // The Sky window stands aside over the flight, so Settings closes first.
@@ -384,7 +389,8 @@ export const FAMILY_KEYS = [
     'autopilot / autothrust': 'autopilot / A/T arm',
     'FCU window': 'MCP window',
   }, hideNote: 'fcu', notes: `<p>The trim sets the speed the aircraft holds: let go of the controls and it settles back to the green TRIM mark on the speed tape.
-    With the A/P on, it trims itself.</p>
+    With the A/P on, it trims itself. With <b>Boeing auto-trim</b> on (Settings) it always does: let go and the flight path holds, as the A321's does,
+    and with the flaps for landing W and S nudge the path.</p>
     <p><b>The MCP</b> along the top sets the speed, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter.
     Enter on HDG goes to HDG SEL, on ALT to FLCH, on V/S to V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
     Above FL260 the speed window is in Mach, and a typed 84 or .84 is a Mach at any height. Its buttons light green when active and white when armed.

@@ -10,9 +10,9 @@ const here = new URL('..', import.meta.url).pathname;
 const AIRPORTS = ['RKSS', 'RKPC', 'RKSI'].map((i) => JSON.parse(readFileSync(here + `data/airports/${i}.json`, 'utf8')));
 const plan = { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07' };
 const ctx = weatherContext(AIRPORTS, plan);
-const IDS = ['clear', 'few-clouds', 'overcast', 'rain', 'thunderstorm', 'snow', 'fog', 'gusty-crosswind'];
+const IDS = ['clear', 'few-clouds', 'overcast', 'rain', 'thunderstorm-light', 'thunderstorm', 'thunderstorm-severe', 'snow', 'fog', 'gusty-crosswind'];
 
-test('the eight presets are there', () => {
+test('the ten presets are there (v0.4.1: storms light, moderate and severe)', () => {
   assert.deepEqual(PRESETS.map((p) => p.id), IDS);
 });
 
@@ -64,19 +64,33 @@ test('the gusty crosswind: 25G35, 90 degrees across the arrival runway; 090 with
   assert.ok(Math.abs(off - 90) < 1, `${off}° off the runway`);
 });
 
-test('the thunderstorm: seeded cells near the airports, no two builds different, a new seed moves them', () => {
-  const a = presetWeather('thunderstorm', ctx), b = presetWeather('thunderstorm', ctx);
+test('storms by severity: more wind, gusts, turbulence, rain and lightning each step up', () => {
+  const [l, m, h] = ['thunderstorm-light', 'thunderstorm', 'thunderstorm-severe'].map((id) => presetWeather(id, ctx));
+  assert.deepEqual([l, m, h].map((s) => s.turbulence), ['light', 'moderate', 'severe']);
+  for (const k of [(s) => s.wind.kt, (s) => s.wind.gustKt, (s) => s.precip.rate, (s) => s.lightning]) assert.ok(k(l) < k(m) && k(m) < k(h));
+  assert.ok(h.visM < m.visM && m.visM < l.visM);
+  assert.deepEqual([l, m, h].map((s) => metarOf(s, 'RKPC').match(/ ([-+]?TSRA) /)?.[1]), ['-TSRA', 'TSRA', '+TSRA']);
+  // Microbursts only in a severe storm, and rare there.
+  assert.deepEqual(l.microbursts, []); assert.deepEqual(m.microbursts, []);
+});
+
+test('the severe storm\'s microbursts: about one airport in three, seeded, near it but not on it', () => {
+  const a = presetWeather('thunderstorm-severe', ctx), b = presetWeather('thunderstorm-severe', ctx);
   assert.deepEqual(a, b);
-  assert.ok(a.microbursts.length >= 6 && a.microbursts.length <= 24, `${a.microbursts.length} cells`);
-  for (const m of a.microbursts) {
-    const d = Math.min(...ctx.airports.map((p) => Math.hypot(m.x - p.x, m.y - p.y)));
-    assert.ok(d >= 3000 && d <= 19000, `${d} m from an airport`);
-    assert.ok(m.radiusM >= 800 && m.radiusM <= 1800 && m.dvKt >= 30 && m.dvKt <= 60);
+  let n = 0, airports = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = presetWeather('thunderstorm-severe', { ...ctx, seed });
+    n += s.microbursts.length; airports += ctx.airports.length;
+    for (const m of s.microbursts) {
+      const d = Math.min(...ctx.airports.map((p) => Math.hypot(m.x - p.x, m.y - p.y)));
+      assert.ok(d >= 5000 && d <= 17000, `${d} m from an airport`);
+      assert.ok(m.radiusM >= 800 && m.radiusM <= 1400 && m.dvKt >= 25 && m.dvKt <= 45, JSON.stringify(m));
+    }
   }
-  const c = presetWeather('thunderstorm', { ...ctx, seed: 99 });
+  assert.ok(n / airports > 0.2 && n / airports < 0.47, `${n} in ${airports} airports`);
+  const c = presetWeather('thunderstorm-severe', { ...ctx, seed: 99 });
   assert.equal(c.seed, 99);
-  assert.notDeepEqual(c.microbursts, a.microbursts);
-  assert.deepEqual(presetWeather('thunderstorm').microbursts, []);   // no airports known
+  assert.deepEqual(presetWeather('thunderstorm-severe').microbursts, []);   // no airports known
 });
 
 test('the context comes from the airport data', () => {
@@ -167,7 +181,7 @@ test('the METAR line reads as a METAR', () => {
   assert.equal(metarOf(calmWeather(), 'RKSI'), 'RKSI 00000KT CAVOK 15/07 Q1013');
   assert.match(metarOf(presetWeather('snow', ctx), 'RKSI'), /^RKSI 32012G20KT 1800 SN BKN009 OVC035 M04\/M06 Q1024$/);
   assert.match(metarOf(presetWeather('fog', ctx), 'RKSS'), /^RKSS 06003KT 0250 FG NSC 05\/05 Q1028$/);
-  assert.match(metarOf(presetWeather('thunderstorm', ctx), 'RKPC'), /\+TSRA/);
+  assert.match(metarOf(presetWeather('thunderstorm-severe', ctx), 'RKPC'), /\+TSRA/);
   assert.match(metarOf(normalizeWeather({ ...calmWeather(), qnh: 998 }), 'RKPC'), / Q0998$/, 'four digits under 1000 hPa');
   const near = normalizeWeather({ ...calmWeather(), wind: { fromDeg: 355, kt: 12, gustKt: 0 } });
   assert.match(metarOf(near, 'RKPC'), / 36012KT /);

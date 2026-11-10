@@ -154,7 +154,7 @@ export function createHud(root, { airports, coast } = {}) {
       v.timeScale, r(v.timeScaleActual, 10), v.paused, v.controls?.spoilersArmed];
     // What only the Boeing screens show (their FMA's armed modes, the tape's speeds, the stab trim).
     if (isBoeing) {
-      sP.push(r(st.vRef), r(st.vmm), r(st.vStick), r(st.pliDeg, 5), st.shaker, ap.armedLateral, ap.armedVertical, r(st.flapDeg), r(st.slatDeg));
+      sP.push(st.autoTrim ? 0 : r(st.vRef), r(st.vmm), r(st.vStick), r(st.pliDeg, 5), st.shaker, ap.armedLateral, ap.armedVertical, r(st.flapDeg), r(st.slatDeg));
       sE.push(r(sp.stab, 500), ap.thrustMode, ap.lateral, ap.vertical, st.onGround ? 1 : 0, r(st.vs * FPM, 0.01), st.flapLever, r(st.pos.z, 0.01), r(st.mach, 100));
     }
     if (force || changed(sigP, sP)) { pfd.draw(dv, now); sigP = sP; }

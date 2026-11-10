@@ -40,12 +40,14 @@ try {
   await shot('v040-weather-tab-clear.png');
 
   // Presets apply at once.
-  for (const [id, label, want] of [['rain', 'Rain', ' RA '], ['thunderstorm', 'Thunderstorm', 'TSRA'], ['snow', 'Snow', 'SN'], ['fog', 'Fog', 'FG'], ['gusty-crosswind', 'Crosswind', 'G35KT'], ['overcast', 'Overcast', 'OVC'], ['few-clouds', 'Few clouds', 'FEW040']]) {
+  for (const [id, label, want] of [['rain', 'Rain', ' RA '], ['thunderstorm-light', 'Light storm', ' -TSRA '], ['thunderstorm', 'Storm', ' TSRA '], ['thunderstorm-severe', 'Severe storm', ' +TSRA '], ['snow', 'Snow', 'SN'], ['fog', 'Fog', 'FG'], ['gusty-crosswind', 'Crosswind', 'G35KT'], ['overcast', 'Overcast', 'OVC'], ['few-clouds', 'Few clouds', 'FEW040']]) {
     const n = await applied();
     await page.click(`${W} [data-p="${id}"]`);
     check(await applied() === n + 1 && (await last()).preset === id, `${id} applies at once`);
     check(await name() === label && (await metar()).includes(want), `${id}: ${await metar()}`);
-    if (id === 'thunderstorm') { check((await last()).microbursts.length >= 6, 'scattered cells: ' + (await last()).microbursts.length); await page.waitForTimeout(100); await shot('v040-weather-tab-thunderstorm.png'); }
+    // v0.4.1: microbursts only in a severe storm, at about one airport in three.
+    if (id === 'thunderstorm') check((await last()).microbursts.length === 0, 'no microbursts in a moderate storm');
+    if (id === 'thunderstorm-severe') { check((await last()).microbursts.length >= 1, 'a few cells: ' + (await last()).microbursts.length); await page.waitForTimeout(100); await shot('v041-weather-tab-storm-severe.png'); }
     if (id === 'gusty-crosswind') check(await page.$eval(field('wind.fromDeg'), (e) => e.value) === '156', 'across RKPC 07 (066): from 156');
   }
 

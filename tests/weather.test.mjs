@@ -111,16 +111,16 @@ test('the air is a pure function of place, time and seed', () => {
 
 // ---- turbulence ----
 
-function measure(level, hFt) {
+function measure(level, hFt, windKt = 0) {
   // An ensemble over seeds along level east-going lines: variances and the correlations at one scale length.
-  const agl = hFt * FT, S = turbulenceScales(level, hFt);
+  const agl = hFt * FT, S = turbulenceScales(level, hFt, {}, compileWeather(wx({ wind: { fromDeg: 0, kt: windKt, gustKt: 0 }, turbulence: level })).w20);
   const dx = 10, n = 20000, lagU = Math.round(S.Lu / dx), lagW = Math.round(S.Lw / dx);
   let vu = 0, vw = 0, ru = 0, rw = 0, count = 0;
   for (let seed = 1; seed <= 24; seed++) {
-    const C = compileWeather(wx({ seed, turbulence: level }));
+    const C = compileWeather(wx({ seed, turbulence: level, wind: { fromDeg: 0, kt: windKt, gustKt: 0 } }));
     const us = new Float64Array(n), ws = new Float64Array(n);
     const W = newWind();
-    for (let i = 0; i < n; i++) { windAt(C, i * dx, seed * 1000, agl, agl, 0, 0, 1, 0, W); us[i] = W.e; ws[i] = W.d; }
+    for (let i = 0; i < n; i++) { windAt(C, i * dx, seed * 1000, agl, agl, 0, 0, 1, 0, W); us[i] = W.e - W.meanE; ws[i] = W.d; }
     for (let i = 0; i < n; i++) {
       vu += us[i] * us[i]; vw += ws[i] * ws[i]; count++;
       if (i + lagU < n) ru += us[i] * us[i + lagU] * n / (n - lagU);
@@ -131,8 +131,8 @@ function measure(level, hFt) {
 }
 
 test('the turbulence\'s σ and scale lengths, measured off the field, are the standard\'s', () => {
-  for (const [level, ft] of [['light', 3000], ['moderate', 3000], ['severe', 8000], ['moderate', 300]]) {
-    const m = measure(level, ft);
+  for (const [level, ft, kt] of [['light', 3000, 0], ['moderate', 3000, 0], ['severe', 8000, 0], ['moderate', 300, 0], ['moderate', 300, 20]]) {
+    const m = measure(level, ft, kt);
     assert.ok(Math.abs(m.su / m.S.su - 1) < 0.15, `${level} ${ft} ft: σu ${m.su} vs ${m.S.su}`);
     assert.ok(Math.abs(m.sw / m.S.sw - 1) < 0.15, `${level} ${ft} ft: σw ${m.sw} vs ${m.S.sw}`);
     near(m.cu, Math.exp(-1), 0.13, `${level} ${ft} ft: R_u(L_u)/σ²`);
@@ -151,6 +151,24 @@ test('the standard\'s numbers: below 1,000 ft from W20, above 2,000 ft from the 
   near(hi.Lu, 1750 * FT, 1e-9, 'L');
   const mid = turbulenceScales('moderate', 1500), a = turbulenceScales('moderate', 1000), b = turbulenceScales('moderate', 2000);
   near(mid.sw, (a.sw + b.sw) / 2, 1e-9, 'between the two');
+});
+
+test('v0.4.1: near the ground the turbulence follows the wind blowing, the level scaling it, with a floor', () => {
+  const w20 = (kt) => compileWeather(wx({ wind: { fromDeg: 0, kt, gustKt: 0 }, turbulence: 'moderate' })).w20;
+  near(w20(15) / (15 * KT), (20 * FT / 10) ** 0.16, 1e-9, 'W20 from the 10 m wind by the profile');
+  // Moderate in 30 kt is the standard's moderate; in 15 kt it's half the wind's worth, not twice.
+  const at = (level, kt, ft = 300) => turbulenceScales(level, ft, {}, w20(kt));
+  near(at('moderate', 30 / 0.924).sw, 0.1 * 30 * KT, 0.01, 'moderate at W20 = 30 kt');
+  assert.ok(at('moderate', 16).sw < 0.55 * turbulenceScales('moderate', 300).sw, 'a 16 kt storm wind: about half of before');
+  // The floor: half the level's own W20, in a calm.
+  near(at('moderate', 0).sw, 0.1 * 15 * KT, 1e-9, 'moderate in a calm'); near(at('severe', 0).sw, 0.1 * 22.5 * KT, 1e-9, 'severe in a calm');
+  // The level scales the wind: light 0.7, severe 1.4 of it.
+  near(at('light', 30).sw / at('moderate', 30).sw, 0.7, 1e-9, 'light'); near(at('severe', 40).sw / at('moderate', 40).sw, 1.4, 1e-9, 'severe');
+  // Above 2,000 ft nothing changed.
+  near(turbulenceScales('severe', 3750, {}, w20(10)).su, 23.0 * FT, 1e-9, 'aloft');
+  // The crosswind's swing on short final in the thunderstorm's wind: σ about a fifth of the wind, not a third.
+  const s = at('moderate', 14, 150);
+  assert.ok(s.su / (14 * KT) < 0.25, `σu ${(s.su / KT).toFixed(1)} kt in 14 kt`);
 });
 
 // ---- microbursts ----

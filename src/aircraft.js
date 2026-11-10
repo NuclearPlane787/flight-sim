@@ -335,7 +335,7 @@ const DIH = WING.dihedralDeg * DEG;
 // The wing's chord line at the fuselage side. Airbus's A321 AC heights (flap tracks, the
 // sharklet's foot) put the wing about 0.3 m higher than v0.1.0's −1.35.
 const WING_Z0 = -1.05;
-function wingSec(y, side) {
+export function wingSec(y, side) {
   const xle = WING.rootX - (y - Y_SIDE) * TAN_LE;
   const xte = y <= KINK_Y ? TE_ROOT : TE_ROOT + (y - KINK_Y) * TE_SLOPE;
   const z = WING_Z0 + (y - Y_SIDE) * Math.tan(DIH);
@@ -357,10 +357,10 @@ const FIN_TIP_Z = 11.76 - GROUND_Z; // overall height 11.76 m on the ground
 // The landing lights: span (m from the centreline) and chord fraction on the wing's underside.
 const LAND_Y = 3.6, LAND_F = 0.12;
 // High-lift surfaces (v0.3.1): the inner flap's span (its leading edge runs behind the main gear),
-// the flap track fairings' stations (Airbus AC 2-2-0), the slats' and flaps' travel at full
-// extension, m, and how far the spoilers overhang each flap (the travel less a slot).
+// the flap track fairings' stations (Airbus AC 2-2-0), the flaps' travel at full extension, m,
+// and how far the spoilers overhang each flap (the travel less a slot). The slats droop, no travel.
 const FIN_Y = [2.02, 6.38], CANOE_Y = [4.87, 8.30, 11.91];
-const SLAT_TRAVEL = 0.34, FLAP_TRAVEL = { in: 0.7, out: 0.55 }, OVERHANG = { in: 0.6, out: 0.45 };
+const FLAP_TRAVEL = { in: 0.7, out: 0.55 }, OVERHANG = { in: 0.6, out: 0.45 };
 // The nav lights and strobes sit at the sharklet's root, 7.6 m behind the wing root's leading edge.
 const NAV_X = WING.rootX - 7.6;
 // The inner flap's leading edge, body x (straight across its span): the 0.75-chord point at its
@@ -507,12 +507,17 @@ export function createAircraft(opts = {}) {
     const fAt = (y, x) => { const w = ws(y); return (w.le.x - x) / w.chord; };
     const X_FIN_LE = FLAP_IN_LE_X;
     const fFlapLE = (y) => (y >= FIN_Y[0] - 1e-6 && y <= FIN_Y[1] + 1e-6 ? fAt(y, X_FIN_LE) : 0.75);
-    // fixed structure: its leading edge behind the slats is rounded, so the slot shows a nose, not a cut
+    // Fixed structure: its leading edge behind the slats is a round nose about the slats' hinge line,
+    // so a slat that droops about that line stays sealed against it (v0.4.1, below).
     const fixYs = [0.6, Y_SIDE, FIN_Y[0], 4, FIN_Y[1], KINK_Y, 9, 12, 14.5, 16.6];
-    b.add(foilPiece(secs(fixYs), 0.13, fixYs.map((y) => (y < FIN_Y[0] - 1e-6 ? 0.75 : fFlapLE(y))), { caps: [false, false], nose: 0.9 }), ROOT, C.wing);
-    b.add(foilPiece(secs([0.6, Y_SIDE, 2.58]), 0, 0.13, { caps: [false, true] }), ROOT, C.wingDark);
-    b.add(foilPiece(secs([5.22, 6.28]), 0, 0.13), ROOT, C.wingDark);
-    b.add(foilPiece(secs([0.6, 2.0]), 0.75, 1, { caps: [false, true] }), ROOT, C.wing);
+    b.add(foilPiece(secs(fixYs), 0.13, fixYs.map((y) => (y < FIN_Y[0] - 1e-6 ? 0.75 : fFlapLE(y))), { caps: [false, false], nose: 1 }), ROOT, C.wing);
+    // The fixed leading edge where there's no slat (the root, the pylon), and the fixed trailing edge
+    // between the moving surfaces. v0.4.1: each reaches its neighbours and closes its ends; the 2 to
+    // 6 cm slots between them before were light through the wing.
+    b.add(foilPiece(secs([0.6, Y_SIDE, 2.62]), 0, 0.13, { caps: [false, true] }), ROOT, C.wingDark);
+    b.add(foilPiece(secs([5.18, 6.32]), 0, 0.13), ROOT, C.wingDark);
+    b.add(foilPiece(secs([0.6, FIN_Y[0]]), 0.75, 1, { caps: [false, true] }), ROOT, C.wing);
+    for (const [y0, y1] of [[FIN_Y[1], 6.42], [12.38, 12.42], [16.58, 16.6]]) b.add(foilPiece(secs([y0, y1]), 0.75, 1), ROOT, C.wing);
     b.add(foilPiece(secs([16.6, TIP_Y]), 0, 1, { caps: [true, false] }), ROOT, C.wing);
 
     // Sharklet: a bend, then a swept blade up to the tip of the 35.8 m span.
@@ -540,21 +545,18 @@ export function createAircraft(opts = {}) {
       b.add(foilPiece(sk, 0, 1, { caps: [false, true] }), ROOT, C.navy);
     }
 
-    // Slats: one bone per wing, hinged along the leading edge. Two tracks a slat run back into the
-    // fixed leading edge (hidden there when the slats are in), so a slat that's out hangs on them.
+    // Slats: one bone per wing, hinged along the line through the fixed nose's centre at the first and
+    // last slats' ends. v0.4.1: they droop about it and no longer run out on tracks, so no slot opens
+    // between slat and wing (Shane: "close it up"); the round nose fills the slat's back. The panel
+    // lines between the outer four are slightly sunken fillers on the same bone, not open slots.
     const slatA = foilPoint(ws(2.62), 0.13, 0), slatB = foilPoint(ws(16.6), 0.13, 0);
     const slatAxis = slatB.clone().sub(slatA).multiplyScalar(side).normalize();
     const SL = bone('slats' + S, 'root', slatA, slatAxis);
-    const slatSegs = [[2.62, 5.18]];
-    for (let i = 0; i < 4; i++) slatSegs.push([6.32 + (i * (16.58 - 6.32)) / 4, 6.32 + ((i + 1) * (16.58 - 6.32)) / 4 - 0.04]);
-    for (const [y0, y1] of slatSegs) {
-      b.add(foilPiece(secs([y0, y1]), 0, 0.13), SL, C.metal);
-      for (const q of [0.25, 0.75]) {
-        const w = ws(y0 + q * (y1 - y0)), mid = foilPoint(w, 0.13, 0);
-        const xf = w.le.x - 0.06 * w.chord, xb = mid.x - SLAT_TRAVEL - 0.15;
-        b.add(boxAt((xf + xb) / 2, mid.y, mid.z, xf - xb, 0.05, 0.08), SL, C.metal);
-      }
-    }
+    const slatSegs = [[2.62, 5.18]], SW = (16.6 - 6.32) / 4;
+    for (let i = 0; i < 4; i++) slatSegs.push([6.32 + i * SW, 6.32 + (i + 1) * SW - (i < 3 ? 0.04 : 0)]);
+    for (const [y0, y1] of slatSegs) b.add(foilPiece(secs([y0, y1]), 0, 0.13), SL, C.metal);
+    const sunk = (w) => ({ ...w, le: w.le.clone().addScaledVector(w.c, 0.012 * w.chord), chord: w.chord * 0.988, t: w.t * 0.88 });
+    for (let i = 1; i < 4; i++) b.add(foilPiece([slatSegs[i][1], slatSegs[i + 1][0]].map((q) => sunk(ws(q))), 0, 0.14), SL, C.wingDark);
 
     // Trailing-edge surfaces: hinge at the surface's leading edge, mid-thickness. f0 may be a
     // function of the span (the inner flap's).
@@ -839,10 +841,8 @@ export function createAircraft(opts = {}) {
     for (const S of ['L', 'R']) {
       const arr = (S === 'L' ? s.spoilersL : s.spoilersR) || [];
       for (let i = 0; i < 5; i++) rot('spoiler' + (i + 1) + S, clamp(arr[i] || 0, 0, 1) * 50 * DEG);
-      // Slats: forward and down on their tracks, nose down.
-      const sl = clamp((state.slatDeg || 0) / 27, 0, 1.2);
+      // Slats: they droop about their hinge line, sealed against the fixed nose (v0.4.1: no travel).
       rot('slats' + S, (state.slatDeg || 0) * DEG * 0.85);
-      move('slats' + S, SLAT_TRAVEL * sl, 0, -0.1 * sl);
       // Fowler flaps: mostly aft travel first, then rotation.
       const fd = state.flapDeg || 0, tr = clamp(fd / 20, 0, 1);
       rot('flapIn' + S, -fd * DEG);

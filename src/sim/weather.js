@@ -159,6 +159,12 @@ const POE_SIGMA = {
   severe:   [15.6, 17.6, 23.0, 23.6, 22.1, 20.0, 16.0, 15.1, 12.1, 7.9, 6.2, 5.1],    // 10⁻⁵
 };
 const W20_KT = { light: 15, moderate: 30, severe: 45 };
+// v0.4.1: near the ground the turbulence comes from the wind, as the standard's low-altitude model has it (σw = 0.1·W20,
+// W20 the wind at 20 ft): the level scales the wind actually blowing (K_W20), with half the level's own W20 as a floor
+// (convection, a storm's). Before, the level's W20 alone set it: moderate turbulence in a 15 kt wind blew as if it were
+// 30 kt, and the crosswind swung through ±30° every few seconds.
+const K_W20 = { light: 0.7, moderate: 1.0, severe: 1.4 };
+const W20_FROM_10M = Math.pow(20 * 0.3048 / 10, 0.16);   // the power law below, from 10 m down to 20 ft
 
 function highSigmaFt(table, ft) {
   if (ft <= POE_ALT[0]) return table[0];
@@ -168,13 +174,15 @@ function highSigmaFt(table, ft) {
   return table[table.length - 1];
 }
 
-// σ (m/s) and L (m) at height hFt above the ground: { su, sw, Lu, Lw }.
-export function turbulenceScales(level, hFt, out = {}) {
+// σ (m/s) and L (m) at height hFt above the ground: { su, sw, Lu, Lw }. w20: the mean wind at 20 ft (m/s), for the low
+// altitudes' σ; without it (null) the level's W20 alone, the standard's light, moderate and severe.
+export function turbulenceScales(level, hFt, out = {}, w20 = null) {
   const table = POE_SIGMA[level];
   if (!table) { out.su = out.sw = 0; out.Lu = out.Lw = 1; return out; }
+  const W20 = w20 === null ? W20_KT[level] * KT : Math.max(0.5 * W20_KT[level] * KT, K_W20[level] * w20);
   const low = (ft) => {
     const h = Math.max(ft, 10), f = 0.177 + 0.000823 * h;
-    const sw = 0.1 * W20_KT[level] * KT;
+    const sw = 0.1 * W20;
     return { su: sw / Math.pow(f, 0.4), sw, Lu: h / Math.pow(f, 1.2) * FT, Lw: h * FT };
   };
   if (hFt <= 1000) { const a = low(hFt); out.su = a.su; out.sw = a.sw; out.Lu = a.Lu; out.Lw = a.Lw; return out; }
@@ -241,7 +249,7 @@ export function compileWeather(settings) {
     bDen: Math.pow(PROFILE_TOP_M / 10, PROFILE_ALPHA) - 1,
     gustAmp: Math.max(0, s.wind.gustKt - s.wind.kt) * KT, gustN, gustE,
     advSpeed: adv, advN: gustN * adv, advE: gustE * adv,
-    shear: null, level: s.turbulence, modes: null, bursts: null,
+    shear: null, level: s.turbulence, modes: null, bursts: null, w20: sp * W20_FROM_10M,
     dT: s.tempC - ISA_TEMP_C, qnhPa: s.qnh * 100,
     windOn: false, atmOn: s.tempC !== ISA_TEMP_C || s.qnh !== STD_QNH,
     tyres: runwayTyresOf(s),
@@ -329,7 +337,7 @@ export function windAt(C, x, y, z, agl, t, rn, re, span, W) {
   // Everything but the turbulence: what the speed trend reads.
   W.sn = n; W.se = e; W.sd = d;
   if (C.modes) {
-    turbulenceScales(C.level, h / FT, scales);
+    turbulenceScales(C.level, h / FT, scales, C.w20);
     if (scales.su > 0 || scales.sw > 0) {
       fillWeights(wLong, fLong, scales.su, scales.Lu);
       fillWeights(wTrans, fTrans, scales.sw, scales.Lw);

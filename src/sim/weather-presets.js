@@ -19,7 +19,11 @@ export const PRESETS = [
   { id: 'few-clouds', name: 'Few clouds', short: 'Few clouds', note: 'A light north-westerly under fair-weather cumulus' },
   { id: 'overcast', name: 'Overcast', short: 'Overcast', note: 'A grey, still day under two layers' },
   { id: 'rain', name: 'Rain', short: 'Rain', note: 'Moderate rain, a low ceiling, a wet runway' },
-  { id: 'thunderstorm', name: 'Thunderstorm', short: 'Thunderstorm', note: 'Heavy rain, lightning, microbursts near the airports' },
+  // v0.4.1: storms by severity (Shane: "storms can have severity settings instead of on/off"). 'thunderstorm' is the
+  // moderate one, so a plan saved with v0.4.0's id still has a storm.
+  { id: 'thunderstorm-light', name: 'Thunderstorm, light', short: 'Light storm', note: 'Showers and some lightning, a gusty breeze, light turbulence' },
+  { id: 'thunderstorm', name: 'Thunderstorm, moderate', short: 'Storm', note: 'Rain, lightning, gusts and moderate turbulence' },
+  { id: 'thunderstorm-severe', name: 'Thunderstorm, severe', short: 'Severe storm', note: 'Heavy rain, a strong gusty wind, severe turbulence, and a microburst near an airport now and then' },
   { id: 'snow', name: 'Snow', short: 'Snow', note: 'Below freezing, a low ceiling, a covered runway' },
   { id: 'fog', name: 'Fog', short: 'Fog', note: 'Dense radiation fog, clear above it' },
   { id: 'gusty-crosswind', name: 'Gusty crosswind', short: 'Crosswind', note: '25 kt gusting 35, straight across the arrival runway' },
@@ -41,16 +45,14 @@ function seeded(seed) {
   };
 }
 
-// Storm cells scattered 4 to 18 km round each airport: each a microburst, 2 or 3 to an airport.
+// A severe storm's microbursts: rare, as real ones are (v0.4.1; v0.4.0 put 2 or 3 round every airport, 30 to 60 kt, and
+// an approach nearly always met one). About one airport in three has one, 6 to 16 km out, 25 to 45 kt across 0.8 to 1.4 km.
 function stormCells(seed, ctx) {
   const list = ctx?.airports?.length ? ctx.airports : (Number.isFinite(ctx?.refX) ? [{ x: ctx.refX, y: ctx.refY }] : []);
   const rnd = seeded(seed ^ 0x53c0), out = [];
   for (const a of list) {
-    const n = 2 + (rnd() > 0.5 ? 1 : 0);
-    for (let i = 0; i < n; i++) {
-      const th = rnd() * 2 * Math.PI, d = 4000 + rnd() * 14000;
-      out.push({ x: a.x + d * Math.sin(th), y: a.y + d * Math.cos(th), radiusM: Math.round(800 + rnd() * 1000), dvKt: Math.round(30 + rnd() * 30) });
-    }
+    const has = rnd() < 1 / 3, th = rnd() * 2 * Math.PI, d = 6000 + rnd() * 10000, R = 800 + rnd() * 600, dv = 25 + rnd() * 20;
+    if (has) out.push({ x: a.x + d * Math.sin(th), y: a.y + d * Math.cos(th), radiusM: Math.round(R), dvKt: Math.round(dv) });
   }
   return out;
 }
@@ -73,9 +75,19 @@ export function presetWeather(id, ctx) {
       s = base({ seed: 13, wind: { fromDeg: 200, kt: 14, gustKt: 22 }, aloft: { fromDeg: 235, kt: 38 }, turbulence: 'light',
         visM: 4000, clouds: [layer(6, 1200, 3000), layer(8, 3500, 14000)], precip: { kind: 'rain', rate: 0.5 }, tempC: 12, qnh: 1006 });
       break;
+    // Storms by severity (v0.4.1). The wind at the surface is gusty but holds its direction: the turbulence near the
+    // ground follows the wind (weather.js), so it swings the crosswind by about a fifth of the wind, not a third.
+    case 'thunderstorm-light':
+      s = base({ seed: 18, wind: { fromDeg: 220, kt: 10, gustKt: 18 }, aloft: { fromDeg: 255, kt: 32 }, turbulence: 'light',
+        visM: 9000, clouds: [layer(4, 3000, 6000), layer(6, 5000, 26000)], precip: { kind: 'rain', rate: 0.25 }, lightning: 0.35, tempC: 21, qnh: 1004 });
+      break;
     case 'thunderstorm':
-      s = base({ seed: 14, wind: { fromDeg: 230, kt: 16, gustKt: 30 }, aloft: { fromDeg: 265, kt: 45 }, turbulence: 'moderate',
-        visM: 8000, clouds: [layer(4, 2500, 6000), layer(7, 4000, 32000)], precip: { kind: 'rain', rate: 0.85 }, lightning: 0.7, tempC: 19, qnh: 1001 });
+      s = base({ seed: 14, wind: { fromDeg: 230, kt: 14, gustKt: 26 }, aloft: { fromDeg: 265, kt: 40 }, turbulence: 'moderate',
+        visM: 6000, clouds: [layer(4, 2500, 6000), layer(7, 4000, 32000)], precip: { kind: 'rain', rate: 0.55 }, lightning: 0.65, tempC: 19, qnh: 1001 });
+      break;
+    case 'thunderstorm-severe':
+      s = base({ seed: 19, wind: { fromDeg: 240, kt: 20, gustKt: 38 }, aloft: { fromDeg: 270, kt: 50 }, turbulence: 'severe',
+        visM: 2500, clouds: [layer(5, 1800, 5000), layer(8, 3000, 40000)], precip: { kind: 'rain', rate: 0.9 }, lightning: 0.9, tempC: 22, qnh: 997 });
       s.microbursts = stormCells(s.seed, ctx);
       break;
     case 'snow':

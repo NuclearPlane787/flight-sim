@@ -72,6 +72,7 @@ Numbered as in the planning questions, in his words where it matters.
 - **The runways:** dry, wet, snow-covered or icy, as factors on the tyres' grip, braking and rolling drag (`RUNWAY_TYRES`), automatic from the precipitation and temperature or set.
 - **The look:** the haze's constants became uniforms (visibility by Koschmieder's law, fog with a top), flat cloud layers (`src/world/clouds.js`), the overcast light, rain, snow and windshield drops (`src/world/precip.js`), lightning, wet and snowy ground, and runway lights reflected on a wet runway at night. Clear weather draws exactly as v0.3.2 did. Volumetric clouds are a later step.
 - **The sound:** rain on the skin, thunder late by the strike's distance, gusts in the wind's noise, and the Boeing's windshear siren.
+- **v0.4.1** (Shane, 2026-11-10: "I presume crosswinds don't change in direction as quickly as the current sim does, and microbursts are quite rare to my knowledge? Keep as is but let it be more reflective of how real storms 'behave'. Maybe storms can have severity settings instead of on/off."): storms are three presets, light, moderate and severe (`thunderstorm` stays the moderate one's id, for saved plans), and only a severe storm has microbursts, at about one airport in three. Below 1,000 ft the turbulence's σw is 0.1 × W20, the standard's form, with W20 the wind at 20 ft scaled by the level (0.7, 1, 1.4) and half the level's own W20 as a floor; above 2,000 ft it's the exceedance curves, as before.
 
 ## The aircraft: A321neo
 
@@ -216,7 +217,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
     - each inboard flap's leading edge runs behind the main gear's leg (`FLAP_IN_LE_X` in `aircraft.js`, `inboardFlapLE()` in `widebody.js`), so fixed structure carries the gear, as on the real aircraft;
     - the A321neo's wing sits where Airbus's AC top view draws it (`WING.rootX`, 1.03 m further aft than v0.1.0 to v0.3.0 had it): its root's trailing edge 1.33 m behind the main gear;
     - the spoilers overhang the flaps by the flaps' travel less a slot, with fixed shrouds where there's no spoiler, so a flap that's out leaves a slot, not an open gap;
-    - the fixed leading edge behind the slats is rounded, and each slat runs on two tracks; the flaps have rounded noses;
+    - the fixed leading edge behind the slats is rounded, and each slat runs on two tracks; the flaps have rounded noses. **v0.4.1** (Shane: "The flaps on the front of the wing still produce an air gap. I would say close it up."): the slats droop about their hinge line, the centre of the fixed leading edge's round nose, so they stay sealed against it at any angle; no tracks, no slot. The narrow gaps between slats, and between the trailing-edge surfaces, are filled, and the 777's wing box reaches its ailerons' ends (it stopped short, a hole in the wing);
     - the flap track fairings' aft parts hinge down from their fixed fronts, instead of riding away with the flaps.
   - **Gear doors** are panels with an inside (`slab()` in `aircraft.js`), so they show from both sides when they open (v0.3.1).
 - **Nuclear Airlines:**
@@ -282,6 +283,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
   - runways with ICAO markings (threshold, designators, centreline, touchdown zone, aiming point, edges);
   - edge, centreline, threshold, end and touchdown zone lights, approach lights and PAPIs;
   - taxiways with yellow centrelines and hold-short markings;
+  - **v0.4.1:** taxiway and runway signs (Shane: "the taxiways don't have any markings on them, or signals for that matter in the grass"): where named taxiways meet, an array on the left of each named way in (a location sign between direction signs, ICAO's layout), the name painted before the junction, and a mandatory sign at each runway holding position (`src/world/taxisigns.js`);
   - aprons, numbered stands with lead-in lines, and static jet bridges;
   - terminals and hangars, extruded from their footprints.
 - **Life:**
@@ -321,6 +323,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
   - a grade.
 - **Logbook** in localStorage: date, route, gate and runways, time in the air (sim time), fuel used, and the landing score.
 - **Crashes** (ground or water contact away from a runway, a landing hard enough to break the gear, a tail strike): rewind 30 s from a ring buffer of states, or restart the flight.
+- **Indestructible** (v0.4.1, a setting; Shane: "maybe we could add an option somewhere that makes the plane indestructible"): no crash ends the flight. Each would-be crash is a `damage` event (a message, and the card's "Would have crashed", costing as much as missing the runway), and the crash points are skids: a stiff, damped spring each under the ground, with metal-on-ground friction. The setting is the player's, not the flight's: a snapshot carries it only for the prediction, and `main.js` applies its own after every restore.
 
 ## Controls
 
@@ -335,7 +338,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 | G | gear lever |
 | 6 / 7 / 8 / 9 / 0 | flap lever 0, 1, 2, 3, FULL (Boeings: UP, 5, 15, 20, 30) |
 | [ / ] | flap lever one detent up / down |
-| H / Y (hold) | Boeings: pitch trim nose up / nose down |
+| H / Y (hold) | Boeings: pitch trim nose up / nose down (nothing with v0.4.1's Boeing auto-trim on, in Settings: the path holds itself, as the A321's does) |
 | O | Boeings: TO/GA |
 | C | speed brakes in / out |
 | Shift+C | arm ground spoilers |

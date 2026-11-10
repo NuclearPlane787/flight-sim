@@ -133,6 +133,7 @@ export const COST = {
   bounces: (n) => 0.2 * n,
   grass: 0.35,      // the first main wheels landed on the grass (short of the runway or off its side)
   offRunway: 2.3,   // not on a runway at all: a perfect touchdown on a taxiway scores 10
+  crash: 2.3,       // v0.4.1: Indestructible kept together what would have crashed (a damage event): as off a runway
   // The approach (approachStats below). RMS dots off the PFD's glideslope and localizer from
   // 1,000 ft to 100 ft: 0.25 → 0.007, 0.5 → 0.03, 1 → 0.12, 2 → 0.48 (full scale all the way).
   path: (dots) => sq(dots / 2.9),
@@ -142,6 +143,8 @@ export const COST = {
 };
 
 export const pointsFor = (cost) => Math.round(100 * Math.exp(-cost));
+// v0.4.1: the sim's crash reasons, short enough for the card's value column.
+export const DAMAGE_SHORT = { 'hard landing: gear collapsed': 'gear collapsed', 'nose gear collapsed': 'nose gear', 'ran off the runway': 'off the runway' };
 
 // The approach, measured on the track the scorer keeps: the same 3° glideslope from 300 m
 // past the threshold and the same localizer from the far end as the PFD shows (1 dot = 0.4°
@@ -241,6 +244,9 @@ export function createScorer() {
   let bounces = 0;
   let airborneSince = null;
   let result = null;
+  // v0.4.1: what would have crashed (the sim's damage events, with Indestructible on): [{ t, reason }], the
+  // last few since the lift-off. Those from 10 s before the touchdown to the end of the rollout count.
+  let damage = [];
   // The track for the approach: a sample every 0.25 s in the air, the last 5 minutes.
   let track = [], lastSampleT = -Infinity;
   const clearTrack = () => { track = []; lastSampleT = -Infinity; };
@@ -252,7 +258,7 @@ export function createScorer() {
     setRunway(end, other) {
       rf = end && other ? runwayFrame(end, other) : null;
       landing = end && other ? { runway: null, end, other } : null;
-      td = null; result = null; bounces = 0; peakG = 0;
+      td = null; result = null; bounces = 0; peakG = 0; damage = [];
     },
     // At the touchdown: the runway it was on (landingRunway()), or null for none.
     setLanding(l) {
@@ -266,7 +272,7 @@ export function createScorer() {
     // keepTrack: after a rewind, the approach flown before the rewound-to moment still counts.
     reset(keepTrack = false) {
       td = null; result = null; bounces = 0; peakG = 0; airborneSince = null;
-      if (!keepTrack) clearTrack();
+      if (!keepTrack) { clearTrack(); damage = []; }
     },
 
     // ---- scenario saves (v0.2.0) ----
@@ -286,6 +292,7 @@ export function createScorer() {
         landing: landing ? { ...ref(landing.end), from: landing.runway || td ? 'touchdown' : 'plan' } : null,
         td: td ? jsonSafe(td) : null,
         peakG, bounces, airborneSince,
+        ...(damage.length ? { damage: damage.map((d) => ({ t: d.t, reason: d.reason })) } : {}),
         result: result ? jsonSafe({ ...result, touchdown: null }) : null,
         // [t, x, y, z, vs, gs] per sample (t exact: the 0.25 s spacing and the 5-minute window use it)
         track: track.map((p) => [p.t, r2(p.x), r2(p.y), r2(p.z), r3(p.vs), r3(p.gs)]),
@@ -296,8 +303,9 @@ export function createScorer() {
     // airports' own end objects), or null, which leaves no runway (and so no approach parts).
     load(o, resolveEnd) {
       rf = null; landing = null; td = null; result = null; peakG = 0; bounces = 0; airborneSince = null;
-      clearTrack();
+      clearTrack(); damage = [];
       if (!o) return;
+      damage = Array.isArray(o.damage) ? o.damage.map((d) => ({ t: d.t, reason: String(d.reason) })) : [];
       if (o.landing && resolveEnd) {
         const r = resolveEnd(o.landing.icao, o.landing.ident, { x: o.landing.x, y: o.landing.y });
         if (r && r.end && r.other) {
@@ -320,8 +328,13 @@ export function createScorer() {
         while (track.length && track[track.length - 1].t > s.t) track.pop();
         lastSampleT = track.length ? track[track.length - 1].t : -Infinity;
       }
-      // A lift-off (the take-off, or a touch-and-go) starts a new approach.
-      for (const e of events) if (e.type === 'liftoff') clearTrack();
+      // A lift-off (the take-off, or a touch-and-go) starts a new approach. A rewind takes back the damage
+      // after the moment it went back to.
+      if (damage.length && s.t < damage[damage.length - 1].t) damage = damage.filter((d) => d.t <= s.t);
+      for (const e of events) {
+        if (e.type === 'liftoff') { clearTrack(); if (!td) damage = []; }
+        if (e.type === 'damage' && !result) { damage.push({ t: s.t, reason: e.reason }); if (damage.length > 10) damage.shift(); }
+      }
       if (!td && !s.onGround && s.t - lastSampleT >= APPROACH.sampleS) {
         lastSampleT = s.t;
         track.push({ t: s.t, x: s.pos.x, y: s.pos.y, z: s.pos.z, vs: s.vs, gs: s.gs });
@@ -334,6 +347,7 @@ export function createScorer() {
             bank: Math.abs(e.bank) * DEG, pitch: e.pitch * DEG, ias: s.ias * 1.943844, t: s.t, onRunway: !!rf,
             surface: e.surface || 'runway',
             wind: windAtTouchdown(s, rf),
+            ...(s.indestructible ? { indestructible: true } : {}),
             approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0, groundZ) : null };
           peakG = e.g;
         } else if (e.type === 'touchdown' && td && !result) {
@@ -371,11 +385,15 @@ export function createScorer() {
         add('Sink rate swings', Math.round(ap.swingFpm), 'ft/min', COST.swing(ap.swingFpm));
       }
       if (!td.onRunway) add('On a runway', 'no', '', COST.offRunway);
+      // v0.4.1: Indestructible held it together, from 10 s before the touchdown on.
+      const dmg = damage.filter((d) => d.t >= td.t - 10).map((d) => d.reason);
+      if (dmg.length) add('Would have crashed', DAMAGE_SHORT[dmg[0]] || dmg[0], '', COST.crash);
       const cost = parts.reduce((a, p) => a + p.cost, 0);
       const points = pointsFor(cost);
       sharePoints(parts, points);
       result = { points, grade: grade(points), parts, cost: +cost.toFixed(4), touchdown: td, offRunway: !td.onRunway,
-        runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim, approach: ap };
+        runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim, approach: ap,
+        ...(td.indestructible ? { indestructible: true } : {}), ...(dmg.length ? { damage: [...new Set(dmg)] } : {}) };
       return result;
     },
   };

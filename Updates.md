@@ -4,6 +4,16 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.4.1 · 2026-11-11 · Fixes: the wings, landing the 777, storms, and signs on the taxiways
+
+- **No more hole in the 777's wings.** Each had a gap in front of the aileron, just inboard of the raked tip, with the sky showing through it. It's closed, and so are the narrow slots between the slats, and between the flaps and ailerons, on all three aircraft.
+- **The slats seal against the wing.** They droop from the leading edge instead of running out on tracks, so there's no air gap behind them any more.
+- **Indestructible**, in Settings (also from the pause menu): no crash ends the flight. The gear holds a hard landing, a tail strike scrapes, a belly landing slides to a stop on the fuselage, and a wingtip bounces off the ground. A message says what would have crashed, and the landing card says so too: it's marked, and a landing that would have been a crash scores as low as one off the runway. The logbook marks these landings. The crash screen points to it.
+- **Boeing auto-trim**, in Settings: the 787 and 777 hold their flight path when you let go, as the A321 does. With the flaps for landing, W and S nudge the path instead of pulling g, so a tap makes a small change that stays; the autothrottle looks after the speed. Turned off, they fly as before. In a test with the keys alone, a 777 final stayed within 19 m of the glide path with it on, and wandered 165 m off with it off.
+- **Storms come in three strengths:** light, moderate and severe (in the Weather tab, and in the setup). Microbursts come only with a severe storm, and rarely: about one airport in three has one, 6 to 16 km out. Before, every storm put two or three round every airport.
+- **Gusty winds hold their direction better.** Near the ground the turbulence now grows with the wind that's actually blowing, as it does in reality. In a moderate storm's 14 kt wind the crosswind swings about half as much as before. A strong wind is as bumpy as before, or a little more.
+- **Signs on the taxiways.** Where named taxiways meet, a row of signs in the grass on your left shows the taxiway you're on (yellow on black) and where the others go (black on yellow, with arrows). The name is painted on the taxiway before the junction too. Every runway holding position has a red sign with the runway's numbers. They're lit at night, and the taxi instructions' names are the ones on the signs. Taxiways without a name in the map data have no signs.
+
 ## v0.4.0 · 2026-11-10 · The weather
 
 - **Weather, from the L window's new Weather tab** (Sky · Weight · Weather). It has eight presets: clear, few clouds, overcast, rain, thunderstorm, snow, fog, and a gusty crosswind straight across your arrival runway. Every setting is under them:

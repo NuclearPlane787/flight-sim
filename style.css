@@ -67,6 +67,7 @@ html, body {
 .panel h1 { color: var(--green); font-size: 28px; }
 .panel h2 { font-size: 20px; }
 .panel p { color: var(--dim); }
+.panel p.crash-hint { font-size: 13px; margin-top: -4px; }
 .panel a { color: var(--blue); }
 .small { font-size: 12px; }
 [hidden] { display: none !important; }
