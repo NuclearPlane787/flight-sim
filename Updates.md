@@ -4,6 +4,14 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.4.4 · 2026-11-13 · A wide view, the view switch in the cockpit, living auroras, and the gear tucked away
+
+- **Hide panels:** a switch at the top left hides the PFD, the ND and the engine panel for a wide view, and Show panels brings them back. The FCU (or MCP) and the view switch stay, and the choice is kept for next time.
+- **The view switch stays at the top right in the cockpit.** The seat's label (CPT or F/O) made it too wide to fit beside the FCU, so it jumped to the bottom of the screen. Now its text gets a little smaller first, and on a narrow window it sits just under the top row, still at the right, with the panels on that side starting below it.
+- **The auroras move like auroras.** Their folds open and close in slow waves that run along the curtains, ripples run along the lower edge, the shapes change as they go instead of only sliding sideways, and each arc slowly brightens and fades.
+- **The Boeings' main gear tucks into the wing.** With the gear up, the top of each main leg hung just under the wing near the body, a cylinder you could see from a level view. The legs now fold up inside the wing, and their doors close flush.
+- **The A321's flight setup uses the sim's weights:** its empty weight read 400 kg light, and fuel above the tanks' 18,510 kg was quietly cut. Now the setup shows what the sim flies.
+
 ## v0.4.3 · 2026-11-13 · Shane's findings: the wings in flight, the engines, the 777's pitch, and auroras
 
 - **No more gaps at the Boeings' slats and flaps in flight.** As the wing bent up under the lift, each slat and flap turned the bend with its own angle, so on a 787 final the outer slats stood about half a metre off the wing, the flaps and flaperons a little, and a 777's outer flaps looked detached. Now everything on the wing rises with it.

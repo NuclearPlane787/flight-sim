@@ -53,7 +53,13 @@
 .fsui-views .fsui-seat:empty { display: none; }
 .fsui-views.compact kbd { display: none; }
 .fsui-views.compact button { padding: 0 0.55em; }
-.fsui-views.low { top: auto !important; right: auto !important; bottom: 12px; left: 50%; transform: translateX(-50%); }
+/* v0.4.4: the panels switch, top left, the view switch's twin. Under the top row (hud.js) when the FCU leaves no room. */
+.fsui-panels-box { position: absolute; display: flex; align-items: stretch;
+  background: rgba(38, 44, 50, 0.92); border: 1px solid #4a535b; border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+.fsui-panels-box button { display: flex; align-items: center; padding: 0 0.75em; font: 600 1em var(--font);
+  color: #d8dde1; background: #1b2530; border: 1px solid #33414f; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.fsui-panels-box button:hover { background: #243241; border-color: #46596b; }
+.fsui-panels-box button.on { color: #d8dde1; }
 
 /* The path map */
 .fsui-map { position: absolute; inset: 0; background: rgba(2, 6, 12, 0.9); pointer-events: auto; overscroll-behavior: none;

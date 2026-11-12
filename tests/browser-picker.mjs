@@ -44,7 +44,7 @@ try {
   let cs = await cards(page);
   check('the three types, the A321neo selected', cs.length === 3 && cs[0].id === 'a321neo' && cs[0].on && cs.filter((c) => c.on).length === 1 && cs.every((c) => c.img), JSON.stringify(cs));
   check('sub line', (await sub(page)) === 'A321neo · Nuclear Airlines · HL8787', await sub(page));
-  check('limits are the A321\'s', (await fld(page, 'pax')).max === 244 && (await fld(page, 'cargoKg')).max === 9000 && (await fld(page, 'fuelKg')).max === 18864);
+  check('limits are the A321\'s', (await fld(page, 'pax')).max === 244 && (await fld(page, 'cargoKg')).max === 9000 && (await fld(page, 'fuelKg')).max === 18510);   // v0.4.4: the sim's tanks
   let fit = await fits(page);
   check('1440×900: Fly on screen', fit.fly, JSON.stringify(fit));
   await shot(page, 'v030-picker-a321.png');
@@ -105,7 +105,7 @@ try {
   await page.dispatchEvent('[data-f="fuelKg"]', 'change');
   await page.click('.fsui-tc[data-type="a321neo"]');
   check('over-limit load goes to the default', (await fld(page, 'pax')).value === 190 && (await fld(page, 'cargoKg')).value === 1500, JSON.stringify([await fld(page, 'pax'), await fld(page, 'cargoKg')]));
-  check('over-full fuel comes down', (await fld(page, 'fuelKg')).value <= 18864, (await fld(page, 'fuelKg')).value);
+  check('over-full fuel comes down', (await fld(page, 'fuelKg')).value <= 18510, (await fld(page, 'fuelKg')).value);
   check('Fly is enabled', await page.$eval('[data-a="fly"]', (b) => !b.disabled));
 
   // Validation uses the selected type's numbers.

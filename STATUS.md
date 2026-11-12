@@ -2034,3 +2034,43 @@ v0.4.0 was pushed (`c4aac7c`) before this was synced; the Mac's tree was v0.4.0'
 - the Games project doc.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.4.3`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome). Then v0.5.0 from `HANDOFF.md`'s first section.
+
+## 2026-11-13, 03:15 KST: v0.4.4, small things before v0.5.0, built and written up (Cowork session)
+
+**Shane** (2026-11-13, after pushing v0.4.3 as `1f04a03`): "Work on v0.4.4 for around 30 minutes since I want to put CC to work on v0.5.0 overnight. 1. Anything appropriate from your list. 2. The auroras do have small amounts of movement but it is sideways and they remain the same shape. Maybe have them undulate slowly and look sort of mystical. 3. See the first image. You can see that the landing gear attachment point is visible off the wing from level view. Have it be integrated into the wing I suppose. 4. When in cockpit view, still keep the view change panel in the top right instead of bottom center. 5. Add a switch on screen (maybe on top left?) that hides the left and right big panels, but not the top panels. I might want to get a wide view sometimes." The list was the one in the reply before: the Boeings' late lift-off, their take-off trim, the A321's setup weights, and (optional) the A321's pitch after a press.
+
+### What changed
+
+1. **Hide panels** (`src/ui/hud.js`, `src/ui/ui.css`): a switch at the top left, the view switch's twin, hides the PFD, the ND and the engine panel (EICAS); the FCU or MCP and the view switch stay. Hidden panels aren't drawn. Kept as `hidePanels` in `gamedump:flight-sim:settings`, so a reload keeps the wide view.
+2. **The view switch in the cockpit** (`placeViews()` in `hud.js`): in a seat its label (CPT or F/O) made it too wide for the room beside the FCU, so it fell to the bottom centre (the A321 at 1440 × 900: 273 px against 250). Now: beside the FCU; then without its key caps; then a smaller font, down to 72 %; and only then just under the top row, still at the right, with the ND and engine panel starting under it. The bottom centre (`low`) is gone. The side panels now always start under their corner's switch: the A321's ND used to tuck 6 px under the view switch.
+3. **The aurora undulates** (`aurora()` in `src/world/sky.js`): each curtain's azimuth sways in slow waves that run along it (periods of about 30 and 50 s), so the folds open and close and the rays lean with them; ripples run along the lower edge (about 18 s); the folds' noise moves through time, not only sideways, so the shapes change; each arc breathes in height (±18 %) and brightness (±30 %), and the arc factor's floor went from 0.08 to 0.25 so the display never goes nearly dark at once. Brightness over five frames 15 to 80 s apart (mean green over the sky, `v044-aurora.cjs`): v0.4.3 28.6, v0.4.4 30.3.
+4. **The Boeings' main gear folds into the wing** (`mainPivotZ` in `src/widebody-specs.js`): folded, the top of each main leg lay just under the wing's skin near the body, a grey cylinder from a level view (Shane's picture). The pivot is 0.45 m higher on both (787 −1.25 → −0.80 m, 777 −1.75 → −1.30 m): folded, the leg lies inside the wing and its door closes about flush; extended, the leg, side stay and drag brace look as before below the wing, and nothing comes through the top.
+5. **The A321's setup weights** (`src/sim/types.js`): OEW and fuel from `sim/a321neo.js` (50,500 and 18,510 kg), not v0.1.0's 50,100 and 18,864. The three tests that pinned the old numbers say why they changed.
+
+**From the list, not done:**
+
+- **The Boeings' lift-off and take-off trim are one job.** Measured again with the performance tests' pilot (3°/s to 8°): the 787 lifts off 16 to 20 kt after VR, the 777 16 to 19 kt, at 6 to 7° of pitch. `takeoffThs()` trims more nose-up the further aft the CG (+20° per unit of MAC) on all three types, and at their default loads the Boeings' CGs are aft (787 34.1 %, 777 32.5 % MAC; stab +0.72° and +0.39°), so turning the formula round alone would trim them more nose-down and make the lift-off later still. It needs a trim for the climb at V2 + 10 and a look at the rotation, with the take-off distance bands: not a 30-minute job. In ROADMAP, with the note that v0.5.0's golden flights will record today's behaviour.
+- **The A321's pitch after a press:** not changed. The Boeings' cap would move the A321's golden flight on the eve of v0.5.0.
+
+### Checks
+
+- **Unit tests: 674/674 on the Mac through the guard after the sync** in 15 s (peak 0.64 GB), and the sweep found nothing running. None new; three updated for the A321's weights. In the container 673/674: the 16× time-compression budget test read 20.2 µs per step against its 20 while three Chromium renders ran beside it (timing only).
+- **`tests/cloud/v044-hud.cjs`** (new): the A321 at 1440, 1280 and 1024 wide and the 777 at 1440, in the cockpit (both seats): the switch top right and clear of the FCU and the ND (1440 and 1280 in the top row with a smaller font, 1024 under it); the panels switch clear of the FCU; a real click hides the three panels and not the FCU or the switch; still hidden after a reload; a click shows them again. All passed, and in a second run the 777 at 1024 (the switch under the MCP's row: all six checks) and at 1280 (in the top row): all ok. Some SwiftShader screenshots failed ("Unable to capture screenshot"), not the checks.
+- **Pictures looked at,** in `Claude outputs/flight-sim/`: `v044-hud.jpg` (the 777 at 1440 in the F/O's seat with the switch top right; the side panels hidden; the A321 at 1024 with the switch under the top row), `v044-aurora-sequence.jpg` (five frames 0 to 80 s, v0.4.3 beside v0.4.4: then the same shapes slid sideways, now they change), `v044-gear-before-after.jpg` (both Boeings gear up from behind and behind-left, level: the cylinder gone) and `v044-gear-down-before-after.jpg` (extended, side and behind: the same).
+
+### Not checked by anyone
+
+- **The aurora moving on a real GPU:** judged from stills on SwiftShader.
+- **The HUD on the Mac's screen,** and the panels switch with the performance bar (F3) showing.
+- **Flying it.**
+
+### Written up
+
+- `src/version.js`: `Flight Sim v0.4.4 · CL#261113`;
+- `Updates.md`; `README.md` (the aurora's motion, Hide panels in the keys table);
+- `ROADMAP.md`: v0.4.4 in the plan, done; "Found while building v0.4.4"; the A321's setup weights struck through;
+- `AGENTS.md`: State;
+- `HANDOFF.md`: where you start (v0.4.3 pushed, v0.4.4 to push), "v0.4.4: small things before v0.5.0", and the v0.5.0 brief's golden flights recorded from v0.4.4's code (they said v0.4.0's);
+- the Games project doc.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.4.4`, then Cmd+Shift+R in the app. Then v0.5.0 from `HANDOFF.md`'s first section.

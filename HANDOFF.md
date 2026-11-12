@@ -18,8 +18,8 @@ Your last job is to rewrite this section for the session after you (v0.6.0 in th
 
 ### Where you start
 
-- **v0.4.2 is pushed** (`8381dfa`). **v0.4.3, Shane's findings from testing v0.4, was written up and ready to push** when this was last updated (2026-11-13). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
-- **Passing at v0.4.3:**
+- **v0.4.3 is pushed** (`1f04a03`). **v0.4.4, small things before v0.5.0, was written up and ready to push** when this was last updated (2026-11-13, 03:15 KST). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **Passing at v0.4.4:**
   - 674 unit tests (`node --test tests/*.test.mjs`, about 15 s on the Mac through the guard);
   - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weather-final.cjs` 20/20, `weight-copy.cjs`, `athr-lever.cjs` and `route-views.cjs` all pass;
   - at v0.4.0, on the Mac's GPU (the run): 60 fps in heavy rain at night, a thunderstorm and fog. v0.4.1's signs add a draw call an airport (four, from three); v0.4.2's wiper adds one in a seat in the rain, and the spray one on a wet runway. Not measured on the Mac since.
@@ -50,7 +50,7 @@ ROADMAP's v0.5.0 row is Claude's proposal: "the three types rebuilt from parts a
 
 Model it on `V040.md`, and on `V030.md` for rebuilding the types without changing them. Its parts, in order:
 
-1. **Golden flights for the 787-9 and the 777-300ER,** recorded from v0.4.0's untouched code, as v0.3.0 recorded the A321's (`tests/golden-a321-flight.mjs`).
+1. **Golden flights for the 787-9 and the 777-300ER,** recorded from the pushed version's code (v0.4.4) before anything else changes, as v0.3.0 recorded the A321's. They record the Boeings' late lift-off as it is (ROADMAP's "Found while building v0.4.4": fixing it later means recording them again) (`tests/golden-a321-flight.mjs`).
 2. **The parts model in the sim:** the types as parts (the engines with their position, thrust, weight, fuel burn and sound; the gear; the tanks), with all three golden flights unchanged to 1e-9 and every old assertion unchanged.
 3. **Engines by count:** the sim's core (two engines by name today), the A/THR, the engine panel and the EICAS, the synth; a save from before v0.5.0 loads as it was.
 4. **The warehouse:** its page and 3D view, designs saved and in the picker, scenarios keeping their design.
@@ -258,6 +258,16 @@ From a read of the code on 2026-11-10. Check the line numbers, which drift.
 | `src/world/spray.js` | `createSpray(GEAR, uniforms)`, `sprayAmount()`: instanced sprites per leg in the model's frame, a function of a clock (no per-frame state). |
 | `tests/cloud/v042-shots.cjs` | v0.4.2's pictures, some against v0.4.1 served beside it as `games/flight-sim-041/`. |
 | New tests | `boeing-autotrim-787`, `yaw-approach`, `windshear-ahead`, `spray`; `boeing-autotrim`, `indestructible`, `taxisigns`, `weather-autoland` (tightened) and `weather-precip` grew. |
+
+### v0.4.4: small things before v0.5.0
+
+| Where | What |
+|---|---|
+| `src/ui/hud.js`, `src/ui/ui.css` | `panelsBox`: Hide panels / Show panels at the top left, the view switch's twin; hides the PFD, ND and engine panel (not drawn while hidden), kept as `hidePanels` in `gamedump:flight-sim:settings`. `placeViews()` places both corners and the side panels: the view switch beside the FCU, compact, then a smaller font (to 72 %), then just under the top row (`under`); the side panels start under their corner's switch. The `low` class (the bottom centre) is gone. |
+| `src/world/sky.js` | `aurora()`: the curtain's azimuth `w` sways (monotonic in az), ripples on the lower edge, the folds' noise moves in time, the arcs breathe (`tall`, `glow`), and the arc factor never drops below 0.25. |
+| `src/widebody-specs.js` | `mainPivotZ` 0.45 m higher on both Boeings (787 −0.80, 777 −1.30): folded, the main leg lies inside the wing and its door closes about flush; extended, nothing changes below the wing. |
+| `src/sim/types.js` | The A321's setup limits: `OEW` and `FUEL_MAX` from `sim/a321neo.js` (50,500 and 18,510 kg). |
+| `tests/cloud/v044-hud.cjs`, `tests/cloud/v044-aurora.cjs` | New: the switch and the panels switch for two types at three window sizes, through a reload; the aurora over time, then and now (the shader's clock pinned per frame). |
 
 ### v0.4.3: Shane's findings from testing v0.4
 

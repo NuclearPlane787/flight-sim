@@ -150,6 +150,7 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.4.1 | **Fixes** (Shane, 2026-11-10): the 777's wingtip hole and the slats' gap; landing the 777 (Indestructible and Boeing auto-trim in Settings); storms more like real ones, in three strengths; taxiway and runway signs. | **done** (2026-11-11) |
 | v0.4.2 | **The known list** (Shane, 2026-11-12: "do your list for v0.4.2"): the "Found while building" items below that fit a third-decimal version: the crash screen's Indestructible button, auto-trim's flare law and trim switches, more skids and a hard stop for Indestructible and a card after a gear-up landing, the Boeing autoland's alignment and rollout, runway exit and distance remaining signs, snow over the taxiway paint, broken cloud far off (checked, left as it was), predictive windshear, hydroplaning, wipers and spray. Shane's own findings from flying v0.4.1 go in v0.4.3. | **done** (2026-11-12) |
 | v0.4.3 | **Shane's findings from testing v0.4** (2026-11-12): the 787's and 777's slats and flaps standing off the bent wing in flight, the engines' see-through edges and off-centre fans, the 777's pitch settling after an input (to the 787's), and auroras on every clear night. | **done** (2026-11-13) |
+| v0.4.4 | **Small things before v0.5.0** (Shane, 2026-11-13): a switch that hides the side panels; the view switch kept at the top right in the cockpit; the auroras undulating; the Boeings' main legs folded into the wing; the A321's setup weights. | **done** (2026-11-13) |
 | v0.5.0 | **The parts model and a first warehouse** (row 1): the three types rebuilt from parts and flying exactly as now (golden flights, as v0.3.0 did); the warehouse changes engine count and placement, thrust, weight and fuel, and saves designs that show in the aircraft picker. Off-centre thrust yaws, more engines burn more fuel, and too much thrust for a pylon breaks it. Changing the wing (aerodynamics from its shape) comes later. | |
 | v0.6.0 | **East Asia: Korea's region grows** (row 13): Shanghai Pudong, Tokyo Haneda and Narita, in Korea's own map frame. The terrain moves to tiles at several resolutions, read from the game's folder as you fly, which every later region needs. | |
 | v0.7.0 | **The regions, and Europe** (row 13): the region picker and everything per region (above); Heathrow, Charles de Gaulle, Frankfurt, Madrid and Zurich. | v0.6.0 |
@@ -165,6 +166,14 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.17.0 | **More airliners** (row 3): the A330, 737 and 747; the 737 and 747 need conventional (not fly-by-wire) controls. | v0.5.0 |
 | v0.18.0 | **The cabin** (row 2): walking while the autopilot flies, in a cabin that moves with the aircraft (turbulence makes you stagger); passengers as many as the Weight tab says, and crew; one type first (the 777-300ER). | |
 | any time | **Replays and the flight recorder** (row 14), and **challenges** (row 15): a first set after v0.4.0, more with failures. | v0.4.0 for the challenges |
+
+## Found while building v0.4.4 (left for later)
+
+From the session's entry (`STATUS.md`, 2026-11-13):
+
+- **The Boeings' take-off trim and their late lift-off are one job, not two.** The trim's formula is the A321's (`takeoffThs()` in `sim.js`, +20° per unit of MAC: more nose-up the further aft the CG), and the Boeings lift off 16 to 20 kt after VR (measured again: 787 +16 to +20 kt, 777 +16 to +19 kt, at 6 to 7° of pitch). At their default loads the CG is aft (787 34.1 %, 777 32.5 % MAC), so turning the formula the right way round alone would trim more nose-down and make the lift-off later still. It wants a trim for the climb at V2 + 10 and a look at the rotation itself, with the performance tests' distance bands. v0.5.0's golden flights will record today's behaviour, so fixing it afterwards means recording the Boeings' golden flights again.
+- **The A321's pitch after a press** (1.4° on, 1.3° back over about 3 s) wasn't changed: the cap the Boeings got in v0.4.3 would move the A321's golden flight on the eve of v0.5.0. Ask Shane if he wants it.
+- **The auroras' motion was judged from stills** on the cloud's software renderer (frames 15 to 80 s apart), not watched moving on the Mac's GPU.
 
 ## Found while building v0.4.3 (left for later)
 
@@ -215,7 +224,7 @@ From the run's final entry and the review (`STATUS.md`, 2026-11-10):
 
 - **FLCH won't give up a climb it can't make:** in a climb its elevator floor is +100 ft/min (`speedOnElevator()` in `autopilot-boeing.js`), so a heavy Boeing at its thrust limit keeps climbing while the speed bleeds under the amber band toward the shaker. Not checked against Boeing's FCOM.
 - **The IAS/MACH window keeps knots, not Mach** (`ap.spdKt`), so a FLCH climb from M.84 at FL410 ends near M.88 at FL450 (held 5 kt under VMO/MMO). A real Boeing in Mach holds the Mach.
-- **The A321's setup shows v0.1.0's empty weight and tanks** (OEW 50,100 kg, 18,864 kg of fuel), against the sim's 50,500 kg and 18,510 kg: its ZFW reads 400 kg light, and fuel over 18,510 kg is cut without a word. The Weight tab uses the sim's numbers.
+- ~~**The A321's setup shows v0.1.0's empty weight and tanks** (OEW 50,100 kg, 18,864 kg of fuel), against the sim's 50,500 kg and 18,510 kg: its ZFW reads 400 kg light, and fuel over 18,510 kg is cut without a word.~~ (v0.4.4: the setup reads the sim's numbers.)
 
 ## Found while building v0.3.0 (left for later)
 

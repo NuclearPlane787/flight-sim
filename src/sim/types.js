@@ -28,8 +28,10 @@ export const TYPES = {
   a321neo: {
     id: 'a321neo', name: 'A321neo', maker: 'Airbus', engineName: 'CFM LEAP-1A', registration: 'HL8787', family: 'airbus',
     data: a321Data, geo: a321Geo,
-    // The setup screen's limits. OEW and fuel as the setup has always shown them.
-    limits: { OEW: 50100, MTOW: 97000, MLW: 79200, MZFW: 75600, FUEL_MAX: Math.round(23580 * 0.8), PAX_MAX: 244, PAX_KG: 84, CARGO_MAX: 9000 },
+    // The setup screen's limits. v0.4.4: OEW and fuel from the data module, as the Boeings' are (the setup
+    // showed v0.1.0's 50,100 kg and 18,864 kg: its ZFW read 400 kg light, and fuel over the sim's 18,510 kg
+    // was cut without a word).
+    limits: { OEW: a321Data.OEW, MTOW: 97000, MLW: 79200, MZFW: 75600, FUEL_MAX: a321Data.FUEL_MAX, PAX_MAX: 244, PAX_KG: 84, CARGO_MAX: 9000 },
     // A rough block-fuel rule (setup.js fuelEstimate): climb and descent + per nm, 30 min holding, taxi.
     fuel: { climbKg: 1100, perNm: 6.2, holdKg: 1000, taxiKg: 200 },
     defaults: { pax: 190, cargoKg: 1500 },

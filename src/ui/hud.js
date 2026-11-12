@@ -16,6 +16,7 @@ import { createBoeingPfd } from './boeing/pfd.js';
 import { createBoeingNd } from './boeing/nd.js';
 import { createEicas } from './boeing/eicas.js';
 import { createMcp } from './boeing/mcp.js';
+import * as store from '../store.js';
 
 const MIN_DT = 1000 / 30;
 
@@ -64,6 +65,32 @@ export function createHud(root, { airports, coast } = {}) {
   shield(views);
   views.addEventListener('mousedown', (e) => e.preventDefault()); // keep keyboard focus where it is
   views.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && hud.onview) hud.onview(b.dataset.v); });
+  // v0.4.4 (Shane: "a switch on screen ... that hides the left and right big panels, but not the top
+  // panels"): top left, level with the FCU. Hides the PFD, the ND and the engine panel (EICAS), not the
+  // FCU (MCP) or the view switch; kept in the settings, so a reload keeps the wide view.
+  const panelsBox = document.createElement('div');
+  panelsBox.className = 'fsui-panels-box fsui-panel';
+  panelsBox.innerHTML = '<button class="fsui-panels-btn" tabindex="-1"></button>';
+  el.appendChild(panelsBox);
+  shield(panelsBox);
+  const panelsBtn = panelsBox.firstChild;
+  let panelsHidden = !!(store.load('settings', {}) || {}).hidePanels;
+  function showPanels() {
+    for (const p of [pfdEl, ndEl, engEl]) p.style.visibility = panelsHidden ? 'hidden' : '';
+    panelsBtn.classList.toggle('on', !panelsHidden);
+    panelsBtn.textContent = panelsHidden ? 'Show panels' : 'Hide panels';
+    panelsBtn.title = panelsHidden ? 'Show the PFD, the ND and the engine panel again'
+      : 'Hide the PFD, the ND and the engine panel for a wide view (the top panels stay)';
+  }
+  panelsBox.addEventListener('mousedown', (e) => e.preventDefault()); // keep keyboard focus where it is
+  panelsBtn.addEventListener('click', () => {
+    panelsHidden = !panelsHidden;
+    store.save('settings', { ...(store.load('settings', {}) || {}), hidePanels: panelsHidden });
+    showPanels();
+    poke();
+  });
+  showPanels();
+
   let shownView = '';
   function showView(id) {
     if (!id || id === shownView) return;
@@ -157,9 +184,11 @@ export function createHud(root, { airports, coast } = {}) {
       sP.push(st.autoTrim ? 0 : r(st.vRef), r(st.vmm), r(st.vStick), r(st.pliDeg, 5), st.shaker, ap.armedLateral, ap.armedVertical, r(st.flapDeg), r(st.slatDeg));
       sE.push(r(sp.stab, 500), ap.thrustMode, ap.lateral, ap.vertical, st.onGround ? 1 : 0, r(st.vs * FPM, 0.01), st.flapLever, r(st.pos.z, 0.01), r(st.mach, 100));
     }
-    if (force || changed(sigP, sP)) { pfd.draw(dv, now); sigP = sP; }
-    if (force || changed(sigN, sN)) { nd.draw(dv); sigN = sN; }
-    if (force || changed(sigE, sE)) { eng.draw(dv); sigE = sE; }
+    if (!panelsHidden) {          // hidden, they aren't drawn; showing them again pokes a full draw
+      if (force || changed(sigP, sP)) { pfd.draw(dv, now); sigP = sP; }
+      if (force || changed(sigN, sN)) { nd.draw(dv); sigN = sN; }
+      if (force || changed(sigE, sE)) { eng.draw(dv); sigE = sE; }
+    }
     fcu.update(v);
     force = false;
   }
@@ -181,26 +210,55 @@ export function createHud(root, { airports, coast } = {}) {
       if (w > room) fcu.el.style.fontSize = (fcuH * 0.36 * room / w) + 'px';
     }
     const top = isBoeing ? inset + 8 + fcu.el.offsetHeight + 6 : inset + fcuH + 16;
-    let s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560));
-    const sr = Math.min(s, (H - (top - inset) - pad * 2 - 8) / 1.62);
-    const place = (p, cv, x, y, w, h) => { Object.assign(p.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); cv.size(w, h); };
-    place(pfdEl, pfdCv, pad, top, s, s);
-    place(ndEl, ndCv, W - sr - pad, top, sr, sr);
-    place(engEl, engCv, W - sr - pad, top + sr + 8, sr, sr * 0.62);
-    // The view switch: the same box as the FCU's (fcuH inside, the FCU's 0.35em above and below).
+    const s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560));
+    lay = { W, H, s, top, pad, fcuH };
+    // The view switch and the panels switch: the same box as the FCU's (fcuH inside, the FCU's 0.35em above and below).
     const padY = 0.35 * fcuH * 0.36;
-    Object.assign(views.style, { top: (8 + inset) + 'px', right: pad + 'px', height: fcuH + 'px', padding: `${padY}px 0.45em`, fontSize: (fcuH * 0.33) + 'px' });
+    const box = { top: (8 + inset) + 'px', height: fcuH + 'px', padding: `${padY}px 0.45em`, fontSize: (fcuH * 0.33) + 'px' };
+    Object.assign(views.style, box, { right: pad + 'px' });
+    Object.assign(panelsBox.style, box, { left: pad + 'px' });
     placeViews();
+  }
+  const place = (p, cv, x, y, w, h) => {
+    const k = [x, y, w, h].map(Math.round).join();
+    if (p._at === k) return;
+    p._at = k;
+    Object.assign(p.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); cv.size(w, h);
+  };
+  // The corners, level with the FCU: the view switch right of it, without its key caps if that's too
+  // tight; the panels switch left of it. One that still runs into the FCU (the MCP on a narrow window,
+  // or the seat's label in the cockpit) goes just under the top row in its own corner, and the panels
+  // on that side start under it: v0.4.4, Shane: "When in cockpit view, still keep the view change
+  // panel in the top right instead of bottom center." Again whenever the FCU's width changes (its LAW
+  // label fills in after the first frame), a font arrives, or the seat's label changes.
+  let lay = null;
+  function placeViews() {
+    if (!lay) return;
+    const { W, H, s, top, pad } = lay;
+    const fr = fcu.el.getBoundingClientRect();
+    views.classList.remove('compact', 'under'); panelsBox.classList.remove('under');
+    views.style.top = panelsBox.style.top = (8 + inset) + 'px';
+    const clearR = () => views.getBoundingClientRect().left >= fr.right + 10;
+    const clearL = () => panelsBox.getBoundingClientRect().right <= fr.left - 10;
+    const vFont = lay.fcuH * 0.33, below = Math.max(top, fr.bottom + 6);
+    views.style.fontSize = vFont + 'px';
+    if (!clearR()) {
+      views.classList.add('compact');
+      if (!clearR()) {   // a smaller font first (to 72%), so it stays in the top row
+        const k = ((W - pad) - (fr.right + 10)) / views.getBoundingClientRect().width;
+        if (k >= 0.72) views.style.fontSize = (vFont * k * 0.97) + 'px';
+        if (!clearR()) { views.style.fontSize = vFont + 'px'; views.classList.add('under'); views.style.top = below + 'px'; }
+      }
+    }
+    if (!clearL()) { panelsBox.classList.add('under'); panelsBox.style.top = below + 'px'; }
+    // The side panels start under their corner's switch (the A321's used to tuck 6 px under the view switch).
+    const rTop = Math.max(top, views.getBoundingClientRect().bottom + 6), lTop = Math.max(top, panelsBox.getBoundingClientRect().bottom + 6);
+    const sr = Math.min(s, (H - (rTop - inset) - pad * 2 - 8) / 1.62);
+    place(pfdEl, pfdCv, pad, lTop, s, s);
+    place(ndEl, ndCv, W - sr - pad, rTop, sr, sr);
+    place(engEl, engCv, W - sr - pad, rTop + sr + 8, sr, sr * 0.62);
     force = true;
     if (view) draw(performance.now());
-  }
-  // Right of the FCU; without the key caps if that's too tight, and at the bottom centre if even
-  // that runs into it. Again whenever the FCU's width changes (its LAW label fills in after the
-  // first frame) or a font arrives, since both change the widths.
-  function placeViews() {
-    views.classList.remove('compact', 'low');
-    const clear = () => views.getBoundingClientRect().left >= fcu.el.getBoundingClientRect().right + 10;
-    if (!clear()) { views.classList.add('compact'); if (!clear()) views.classList.add('low'); }
   }
 
   window.addEventListener('resize', resize);

@@ -55,7 +55,7 @@ test('fuel estimate: Gimpo–Jeju about 4 t, within the tanks', () => {
   const f = fuelEstimate(243);
   assert.ok(f.total >= 3700 && f.total <= 4300, String(f.total));
   assert.ok(fuelEstimate(3000).total > LIMITS.FUEL_MAX, 'long trips exceed the tanks (setup caps them)');
-  assert.equal(LIMITS.FUEL_MAX, 18864);
+  assert.equal(LIMITS.FUEL_MAX, 18510);   // v0.4.4: the sim's tanks (was v0.1.0's 18,864)
 });
 
 test('coastline levels of detail shrink', () => {

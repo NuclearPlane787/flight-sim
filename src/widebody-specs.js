@@ -102,7 +102,9 @@ export const B787_9 = {
   },
 
   gear: {
-    mainPivotZ: -1.25, nosePivotZ: -1.9, tiltDeg: 13,  // [EST] bogies hang front-up, rear axle first
+    // v0.4.4: the main leg's pivot 0.45 m higher, inside the wing (was -1.25): folded, the leg lay just under the
+    // wing's skin, a cylinder hanging off it from a level view (Shane); now it lies in the wing and its door closes flush.
+    mainPivotZ: -0.80, nosePivotZ: -1.9, tiltDeg: 13,  // [EST] bogies hang front-up, rear axle first
     noseDoor: [3.25, 5.75], mainDoorLen: 3.3,
   },
 
@@ -261,7 +263,7 @@ export const B777_300ER = {
   },
 
   gear: {
-    mainPivotZ: -1.75, nosePivotZ: -2.1, tiltDeg: 13,
+    mainPivotZ: -1.30, nosePivotZ: -2.1, tiltDeg: 13,   // v0.4.4: 0.45 m higher, inside the wing (was -1.75), as the 787's
     noseDoor: [3.0, 6.2], mainDoorLen: 5.0,
     stayDY: 1.45, stayDZ: 1.55,    // [ACAP] the front view's side stay, from the leg up to the wing
     // [PUB] The aft axle steers up to 8° once the nosewheel is past about 13°; the sim has no scrub to

@@ -29,7 +29,8 @@ test('fuelEstimate reads the given type', () => {
 
 test('LIMITS stays the A321neo\'s', () => {
   assert.equal(LIMITS, A321.limits);
-  assert.deepEqual(LIMITS, { OEW: 50100, MTOW: 97000, MLW: 79200, MZFW: 75600, FUEL_MAX: 18864, PAX_MAX: 244, PAX_KG: 84, CARGO_MAX: 9000 });
+  // v0.4.4: OEW and fuel are the sim's (a321neo.js), not v0.1.0's 50,100 kg and 18,864 kg.
+  assert.deepEqual(LIMITS, { OEW: 50500, MTOW: 97000, MLW: 79200, MZFW: 75600, FUEL_MAX: 18510, PAX_MAX: 244, PAX_KG: 84, CARGO_MAX: 9000 });
 });
 
 test('fitLoad keeps what fits and resets what does not', () => {

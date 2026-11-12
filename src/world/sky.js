@@ -449,21 +449,29 @@ vec3 aurora(vec3 d) {
   vec3 sum = vec3(0.0);
   for (int k = 0; k < 3; k++) {
     float fk = float(k);
-    float fold = vn3(vec3(az * (1.6 + 0.5 * fk) + t * (0.010 + 0.004 * fk), fk * 7.3, t * 0.005));
-    float kink = vn3(vec3(az * 11.0 - t * 0.06 + fk * 5.0, fk * 3.1, t * 0.02));
-    float base = 0.12 - 0.04 * fk + 0.12 * (fold - 0.5) + 0.03 * sin(az * 2.6 + t * 0.02 + fk * 2.1) + 0.018 * (kink - 0.5);
+    // v0.4.4 (Shane: "The auroras do have small amounts of movement but it is sideways and they remain
+    // the same shape. Maybe have them undulate slowly and look sort of mystical."): each curtain's own
+    // azimuth w sways in slow waves that run along it (30 to 50 s), so its folds open and close and the
+    // rays lean with them; ripples run along the lower edge (about 18 s); the folds' shape evolves in
+    // time, not only sideways; and each arc breathes in height and in brightness. w is monotonic in az.
+    float w = az + 0.10 * sin(az * 3.3 + t * 0.13 + fk * 1.9) + 0.05 * sin(az * 7.1 - t * 0.21 + fk * 4.2);
+    float fold = vn3(vec3(w * (1.6 + 0.5 * fk) + t * (0.010 + 0.004 * fk), fk * 7.3, t * 0.03));
+    float kink = vn3(vec3(w * 11.0 - t * 0.06 + fk * 5.0, fk * 3.1, t * 0.05));
+    float base = 0.12 - 0.04 * fk + 0.12 * (fold - 0.5) + 0.03 * sin(w * 2.6 + t * 0.05 + fk * 2.1)
+      + 0.018 * (kink - 0.5) + 0.012 * sin(w * 9.0 - t * 0.35 + fk * 1.7);
     float h = el - base;
     if (h < -0.02) continue;
     float edge = smoothstep(-0.008, 0.005, h);
-    float tall = 0.20 + 0.07 * fk;
-    float r1 = vn3(vec3(az * 95.0 + t * 0.5 + fk * 31.0, h * 5.0, t * 0.25 + fk));
-    float r2 = vn3(vec3(az * 26.0 - t * 0.18 + fk * 9.0, h * 1.5, t * 0.12));
+    float tall = (0.20 + 0.07 * fk) * (1.0 + 0.18 * sin(t * 0.06 + fk * 2.4 + w * 1.3));
+    float r1 = vn3(vec3(w * 95.0 + t * 0.3 + fk * 31.0, h * 5.0, t * 0.15 + fk));
+    float r2 = vn3(vec3(w * 26.0 - t * 0.12 + fk * 9.0, h * 1.5, t * 0.08));
     float rays = 0.3 + 0.75 * r1 * r1 + 0.4 * r2;
-    float arc = 0.08 + 0.92 * smoothstep(0.35, 0.8, vn3(vec3(az * 2.3 + fk * 4.0, t * 0.025, fk * 2.0)));
+    float arc = 0.25 + 0.75 * smoothstep(0.35, 0.8, vn3(vec3(w * 2.3 + fk * 4.0, t * 0.025, fk * 2.0)));   // never all dark at once
+    float glow = 1.0 + 0.3 * sin(w * 4.0 - t * 0.25 + fk * 2.7);     // waves of light running along the arc
     float green = exp(-h / (0.30 * tall));
     float red = smoothstep(0.2 * tall, 0.65 * tall, h) * exp(-max(h - 0.65 * tall, 0.0) / (0.45 * tall));
     float violet = exp(-max(h, 0.0) / 0.012);
-    sum += edge * rays * arc * (1.0 - 0.3 * fk) *
+    sum += edge * rays * arc * glow * (1.0 - 0.3 * fk) *
       (vec3(0.16, 1.0, 0.42) * green + vec3(0.80, 0.10, 0.30) * red * 0.55 + vec3(0.50, 0.14, 0.90) * violet * 0.3);
   }
   return sum * span;
