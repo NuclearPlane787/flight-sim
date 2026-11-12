@@ -1982,3 +1982,55 @@ v0.4.0 was pushed (`c4aac7c`) before this was synced; the Mac's tree was v0.4.0'
 - the Games project doc.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.4.2`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome). His findings from testing v0.4 go in v0.4.3. Then v0.5.0 from `HANDOFF.md`'s first section.
+
+## 2026-11-13, 01:35 KST: v0.4.3, Shane's findings from testing v0.4, built and written up (Cowork session)
+
+**Shane** (2026-11-12, after pushing v0.4.2 as `8381dfa`): "Here for v0.4.3. 1. The 787 has gaps between the wing and the outer slats, while the flaps and inner aileron have small gaps as well. 2. The 777 has some errors. There is small gap that is visible from the side on extended slats. The outer flaps look detached when extended too. 3. For all the engines, you can see through the edges, which I don't it should be. Also the fan blade on the front aren't centered correctly. 4. The big one: let's add auroras to the night sky. Not like right up against the plane but very visible at a distance. 5. I've done manual landings on the 777 and 787. The 787 seems to stabilise itself well when i pitch, but the 777's pitch stabilisation only improved by a little."
+
+**His answers** (asked before building the aurora): when it shows, "Every clear night, always" (no switch); the look, "Green curtains, red tops" (offered against what Korea really sees, a rare red glow low in the north).
+
+### What changed
+
+1. **The slats and flaps on the bent wing (items 1 and 2;** `src/widebody.js`). The Boeings' wing bend (`setWingFlex()`, from the lift: 3.0 m at the 787's tip at MTOW's lift, 1.8 m at the 777's) was added to the bind pose before the skinning, so a drooped slat's or a lowered flap's own rotation turned its share of the bend, and it moved fore or aft of the wing beside it. On a 787 final (about 2.2 m at the tip) that put the outer slats about 0.65 m off the wing (25.5° of droop, 1.5 m of bend there), the flaps and flaperons a few centimetres, and on a 777 the outer flaps about 0.3 m and the outer slats about 0.4 m. Unbent (on the ground, on the dev page) there was nothing to see, which is why v0.4.1's `wing-gaps.cjs` found nothing. The bend is now added after the skinning, straight up by the bind pose's span. Unbent, close-ups of the trailing edge's junctions (flaps, flaperon, aileron) from above, below and behind, and telephoto side views of the 777's slats at 30°, show only the real slots. `wing-gaps.cjs` now also checks the order in the compiled shader (it fails on v0.4.2).
+2. **The engines (item 3;** `src/widebody.js`, `src/aircraft.js`).
+   - **Seeing through:** every nacelle, on all three types, was hollow between the fan and the reverser: no duct wall from the intake's inner end back to the reverser cowl's inner lip (787 and 777 from 0.62 and 0.55 of the half-length to −0.04, A321 from 1.45 m to 0), and the fan face reached the intake's radius at most (the 777's 2.5 cm short of it). Past the fan's rim a look into the intake went through the inside of the cowl, whose faces point out, to the sky. Now a fan case, the fan face out to it, and a disc just behind facing aft (so a look up the fan nozzle meets the fan, not the sky ahead).
+   - **The fan off-centre:** unbent it's centred (the fan bone's vertices average within 5 mm of the axis). In flight the bend, added before the skinning, turned with the fan: the fan's middle went round the axis by the bend at the engine's span, about 0.1 m on a 777 with 2 m of bend. The engine's parts now ride the wing at the pylon's span as one piece (`bendY`, the Builder's fifth argument; the A321 doesn't bend and its geometry has no new attribute).
+3. **The 777's pitch (item 5;** `src/sim/b777-300er.js`, `src/sim/fbw-boeing.js`). Measured with auto-trim on, landing flaps, 150 kt at 3,000 ft, the key's ramps as `input.js`'s:
+
+   | A 1 s press of S | nose on after the key comes up | back from that peak | path overshoot | settled (pitch rate under 0.15°/s) |
+   |---|---|---|---|---|
+   | 787, v0.4.2 | 1.23° | 1.09° | 0.09° | 2.7 s |
+   | 777, v0.4.2 | 2.81° | 2.66° | 0.86° | 3.7 s |
+   | 787, v0.4.3 | 1.02° | 0.06° | 0° | 0.9 s |
+   | 777, v0.4.3 | 1.02° | 0.08° | 0° | 0.9 s |
+
+   A 0.4 s press: the 787 from 1.70°, 0.90° and 3.0 s to 0.90°, 0.03° and 0.9 s; the 777 from 1.56°, 0.65° and 2.8 s to 0.95°, 0.06° and 0.9 s. (The A321, untouched, is where the 787 was: 1.36°, 1.28°, 3.2 s.) A tap still moves the path 0.22°; a 2 s press now moves it 3.6°, not 4.5° (the cap).
+   - **The cause:** the 777's elevator power per unit of pitch inertia was 71% of the 787's (it had the 787-9's elevator coefficient, 1.45, on 1.8 times the inertia and 1.17 times the tail volume), so stopping a 4°/s pitch rate when the key came up ran the elevator at its 30°/s limit for most of a second, and the law's catch-up to the path it had been given kept pulling meanwhile.
+   - **The changes:** (a) the 777's elevator and stabiliser coefficients by its tail volume, from the drawn planforms (`src/widebody-specs.js`): the 787-9's tailplane 80.8 m² at 27.58 m behind the wing's quarter chord, V_H 0.943; the 777-300ER's 100.7 m² (the published figure is about 101) at 33.25 m, V_H 1.106; so 1.45 × 1.173 = 1.70 and 3.4 × 1.173 = 3.99. (b) Auto-trim's path mode caps the pitch rate at 2.2°/s (`PATH_Q_MAX`), not in the flare or with TO/GA thrust (a go-around's pull pitches at over 2.6°/s).
+   - **Tried and dropped:** shaping the column's feed-forward (a 0.45 s lag) stopped the 777 sooner too, but put a lag into the pilot's loop: the tests' stick pilot that flies the 3° descent (0.4 stick per degree) went into a ±0.5° oscillation of about 6 s. With the cap it converges as before.
+   - Hands off in the storms nothing changed (the 777 in the severe storm: pitch rate σ 0.94°/s against 0.95). Without auto-trim both still swing several degrees after a press (the speed-stable law going back to its trim speed: ROADMAP's "Found while building v0.4.3").
+4. **The aurora (item 4;** `src/world/sky.js`). `aurora()` in the dome's shader: three arcs about north, full to ±43° and gone by ±77°, their lower edges about 4 to 9° up and folding slowly (value noise and a sine, drifting with `uTime`), green fading up into red, a violet fringe at the edge, and fine vertical rays that drift and flicker. It shows as the stars do (`uAurora` is `L.stars`: none by day, all of it from about −15° of sun, little under overcast), the horizon's haze dims its feet, a bright sky takes some of it, and cloud layers in front hide it. It's on the dome, so no flight comes near it and it doesn't move as you fly. No draw call of its own: by day the view north from Gimpo is v0.4.2's pixel for pixel (largest difference 1 of 255), with the same 38 draw calls.
+
+### Checks
+
+- **Unit tests: 674/674** in the container (668 and the new `boeing-pitch-settle`, 3, and `aurora`, 3; `boeing-pitch-settle` fails on v0.4.2). `boeing-autotrim.test.mjs`'s no-auto-trim case changed: its stick pilot chases the load-factor law into a ±3° oscillation (at v0.4.2 too), so where it let go was luck, and the 777's elevator change moved the luck; it now holds a push for 8 s and lets go. **On the Mac through the guard after the sync: 674/674** in 15 s (peak 0.60 GB), and the sweep found nothing running.
+- **In the cloud container:** `wing-gaps.cjs` all passed (with the new bend-order check); `weather-final.cjs` 20/20 (B 84); `weight-copy.cjs` 40/40; `athr-lever.cjs` 9/9; `route-views.cjs` 16/16 (B 89); no console errors.
+- **Pictures looked at,** in `Claude outputs/flight-sim/`: `v043-787-slats-bent-before-after.jpg`, `v043-777-flaps-slats-bent-before-after.jpg`, `v043-engines-before-after.jpg` (each type from low ahead: the sky through the rim at v0.4.2), `v043-fan-centred-before-after.jpg` (the 777's fan four times 0.9 s apart with the wing bent 2 m: the spinner wanders off the crosshair at v0.4.2, stays on it now), `v043-aurora.jpg` (Gimpo and FL350 at 23:00 KST on a moonless night, v0.4.2's view, and south). From `tests/cloud/look.cjs` (new: any view of a type's model on its dev page) and `tests/cloud/v043-shots.cjs` (new).
+
+### Not checked by anyone
+
+- **Flying it by hand:** the pitch was measured with scripted key presses.
+- **The Mac's GPU:** the aurora's cost (a dozen noise lookups for each sky pixel in the north).
+- **The aurora in motion** (the pictures are stills) and at dusk or under a bright Moon (the formula says faint).
+
+### Written up
+
+- `src/version.js`: `Flight Sim v0.4.3 · CL#261113`;
+- `Updates.md`, `README.md` (the night, the settings' auto-trim line, the code map);
+- `PLAN.md`: the model's wing bend and engines, the 777's pitch, the aurora;
+- `ROADMAP.md`: v0.4.3 in the plan, done; "Found while building v0.4.3";
+- `AGENTS.md`: State;
+- `HANDOFF.md`: where you start, the table, the evidence, "v0.4.3: Shane's findings", `look.cjs` and `v043-shots.cjs` among the cloud tools, two pitfalls; the first section stays v0.5.0's;
+- the Games project doc.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.4.3`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome). Then v0.5.0 from `HANDOFF.md`'s first section.

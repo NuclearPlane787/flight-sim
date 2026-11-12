@@ -149,6 +149,7 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.4.0 | **Weather** (row 10): wind that changes with height, gusts, turbulence, wind shear and microbursts; visibility and fog; cloud layers; rain and snow, lightning and thunder; wet and snowy runways that brake worse; temperature and QNH, so density altitude and the altimeter setting matter. A Weather tab in the L window (Sky · Weight · Weather), with presets. Seeded, so the predicted path and the jumps stay exact. Volumetric clouds come later, as a step of their own. | **done** (2026-11-10) |
 | v0.4.1 | **Fixes** (Shane, 2026-11-10): the 777's wingtip hole and the slats' gap; landing the 777 (Indestructible and Boeing auto-trim in Settings); storms more like real ones, in three strengths; taxiway and runway signs. | **done** (2026-11-11) |
 | v0.4.2 | **The known list** (Shane, 2026-11-12: "do your list for v0.4.2"): the "Found while building" items below that fit a third-decimal version: the crash screen's Indestructible button, auto-trim's flare law and trim switches, more skids and a hard stop for Indestructible and a card after a gear-up landing, the Boeing autoland's alignment and rollout, runway exit and distance remaining signs, snow over the taxiway paint, broken cloud far off (checked, left as it was), predictive windshear, hydroplaning, wipers and spray. Shane's own findings from flying v0.4.1 go in v0.4.3. | **done** (2026-11-12) |
+| v0.4.3 | **Shane's findings from testing v0.4** (2026-11-12): the 787's and 777's slats and flaps standing off the bent wing in flight, the engines' see-through edges and off-centre fans, the 777's pitch settling after an input (to the 787's), and auroras on every clear night. | **done** (2026-11-13) |
 | v0.5.0 | **The parts model and a first warehouse** (row 1): the three types rebuilt from parts and flying exactly as now (golden flights, as v0.3.0 did); the warehouse changes engine count and placement, thrust, weight and fuel, and saves designs that show in the aircraft picker. Off-centre thrust yaws, more engines burn more fuel, and too much thrust for a pylon breaks it. Changing the wing (aerodynamics from its shape) comes later. | |
 | v0.6.0 | **East Asia: Korea's region grows** (row 13): Shanghai Pudong, Tokyo Haneda and Narita, in Korea's own map frame. The terrain moves to tiles at several resolutions, read from the game's folder as you fly, which every later region needs. | |
 | v0.7.0 | **The regions, and Europe** (row 13): the region picker and everything per region (above); Heathrow, Charles de Gaulle, Frankfurt, Madrid and Zurich. | v0.6.0 |
@@ -164,6 +165,15 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.17.0 | **More airliners** (row 3): the A330, 737 and 747; the 737 and 747 need conventional (not fly-by-wire) controls. | v0.5.0 |
 | v0.18.0 | **The cabin** (row 2): walking while the autopilot flies, in a cabin that moves with the aircraft (turbulence makes you stagger); passengers as many as the Weight tab says, and crew; one type first (the 777-300ER). | |
 | any time | **Replays and the flight recorder** (row 14), and **challenges** (row 15): a first set after v0.4.0, more with failures. | v0.4.0 for the challenges |
+
+## Found while building v0.4.3 (left for later)
+
+From the session's entry (`STATUS.md`, 2026-11-13):
+
+- **The aurora is the same strong display every clear night:** no quiet nights, no substorm bursts, and it lights nothing: no reflection in the sea or on a wet runway, no glow on the ground or the clouds. It's centred on true north (from Korea the geomagnetic pole is about 4° east of it). Real auroras over Korea are rare and red; Shane chose the high-latitude green curtains.
+- **Without auto-trim the Boeings still swing after a press:** the speed-stable law takes the nose back towards its trim speed, several degrees after a 1 s press on both (the 787 7.9° on and 8.0° back; the 777 9.9° and 8.3°, from 11.5° and 8.6° before its elevator change). Not changed; with auto-trim on both stop within about a degree.
+- **The A321's law wasn't touched:** a 1 s press leaves its nose going on about 1.4° and swinging 1.3° back over about 3 s, as the 787's did at v0.4.2. The Boeings' path-mode cap (2.2°/s) could go on it too, if Shane wants the same feel.
+- **The elevators' rate is 30°/s on all three** [EST]; the 777's real figure wasn't found.
 
 ## Found while building v0.4.2 (left for later)
 

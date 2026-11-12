@@ -31,7 +31,7 @@ const C = {
   white: '#f3f5f7', navy: '#122654', wing: '#c6cbd2', wingDark: '#aab0b8', stab: '#d9dde2',
   metal: '#9aa0a8', gear: '#c9cdd2', chrome: '#e2e5e8', tyre: '#1a1b1d', hub: '#62676e',
   core: '#767b83', plug: '#3a3d43', fanFace: '#25282e', blade: '#5a6068', pylon: '#d5d9de',
-  cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117',
+  cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117', fanCase: '#7a8189',
   doorIn: '#b9bec5',   // the inside of the gear doors (v0.3.1)
 };
 
@@ -383,7 +383,12 @@ export function createWidebody(spec, opts = {}) {
     const E = G.NACELLES[side > 0 ? 0 : 1];
     const ex = E.x, ey = E.y, ez = E.z, RN = G.NACELLE_DIAMETER / 2, HL = G.NACELLE_LENGTH / 2, CL = G.NACELLE_CORE_LENGTH;
     const EN = spec.engine, RF = EN.fanR;
-    b.add(lathe((EN.intake || INTAKE).map(([f, r, v]) => ({ x: f * HL, r: r * RN, v })), 48, ex, ey, ez, UV.nacelle), ROOT, '#ffffff', 'keep');
+    // v0.4.3: every part of the engine rides the wing's bend at the pylon's span (ey), as one piece; bent
+    // vertex by vertex, the fan's blades, turning, carried each one's own lift round with them, and the fan
+    // sat off the nacelle's axis in flight (Shane: "the fan blades … aren't centered correctly").
+    const BY = ey;
+    const INT = EN.intake || INTAKE;
+    b.add(lathe(INT.map(([f, r, v]) => ({ x: f * HL, r: r * RN, v })), 48, ex, ey, ez, UV.nacelle), ROOT, '#ffffff', 'keep', BY);
     // The translating sleeve, with the chevrons on its trailing edge.
     const REV = bone('rev' + S, 'root', V(ex, ey, ez));
     {
@@ -398,21 +403,41 @@ export function createWidebody(spec, opts = {}) {
         }
         rows.push(row);
       }
-      b.add(grid(rows), REV, C.navy);
+      b.add(grid(rows), REV, C.navy, null, BY);
     }
     // Inside: the cascades that show when the sleeve moves back, the fan duct, the core and its plug.
-    b.add(lathe([{ x: -0.04 * HL + 0.0, r: 0.95 * RN }, { x: -0.5 * HL, r: 0.885 * RN }], 32, ex, ey, ez), ROOT, C.cascade);
+    b.add(lathe([{ x: -0.04 * HL + 0.0, r: 0.95 * RN }, { x: -0.5 * HL, r: 0.885 * RN }], 32, ex, ey, ez), ROOT, C.cascade, null, BY);
     const CR = EN.coreR ?? 1;    // the core's radius against the 787's, for a bigger bypass ratio
     b.add(lathe([
       { x: 0.42 * HL, r: 0.33 * RN * CR }, { x: -0.1 * HL, r: 0.5 * RN * CR }, { x: -0.7 * HL, r: 0.5 * RN * CR }, { x: -1.0 * HL, r: 0.46 * RN * CR },
       { x: -HL - 0.55 * CL, r: 0.34 * RN * CR }, { x: -HL - 0.58 * CL, r: 0.27 * RN * CR },
-    ], 32, ex, ey, ez), ROOT, C.core);
-    b.add(lathe([{ x: -HL - 0.5 * CL, r: 0.26 * RN * CR }, { x: -HL - 0.8 * CL, r: 0.16 * RN * CR }, { x: -HL - CL, r: 0.01 }], 20, ex, ey, ez), ROOT, C.plug);
-    b.add(lathe([{ x: ((EN.fanF ?? 0.6) - 0.02) * HL, r: 0 }, { x: ((EN.fanF ?? 0.6) - 0.02) * HL, r: RF }], 32, ex, ey, ez), ROOT, C.fanFace);
+    ], 32, ex, ey, ez), ROOT, C.core, null, BY);
+    b.add(lathe([{ x: -HL - 0.5 * CL, r: 0.26 * RN * CR }, { x: -HL - 0.8 * CL, r: 0.16 * RN * CR }, { x: -HL - CL, r: 0.01 }], 20, ex, ey, ez), ROOT, C.plug, null, BY);
+    // v0.4.3: the fan case, the duct's wall from the reverser's inner lip forward to the intake's inner end.
+    // Without it the cowl was hollow from the fan's rim back to the reverser, and past the fan face's edge
+    // a look into the intake went through the inside of the cowl, whose faces point out (Shane: "you can
+    // see through the edges"). The fan face now reaches the wall, and a disc behind it faces aft, so a look
+    // up the fan nozzle meets the back of the fan, not the sky ahead of the engine.
+    const SLV = EN.sleeve || SLEEVE, IN0 = INT[0], SL1 = SLV[SLV.length - 1];
+    const wA = { x: SL1[0] * HL, r: SL1[1] * RN }, wB = { x: IN0[0] * HL, r: IN0[1] * RN };
+    let lipI = INT.findIndex(([f]) => f >= 0.999);
+    if (lipI < 1) lipI = 1;
+    const innerR = (x) => {                // the duct's radius at x: the case behind the intake, the intake ahead
+      if (x <= wB.x) return wA.r + (wB.r - wA.r) * clamp((x - wA.x) / (wB.x - wA.x), 0, 1);
+      for (let k = 0; k < lipI; k++) {
+        const x0 = INT[k][0] * HL, x1 = INT[k + 1][0] * HL;
+        if (x <= x1) return (INT[k][1] + (INT[k + 1][1] - INT[k][1]) * clamp((x - x0) / (x1 - x0), 0, 1)) * RN;
+      }
+      return INT[lipI][1] * RN;
+    };
+    b.add(lathe([0, 0.35, 0.7, 1].map((t) => ({ x: wA.x + (wB.x - wA.x) * t, r: wA.r + (wB.r - wA.r) * t })), 48, ex, ey, ez), ROOT, C.fanCase, null, BY);
+    const xFace = ((EN.fanF ?? 0.6) - 0.02) * HL, rFace = Math.max(RF, innerR(xFace) + 0.012);
+    b.add(lathe([{ x: xFace, r: 0 }, { x: xFace, r: rFace }], 32, ex, ey, ez), ROOT, C.fanFace, null, BY);
+    b.add(lathe([{ x: xFace - 0.012, r: rFace }, { x: xFace - 0.012, r: 0 }], 32, ex, ey, ez), ROOT, C.fanFace, null, BY);
     const FAN = bone('fan' + S, 'root', V(ex, ey, ez), V(1, 0, 0));
     const fx = (EN.fanF ?? 0.6) * HL, SK = EN.spinnerK ?? 1, HUB = 0.4 * SK;
     const spinnerAt = [[0.72, 0], [0.62, 0.11], [0.36, 0.27], [0.08, 0.42], [-0.08, 0.46]];
-    b.add(lathe(spinnerAt.map(([x, r]) => ({ x: fx + x * SK, r: r * SK })), 24, ex, ey, ez), FAN, C.navy);
+    b.add(lathe(spinnerAt.map(([x, r]) => ({ x: fx + x * SK, r: r * SK })), 24, ex, ey, ez), FAN, C.navy, null, BY);
     if (EN.swirl) {
       // The white spiral painted on the spinner: a ribbon just proud of it, half a turn from tip to base.
       const spin = curve(spinnerAt.map(([x, r]) => [x, r]).reverse()), rows = [];
@@ -425,8 +450,8 @@ export function createWidebody(spec, opts = {}) {
         }
         rows.push(row);
       }
-      b.add(grid(rows, { expect: (c) => V(0.4, c.y - ey, c.z - ez) }), FAN, C.white);
-    } else b.add(boxAt(ex + fx + 0.3, ey, ez + 0.2, 0.42, 0.05, 0.2), FAN, C.white);  // so the rotation shows
+      b.add(grid(rows, { expect: (c) => V(0.4, c.y - ey, c.z - ez) }), FAN, C.white, null, BY);
+    } else b.add(boxAt(ex + fx + 0.3, ey, ez + 0.2, 0.42, 0.05, 0.2), FAN, C.white, null, BY);  // so the rotation shows
     for (let i = 0; i < EN.fanBlades; i++) {
       // A blade: long chord, with the twist and sweep a composite fan blade has.
       const g = new THREE.BoxGeometry(0.62 * SK, 0.03, RF - HUB, 1, 1, 4);
@@ -440,7 +465,7 @@ export function createWidebody(spec, opts = {}) {
       g.translate(0, 0, HUB + (RF - HUB) / 2);
       g.rotateX((i / EN.fanBlades) * Math.PI * 2);
       g.translate(ex + fx, ey, ez);
-      b.add(g, FAN, C.blade);
+      b.add(g, FAN, C.blade, null, BY);
     }
     // Pylon: a profile in (x, z) extruded sideways, from the cowl's top into the wing and back
     // under it to the fairing behind the trailing edge.
@@ -459,7 +484,7 @@ export function createWidebody(spec, opts = {}) {
       const g = new THREE.ExtrudeGeometry(sh, { depth: PD, bevelEnabled: false });
       g.translate(0, 0, -PD / 2);
       g.applyMatrix4(new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, -1, ey, 0, 1, 0, 0, 0, 0, 0, 1));
-      b.add(g, ROOT, C.pylon);
+      b.add(g, ROOT, C.pylon, null, BY);
     }
 
     // --- Main gear: a four- or six-wheel bogie on a leg that folds inward into the belly ---
@@ -656,11 +681,16 @@ export function createWidebody(spec, opts = {}) {
     sh.uniforms.uFill = fillU;
     sh.uniforms.uFlex = flexU;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;\nuniform float uFlex;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;\nuniform float uFlex;\nattribute float bendY;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vBindPos = position;
+        vBindPos = position;`)
+      // v0.4.3: the bend goes on after the skinning, straight up in the model frame by the span of the bind
+      // pose, so a drooped slat or a deflected flap rises with the wing beside it. Before it, the bend went
+      // on first and the surface's own rotation turned it: on a 787 final the outer slats stood about half
+      // a metre off the wing and the flaps a few centimetres (Shane, v0.4.2).
+      .replace('#include <skinning_vertex>', `#include <skinning_vertex>
         if (uFlex != 0.0 && position.z < ${flexLimitZ.toFixed(2)}) {
-          float s = max(abs(position.x) - ${ys.toFixed(2)}, 0.0) / ${(tipY - ys).toFixed(2)};
+          float s = max(bendY - ${ys.toFixed(2)}, 0.0) / ${(tipY - ys).toFixed(2)};   // a vertex's own span, or its engine's
           transformed.y += uFlex * s * s;
         }`);
     sh.fragmentShader = sh.fragmentShader

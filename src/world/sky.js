@@ -351,6 +351,8 @@ const v3s = (v) => `vec3(${v.map((x) => x.toFixed(6)).join(', ')})`;
 // 5 twice, 6.5 2.4 times; first magnitude is as it was (brighter ones a little less, still
 // white). The fill stars run on from 6.5 to FILL_FAINT.
 export const STAR_GAMMA = 0.55;
+// v0.4.3: the aurora's brightness on the dome (aurora() in NIGHT_GLSL gives about 1 at a curtain's brightest).
+export const AURORA_GAIN = 0.11;
 export const FILL_FAINT = 8.0;
 export function starBrightness(m) { return 1.4 * Math.pow(10, -0.4 * (m - 1) * STAR_GAMMA); }
 
@@ -358,6 +360,7 @@ export function starBrightness(m) { return 1.4 * Math.pow(10, -0.4 * (m - 1) * S
 const NIGHT_GLSL = /* glsl */ `
 uniform mat3 uSkyToJ;        // scene direction -> J2000
 uniform float uStarVis, uMoonR, uMoonDisc;
+uniform float uAurora;       // v0.4.3: how much aurora shows (0 by day, 1 on a dark clear night: the stars' visibility)
 uniform vec3 uMoonPole;      // the celestial north pole in the scene frame (orients the Moon's face)
 
 float h13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
@@ -428,6 +431,42 @@ vec3 milkyWay(vec3 j, out float bandOut) {
   vec3 col = mix(vec3(0.70, 0.76, 1.0), vec3(1.0, 0.86, 0.66), clamp(bulge * 0.9 + 0.1 * n2, 0.0, 1.0));
   col = mix(vec3(0.62, 0.56, 0.95), col, clamp(band * 1.4, 0.0, 1.0));
   return col * g * 0.03;
+}
+
+// v0.4.3: the aurora (Shane: "let's add auroras to the night sky. Not like right up against the plane but very visible at
+// a distance"; every clear night, green curtains with red tops). Curtains hang low in the northern sky: the light is
+// 100 to 300 km up and hundreds of kilometres away, so it sits on the dome and no flight comes near it. Three arcs, the
+// nearer higher; each has a sharp lower edge that folds slowly along the arc, green fading upwards (557.7 nm) into
+// red tops (630 nm), a violet fringe at the edge, and fine vertical rays that drift and flicker. d: the scene's
+// direction (x east, y up, z south). Linear radiance before the dome's scaling.
+vec3 aurora(vec3 d) {
+  float el = asin(clamp(d.y, -1.0, 1.0));
+  if (el < -0.02 || el > 0.9) return vec3(0.0);
+  float az = atan(d.x, -d.z);                          // from north, east positive
+  float span = 1.0 - smoothstep(0.75, 1.35, abs(az));  // full to ±43°, gone by ±77°
+  if (span <= 0.0) return vec3(0.0);
+  float t = uTime;
+  vec3 sum = vec3(0.0);
+  for (int k = 0; k < 3; k++) {
+    float fk = float(k);
+    float fold = vn3(vec3(az * (1.6 + 0.5 * fk) + t * (0.010 + 0.004 * fk), fk * 7.3, t * 0.005));
+    float kink = vn3(vec3(az * 11.0 - t * 0.06 + fk * 5.0, fk * 3.1, t * 0.02));
+    float base = 0.12 - 0.04 * fk + 0.12 * (fold - 0.5) + 0.03 * sin(az * 2.6 + t * 0.02 + fk * 2.1) + 0.018 * (kink - 0.5);
+    float h = el - base;
+    if (h < -0.02) continue;
+    float edge = smoothstep(-0.008, 0.005, h);
+    float tall = 0.20 + 0.07 * fk;
+    float r1 = vn3(vec3(az * 95.0 + t * 0.5 + fk * 31.0, h * 5.0, t * 0.25 + fk));
+    float r2 = vn3(vec3(az * 26.0 - t * 0.18 + fk * 9.0, h * 1.5, t * 0.12));
+    float rays = 0.3 + 0.75 * r1 * r1 + 0.4 * r2;
+    float arc = 0.08 + 0.92 * smoothstep(0.35, 0.8, vn3(vec3(az * 2.3 + fk * 4.0, t * 0.025, fk * 2.0)));
+    float green = exp(-h / (0.30 * tall));
+    float red = smoothstep(0.2 * tall, 0.65 * tall, h) * exp(-max(h - 0.65 * tall, 0.0) / (0.45 * tall));
+    float violet = exp(-max(h, 0.0) / 0.012);
+    sum += edge * rays * arc * (1.0 - 0.3 * fk) *
+      (vec3(0.16, 1.0, 0.42) * green + vec3(0.80, 0.10, 0.30) * red * 0.55 + vec3(0.50, 0.14, 0.90) * violet * 0.3);
+  }
+  return sum * span;
 }
 
 // The Moon's disc, lit by the sun (the terminator follows the real phase), with its maria and a
@@ -550,6 +589,7 @@ export function createSky(scene, uniforms, chunks) {
     uMoonR: { value: 0.26 * MOON_SCALE * RAD },
     uMoonDisc: { value: 0.25 },
     uMoonPole: { value: new THREE.Vector3(0, 1, 0) },
+    uAurora: { value: 0 },
   };
   const u = Object.assign({}, uniforms, own);
 
@@ -586,6 +626,11 @@ export function createSky(scene, uniforms, chunks) {
             col += milkyWay(j, band) * k * (1.0 - 0.8 * ml);
             // The fill stars are the faint ones: moonlight washes them out (gone at full Moon).
             col += fillStars(j, band, 0.12 * (1.0 - 0.8 * hi)) * k * (1.0 - ml) * (1.0 - ml);
+          }
+          // v0.4.3: the aurora, brighter than the stars, so a lit sky takes less of it; the horizon's haze dims its feet.
+          if (uAurora > 0.002) {
+            float lumA = dot(col, vec3(0.2126, 0.7152, 0.0722));
+            col += aurora(d) * uAurora * smoothstep(0.0, 0.06, e) * ${AURORA_GAIN.toFixed(4)} / (1.0 + lumA * 20.0);
           }
           if (uMoonDir.y > horizonDip() - 0.02) {
             vec4 m = moonDisc(d);
@@ -678,6 +723,7 @@ export function createSky(scene, uniforms, chunks) {
     uniforms.uSunVis.value = (1 - wx.cover) * (1 - wx.cover);
     uniforms.uNight.value = L.night;
     own.uStarVis.value = L.stars;
+    own.uAurora.value = L.stars;   // v0.4.3: as dark and clear as the stars need
     own.uMoonDisc.value = L.moonDisc;
     if (stars) stars.visible = L.stars > 0.002;
     // Three's lights: the sun, or the Moon (cool and dim) once it's the brighter.

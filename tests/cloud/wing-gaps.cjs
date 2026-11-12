@@ -6,6 +6,8 @@
 //   - landing (slats and flaps out): the same lines across the front 45% of the chord find no slot
 //     between the drooped slats and the wing (Shane: "close it up").
 // The flaps' own slots, behind, are real and not looked at with the flaps out.
+// v0.4.3: and the Boeings' wing bend comes after the skinning in the compiled vertex shader (Shane saw the
+// 787's outer slats stand off the bent wing on final; the lines here use the unbent wing).
 //   node wing-gaps.cjs            (about a minute with SwiftShader; FS_BASE as in stills.cjs)
 const { chromium } = require('playwright');
 const BASE = process.env.FS_BASE || 'http://127.0.0.1:8765/games/flight-sim/';
@@ -138,6 +140,23 @@ const TYPES = [
       const g = groups(r.holes[cfg]);
       ok(g.length === 0, `${T.id} ${cfg}: no light through the wing${g.length ? ': ' + g.slice(0, 8).join('; ') : ''}`);
     }
+  }
+  // v0.4.3: the Boeings' wing bend goes on after the skinning, so the drooped slats and the flaps rise with
+  // the wing (before, the bend went on first and each surface's own rotation turned it into a gap: half a
+  // metre at a 787's outer slats on final). The model's vertex shader, as compiled, has to show that order.
+  for (const id of ['b787-9', 'b777-300er']) {
+    const r = await page.evaluate(async (id) => {
+      const at = (p) => new URL(p, location.href).href;
+      const THREE = await import(at('../vendor/three.module.js'));
+      const { createWidebody } = await import(at('../src/widebody.js'));
+      const SPECS = await import(at('../src/widebody-specs.js'));
+      const model = createWidebody(Object.values(SPECS).find((s) => s && s.id === id));
+      const sh = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+      model.mesh.material.onBeforeCompile(sh, null);
+      const v = sh.vertexShader, skin = v.indexOf('#include <skinning_vertex>'), bend = v.indexOf('uFlex * s * s');
+      return { skin, bend, uniform: !!sh.uniforms.uFlex };
+    }, id);
+    ok(r.uniform && r.skin >= 0 && r.bend > r.skin, `${id}: the wing bend is applied after the skinning (skinning at ${r.skin}, bend at ${r.bend})`);
   }
   ok(errors.length === 0, `no page errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
   await browser.close();

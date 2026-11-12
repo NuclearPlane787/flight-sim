@@ -63,6 +63,12 @@ export function createFbwBoeing(A) {
   // v0.4.2: with auto-trim, a held trim switch moves the path held at this rate (the flare's attitude
   // at twice it), a finer control than W/S.
   const TRIM_PATH_RATE = 0.5 * DEG;
+  // v0.4.3: auto-trim's most pitch rate in the landing configuration's path mode, hand flown (not in the flare or a
+  // go-around). A held key asked for 3.5°/s of path, the nose ran at 4°/s, and stopping it when the key came up took
+  // the elevator to its rate limit: the 777 (the heavier, with less elevator for its inertia) went on 2.8° past the
+  // release and swung 2.7° back, the 787 1.2° and 1.1° (Shane, v0.4.2: "the 777's pitch stabilisation only improved
+  // by a little"). Capped, both stop within about 1° and settle in under a second (tests/boeing-pitch-settle.test.mjs).
+  const PATH_Q_MAX = 2.2 * DEG;
 
   function fbwStep(X, c, E, dt) {
     // On the mains it's the ground law, whatever the blend says, so the nose comes down by itself.
@@ -206,6 +212,7 @@ export function createFbwBoeing(A) {
       // stalled and sinking, rather than flying on up to a deep stall the law couldn't get out of.
       qCmd = Math.min(qCmd, 0.8 * (E.alphaMax + STALL_MUSH - E.alpha));
       qCmd = clamp(qCmd, -8 * DEG, 8 * DEG);
+      if (E.autoTrim && !E.apOn && !X.flare && !goAround && E.gearDown && E.flap > 18) qCmd = clamp(qCmd, -PATH_Q_MAX, PATH_Q_MAX);
       const qdotCmd = 3.5 * (qCmd - E.q);
       const myNeed = E.Iyy * qdotCmd + (E.Ixx - E.Izz) * E.p * E.r + E.Ixz * (E.p * E.p - E.r * E.r);
       elevLaw = E.elevScale > 1 ? (myNeed - E.myOther) / E.elevScale : elevDirect;

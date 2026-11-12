@@ -375,11 +375,14 @@ function finSec(z) {
 // --- The builder: one skinned geometry ---------------------------------------------------
 
 export class Builder {
-  constructor() { this.pos = []; this.nrm = []; this.uv = []; this.col = []; this.bone = []; this.idx = []; }
+  constructor() { this.pos = []; this.nrm = []; this.uv = []; this.col = []; this.bone = []; this.idx = []; this.bend = []; this.anyBend = false; }
   // geo in body coordinates. uv: 'keep' (use the geometry's), a function (x, y, z) → [u, v],
-  // or null (the plain white texel, coloured by `color`).
-  add(geo, bone, color = '#ffffff', uv = null) {
-    if (Array.isArray(geo)) { geo.forEach((g) => this.add(g, bone, color, uv)); return; }
+  // or null (the plain white texel, coloured by `color`). bendY (v0.4.3): the span (m) whose wing bend a
+  // part rides on, for a rigid part hung off the wing (an engine and its pylon); null bends each vertex by
+  // its own span. Only the Boeings' shader reads it (the 'bendY' attribute, written when any part sets it).
+  add(geo, bone, color = '#ffffff', uv = null, bendY = null) {
+    if (Array.isArray(geo)) { geo.forEach((g) => this.add(g, bone, color, uv, bendY)); return; }
+    if (bendY !== null) this.anyBend = true;
     if (!geo.attributes.normal) geo.computeVertexNormals();
     const p = geo.attributes.position, t = geo.attributes.uv;
     const uvs = [];
@@ -397,6 +400,7 @@ export class Builder {
       this.nrm.push(n.getX(i), n.getY(i), n.getZ(i));
       this.col.push(c.r, c.g, c.b);
       this.bone.push(bone);
+      this.bend.push(bendY === null ? Math.abs(p.getX(i)) : Math.abs(bendY));   // model X = −y
     }
     this.uv.push(...uvs);
     if (geo.index) for (const i of geo.index.array) this.idx.push(base + i);
@@ -413,6 +417,7 @@ export class Builder {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+    if (this.anyBend) g.setAttribute('bendY', new THREE.Float32BufferAttribute(this.bend, 1));
     g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
     return g;
   }
@@ -422,7 +427,7 @@ const C = {
   white: '#f3f5f7', navy: '#122654', wing: '#c6cbd2', wingDark: '#aab0b8', stab: '#d9dde2',
   metal: '#9aa0a8', gear: '#c9cdd2', chrome: '#e2e5e8', tyre: '#1a1b1d', hub: '#8d939a',
   core: '#767b83', plug: '#3a3d43', fanFace: '#25282e', blade: '#5a6068', pylon: '#d5d9de',
-  cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117',
+  cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117', fanCase: '#7a8189',
 };
 
 // --- The aircraft ------------------------------------------------------------------------
@@ -614,7 +619,13 @@ export function createAircraft(opts = {}) {
     b.add(lathe([{ x: 0.0, r: 1.09 }, { x: -0.6, r: 1.06 }], 32, ex, ey, ez), ROOT, C.cascade);
     b.add(lathe([{ x: 0.6, r: 0.62 }, { x: -0.6, r: 0.72 }, { x: -1.5, r: 0.64 }, { x: -2.05, r: 0.52 }, { x: -2.08, r: 0.46 }], 32, ex, ey, ez), ROOT, C.core);
     b.add(lathe([{ x: -1.9, r: 0.43 }, { x: -2.3, r: 0.25 }, { x: -2.52, r: 0.02 }], 24, ex, ey, ez), ROOT, C.plug);
+    // v0.4.3: the fan case, from the reverser cowl's inner lip (x 0.0) forward to the intake's inner end (1.45):
+    // the cowl was hollow there, so past the fan face's rim a look into the intake went through the inside of
+    // the cowl, whose faces point out (Shane: "you can see through the edges"). The fan face reaches it, and
+    // a disc just behind faces aft, so a look up the fan nozzle meets the fan, not the sky in front.
+    b.add(lathe([{ x: 0.0, r: 1.02 }, { x: 0.5, r: 0.989 }, { x: 1.0, r: 0.958 }, { x: 1.45, r: 0.93 }], 44, ex, ey, ez), ROOT, C.fanCase);
     b.add(lathe([{ x: 1.32, r: 0.0 }, { x: 1.32, r: 0.95 }], 32, ex, ey, ez), ROOT, C.fanFace);
+    b.add(lathe([{ x: 1.308, r: 0.95 }, { x: 1.308, r: 0.0 }], 32, ex, ey, ez), ROOT, C.fanFace);
     b.add(lathe([{ x: -0.25, r: 1.0 }, { x: -0.25, r: 0.68 }], 32, ex, ey, ez), ROOT, C.fanFace);
     const FAN = bone('fan' + S, 'root', V(ex, ey, ez), V(1, 0, 0));
     b.add(lathe([{ x: 2.0, r: 0.0 }, { x: 1.93, r: 0.15 }, { x: 1.76, r: 0.29 }, { x: 1.55, r: 0.38 }, { x: 1.42, r: 0.39 }], 24, ex, ey, ez), FAN, C.navy);

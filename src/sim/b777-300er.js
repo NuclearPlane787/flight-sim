@@ -154,8 +154,13 @@ export const CM = {
   alpha: -1.60,   // about 25% MAC, tail on. Neutral point 25% + 1.6/CLα: 57% MAC at low speed, 47% at M0.84 (CLα 6.7 or so), aft of [ACAP] 7-8's 44.5% limit. Why more than the 787-9's: this limit is further aft.
   q: -32,         // pitch damping, per (q·c/2V): the 787-9's, more for the longer tail arm
   alphaDot: -9,
-  elevator: 1.45, // per rad, the 787-9's
-  ths: 3.4,       // per rad, the 787-9's
+  // v0.4.3: the 787-9's per unit of tail volume. From the drawn planforms (src/widebody-specs.js), the 777-300ER's tailplane is
+  // 100.7 m² at 33.25 m behind the wing's quarter chord, V_H = 1.106; the 787-9's 80.8 m² at 27.58 m, V_H = 0.943. At the
+  // 787-9's 1.45 and 3.4 the 777 had 71% of its elevator power per unit of pitch inertia, its elevator ran into its rate limit
+  // stopping a pitch input, and the nose went on 2.8° after the key was let go (the 787: 1.2°). Shane, v0.4.2: "the 777's
+  // pitch stabilisation only improved by a little".
+  elevator: 1.70, // per rad: 1.45 × 1.106 / 0.943
+  ths: 3.99,      // per rad: 3.4 × 1.106 / 0.943
   flap: -0.0020,
   spoiler: 0.02,
   ground: -0.04,

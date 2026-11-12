@@ -4,6 +4,14 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.4.3 · 2026-11-13 · Shane's findings: the wings in flight, the engines, the 777's pitch, and auroras
+
+- **No more gaps at the Boeings' slats and flaps in flight.** As the wing bent up under the lift, each slat and flap turned the bend with its own angle, so on a 787 final the outer slats stood about half a metre off the wing, the flaps and flaperons a little, and a 777's outer flaps looked detached. Now everything on the wing rises with it.
+- **The engines are solid.** Past the fan's rim you could see through the cowl to the sky, on all three aircraft: they now have a fan case, the fan's face reaches it, and from behind you see the back of the fan.
+- **The fan stays centred.** In flight the bend moved each Boeing fan blade by its own amount as it turned, so the fan wandered off the engine's axis. The engines now ride the wing as one piece.
+- **The 777 settles after a pitch input as the 787 does.** With auto-trim on and the landing flaps out, a one-second press used to leave the 777's nose going on 2.8° after you let go, then swinging back 2.7° over nearly 4 s. It now stops within about a degree and settles in under a second, on both Boeings. Its elevator and stabiliser now have the power its bigger tail gives it, and with auto-trim the pitch rate on final is capped at 2.2°/s, except in the flare and a go-around.
+- **Auroras** on every clear night: green curtains with red and violet tops, low in the northern sky, folding slowly, with fine rays that drift and flicker. They're far away, so they stay put as you fly, and cloud hides them.
+
 ## v0.4.2 · 2026-11-12 · Practice aids, the autoland, runway signs, and the rest of the weather
 
 - **The crash screen** has a button that rewinds 30 s with Indestructible on, so a crash while practising is one click from flying on.
