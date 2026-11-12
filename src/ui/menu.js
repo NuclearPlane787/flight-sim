@@ -328,7 +328,7 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
       <div class="fsm-set-row"><span class="lab">Callouts<small>The radio-altitude calls on final, “retard” and the ground-proximity warnings</small></span><span class="ctl">${seg('callouts')}</span></div>
       <div class="fsm-set-row"><span class="lab">Performance readout<small>Frame rate, triangles and draw calls along the top (F3 or \`)</small></span><span class="ctl">${seg('perf')}</span></div>
       ${onIndestructible ? `<div class="fsm-set-row"><span class="lab">Indestructible<small>No crash ends the flight: the gear holds, the aircraft scrapes and slides instead. The landing card says what would have crashed</small></span><span class="ctl">${seg('indestructible')}</span></div>` : ''}
-      ${onAutoTrim ? `<div class="fsm-set-row"><span class="lab">Boeing auto-trim<small>The 787 and 777 hold their flight path when you let go, as the A321 does, and with the flaps for landing W and S nudge the path. Y and H have nothing to do while it’s on</small></span><span class="ctl">${seg('autoTrim')}</span></div>` : ''}
+      ${onAutoTrim ? `<div class="fsm-set-row"><span class="lab">Boeing auto-trim<small>The 787 and 777 hold their flight path when you let go, as the A321 does, and with the flaps for landing W and S nudge the path. Below 50 ft on a landing it holds the attitude and the nose sinks a little, so you flare, as in the A321. Y and H nudge the path held</small></span><span class="ctl">${seg('autoTrim')}</span></div>` : ''}
       ${onSky ? `<div class="fsm-set-row"><span class="lab">Time of day<small>The clock, the date and the sun and Moon</small></span><span class="ctl"><button class="fsui-b" data-s="sky">Open the Sky window (L)</button></span></div>` : ''}
     </div>`);
   const el = page.el;
@@ -390,7 +390,8 @@ export const FAMILY_KEYS = [
     'FCU window': 'MCP window',
   }, hideNote: 'fcu', notes: `<p>The trim sets the speed the aircraft holds: let go of the controls and it settles back to the green TRIM mark on the speed tape.
     With the A/P on, it trims itself. With <b>Boeing auto-trim</b> on (Settings) it always does: let go and the flight path holds, as the A321's does,
-    and with the flaps for landing W and S nudge the path.</p>
+    and with the flaps for landing W and S nudge the path; Y and H then nudge the path held, more finely. Below 50 ft on a landing it holds the attitude
+    and the nose sinks a little, so you flare, as in the A321.</p>
     <p><b>The MCP</b> along the top sets the speed, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter.
     Enter on HDG goes to HDG SEL, on ALT to FLCH, on V/S to V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
     Above FL260 the speed window is in Mach, and a typed 84 or .84 is a Mach at any height. Its buttons light green when active and white when armed.

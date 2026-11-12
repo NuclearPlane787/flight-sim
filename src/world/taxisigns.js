@@ -11,8 +11,16 @@
 //     on the left of the hold line;
 //   - and, painted on the taxiway before each array, its location again (apron.js, yellow on black).
 // Taxiways with no name in the data (most of them: OpenStreetMap's) get no sign and send no direction.
+// v0.4.2, the runways' own (Annex 14's runway exit sign, and FAA AC 150/5340-18's distance remaining sign):
+//   - an exit sign where a named taxiway leaves a runway, for the traffic on the runway going that way: RUNWAY_SIGN.exitBack
+//     before the exit, on its side, RUNWAY_SIGN.exitSet past the runway's edge: the taxiway and an arrow, black on yellow.
+//     An exit turning back more than 100° from the way the traffic goes gets none (it's the other way's);
+//   - distance remaining signs every 1,000 ft along both sides of each runway (the length over whole thousands split
+//     between the ends), white numbers on black, back to back: each face the thousands of feet left for the traffic it
+//     faces, so the two faces add up to the runway's length in thousands.
+// No no-entry signs: the map data doesn't say which taxiways are one-way.
 //
-//   taxiSignSites(airport) → { arrays: [array], mandatory: [sign], painted: [{ x, y, tx, ty, text }] }
+//   taxiSignSites(airport) → { arrays: [array], mandatory: [sign], exits: [sign], distance: [sign], painted: [{ x, y, tx, ty, text }] }
 //   array: { x, y, tx, ty, panels: [{ kind: 'dir' | 'loc', text, arrow? }] }   (x, y: the middle of its foot;
 //     tx, ty: the way the traffic it faces is going; panels left to right as that traffic sees them; arrow: 0..7,
 //     eighths of a turn clockwise from straight ahead)
@@ -33,6 +41,9 @@ export const SIGN = {
   base: 0.45,
   glyphH: 0.6, glyphW: 0.5, glyphGap: 0.06, arrowW: 0.6, pad: 0.22, gap: 0.06, depth: 0.22, border: 0.06,
 };
+
+export const RUNWAY_SIGN = { exitBack: 60, exitSet: 15, distSet: 20, distStepFt: 1000, exitMaxTurnDeg: 100 };
+const FT = 0.3048;
 
 export const panelWidth = (p) => {
   const n = p.text.length, txt = n * SIGN.glyphW + Math.max(0, n - 1) * SIGN.glyphGap;
@@ -66,7 +77,7 @@ function walk(g, n, e, dist) {
 
 // opts: { index, holds }, the segment index and hold-short sites apron.js has already made.
 export function taxiSignSites(airport, opts = {}) {
-  const out = { arrays: [], mandatory: [], painted: [] };
+  const out = { arrays: [], mandatory: [], exits: [], distance: [], painted: [] };
   if (!airport || !(airport.taxiways || []).length) return out;
   const lines = runwayLines(airport);
   const index = opts.index || segmentIndex(airport.taxiways || []);
@@ -151,6 +162,75 @@ export function taxiSignSites(airport, opts = {}) {
     if (!at) continue;
     if (out.mandatory.some((q) => Math.hypot(q.x - at.x, q.y - at.y) < 10)) continue;
     out.mandatory.push({ x: at.x, y: at.y, tx: h.dx, ty: h.dy, panels });
+  }
+
+  // v0.4.2: the runways' own signs. A sign's foot (its middle at x, y, across it along the runway's normal) is clear of
+  // the taxiways and aprons, and of every runway's pavement.
+  const clearAt = (x, y, ax, ay, width) => {
+    for (let k = -1; k <= 1; k += 0.5) {
+      const px = x + ax * k * width / 2, py = y + ay * k * width / 2;
+      if (paved(px, py, SIGN.clear, 0)) return false;
+      for (const l of lines) if (segDist(px, py, l.ax, l.ay, l.bx, l.by).d < l.hw + SIGN.clear) return false;
+    }
+    return true;
+  };
+  for (const [ri, l] of lines.entries()) {
+    const rw = (airport.runways || [])[ri];
+    if (!rw || !rw.ends || rw.ends.length !== 2) continue;
+    const nx = -l.uy, ny = l.ux;   // the runway's left, going from its first end to its second
+    // Exits: where a named taxiway's line crosses this runway's edge going out.
+    const found = [];
+    for (const t of airport.taxiways || []) {
+      if (!t.ref) continue;
+      const pts = t.points || [];
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [px, py] = pts[i], [qx, qy] = pts[i + 1];
+        const sp = (px - l.ax) * l.ux + (py - l.ay) * l.uy, dp = (px - l.ax) * nx + (py - l.ay) * ny;
+        const sq = (qx - l.ax) * l.ux + (qy - l.ay) * l.uy, dq = (qx - l.ax) * nx + (qy - l.ay) * ny;
+        for (const [s0, d0, s1, d1, ox, oy] of [[sp, dp, sq, dq, qx - px, qy - py], [sq, dq, sp, dp, px - qx, py - qy]]) {
+          // From inside the runway (0..len along, within the half width) to outside it across: going out at s.
+          if (!(Math.abs(d0) < l.hw && Math.abs(d1) >= l.hw && s0 >= 0 && s0 <= l.len)) continue;
+          const f = (Math.sign(d1) * l.hw - d0) / (d1 - d0), sx = s0 + (s1 - s0) * f;
+          if (sx < 0 || sx > l.len) continue;
+          const ol = Math.hypot(ox, oy) || 1;
+          found.push({ ref: t.ref, s: sx, side: Math.sign(d1), ex: ox / ol, ey: oy / ol });
+        }
+      }
+    }
+    for (const dir of [1, -1]) {
+      const tx = l.ux * dir, ty = l.uy * dir;
+      for (const x of found) {
+        const turn = Math.atan2(tx * x.ey - ty * x.ex, tx * x.ex + ty * x.ey);   // + left
+        if (Math.abs(turn) > RUNWAY_SIGN.exitMaxTurnDeg * Math.PI / 180) continue;
+        let arrow = ((Math.round(-turn / (Math.PI / 4)) % 8) + 8) % 8;
+        if (arrow === 0) continue;                         // straight on off the runway's end: no exit to sign
+        const ss = x.s - dir * RUNWAY_SIGN.exitBack;
+        if (ss < 0 || ss > l.len) continue;
+        if (out.exits.some((q) => q.ri === ri && q.dir === dir && q.side === x.side && q.panels[0].text === x.ref && Math.abs(q.s - ss) < 40)) continue;
+        const panels = [{ kind: 'dir', text: x.ref, arrow }];
+        const off = x.side * (l.hw + RUNWAY_SIGN.exitSet + panelWidth(panels[0]) / 2);
+        const sx = l.ax + l.ux * ss + nx * off, sy = l.ay + l.uy * ss + ny * off;
+        if (!clearAt(sx, sy, nx, ny, panelWidth(panels[0]))) continue;
+        out.exits.push({ x: sx, y: sy, tx, ty, panels, ri, dir, side: x.side, s: ss });
+      }
+    }
+    // Distance remaining, every 1,000 ft: at s from the first end the second-end-bound traffic has n − k left.
+    const lenFt = l.len / FT, n = Math.floor(lenFt / RUNWAY_SIGN.distStepFt);
+    if (n < 2) continue;
+    const excess = lenFt - n * RUNWAY_SIGN.distStepFt;
+    for (let k = 1; k < n; k++) {
+      const s = (excess / 2 + k * RUNWAY_SIGN.distStepFt) * FT;
+      for (const side of [1, -1]) {
+        const w = Math.max(panelWidth({ text: String(n - k) }), panelWidth({ text: String(k) }));
+        const off = side * (l.hw + RUNWAY_SIGN.distSet + w / 2);
+        const cx = l.ax + l.ux * s + nx * off, cy = l.ay + l.uy * s + ny * off;
+        if (!clearAt(cx, cy, nx, ny, w)) continue;
+        // Back to back: each half of the depth towards the traffic it faces.
+        const hd = SIGN.depth / 2;
+        out.distance.push({ x: cx - l.ux * hd, y: cy - l.uy * hd, tx: l.ux, ty: l.uy, panels: [{ kind: 'dist', text: String(n - k) }] });
+        out.distance.push({ x: cx + l.ux * hd, y: cy + l.uy * hd, tx: -l.ux, ty: -l.uy, panels: [{ kind: 'dist', text: String(k) }] });
+      }
+    }
   }
   return out;
 }

@@ -5,7 +5,7 @@ Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), fl
 - realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777 (or, with Boeing auto-trim on in Settings, a path that holds itself as the A321's does);
 - a holds-only autopilot with up to 16× time compression;
 - a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
-- gate starts with pushback and a taxi route drawn on the ground, and taxiway and runway signs (v0.4.1);
+- gate starts with pushback and a taxi route drawn on the ground, and taxiway and runway signs (v0.4.1; runway exit and distance remaining signs, v0.4.2);
 - parked aircraft and ground vehicles at the airports;
 - synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), muffled but clearly there in the cockpit, warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
@@ -31,7 +31,7 @@ New scenario opens the flight setup with a name: the origin, destination, runway
 
 **Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
-**Weather** (v0.4.0): the L window has a third tab, Weather (Sky · Weight · Weather). Pick a preset (clear, few clouds, overcast, rain, a light, moderate or severe storm, snow, fog, gusty crosswind), or change any setting under it: the wind by height, gusts, turbulence, a low-level shear, a microburst on final, the visibility and fog, up to three cloud layers, rain or snow, lightning, the runway's state, the temperature and the QNH. It applies at once in flight. The setup picks a preset for the flight, clear by default. The wind is felt as a crosswind, a headwind or a tailwind, and the altimeter is real: each flight starts with the day's QNH set, K sets it again, and the BARO box on the FCU or the MCP sets it too (scroll it, type into it, or STD). Above the transition altitude (14,000 ft) with a QNH set, or below FL140 on STD in a descent, the setting flashes until you change it. The landing card and the logbook give the wind at touchdown as the tower does.
+**Weather** (v0.4.0): the L window has a third tab, Weather (Sky · Weight · Weather). Pick a preset (clear, few clouds, overcast, rain, a light, moderate or severe storm, snow, fog, gusty crosswind), or change any setting under it: the wind by height, gusts, turbulence, a low-level shear, a microburst on final, the visibility and fog, up to three cloud layers, rain or snow, lightning, the runway's state, the temperature and the QNH. It applies at once in flight. The setup picks a preset for the flight, clear by default. The wind is felt as a crosswind, a headwind or a tailwind, and the altimeter is real: each flight starts with the day's QNH set, K sets it again, and the BARO box on the FCU or the MCP sets it too (scroll it, type into it, or STD). Above the transition altitude (14,000 ft) with a QNH set, or below FL140 on STD in a descent, the setting flashes until you change it. The landing card and the logbook give the wind at touchdown as the tower does. v0.4.2: a predictive windshear warning (WINDSHEAR AHEAD) for a microburst on the path ahead below 1,200 ft; hydroplaning above about 130 kt on standing water in heavy rain; wipers in the cockpit, spray off the wheels, and snow over the taxiway paint.
 
 From a gate:
 
@@ -41,7 +41,7 @@ From a gate:
 
 After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and logged with its scenario: the pause menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. The score is strict: 100 takes a landing that's perfect in every part.
 
-Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout, and (v0.4.1) two for practice: **Indestructible**, so no crash ends a flight (the landing card says what would have crashed), and **Boeing auto-trim**, so the 787 and 777 hold their flight path hands off.
+Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout, and (v0.4.1) two for practice: **Indestructible**, so no crash ends a flight (the landing card says what would have crashed; v0.4.2: the crash screen can turn it on as it rewinds), and **Boeing auto-trim**, so the 787 and 777 hold their flight path hands off and flare as the A321 does (v0.4.2).
 
 ## Controls
 
@@ -57,7 +57,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | G | gear lever |
 | 6 / 7 / 8 / 9 / 0 | flap lever: A321neo 0, 1, 2, 3, FULL; Boeings UP, 5, 15, 20, 30 |
 | [ / ] | flap lever one detent up / down (every type) |
-| H / Y (hold) | Boeings: pitch trim nose up / nose down (it moves the speed the aircraft holds) |
+| H / Y (hold) | Boeings: pitch trim nose up / nose down (it moves the speed the aircraft holds; with auto-trim on, the flight path held) |
 | O | Boeings: TO/GA (take-off thrust on the ground, a go-around in the air) |
 | C | speed brakes in / out |
 | Shift+C | arm ground spoilers |
@@ -138,7 +138,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/sim/` | atmosphere, A321neo data (with sources), flight model, engines, gear, fly-by-wire, autopilot, prediction worker |
 | `src/sim/weather.js`, `src/sim/weather-presets.js`, `src/sim/lightning.js` | the weather's settings and the wind field (mean wind, gusts, Dryden turbulence, microbursts, all stateless and seeded), the runway's state, the presets, the seeded strikes |
 | `src/ui/weather-window.js` | the Weather tab |
-| `src/world/clouds.js`, `src/world/precip.js` | the cloud layers and lightning; rain, snow and windshield drops (the haze, fog and overcast light are in `sky.js` and `glsl.js`) |
+| `src/world/clouds.js`, `src/world/precip.js`, `src/world/spray.js` | the cloud layers and lightning; rain, snow, windshield drops and the wiper (v0.4.2); the wheels' spray (v0.4.2) (the haze, fog and overcast light are in `sky.js` and `glsl.js`) |
 | `src/world/frame.js` | the map frame: Lambert conformal conic, magnetic variation, headings |
 | `src/world/` | terrain clipmap, sea, sky, surface detail, cities, runways; `heightfield.js` and `runways.js` are the pure data helpers |
 | `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`, `src/cockpit-windows.js` | the procedural A321neo in Nuclear Airlines colours, the simple cockpit, and the six cockpit windows (shared by the outside, the livery and the cockpit) |
@@ -154,7 +154,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/score.js`, `src/store.js` | the landing score (100 × e^(−cost), the approach included); localStorage under `gamedump:flight-sim:` |
 | `src/ground/` | the taxi graph and routing, pushback, the gate flow (gate starts, routes out and in) |
 | `src/world/apron*.js`, `src/world/traffic*.js`, `src/world/liveries-other.js` | taxiways, aprons, stands, jet bridges and terminals; parked aircraft (made-up airlines) and ground vehicles |
-| `src/world/taxisigns.js` | where the taxiway and runway signs stand and what they say, from the taxi graph (v0.4.1; `apron.js` draws them) |
+| `src/world/taxisigns.js` | where the taxiway and runway signs stand and what they say, from the taxi graph and the runways (v0.4.1; exit and distance remaining signs, v0.4.2; `apron.js` draws them) |
 | `src/world/taxiroute.js`, `src/world/airport-mask.js` | the taxi route line; no trees or city blocks inside the airports |
 | `data/` | baked terrain, water and land-cover grids, coastline, airports |
 | `tools/bake_*.py` | the bake scripts (read `reference/raw/`, write `data/`) |

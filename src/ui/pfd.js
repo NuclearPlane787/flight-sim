@@ -160,6 +160,7 @@ export function createPfd(cv) {
     const w = st.warnings || {};
     const words = [];
     if (w.windshear) words.push(['WINDSHEAR', C.red]);   // v0.4.0
+    if (w.windshearAhead) words.push(['W/S AHEAD', C.red]);   // v0.4.2: the predictive warning
     if (w.pullUp) words.push(['PULL UP', C.red]);
     if (w.stall) words.push(['STALL', C.red]);
     if (w.overspeed) words.push(['OVERSPEED', C.red]);

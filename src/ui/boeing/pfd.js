@@ -518,6 +518,7 @@ export function createBoeingPfd(cv) {
     };
     if (st.crashed) word('CRASH', C.red);
     if (w.windshear) word('WINDSHEAR', C.red);   // v0.4.0
+    if (w.windshearAhead) word('WINDSHEAR AHEAD', C.red);   // v0.4.2: the predictive warning
     if (w.pullUp) word('PULL UP', C.red);
     if (w.stall || st.shaker) word('STALL', C.red);
     if (w.overspeed) word('OVERSPEED', C.red);

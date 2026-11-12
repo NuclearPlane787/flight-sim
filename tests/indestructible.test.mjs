@@ -64,7 +64,7 @@ test('a belly landing slides to a stop on the skids, a little into the ground, e
   }
 });
 
-test('flying into the ground at 280 kt and 100 m/s down: it bounces off, never more than 6 m in', () => {
+test('flying into the ground at 280 kt and 100 m/s down: it bounces off, never more than 1.5 m in (v0.4.2: 6 m before the hard stop)', () => {
   const sim = createSim({ type: 'b777-300er' });
   const D = sim.type.data;
   sim.reset({ x: 0, y: 0, hdg: 0, onGround: false, z: 600, iasMs: 250 * KT, flapLever: 0, gearDown: false, fuelKg: 30000, payloadKg: 230000 - D.OEW - 30000 });
@@ -80,8 +80,49 @@ test('flying into the ground at 280 kt and 100 m/s down: it bounces off, never m
   });
   assert.ok(hitVs < -60, `hit at ${hitVs?.toFixed(0)} m/s`);
   assert.equal(s.crashed, null);
-  assert.ok(deepest < 6, `${deepest.toFixed(2)} m deep at worst`);
+  assert.ok(deepest < 1.5, `${deepest.toFixed(2)} m deep at worst`);
   assert.ok(Number.isFinite(s.pos.z) && s.pos.z > 0, `${s.pos.z}`);
+});
+
+test('v0.4.2: into a 30% hillside at 250 kt on the autopilot, the nose stays within 1.5 m of the ground', () => {
+  const hill = (x, y) => ({ h: Math.max(0, (y - 3000) * 0.3), kind: 'ground' });
+  const sim = createSim({ type: 'b777-300er', ground: hill });
+  const D = sim.type.data;
+  sim.reset({ x: 0, y: 0, hdg: 0, onGround: false, z: 300, iasMs: 250 * KT, flapLever: 0, gearDown: false, fuelKg: 30000, payloadKg: 230000 - D.OEW - 30000,
+    ap: { ap: true, athr: true, spdKt: 250, altFt: 1000 } });
+  sim.setIndestructible(true);
+  const s = sim.state;
+  let deepest = 0, hit = false;
+  run(sim, 45, () => { sim.events.length = 0; deepest = Math.max(deepest, s.scrapeDepth); hit ||= s.scraping; });
+  assert.ok(hit, 'it hit the hill');
+  assert.equal(s.crashed, null);
+  assert.ok(deepest < 1.5, `${deepest.toFixed(2)} m deep at worst (v0.4.1: 4.4 m)`);
+  assert.ok(Number.isFinite(s.pos.z) && s.pos.z >= hill(s.pos.x, s.pos.y).h - 2, 'on or over the hill');
+});
+
+test('v0.4.2: a gear-up landing gets a landing card, each type', () => {
+  for (const type of ['a321neo', 'b787-9', 'b777-300er']) {
+    const sim = createSim({ type });
+    const D = sim.type.data, mass = type === 'a321neo' ? 70000 : 220000, fuel = type === 'a321neo' ? 8000 : 25000;
+    sim.reset({ x: 0, y: 0, hdg: 0, onGround: false, z: 150 * FT + sim.type.geo.GROUND_Z, iasMs: 145 * KT, flapLever: 4, gearDown: false, fuelKg: fuel, payloadKg: mass - D.OEW - fuel });
+    sim.setIndestructible(true);
+    const s = sim.state, sc = createScorer();
+    let res = null, touchdowns = 0;
+    run(sim, 150, () => {
+      approachPilot(sim);
+      sim.controls.thrust = s.agl < 10 ? 0 : 0.25;
+      const evs = sim.events.splice(0);
+      touchdowns += evs.filter((e) => e.type === 'touchdown').length;
+      res = sc.update(s, evs) || res;
+      return !!res;
+    });
+    assert.ok(res, `${type}: a card`);
+    const p = res.parts.find((q) => q.name === 'Would have crashed');
+    assert.ok(p && /impact|strike/.test(p.value), `${type}: ${JSON.stringify(p)}`);
+    // (this pilot's gear-up arrivals aren't gentle: the 787's tail touches first at about 1,800 ft/min)
+    assert.ok(res.touchdown.vsFpm > 0 && res.touchdown.vsFpm < 2500, `${type}: ${res.touchdown.vsFpm.toFixed(0)} ft/min`);
+    assert.ok(touchdowns >= 1 && touchdowns <= 3, `${type}: ${touchdowns} touchdowns (the first, and a bounce or two)`);
+  }
 });
 
 test('a tail strike on over-rotation: one tail strike event, then the take-off goes on', () => {

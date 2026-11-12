@@ -50,6 +50,7 @@ export const VREF_ADD_KT = { UP: 80, '1': 60, '5': 40, '15': 20, '20': 20, '25':
 export const MTOW = 351534;   // [TCDS] p.26 §13a, optional increased weight, 775,000 lb; [ACAP] 2-2 agrees (baseline 340,194 kg)
 export const MTW = 352441;    // [TCDS] p.26 §13a, 777,000 lb; [ACAP] 2-2 agrees
 export const MLW = 251290;    // [TCDS] p.26 §13, 554,000 lb; [ACAP] 2-2 agrees
+export const TYRE_PSI = 221;   // v0.4.2: the main tyres' pressure, for hydroplaning [EST: 221 psi, as remembered from the ACAP's tyre table, not read off it]
 // [ACAP] 2-2 and 3-3, 524,000 lb: the payload/range chart is drawn to it. [TCDS] p.26 lists 239,950 kg (529,000 lb), an option on some aircraft:
 // a real conflict between the two documents, and the one that matches the range chart was taken.
 export const MZFW = 237682;

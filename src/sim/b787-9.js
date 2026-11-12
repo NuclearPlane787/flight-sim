@@ -49,6 +49,7 @@ export const VREF_ADD_KT = { UP: 80, '1': 60, '5': 40, '10': 30, '15': 20, '17':
 export const MTOW = 254692;   // [TCDS] p.37 §13, 561,500 lb ([ACAP] 2-3 agrees; its charts stop at 560,000 lb, 254,011 kg)
 export const MTW = 255372;    // [TCDS] p.37 §13, maximum taxi weight, 563,000 lb
 export const MLW = 192776;    // [TCDS] p.37 §13, 425,000 lb
+export const TYRE_PSI = 220;   // v0.4.2: the main tyres' pressure, for hydroplaning [EST: about 15 bar]
 export const MZFW = 181436;   // [TCDS] p.37 §13, 400,000 lb
 export const MIN_WEIGHT = 110677; // [TCDS] p.37 §13, minimum flight and zero fuel weight, 244,000 lb
 // Operating empty weight: not in the documents ([ACAP] 3-3 says to consult the airline). [PUB] 128,850 kg: spec

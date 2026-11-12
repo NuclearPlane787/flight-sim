@@ -87,7 +87,15 @@ export const RUNWAY_TYRES = {
   snow: { brake: 0.40, side: 0.45, rollAdd: 0.015 },
   ice:  { brake: 0.16, side: 0.18, rollAdd: 0.0 },
 };
-export const runwayTyresOf = (s) => RUNWAY_TYRES[runwayStateOf(s)] || null;
+// v0.4.2: hydroplaning. Heavy rain on a wet runway leaves standing water (hydro 0..1, from the rain's rate: none
+// under 0.55, all of it from 0.9, so a severe storm's and heavy rain's); a wet runway set by hand, or one wet from light
+// rain, has none. gear.js takes the tyres' grip away above the type's hydroplaning speed (9 √p kt, NASA's).
+export function runwayTyresOf(s) {
+  const t = RUNWAY_TYRES[runwayStateOf(s)] || null;
+  if (!t || runwayStateOf(s) !== 'wet' || !s.precip || s.precip.kind !== 'rain') return t;
+  const x = Math.min(1, Math.max(0, (s.precip.rate - 0.55) / 0.35)), hydro = x * x * (3 - 2 * x);
+  return hydro > 0 ? { ...t, hydro } : t;
+}
 
 // Nothing to fly in and nothing to draw: the sim then skips the weather altogether.
 export function isDefaultWeather(s) {

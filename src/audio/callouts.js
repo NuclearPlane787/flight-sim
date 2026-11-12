@@ -19,6 +19,7 @@ export function createCallouts() {
   let warnAt = -Infinity;
   let shearAt = -Infinity;
   let shearCallAt = 0;  // a Boeing's voice follows its two-tone siren (synth.js)
+  let aheadOn = false;  // v0.4.2: the predictive warning has been said
   let muted = false;
   let volume = 1;    // the pause menu's master volume
   const heard = []; // the most recent calls, for tests and the log
@@ -75,6 +76,15 @@ export function createCallouts() {
       if (retardOn) say('windshear, windshear, windshear', true); else shearCallAt = now + 1.6;
     }
     if (shearCallAt && now >= shearCallAt) { shearCallAt = 0; say('windshear', true); warnAt = now; }
+    // v0.4.2: the predictive warning, once a time it comes on (the reactive one stops it): on an approach
+    // "go around, windshear ahead" (a Boeing) or "windshear ahead" twice (an Airbus); on the take-off roll or
+    // climbing away, "windshear ahead" twice on both.
+    if (w.windshearAhead && !w.windshear && !aheadOn && now - shearAt > 6) {
+      aheadOn = true; warnAt = now;
+      const approach = !s.onGround && s.vs < 0;
+      say(!retardOn && approach ? 'go around, windshear ahead' : 'windshear ahead, windshear ahead', true);
+    }
+    if (!w.windshearAhead) aheadOn = false;
     if (now - warnAt > 2.5 && !s.onGround) {
       for (const [k, text] of WARNINGS) if (w[k]) { say(text, true); warnAt = now; break; }
     }
@@ -90,6 +100,6 @@ export function createCallouts() {
     get muted() { return muted; },
     set volume(v) { volume = Math.max(0, Math.min(1, v)); },
     get volume() { return volume; },
-    reset() { lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; shearAt = -Infinity; shearCallAt = 0; if (synth) synth.cancel(); },
+    reset() { lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; shearAt = -Infinity; shearCallAt = 0; aheadOn = false; if (synth) synth.cancel(); },
   };
 }

@@ -10,7 +10,7 @@
 // origin of geometry.js), not the CG; state.cgX is the CG's body x (m, + forward).
 
 import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
-import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind } from './weather.js';
+import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind, microburstInto } from './weather.js';
 import { leverToPhi } from './engines.js';
 import { typeById, kitFor, DEFAULT_TYPE } from './types.js';
 
@@ -25,7 +25,26 @@ const TRANSITION_M = 14000 * 0.3048;
 // per kg: the belly sits about 0.08 m into the ground on three of them) and damper (N·s/m per kg), and the
 // friction of metal sliding on the ground.
 const SKID = { k: 40, c: 4, mu: 0.4 };
+// v0.4.2: past this depth a skid is a hard stop (see the integration), so a fast hit can't bury the nose in a hill;
+// the bounce keeps this much of the speed into the ground.
+const SKID_HARD_PEN = 0.6, SKID_RESTITUTION = 0.2;
+// v0.4.2, Indestructible's skids: the type's crash points, plus three more along the belly, where the straight line
+// from one crash point to the next runs above the fuselage's underside: two forward of the belly point at its own
+// height (the cylinder's bottom), at a third and two thirds of the way to the nose point, and one halfway to the
+// tail-strike point. Only the skids have them: without Indestructible the crash checks are as before.
+function skidPoints(cp) {
+  const nose = cp.find((c) => c.why === 'nose impact'), belly = cp.find((c) => c.why === 'belly impact');
+  const tail = cp.find((c) => c.why === 'tail strike');
+  const pts = cp.slice();
+  if (nose && belly) for (const f of [1 / 3, 2 / 3]) pts.push({ x: belly.x + f * (nose.x - belly.x), y: 0, z: belly.z, why: 'belly impact' });
+  if (belly && tail) pts.push({ x: (belly.x + tail.x) / 2, y: 0, z: (belly.z + tail.z) / 2, why: 'belly impact' });
+  return pts;
+}
 const WS_F_WARN = 0.105, WS_AVG_M = 1000, WS_MAX_AGL = 1500 * 0.3048, WS_HOLD_S = 6;
+// v0.4.2, the predictive windshear warning (the weather radar's): a microburst's F-factor, averaged over 1 km, of 0.13
+// or more [FAA AC 25-12's hazard level for a warning] on the path ahead from 0.5 to 1.5 nm, below 1,200 ft and above
+// 50 ft in the air (and on the take-off roll under 100 kt), looked for 4 times a second.
+const PWS_F = 0.13, PWS_NEAR_M = 926, PWS_FAR_M = 2778, PWS_TOP_M = 1200 * 0.3048, PWS_LOW_M = 50 * 0.3048, PWS_HOLD_S = 5, PWS_DT = 0.25;
 
 const defaultGround = () => FLAT;
 const FLAT = { h: 0, kind: 'runway' };
@@ -40,6 +59,7 @@ function newCore(A, boeing) {
     baroHpa: 1013.25, baroStd: false,
     // v0.4.0: the windshear detector's F-factor (filtered over about a kilometre) and its alert's timer.
     wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
+    pwsT: 0, pwsClock: 0,                     // v0.4.2: the predictive warning's timer, and when it next looks
     // v0.3.2: the load's parts as the Weight window shows them (null: not known, so the plan's), and the
     // fuel added (or taken off) since the flight began, so the logbook's fuel used stays the burn. In the
     // core, so a save, a rewind and a copy carry them.
@@ -77,7 +97,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // Everything the type decides, bound by bindType() below.
   let typeDef, A, kit, coefficients, liftCurve, machLift, clOfAlpha, engineStep, togaThrust, idleN1, detentName,
     leverToPhi, leverForPhi, n1ForPhi, LEVER_CL, legStep, fbwStep, apStep, athrStep, AP_FIELDS,
-    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG;
+    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, SKID_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG;
   const bindKit = (id) => {
     typeDef = typeById(id);
     A = typeDef.data; kit = kitFor(id);
@@ -85,6 +105,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     ({ engineStep, togaThrust, idleN1, detentName, leverToPhi, leverForPhi, n1ForPhi, LEVER_CL } = kit.eng);
     ({ legStep } = kit.gear); ({ fbwStep } = kit.fbw); ({ apStep, athrStep, AP_FIELDS } = kit.auto);
     ({ GEAR, GROUND_Z, ENGINES, CRASH_POINTS } = typeDef.geo);
+    SKID_POINTS = skidPoints(CRASH_POINTS);
     CONFIG_BY_LEVER = A.FLAP_LEVER; NEXT_CONFIG = A.NEXT_CONFIG;
   };
   bindKit(type);
@@ -129,6 +150,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // v0.4.1: the Indestructible and auto-trim settings, whether a crash point is on the ground (a skid)
     // now, and how far the deepest one is in it (m).
     indestructible: false, autoTrim: false, scraping: false, scrapeDepth: 0,
+    hydroplaning: false,   // v0.4.2: the main wheels riding on standing water
     // Extras (not in the agreed interface, handy for screens and tests):
     gamma: 0, protAlpha: false, protSpeed: false, alphaFloor: false, flare: false, fuelFlowKgS: 0, cl: 0, cd: 0,
   };
@@ -344,10 +366,20 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const mainsWow = wowL || wowR;
     const onGround = mainsWow || (wowN && aglEst < 1);
 
+    // v0.4.2: the predictive windshear warning, ahead along the track (pwsScan below).
+    if (X.pwsT > 0) X.pwsT = Math.max(0, X.pwsT - dt);
+    if (wxC !== null && wxC.bursts.length && (X.pwsClock -= dt) <= 0) {
+      X.pwsClock = PWS_DT;
+      const looking = onGround ? gs < 100 * A.KT && controls.thrust > 0.6 : aglEst > PWS_LOW_M && aglEst < PWS_TOP_M;
+      // (On the roll it looks along the climb-out to come, about 4° up; in the air along the path flown.)
+      if (looking && pwsScan(gs, onGround ? 0.07 : gamma, aglEst) >= PWS_F) X.pwsT = PWS_HOLD_S;
+    }
+
     // ---- systems ----
     updateFlaps(dt, ias, onGround);
     updateGear(dt, wowAny);
-    if (onGround) { X.groundTime += dt; } else { X.airTime += dt; }
+    // v0.4.2: sliding on the skids (Indestructible) counts as the ground here, so a belly landing touches down once.
+    if (onGround || (indestructible && X.scrapes !== 0)) { X.groundTime += dt; } else { X.airTime += dt; }
 
     // Flight / ground mode blend for the fly-by-wire.
     if (wowN && mainsWow) X.flt = Math.max(0, X.flt - dt / 1.5);
@@ -471,6 +503,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       kctx.p = X.p; kctx.q = X.q; kctx.r = X.r;
       kctx.steer = X.steer;
       kctx.tyres = wxC !== null ? wxC.tyres : null;
+      kctx.hydro = 0;   // v0.4.2: the most any tyre is hydroplaning (gear.js)
       for (let i = 0; i < 3; i++) {
         const L = legs[i];
         L.rx = L.bx - cgX; L.ry = -L.by; L.rz = -L.bz;
@@ -479,8 +512,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
         if (L.compRate > peakComp && L.wow) peakComp = L.compRate;
       }
       wowN = legs[0].wow; wowL = legs[1].wow; wowR = legs[2].wow;
+      state.hydroplaning = kctx.hydro > 0.5 && (wowL || wowR);
     } else {
       for (let i = 0; i < 3; i++) { legs[i].wow = false; legs[i].comp = 0; legs[i].normal = 0; legs[i].vRoll *= 0.995; }
+      state.hydroplaning = false;
     }
 
     // v0.4.1, Indestructible: a crash point under the ground pushes back (a stiff, damped spring, with the
@@ -489,8 +524,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (indestructible && aglEst < 15) {
       const ui = R[0] * X.vn + R[3] * X.ve + R[6] * X.vd, vi = R[1] * X.vn + R[4] * X.ve + R[7] * X.vd, wi = R[2] * X.vn + R[5] * X.ve + R[8] * X.vd;
       const kS = mass * SKID.k, cS = mass * SKID.c;
-      for (let i = 0; i < CRASH_POINTS.length; i++) {
-        const c = CRASH_POINTS[i];
+      for (let i = 0; i < SKID_POINTS.length; i++) {
+        const c = SKID_POINTS[i];
         const rx = c.x - cgX, ry = -c.y, rz = -c.z;
         const dn = R[0] * rx + R[1] * ry + R[2] * rz, de = R[3] * rx + R[4] * ry + R[5] * rz, dd = R[6] * rx + R[7] * ry + R[8] * rz;
         const pen = groundFn(X.px + de, X.py + dn).h - (X.pz - dd);
@@ -555,8 +590,15 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const nn = 1 / Math.sqrt(n0 * n0 + n1 * n1 + n2 * n2 + n3 * n3);
     X.q0 = n0 * nn; X.q1 = n1 * nn; X.q2 = n2 * nn; X.q3 = n3 * nn;
 
+    // v0.4.2, Indestructible: a skid more than SKID_HARD_PEN into the ground is a hard stop. The aircraft goes
+    // back up to that depth, and an impulse at the deepest point along the ground's normal takes away its speed
+    // into the ground but SKID_RESTITUTION of it, turning the aircraft as a hit there would. The springs alone
+    // let a fast hit bury the nose up to 6 m in a hill.
+    let impNz = 0;
+    if (indestructible && scrapeDepth > SKID_HARD_PEN) impNz = hardStop(mass, cgX, Ixx, Iyy, Izz, Ixz, dt);
+
     // Load factor (specific force along body −z) and the force along the path.
-    const nz = -(F[2]) / (mass * G);
+    const nz = -(F[2]) / (mass * G) + impNz;
     X.nzPrev = nz;
     // The load factor as an accelerometer reports it (flight-data recorders sample at about
     // 8–16 Hz): a 0.1 s first-order filter, so the touchdown g isn't one step's spike.
@@ -580,6 +622,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
     // ---- events and crashes ----
     const nowMains = wowL || wowR, nowAny = nowMains || wowN;
+    const onSkids = indestructible && scrapes !== 0 && !nowAny;   // v0.4.2
     // Touchdown: armed after 0.5 s with no wheel on the ground. A nose-first arrival that
     // is too hard breaks the nose gear; the main-gear contact makes the touchdown event.
     if (X.airTime > 0.5 && X.everAirborne) X.tdArmed = true;
@@ -594,6 +637,17 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       X.lastTdT = X.t;
       if (-X.vd > A.GEAR_BREAK_VS) crash('hard landing: gear collapsed');
     }
+    // v0.4.2, Indestructible: a landing on the skids (the gear up) touches down at the first skid's touch, so
+    // there's a landing card (the damage it would have been is on it).
+    if (X.tdArmed && onSkids) {
+      X.tdArmed = false;
+      X.tdPending = true; X.tdT = 0;
+      X.tdVs = -X.vd;
+      X.tdPeakG = X.nzF; X.tdX = X.px; X.tdY = X.py; X.tdBank = phi; X.tdPitch = theta;
+      X.tdSurf = groundFn(X.px, X.py).kind;
+      if (X.t - X.lastTdT < 8) events.push({ type: 'bounce' });
+      X.lastTdT = X.t;
+    }
     if (X.tdPending) {
       X.tdT += dt;
       if (X.nzF > X.tdPeakG) X.tdPeakG = X.nzF;
@@ -602,6 +656,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
         events.push({ type: 'touchdown', vsMs: X.tdVs, g: X.tdPeakG, x: X.tdX, y: X.tdY, bank: X.tdBank, pitch: X.tdPitch, surface: X.tdSurf });
       }
     }
+    if (onSkids && X.airTime > 0.5) X.airTime = 0;
     if (nowAny) {
       if (X.airTime > 0.5) X.airTime = 0;
       let grass = false;
@@ -628,10 +683,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (indestructible) {
       // A skid that has just touched: what would have crashed (a tail strike is its own event too).
       const fresh = scrapes & ~X.scrapes;
-      for (let i = 0; fresh && i < CRASH_POINTS.length; i++) {
+      for (let i = 0; fresh && i < SKID_POINTS.length; i++) {
         if (!(fresh & (1 << i))) continue;
-        if (CRASH_POINTS[i].why === 'tail strike') events.push({ type: 'tailstrike' });
-        crash(CRASH_POINTS[i].why);
+        if (SKID_POINTS[i].why === 'tail strike') events.push({ type: 'tailstrike' });
+        crash(SKID_POINTS[i].why);
       }
       X.scrapes = scrapes;
     } else if (aglEst < 12) {
@@ -651,6 +706,74 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
     if (X.apDiscT > 0) X.apDiscT -= dt;
     updateState(atm, ias, mach, alpha, beta, nz, gs, gh, aglEst);
+  }
+
+  // v0.4.2, the predictive windshear scan: the microbursts' wind (only theirs: the radar sees the outflow in the rain)
+  // along the track ahead, on the path being flown, every 100 m from PWS_NEAR_M to PWS_FAR_M + 1 km; the worst F over
+  // a kilometre starting in the warning zone. F = the tailwind's rise over that kilometre / (g × the time to fly it)
+  // + the mean downdraft / the airspeed, as the reactive detector's.
+  const pwsBurst = { n: 0, e: 0, d: 0 }, pwsTail = new Float64Array(50), pwsDown = new Float64Array(50);
+  function pwsScan(gs, gamma, agl) {
+    // The time to fly the kilometre at the speed it will be flown: no slower than 70 m/s (about 136 kt), so on the
+    // take-off roll it's the lift-off's, not the roll's.
+    const V = Math.max(gs, 70);
+    const tn = gs > 5 ? X.vn / gs : R[0], te = gs > 5 ? X.ve / gs : R[3];
+    const tl = Math.hypot(tn, te) || 1, un = tn / tl, ue = te / tl;
+    const step = 100, n0 = Math.round(PWS_NEAR_M / step), n1 = Math.round((PWS_FAR_M + 1000) / step);
+    for (let i = n0; i <= n1; i++) {
+      const s = i * step, h = Math.max(15, agl + s * Math.tan(clamp(gamma, -0.1, 0.15)));
+      let wn = 0, we = 0, wd = 0;
+      for (const b of wxC.bursts) {
+        microburstInto(X.px + ue * s - b.x, X.py + un * s - b.y, h, b.R, b.lambda, pwsBurst);
+        wn += pwsBurst.n; we += pwsBurst.e; wd += pwsBurst.d;
+      }
+      pwsTail[i - n0] = wn * un + we * ue; pwsDown[i - n0] = wd;
+    }
+    const win = Math.round(1000 / step), dtWin = 1000 / V;
+    let worst = -Infinity;
+    for (let k = 0; k + win <= n1 - n0 && (n0 + k) * step <= PWS_FAR_M; k++) {
+      let down = 0;
+      for (let j = k; j <= k + win; j++) down += pwsDown[j];
+      const f = (pwsTail[k + win] - pwsTail[k]) / (G * dtWin) + down / (win + 1) / V;
+      if (f > worst) worst = f;
+    }
+    return worst;
+  }
+
+  // v0.4.2: the hard stop (see the integration). R is this step's, a 120th of a second old: close enough.
+  function hardStop(mass, cgX, Ixx, Iyy, Izz, Ixz, dt) {
+    let best = -1, pen = SKID_HARD_PEN, bx = 0, by = 0, bz = 0, bN = 0, bE = 0;
+    for (let i = 0; i < SKID_POINTS.length; i++) {
+      const c = SKID_POINTS[i];
+      const rx = c.x - cgX, ry = -c.y, rz = -c.z;
+      const dn = R[0] * rx + R[1] * ry + R[2] * rz, de = R[3] * rx + R[4] * ry + R[5] * rz, dd = R[6] * rx + R[7] * ry + R[8] * rz;
+      const pi = groundFn(X.px + de, X.py + dn).h - (X.pz - dd);
+      if (pi > pen) { pen = pi; best = i; bx = rx; by = ry; bz = rz; bN = X.py + dn; bE = X.px + de; }
+    }
+    if (best < 0) return 0;
+    X.pz += pen - SKID_HARD_PEN;
+    // The ground's normal (up) there, in north, east, down.
+    const hN = (groundFn(bE, bN + 2).h - groundFn(bE, bN - 2).h) / 4, hE = (groundFn(bE + 2, bN).h - groundFn(bE - 2, bN).h) / 4;
+    const il = 1 / Math.sqrt(1 + hN * hN + hE * hE);
+    const nN = -hN * il, nE = -hE * il, nD = -il;
+    // The point's velocity, and its part along the normal (out of the ground is positive).
+    const wx = X.q * bz - X.r * by, wy = X.r * bx - X.p * bz, wz = X.p * by - X.q * bx;
+    const vN = X.vn + R[0] * wx + R[1] * wy + R[2] * wz, vE = X.ve + R[3] * wx + R[4] * wy + R[5] * wz, vD = X.vd + R[6] * wx + R[7] * wy + R[8] * wz;
+    const vn = vN * nN + vE * nE + vD * nD;
+    if (vn >= 0) return 0;
+    // The normal in body axes, r × n, the inverse inertia of that, and the effective inverse mass along n.
+    const nx = R[0] * nN + R[3] * nE + R[6] * nD, ny = R[1] * nN + R[4] * nE + R[7] * nD, nzb = R[2] * nN + R[5] * nE + R[8] * nD;
+    const tx = by * nzb - bz * ny, ty = bz * nx - bx * nzb, tz = bx * ny - by * nx;
+    const det = Ixx * Izz - Ixz * Ixz;
+    const ax = (Izz * tx + Ixz * tz) / det, ay = ty / Iyy, az = (Ixz * tx + Ixx * tz) / det;
+    const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
+    const k = 1 / mass + nx * cx + ny * cy + nzb * cz;
+    const j = -(1 + SKID_RESTITUTION) * vn / k;
+    X.vn += j * nN / mass; X.ve += j * nE / mass; X.vd += j * nD / mass;
+    X.p += j * ax; X.q += j * ay; X.r += j * az;
+    // What it does to the accelerometer, spread over the step (along body −z).
+    // (capped at 10 g: it's one step's share of an impact, and the screens and the camera read it)
+    return clamp(-(j * nzb / mass) / dt / G, -10, 10);
   }
 
   function crash(reason) {
@@ -778,6 +901,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     W.pullUp = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(1710 + 2.17 * (aglFt - 50));
     W.tooLowGear = air && aglFt < 500 && X.gearPos < 0.99 && ias < 190 * A.KT && vsFpm < 0;
     W.windshear = X.wsT > 0;
+    W.windshearAhead = X.pwsT > 0 && !W.windshear;   // v0.4.2: the reactive warning comes first
     if (kit.boeing) kit.boeing.updateState(S, X, lc, atm);
     W.master = W.stall || W.overspeed || W.apDisc || W.sinkRate || W.pullUp || W.tooLowGear;
     S.crashed = X.crashed;
@@ -972,8 +1096,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
-      scrapes: 0, dmgReason: '', dmgT: -100,
-      ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false } : null) }, snap.core);
+      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0,
+      ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
     Object.assign(controls, snap.controls);
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
     [wowN, wowL, wowR] = snap.wow;

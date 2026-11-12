@@ -34,6 +34,7 @@ export const VAPP_MLW_KT = 136;
 // ---- Weights --------------------------------------------------------------------------
 export const MTOW = 97000;   // [TCDS] p.102 §13, A321-251NX column (WV072 [AC] p.42 agrees)
 export const MLW = 79200;    // [TCDS] p.102 §13
+export const TYRE_PSI = 210;   // v0.4.2: the main tyres' pressure, for hydroplaning [EST: about 14.5 bar, the A321's usual]
 export const MZFW = 75600;   // [TCDS] p.102 §13
 export const MIN_WEIGHT = 46600; // [TCDS] p.102 §13, CFM
 // Operating empty weight: not in the documents. [EST] 50 500 kg, typical OEW for a two-class

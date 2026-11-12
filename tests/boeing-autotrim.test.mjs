@@ -101,11 +101,28 @@ test('a keyboard final: taps keep the 777 on the glide path with auto-trim, and 
   assert.ok(off > 3 * on, `without: ${off.toFixed(1)} m RMS`);
 });
 
-test('auto-trim: the trim switches have nothing to do, and turned off it carries on from the speed flown', () => {
+test('auto-trim: a held trim switch moves the path held, and turned off it carries on from the speed flown', () => {
+  // v0.4.2: H/Y move the path held at 0.5°/s (they did nothing at v0.4.1).
   const a = air({ altFt: 8000, iasKt: 240, flapLever: 0, gearDown: false });
-  const b = air({ altFt: 8000, iasKt: 240, flapLever: 0, gearDown: false });
-  run(a, 10); run(b, 10, () => { b.controls.trim = 1; });
-  assert.ok(Math.abs(a.state.pos.z - b.state.pos.z) < 0.01 && Math.abs(a.state.ias - b.state.ias) < 0.01, 'the same with or without the trim switch held');
+  const s = a.state;
+  run(a, 10);
+  const g0 = path(s);
+  run(a, 2, () => { a.controls.trim = 1; });
+  a.controls.trim = 0;
+  run(a, 8);
+  const g1 = path(s);
+  assert.ok(g1 - g0 > 0.6 * DEG && g1 - g0 < 1.4 * DEG, `nose-up trim for 2 s: ${((g1 - g0) / DEG).toFixed(2)}°`);
+  run(a, 10);
+  assert.ok(Math.abs(path(s) - g1) < 0.2 * DEG, `and it stays (${(g1 / DEG).toFixed(2)}° → ${(path(s) / DEG).toFixed(2)}°)`);
+  // With the flaps for landing too: nose-down trim for 2 s steepens the path about 1°.
+  const l = air();
+  run(l, 15);
+  const h0 = path(l.state);
+  run(l, 2, () => { l.controls.trim = -1; });
+  l.controls.trim = 0;
+  run(l, 8);
+  const dh = path(l.state) - h0;
+  assert.ok(dh < -0.6 * DEG && dh > -1.4 * DEG, `landing flaps, nose-down trim for 2 s: ${(dh / DEG).toFixed(2)}°`);
   // Slower now (thrust back, A/T off): auto-trim off, the reference is the speed of the moment.
   const c = air({ altFt: 8000, iasKt: 240, flapLever: 0, gearDown: false, athr: false });
   c.controls.thrust = 0.2;
@@ -115,6 +132,43 @@ test('auto-trim: the trim switches have nothing to do, and turned off it carries
   assert.ok(Math.abs(c.state.vRef - v) < 3 * KT, `vRef ${(c.state.vRef / KT).toFixed(1)} vs ${(v / KT).toFixed(1)} kt`);
   run(c, 3);
   assert.ok(Math.abs(c.state.ias - v) < 3 * KT, 'no lurch');
+});
+
+// v0.4.2: auto-trim's flare law, as the A321's (fbw.js), with a gentler sink that stops at +0.5°. Down a
+// 3° path hands off to the runway (the A/T idles at 25 ft), with a pull of full back stick from a height.
+function landing(pullFt, pullS = 1) {
+  const sim = air({ altFt: 450 + GZ / FT, iasKt: 150 });
+  const s = sim.state;
+  run(sim, 12, () => { sim.controls.pitch = Math.max(-0.4, Math.min(0.4, 0.4 * (-3 * DEG - path(s)) / DEG)); });
+  sim.controls.pitch = 0;
+  let axis = 0, pulled = 0, th50 = null, y50 = null, flare = false, td = null, thMin = 1;
+  for (let i = 0; i < 90 / DT && !td && !s.crashed; i++) {
+    const ft = s.agl / FT;
+    if (th50 === null && ft < 50) { th50 = s.pitch; y50 = s.pos.y; }
+    if (s.flare) { flare = true; thMin = Math.min(thMin, s.pitch); }
+    let key = 0;
+    if (pullFt && ft < pullFt && pulled < pullS) { key = 1; pulled += DT; }
+    axis = ramp(axis, key); sim.controls.pitch = axis;
+    sim.step(DT);
+    for (const e of sim.events) if (e.type === 'touchdown' && !td) td = e;
+    sim.events.length = 0;
+  }
+  return { flare, th50, thMin, thTd: td ? td.pitch : NaN, sinkFpm: td ? -td.vsMs / FPM : NaN, dist: td ? td.y - y50 : NaN, crashed: s.crashed };
+}
+
+test('auto-trim flare law: hands off it lands firmly on the mains; a short pull flares it; a long one breaks nothing', () => {
+  const off = landing(0);
+  assert.ok(off.flare, 'the flare law engaged');
+  assert.ok(!off.crashed && off.sinkFpm < 850, `hands off: ${off.sinkFpm.toFixed(0)} ft/min`);
+  assert.ok(off.thTd > 0.3 * DEG && off.thTd <= Math.max(off.th50, 0.5 * DEG) + 0.1 * DEG,
+    `hands off the nose stays up (mains first): ${(off.th50 / DEG).toFixed(2)}° at 50 ft, ${(off.thTd / DEG).toFixed(2)}° at the wheels`);
+  const fl = landing(30, 0.6);
+  assert.ok(!fl.crashed && fl.sinkFpm > 100 && fl.sinkFpm < 450 && fl.dist < 650,
+    `a 0.6 s pull at 30 ft: ${fl.sinkFpm.toFixed(0)} ft/min, ${fl.dist.toFixed(0)} m from 50 ft`);
+  // v0.4.1's path law ballooned on a 2 s pull and dropped the 777 on its nose wheel; the attitude is held now.
+  const big = landing(30, 2);
+  assert.ok(!big.crashed && big.sinkFpm < 850, `a 2 s pull: ${big.crashed || big.sinkFpm.toFixed(0) + ' ft/min'}`);
+  assert.ok(big.thTd < (A.PITCH_TAILSTRIKE_DEG - 1.5) * DEG, `pitch at the wheels ${(big.thTd / DEG).toFixed(2)}°, the tail strikes at ${A.PITCH_TAILSTRIKE_DEG}°`);
 });
 
 test('auto-trim at idle, hands off: the stall protection lowers the nose before the stall', () => {

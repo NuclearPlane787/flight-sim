@@ -22,6 +22,11 @@
 // Rain and snow fall only below the lowest cloud layer's base, and fade over FADE_M around it.
 // With no layers at all they stop at NO_CLOUD_TOP_M. baseFt is read as feet above sea level.
 //
+// v0.4.2, the wipers (automatic, in the seat views): in rain or snow below WIPER_MAX_KT one blade sweeps the pane in front
+// of the seat, faster the harder it rains. The drops it has passed are gone and come back as the rain lands again
+// (the drop shader works out when the blade last went over each one); the blade itself is drawn on the drops' sphere,
+// so the cockpit's walls hide it as they hide them. The seat's side comes from where the camera is in the aircraft.
+//
 // Visual only: the sim never reads this, and the particles are seeded from settings.seed.
 
 import * as THREE from '../../vendor/three.module.js';
@@ -34,7 +39,11 @@ const NO_CLOUD_TOP_M = 6000;           // no layers set: a rain-bearing cloud's 
 const FADE_M = 60;                     // the band around the cloud base that the fall fades over
 const CAP_DT = 0.1;                    // s: a long frame moves the particles no further than this
 const NEAR_M = 1.5, NEAR_COCKPIT_M = 4;// no particles this close to the eye (seats: none inside the flight deck)
-const DROP_SHELL_M = 3;                // outside any type's flight-deck walls, inside the wing and the world
+const DROP_SHELL_M = 3;
+// v0.4.2, the wipers. The pivot and the blade in directions from the eye (rad: azimuth to the right, elevation; the
+// captain's, mirrored for the first officer), the sweep from parked (lying out to the left) to its far end, and the
+// time a pass takes at the slowest and the fastest.
+const WIPER = { pivotAz: -14 * DEG, pivotEl: -27 * DEG, len: 40 * DEG, phi0: -80 * DEG, phi1: 32 * DEG, slowS: 2.6, fastS: 1.3, maxKt: 230 };                // outside any type's flight-deck walls, inside the wing and the world
 
 // A particle's own fall through the air, m/s, by the rate (the bigger drops of heavy rain fall faster).
 export const fallSpeed = (kind, rate) => (kind === 'snow' ? 1.2 : 4 + 3.5 * rate);
@@ -190,6 +199,8 @@ const PARTICLE_FRAG = /* glsl */ `
 const DROP_VERT = /* glsl */ `
   attribute vec4 aD;
   uniform float uShell, uFlow, uLife, uStretch, uSnow, uWet;
+  uniform vec4 uWipe;          // v0.4.2: the pivot (az, el), the blade's length, the side (-1 captain, +1 F/O)
+  uniform vec3 uWipeT;         // the wipe's clock, its period, how long the drops take to come back (< 0: parked)
   ${COMMON_LIGHT}
   varying vec2 vUv;
   varying vec3 vLight;
@@ -208,6 +219,21 @@ const DROP_VERT = /* glsl */ `
     float show = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.75, 1.0, life));
     show *= smoothstep(0.0, 0.05, wrapped / EL_SPAN) * (1.0 - smoothstep(0.95, 1.0, wrapped / EL_SPAN));
 
+    // v0.4.2: the drops the wiper has just passed over aren't there yet.
+    if (uWipe.w != 0.0 && uWipeT.z > 0.0) {
+      vec2 d = vec2((az - uWipe.x * -uWipe.w) * -uWipe.w, el - uWipe.y);
+      float rho = length(d);
+      if (rho < uWipe.z && rho > 0.04 * uWipe.z) {
+        float a01 = (atan(d.x, d.y) - ${(-80 * 3.141592653589793 / 180).toFixed(5)}) / ${(112 * 3.141592653589793 / 180).toFixed(5)};
+        if (a01 > 0.0 && a01 < 1.0) {
+          float T = uWipeT.y;
+          float t1 = acos(clamp(1.0 - 2.0 * a01, -1.0, 1.0)) / 6.2831853 * T, t2 = T - t1;
+          float tm = mod(uWipeT.x, T);
+          float since = min(mod(tm - t1 + T, T), mod(tm - t2 + T, T));
+          show *= smoothstep(0.0, uWipeT.z, since);
+        }
+      }
+    }
     vec3 dir = vec3(sin(az) * cos(el), sin(el), -cos(az) * cos(el));
     vec3 east = vec3(cos(az), 0.0, sin(az));
     vec3 north = cross(dir, east);
@@ -254,6 +280,51 @@ const DROP_FRAG = /* glsl */ `
     #include <colorspace_fragment>
   }
 `;
+
+// v0.4.2: the wiper's blade and arm, a strip on the drops' sphere from near the pivot to the blade's tip.
+const WIPER_VERT = /* glsl */ `
+  uniform float uShell;
+  uniform vec4 uWipe;
+  uniform vec3 uWipeT;
+  ${COMMON_LIGHT}
+  varying vec3 vLight;
+  varying float vAlong;
+  void main() {
+    float T = uWipeT.y;
+    float phi = ${(-80 * 3.141592653589793 / 180).toFixed(5)} + ${(112 * 3.141592653589793 / 180).toFixed(5)} * (0.5 - 0.5 * cos(6.2831853 * mod(uWipeT.x, T) / T));
+    float r = uWipe.z * mix(0.06, 1.0, position.y);
+    float side = -uWipe.w;                     // the captain's (uWipe.w = -1) as designed, the F/O's mirrored
+    // Across the strip: 0.45° wide (the arm), 0.9° over the blade's outer two thirds.
+    float w = (position.y > 0.35 ? 0.9 : 0.45) * 0.0174533 * (position.x - 0.5);
+    float az = uWipe.x * side + side * (r * sin(phi) + w * cos(phi));
+    float el = uWipe.y + r * cos(phi) - w * sin(phi);
+    vec3 dir = vec3(sin(az) * cos(el), sin(el), -cos(az) * cos(el));
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(dir * (uShell * 0.985), 1.0);
+    vLight = ambientLight();
+    vAlong = position.y;
+  }
+`;
+const WIPER_FRAG = /* glsl */ `
+  varying vec3 vLight;
+  varying float vAlong;
+  void main() {
+    // Black rubber on a dark grey arm, a faint sheen.
+    vec3 col = vLight * (vAlong > 0.35 ? 0.05 : 0.12);
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+function wiperGeometry() {
+  // A strip of 12 segments along the blade (position.y 0..1) by 2 across (position.x 0, 1).
+  const n = 12, pos = [], idx = [];
+  for (let i = 0; i <= n; i++) for (const x of [0, 1]) pos.push(x, i / n, 0);
+  for (let i = 0; i < n; i++) { const a = 2 * i; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  return g;
+}
 
 function quadGeometry(attrName, array) {
   const g = new THREE.InstancedBufferGeometry();
@@ -312,6 +383,8 @@ export function createPrecip(scene, uniforms) {
     uStretch: { value: 0 },
     uSnow: { value: 0 },
     uWet: { value: 0 },
+    uWipe: { value: new THREE.Vector4(WIPER.pivotAz, WIPER.pivotEl, WIPER.len, 0) },
+    uWipeT: { value: new THREE.Vector3(0, WIPER.slowS, 0.8) },
   };
   const dropMat = new THREE.ShaderMaterial({
     uniforms: dU, vertexShader: DROP_VERT, fragmentShader: DROP_FRAG,
@@ -323,6 +396,17 @@ export function createPrecip(scene, uniforms) {
   drops.visible = false;
   drops.renderOrder = 30;       // over the rain outside
   scene.add(drops);
+  // v0.4.2: the wiper, on the same sphere; its uniforms are the drops' (uShell, uWipe, uWipeT and the light).
+  const wiper = new THREE.Mesh(wiperGeometry(), new THREE.ShaderMaterial({
+    uniforms: dU, vertexShader: WIPER_VERT, fragmentShader: WIPER_FRAG, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
+  }));
+  wiper.name = 'precip-wiper';
+  wiper.frustumCulled = false;
+  wiper.visible = false;
+  wiper.renderOrder = 31;
+  scene.add(wiper);
+  let wipeClock = 0;
+  const aircraftScene = new THREE.Vector3(), localOff = new THREE.Vector3(), invQ = new THREE.Quaternion();
 
   let kind = 'none', rate = 0, ceiling = NO_CLOUD_TOP_M, seed = null, fall = 0;
   let wet = 0;                  // 0..1: how wet the windshield is, which lags the rain
@@ -349,10 +433,10 @@ export function createPrecip(scene, uniforms) {
     pU.uSnow.value = dU.uSnow.value = snow;
     particleGeo.instanceCount = kind === 'none' ? 0 : Math.round((snow ? SNOW_MAX : RAIN_MAX) * (0.15 + 0.85 * rate));
     dropGeo.instanceCount = kind === 'none' ? 0 : Math.round(DROPS_MAX * (0.2 + 0.8 * rate) * (snow ? 0.5 : 1));
-    if (kind === 'none') { wet = 0; intensity = 0; particles.visible = drops.visible = false; }
+    if (kind === 'none') { wet = 0; intensity = 0; particles.visible = drops.visible = wiper.visible = false; }
   }
 
-  function update({ camera, state, dt = 1 / 60, paused = false, cockpit }) {
+  function update({ camera, origin, state, dt = 1 / 60, paused = false, cockpit }) {
     if (kind === 'none') return;
     const alt = camera.position.y;
     intensity = fallAt(alt, ceiling);
@@ -395,19 +479,37 @@ export function createPrecip(scene, uniforms) {
       drops.quaternion.copy(bodyQ.setFromEuler(euler));
       dU.uWet.value = wet;
     }
+    // v0.4.2: the wiper. Which seat: the camera's side of the aircraft's centreline (body x is the drops' +x).
+    const ias = state?.ias ?? 0;
+    const wiping = drops.visible && ias < WIPER.maxKt * 0.514444 && (rate > 0.05 || wet > 0.3);
+    if (wiping && moving) wipeClock = (wipeClock + step) % 3600;
+    if (!wiping) wipeClock = 0;    // parked
+    let side = 0;
+    if (drops.visible && origin && state?.pos) {
+      aircraftScene.set(state.pos.x - origin.x, state.pos.z, -(state.pos.y - origin.y));
+      localOff.copy(camPos).sub(aircraftScene).applyQuaternion(invQ.copy(bodyQ).invert());
+      side = localOff.x > 0 ? 1 : -1;
+    }
+    wiper.visible = drops.visible && side !== 0;
+    if (wiper.visible) {
+      wiper.position.copy(drops.position); wiper.quaternion.copy(drops.quaternion);
+      const T = WIPER.slowS + (WIPER.fastS - WIPER.slowS) * Math.min(1, rate / 0.8);
+      dU.uWipe.value.w = side;
+      dU.uWipeT.value.set(wipeClock, T, wiping ? 0.35 + 0.9 * (1 - rate) : -1);
+    }
   }
 
   return {
     setWeather,
     update,
-    objects: { particles, drops },
+    objects: { particles, drops, wiper },
     get stats() {
       const on = (m) => (m.visible ? 1 : 0);
       return {
         kind, rate, intensity, ceilingM: ceiling, wet,
         particles: particles.visible ? particleGeo.instanceCount : 0,
         drops: drops.visible ? dropGeo.instanceCount : 0,
-        drawCalls: on(particles) + on(drops),
+        drawCalls: on(particles) + on(drops) + on(wiper),
       };
     },
   };

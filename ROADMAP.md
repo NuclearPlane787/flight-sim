@@ -148,6 +148,7 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 |---|---|---|
 | v0.4.0 | **Weather** (row 10): wind that changes with height, gusts, turbulence, wind shear and microbursts; visibility and fog; cloud layers; rain and snow, lightning and thunder; wet and snowy runways that brake worse; temperature and QNH, so density altitude and the altimeter setting matter. A Weather tab in the L window (Sky · Weight · Weather), with presets. Seeded, so the predicted path and the jumps stay exact. Volumetric clouds come later, as a step of their own. | **done** (2026-11-10) |
 | v0.4.1 | **Fixes** (Shane, 2026-11-10): the 777's wingtip hole and the slats' gap; landing the 777 (Indestructible and Boeing auto-trim in Settings); storms more like real ones, in three strengths; taxiway and runway signs. | **done** (2026-11-11) |
+| v0.4.2 | **The known list** (Shane, 2026-11-12: "do your list for v0.4.2"): the "Found while building" items below that fit a third-decimal version: the crash screen's Indestructible button, auto-trim's flare law and trim switches, more skids and a hard stop for Indestructible and a card after a gear-up landing, the Boeing autoland's alignment and rollout, runway exit and distance remaining signs, snow over the taxiway paint, broken cloud far off (checked, left as it was), predictive windshear, hydroplaning, wipers and spray. Shane's own findings from flying v0.4.1 go in v0.4.3. | **done** (2026-11-12) |
 | v0.5.0 | **The parts model and a first warehouse** (row 1): the three types rebuilt from parts and flying exactly as now (golden flights, as v0.3.0 did); the warehouse changes engine count and placement, thrust, weight and fuel, and saves designs that show in the aircraft picker. Off-centre thrust yaws, more engines burn more fuel, and too much thrust for a pylon breaks it. Changing the wing (aerodynamics from its shape) comes later. | |
 | v0.6.0 | **East Asia: Korea's region grows** (row 13): Shanghai Pudong, Tokyo Haneda and Narita, in Korea's own map frame. The terrain moves to tiles at several resolutions, read from the game's folder as you fly, which every later region needs. | |
 | v0.7.0 | **The regions, and Europe** (row 13): the region picker and everything per region (above); Heathrow, Charles de Gaulle, Frankfurt, Madrid and Zurich. | v0.6.0 |
@@ -164,25 +165,37 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.18.0 | **The cabin** (row 2): walking while the autopilot flies, in a cabin that moves with the aircraft (turbulence makes you stagger); passengers as many as the Weight tab says, and crew; one type first (the 777-300ER). | |
 | any time | **Replays and the flight recorder** (row 14), and **challenges** (row 15): a first set after v0.4.0, more with failures. | v0.4.0 for the challenges |
 
+## Found while building v0.4.2 (left for later)
+
+From the session's entry (`STATUS.md`, 2026-11-12):
+
+- **No no-entry signs:** the map data doesn't say which taxiways are one-way. Unnamed exits (most of Incheon's) get no exit sign, and a distance remaining sign that would stand on a taxiway is left out.
+- **The wiper is one blade, in front of the seat you're in,** sweeping a pane drawn as a region of the view, not on each type's own windshield; the other seat's wiper isn't drawn. No wiper switch: it runs by itself.
+- **The spray is one plume per leg** (not per wheel), in the aircraft's own frame, and lit only by the sky and the sun (not the landing lights).
+- **Predictive windshear sees only microbursts** (as the radar sees the rain in their outflow): no caution band from 1.5 to 3 nm ("MONITOR RADAR DISPLAY"), no icon on the ND.
+- **Hydroplaning is dynamic only,** from the rain's rate (no water depth of its own, no viscous or rubber-reversion hydroplaning), and the tyres' pressures are estimates.
+- **The 777's yaw on the approach** was measured, not changed: on final in the moderate storm it yaws less than the A321 (yaw rate σ 1.2 against 1.5 °/s) and its Dutch roll is as damped (ζ about 0.3; `tests/yaw-approach.test.mjs`). If it still swings for Shane on v0.4.1, his findings will say where.
+- **Indestructible's hard stop** pushes straight out of the ground at the deepest skid; sliding up a hillside at speed it keeps most of its speed along the slope.
+
 ## Found while building v0.4.1 (left for later)
 
-From the session's entry (`STATUS.md`, 2026-11-11):
+From the session's entry (`STATUS.md`, 2026-11-11). v0.4.2 did the struck-through ones.
 
-- **Signs only where named taxiways meet.** Most taxiways in the map data have no name (OpenStreetMap's), so long stretches have no signs. No runway exit, distance-remaining or no-entry signs.
-- **The slats droop and don't run out,** so even in the landing configuration there's no slot (a real slat opens one). It's the picture only: the aerodynamics didn't change.
-- **Indestructible's skids are seven points** (nose, belly, tail, engines, wingtips): on rough ground the fuselage between them can dip in. A gear-up landing never touches down as far as the scorer goes, so there's no card. Flying into a hill at speed puts the nose up to 6 m into it for a moment before it bounces off.
-- **Boeing auto-trim has no flare law:** the path holds through the flare, so a flare left alone floats. The trim keys do nothing while it's on.
-- **The 777's yaw on the approach** (Shane: "both, but the pitch is far worse") wasn't changed; he chose the auto-trim alone.
+- ~~**Signs only where named taxiways meet.** No runway exit, distance-remaining or no-entry signs.~~ v0.4.2: exit and distance remaining signs (no no-entry signs: no data). Most taxiways in the map data still have no name, so long stretches have no signs.
+- **The slats droop and don't run out,** so even in the landing configuration there's no slot (a real slat opens one). It's the picture only: the aerodynamics didn't change. Kept: Shane asked for the gap closed in v0.4.1.
+- ~~**Indestructible's skids are seven points**: on rough ground the fuselage between them can dip in. A gear-up landing gets no card. Flying into a hill at speed puts the nose up to 6 m into it.~~ v0.4.2: ten skids, a hard stop at 0.6 m, and a card.
+- ~~**Boeing auto-trim has no flare law;** the trim keys do nothing while it's on.~~ v0.4.2: the A321's flare law (with a gentler sink, to +0.5°), and the trim switches nudge the path.
+- ~~**The 777's yaw on the approach** wasn't changed.~~ v0.4.2: measured; see above.
 - **Storms are still one weather for all Korea,** with cells that don't move. Above 2,000 ft the turbulence is the level's, as before.
 
 ## Found while building v0.4.0 (left for later)
 
 From the run's final entry and the review (`STATUS.md`, 2026-11-10):
 
-- **The Boeing autoland's alignment** leaves about 6.5° of crab at 200 ft against its 5° target, and under 3° at the wheels; in 20 kt of crosswind it touches down about 6.5 m off the centreline (within the 27 ft that CAT III autolands are certified to) and ends about 4 m off.
-- **Broken cloud layers look close to overcast from far off.**
-- **The approach lights make no reflections on a wet runway** (the runway's own lights do). On a snow-covered runway the taxiway paint still shows faintly.
-- **Not built (the brief's Nices):** hydroplaning, wipers, spray from the wheels, the predictive windshear warning ("WINDSHEAR AHEAD").
+- ~~**The Boeing autoland's alignment** leaves about 6.5° of crab at 200 ft against its 5° target,~~ (v0.4.2: 5.1° at 200 ft, 1.5 to 2.6 m off at the wheels, the rollout within about 7 m) and under 3° at the wheels; in 20 kt of crosswind it touches down about 6.5 m off the centreline (within the 27 ft that CAT III autolands are certified to) and ends about 4 m off.
+- ~~**Broken cloud layers look close to overcast from far off.**~~ (v0.4.2: not so. Side by side with v0.4.1 from 12,000 and 35,000 ft, a broken and a scattered layer keep their gaps and cloud out to the haze. Widening the far edges by the faded octaves' spread kept the same cover and only blurred them, so it was taken out again; `tests/cloud/v042-shots.cjs` broken-far, scattered-far.)
+- **The approach lights make no reflections on a wet runway** (the runway's own lights do). Right as it is, v0.4.2 found: an approach light's reflection falls just short of the light, in front of the threshold, not on the runway. ~~On a snow-covered runway the taxiway paint still shows faintly.~~ (v0.4.2: covered.)
+- ~~**Not built (the brief's Nices):** hydroplaning, wipers, spray from the wheels, the predictive windshear warning ("WINDSHEAR AHEAD").~~ (v0.4.2: all four; see its list.)
 - **Simplified:** the wind doesn't veer near the ground by itself (the wind aloft carries the veer); the turbulence's lateral axis uses the longitudinal correlation, and the whole field moves with the surface wind.
 - **Numbers from weaker sources:** the microburst's equations are Oseguera and Bowles's (NASA TM-100632) as remembered, checked for mass continuity and against their published form, but not read off the paper; the icy runway's braking (0.08) and the wet curve's mid-speed value are estimates.
 - **The weather is one for all Korea,** and stays as set. Fronts and storms that move, and weather by place, come later; so do volumetric clouds.

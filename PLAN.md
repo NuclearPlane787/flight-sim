@@ -73,6 +73,7 @@ Numbered as in the planning questions, in his words where it matters.
 - **The look:** the haze's constants became uniforms (visibility by Koschmieder's law, fog with a top), flat cloud layers (`src/world/clouds.js`), the overcast light, rain, snow and windshield drops (`src/world/precip.js`), lightning, wet and snowy ground, and runway lights reflected on a wet runway at night. Clear weather draws exactly as v0.3.2 did. Volumetric clouds are a later step.
 - **The sound:** rain on the skin, thunder late by the strike's distance, gusts in the wind's noise, and the Boeing's windshear siren.
 - **v0.4.1** (Shane, 2026-11-10: "I presume crosswinds don't change in direction as quickly as the current sim does, and microbursts are quite rare to my knowledge? Keep as is but let it be more reflective of how real storms 'behave'. Maybe storms can have severity settings instead of on/off."): storms are three presets, light, moderate and severe (`thunderstorm` stays the moderate one's id, for saved plans), and only a severe storm has microbursts, at about one airport in three. Below 1,000 ft the turbulence's σw is 0.1 × W20, the standard's form, with W20 the wind at 20 ft scaled by the level (0.7, 1, 1.4) and half the level's own W20 as a floor; above 2,000 ft it's the exceedance curves, as before.
+- **v0.4.2** (Shane, 2026-11-12: "do your list for v0.4.2"): the v0.4.0 brief's Nices. A predictive windshear warning: the weather radar's, a microburst's F-factor of 0.13 or more over a kilometre of the path from 0.5 to 1.5 nm ahead, below 1,200 ft and above 50 ft, or on the take-off roll under 100 kt (`pwsScan()` in `sim.js`; the PFDs' W/S AHEAD, the voices). Hydroplaning: heavy rain on a wet runway leaves standing water (`hydro`, from the rain's rate), and above 9 √p kt the tyres lose most of their grip (`gear.js`; `TYRE_PSI` per type, estimates). The wipers in the seat views (`precip.js`), the wheels' spray (`src/world/spray.js`) and snow over the taxiway paint. Broken cloud far off was checked against v0.4.1 and left as it was.
 
 ## The aircraft: A321neo
 
@@ -284,6 +285,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
   - edge, centreline, threshold, end and touchdown zone lights, approach lights and PAPIs;
   - taxiways with yellow centrelines and hold-short markings;
   - **v0.4.1:** taxiway and runway signs (Shane: "the taxiways don't have any markings on them, or signals for that matter in the grass"): where named taxiways meet, an array on the left of each named way in (a location sign between direction signs, ICAO's layout), the name painted before the junction, and a mandatory sign at each runway holding position (`src/world/taxisigns.js`);
+  - **v0.4.2:** the runways' own signs: an exit sign 60 m before each named exit, on its side, for each way along the runway (Annex 14's runway exit sign), and distance remaining signs every 1,000 ft along both sides (FAA AC 150/5340-18's: white numbers on black, back to back, the two faces adding up to the length); no no-entry signs, as the data doesn't mark one-way taxiways;
   - aprons, numbered stands with lead-in lines, and static jet bridges;
   - terminals and hangars, extruded from their footprints.
 - **Life:**
@@ -323,7 +325,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
   - a grade.
 - **Logbook** in localStorage: date, route, gate and runways, time in the air (sim time), fuel used, and the landing score.
 - **Crashes** (ground or water contact away from a runway, a landing hard enough to break the gear, a tail strike): rewind 30 s from a ring buffer of states, or restart the flight.
-- **Indestructible** (v0.4.1, a setting; Shane: "maybe we could add an option somewhere that makes the plane indestructible"): no crash ends the flight. Each would-be crash is a `damage` event (a message, and the card's "Would have crashed", costing as much as missing the runway), and the crash points are skids: a stiff, damped spring each under the ground, with metal-on-ground friction. The setting is the player's, not the flight's: a snapshot carries it only for the prediction, and `main.js` applies its own after every restore.
+- **Indestructible** (v0.4.1, a setting; Shane: "maybe we could add an option somewhere that makes the plane indestructible"): no crash ends the flight. Each would-be crash is a `damage` event (a message, and the card's "Would have crashed", costing as much as missing the runway), and the crash points are skids: a stiff, damped spring each under the ground, with metal-on-ground friction. The setting is the player's, not the flight's: a snapshot carries it only for the prediction, and `main.js` applies its own after every restore. v0.4.2: three more skids along the belly (Indestructible's only), a hard stop past 0.6 m (an impulse along the ground's normal at the deepest skid), a touchdown at the first skid's touch in a gear-up landing (so there's a card), and a button on the crash screen that rewinds with it on.
 
 ## Controls
 
@@ -338,7 +340,7 @@ Realistic physics without aircraft systems, in double precision, in fixed steps 
 | G | gear lever |
 | 6 / 7 / 8 / 9 / 0 | flap lever 0, 1, 2, 3, FULL (Boeings: UP, 5, 15, 20, 30) |
 | [ / ] | flap lever one detent up / down |
-| H / Y (hold) | Boeings: pitch trim nose up / nose down (nothing with v0.4.1's Boeing auto-trim on, in Settings: the path holds itself, as the A321's does) |
+| H / Y (hold) | Boeings: pitch trim nose up / nose down (with Boeing auto-trim on, in Settings, they nudge the path held, 0.5°/s, v0.4.2; at v0.4.1 they did nothing) |
 | O | Boeings: TO/GA |
 | C | speed brakes in / out |
 | Shift+C | arm ground spoilers |

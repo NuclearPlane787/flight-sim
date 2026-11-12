@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as THREE from '../vendor/three.module.js';
-import { taxiSignSites, SIGN, panelWidth, arrayWidth } from '../src/world/taxisigns.js';
+import { taxiSignSites, SIGN, RUNWAY_SIGN, panelWidth, arrayWidth } from '../src/world/taxisigns.js';
 import { buildSigns, ARROWS } from '../src/world/apron.js';
 import { runwayLines, nearestRunway, segmentIndex, segDist, pointInRing, openRing } from '../src/world/apron-geom.js';
 
@@ -91,6 +91,60 @@ test('real data: arrays at every airport, none in a runway strip or on pavement,
   }
 });
 
+test('v0.4.2: a runway exit sign for each way along the runway, 60 m before the exit, on its side, with its turn', () => {
+  const s = taxiSignSites(fake);
+  // C leaves 09/27 to the north at x = 600: a left turn going east, a right turn going west.
+  assert.equal(s.exits.length, 2, JSON.stringify(s.exits));
+  const east = s.exits.find((q) => q.tx > 0.99), west = s.exits.find((q) => q.tx < -0.99);
+  assert.deepEqual(east.panels, [{ kind: 'dir', text: 'C', arrow: 6 }]);
+  assert.deepEqual(west.panels, [{ kind: 'dir', text: 'C', arrow: 2 }]);
+  assert.ok(Math.abs(east.x - (600 - RUNWAY_SIGN.exitBack)) < 0.5 && Math.abs(west.x - (600 + RUNWAY_SIGN.exitBack)) < 0.5, `${east.x}, ${west.x}`);
+  for (const q of s.exits) assert.ok(q.y > 22.5 + RUNWAY_SIGN.exitSet, `north of the runway, past its edge: ${q.y}`);
+});
+
+test('v0.4.2: distance remaining signs every 1,000 ft along both sides, back to back, adding up to the length', () => {
+  const s = taxiSignSites(fake);
+  // 3,000 m is 9,843 ft: 9 thousands, so signs at 1 to 8 thousand from each end, on both sides.
+  assert.equal(s.distance.length, 8 * 2 * 2, `${s.distance.length} faces`);
+  const pairs = new Map();
+  for (const q of s.distance) {
+    assert.equal(q.panels[0].kind, 'dist');
+    assert.ok(Math.abs(q.y) > 22.5 + RUNWAY_SIGN.distSet, `past the edge: ${q.y}`);
+    const key = `${Math.round(q.x + q.tx * SIGN.depth / 2)}:${Math.sign(q.y)}`;   // the pair's middle
+    pairs.set(key, [...(pairs.get(key) || []), q]);
+  }
+  for (const [key, pr] of pairs) {
+    assert.equal(pr.length, 2, key);
+    assert.ok(pr[0].tx * pr[1].tx < 0, `${key}: back to back`);
+    assert.equal(Number(pr[0].panels[0].text) + Number(pr[1].panels[0].text), 9, key);
+    // The face for the traffic going east shows what's left ahead of it.
+    const e = pr.find((q) => q.tx > 0);
+    assert.equal(Number(e.panels[0].text), Math.floor((1500 - e.x) / 0.3048 / 1000), key);
+  }
+});
+
+test('v0.4.2, real data: exit signs on named taxiways and distance signs clear of the pavement, at every airport', () => {
+  for (const [i, a] of AIRPORTS.entries()) {
+    const s = SITES[i], lines = runwayLines(a), index = segmentIndex(a.taxiways);
+    const refs = new Set(a.taxiways.map((t) => t.ref).filter(Boolean));
+    assert.ok(s.exits.length >= 10, `${a.icao}: ${s.exits.length} exit signs`);
+    assert.ok(s.distance.length >= 40, `${a.icao}: ${s.distance.length} distance faces`);
+    for (const q of [...s.exits, ...s.distance]) {
+      const W = panelWidth(q.panels[0]);
+      for (const k of [-0.5, 0, 0.5]) {
+        const x = q.x + q.ty * k * W, y = q.y - q.tx * k * W;
+        for (const sg of index.near(x, y)) assert.ok(segDist(x, y, sg.ax, sg.ay, sg.bx, sg.by).d >= sg.hw + SIGN.clear - 1e-6, `${a.icao}: a sign on a taxiway at ${x}, ${y}`);
+        for (const l of lines) assert.ok(segDist(x, y, l.ax, l.ay, l.bx, l.by).d >= l.hw + SIGN.clear - 1e-6, `${a.icao}: a sign on a runway at ${x}, ${y}`);
+      }
+    }
+    for (const q of s.exits) {
+      assert.ok(refs.has(q.panels[0].text), `${a.icao}: ${q.panels[0].text}`);
+      assert.ok([1, 2, 6, 7].includes(q.panels[0].arrow), `${a.icao}: arrow ${q.panels[0].arrow}`);
+    }
+    for (const q of s.distance) assert.ok(/^[1-9][0-9]?$/.test(q.panels[0].text), `${a.icao}: ${q.panels[0].text}`);
+  }
+});
+
 test('the taxi instructions name taxiways the signs show', () => {
   // At Gimpo, every name in the data with a junction to another name has a sign somewhere.
   const a = AIRPORTS[0], s = SITES[0];
@@ -104,6 +158,8 @@ test('the mesh: the letters on the faces, looking back at the traffic, and every
   const m = buildSigns(s, 0, 0, () => 10, chars);
   assert.equal(m.arrays, s.arrays.length);
   assert.equal(m.mandatory, s.mandatory.length);
+  assert.equal(m.exits, s.exits.length);
+  assert.equal(m.distance, s.distance.length);
   const g = m.geo, pos = g.getAttribute('position'), n = g.getAttribute('normal'), k = g.getAttribute('sk');
   assert.ok(m.triangles > 0 && g.index.count === m.triangles * 3);
   // Every letter faces the traffic it's for, and stands on the face, above the ground (10 m here).
@@ -114,7 +170,7 @@ test('the mesh: the letters on the faces, looking back at the traffic, and every
     assert.ok(pos.getY(i) > 10 + SIGN.base - 1e-6 && pos.getY(i) < 10 + SIGN.base + SIGN.faceH + 1e-6);
     assert.ok(k.getY(i) >= 0 && k.getY(i) < chars.length);
   }
-  const want = [...s.arrays, ...s.mandatory].reduce((t, q) => t + q.panels.reduce((u, p) => u + p.text.length + (p.arrow !== undefined ? 1 : 0), 0), 0);
+  const want = [...s.arrays, ...s.mandatory, ...s.exits, ...s.distance].reduce((t, q) => t + q.panels.reduce((u, p) => u + p.text.length + (p.arrow !== undefined ? 1 : 0), 0), 0);
   assert.equal(letters, want * 4);
   // Each triangle winds counter-clockwise seen from its normal's side.
   const idx = g.index.array, v = (i) => new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));

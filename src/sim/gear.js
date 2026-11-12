@@ -5,6 +5,9 @@
 import * as A321 from './a321neo.js';
 
 export function createGear(A) {
+  // v0.4.2, hydroplaning (dynamic, in standing water): above 9 √p kt (p the tyres' pressure, psi; Horne's formula, NASA TN
+  // D-2056) the tyres ride on the water and lose almost all their grip, over ±8 kt either side.
+  const HYDRO_MS = 9 * Math.sqrt(A.TYRE_PSI ?? 200) * 0.514444, HYDRO_BAND = 8 * 0.514444;
   // One leg. `leg` (persistent per leg):
   //   { rx, ry, rz }   uncompressed tyre-bottom point relative to the CG, FRD (set by the sim)
   //   { stroke, k, k3, c, cExt, mu, isNose, comp, compRate, wow, normal, kind, vRoll }
@@ -52,10 +55,17 @@ export function createGear(A) {
     const soft = leg.kind !== 'runway';
     // v0.4.0: k.tyres, the runway's state on the pavement (null when it's dry, so nothing changes).
     const wet = !soft ? k.tyres : null;
-    const mu = soft ? leg.mu * A.SIDE_MU_GRASS : wet ? leg.mu * wet.side : leg.mu;
+    // v0.4.2: how much of this tyre is riding on the water (0..1).
+    let hp = 0;
+    if (wet && wet.hydro) {
+      const x = Math.min(1, Math.max(0, (Math.abs(vLong) - HYDRO_MS + HYDRO_BAND) / (2 * HYDRO_BAND)));
+      hp = wet.hydro * x * x * (3 - 2 * x);
+      if (hp > k.hydro) k.hydro = hp;
+    }
+    const mu = soft ? leg.mu * A.SIDE_MU_GRASS : wet ? leg.mu * wet.side * (1 - 0.85 * hp) : leg.mu;
     // Rolling resistance and brakes (anti-skid holds the optimum slip: force ≤ BRAKE_MU·N).
     const brake = leg.isNose ? 0 : k.brake;
-    const fLongMax = wet ? (A.ROLL_RESIST + wet.rollAdd + A.BRAKE_MU * wet.brake * brake) * fs
+    const fLongMax = wet ? (A.ROLL_RESIST + wet.rollAdd + A.BRAKE_MU * wet.brake * (1 - 0.9 * hp) * brake) * fs
       : ((soft ? A.ROLL_RESIST_GRASS : A.ROLL_RESIST) + (soft ? A.BRAKE_MU_GRASS : A.BRAKE_MU) * brake) * fs;
     const fLong = -fLongMax * Math.tanh(vLong / 0.08);
     // Side force: linear in slip angle up to ~6°, saturating at mu·N.

@@ -21,6 +21,8 @@ import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js
 import { createClock, afternoonOf } from './clock.js';
 import { typeById, DEFAULT_TYPE } from './sim/types.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
+import { createSpray } from './world/spray.js';
+import { runwayStateOf } from './sim/weather.js';
 
 const STEP = 1 / 120;
 const KT = 1.943844, FT = 3.28084, NM = 1852, DEG = Math.PI / 180;
@@ -117,7 +119,7 @@ async function boot() {
   ui.loadingText.textContent = 'Building the world…';
   const world = await worldMod.createWorld({ renderer, scene, baseUrl: base, heightfield: hf, airports });
   // The aircraft and its cockpit, one pair per type, built the first time it's flown (v0.3.0).
-  let aircraft = null, cockpit = null;
+  let aircraft = null, cockpit = null, spray = null;
   const models = new Map();
   function modelFor(id) {
     let m = models.get(id);
@@ -125,13 +127,16 @@ async function boot() {
       const b = assetsMod.buildersFor(id);
       m = { aircraft: b.createAircraft(), cockpit: b.createCockpit() };
       m.aircraft.object.add(m.cockpit.object);
+      // v0.4.2: the wheels' spray on a wet or snowy runway.
+      m.spray = createSpray(typeById(id).geo.GEAR, world.uniforms);
+      m.aircraft.object.add(m.spray.object);
       models.set(id, m);
     }
     return m;
   }
   function showModel(id) {
     if (aircraft) scene.remove(aircraft.object);
-    ({ aircraft, cockpit } = modelFor(id));
+    ({ aircraft, cockpit, spray } = modelFor(id));
     scene.add(aircraft.object);
     lastNight = -1;     // the night's look goes to the new model at the next frame
   }
@@ -225,7 +230,7 @@ async function boot() {
   let plan = null;
   let dest = null, destOther = null;
   let timeScale = 1, achievedScale = 1, slowFrames = 0;
-  let paused = false, crashed = false, audioStarted = false;
+  let paused = false, crashed = false, audioStarted = false, hydroSaid = false;
   let acc = 0;
   let rewind = [];       // snapshots every second of sim time
   let lastSnapT = -1e9;
@@ -770,6 +775,8 @@ async function boot() {
       else if (act === 'copy') saveCopy();
       else if (act === 'weight') { setPaused(false); showLTab('load'); }
       else if (act === 'rewind') rewindNow();
+      // v0.4.2: the crash screen's way to practise on: Indestructible on, then the rewind.
+      else if (act === 'rewind-ind') { setFlightOpt('indestructible', true); rewindNow(); toast('Indestructible is on: no crash ends the flight (Settings turns it off)', 3500); }
       else if (act === 'restart') { startFlight(plan, { keepClock: true }); saveNow('restart'); }
       else if (act === 'setup') { ui.crash.hidden = true; ui.score.hidden = true; newFlight(); }
       else if (act === 'logbook') openLogbook(true);
@@ -842,8 +849,10 @@ async function boot() {
   function handleEvents() {
     const evs = sim.events;
     if (!evs.length) { const res = scorer.update(sim.state, evs); if (res) showScore(res); return; }
+    // v0.4.2: hydroplaning, said once a landing.
+    if (sim.state.hydroplaning && !hydroSaid) { hydroSaid = true; toast('Hydroplaning: the tyres are on the water, so the brakes and steering hardly grip until you slow down', 4500); }
     for (const e of evs) {
-      if (e.type === 'liftoff') landed = false;
+      if (e.type === 'liftoff') { landed = false; hydroSaid = false; }
       if (e.type === 'liftoff' && liftoffT === null) liftoffT = sim.state.t;
       if (e.type === 'touchdown') landed = true;
       if (e.type === 'touchdown' && !scorer.touchedDown) {
@@ -1052,6 +1061,11 @@ async function boot() {
     aircraft.setCockpitView(seat);
     cockpit.object.visible = seat;
     aircraft.update(s, dt);
+    // v0.4.2: the spray off the wheels.
+    if (spray) {
+      const wx = sim.weather;
+      spray.update({ gs: s.gs, onGround: s.onGround, runway: runwayStateOf(wx), rain: wx?.precip?.kind === 'rain' ? wx.precip.rate : 0, dt, paused });
+    }
     // A Boeing's wings bend with the lift they carry (none on the wheels), eased so they rise through
     // the rotation. V030.md's "nice" list.
     if (aircraft.setWingFlex) {

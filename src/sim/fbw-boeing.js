@@ -4,6 +4,7 @@
 // a thrust change pitches it, and a steady pull is a steady off-trim condition. There's no auto-trim
 // holding the path, no flare law, and the protections are soft: holding full input overrides them.
 // v0.4.1: unless the auto-trim setting is on (E.autoTrim): then the path holds itself as the A321's.
+// v0.4.2: with it on there's the A321's flare law too, and the trim switches nudge the path held.
 // Sources and what's estimated: reference/notes/boeing-fbw-ap.md. Allocation free.
 //
 // Besides the law: the Boeing-only hooks sim.js calls (kit.boeing), so that nothing here touches
@@ -51,6 +52,17 @@ export function createFbwBoeing(A) {
   const ROT_RATE = 2.8 * DEG;
   // v0.4.1, auto-trim: the flight path's rate at full stick in the landing configuration, as the A321's.
   const PATH_RATE = 3.5 * DEG;
+  // v0.4.2, auto-trim's flare law: fbw.js's, with the type's own top attitude (its tail-strike pitch less
+  // 2.2°: 7.4° for the 787-9, 7.8° for the 777-300ER, as the A321's 7.5° against its 9.7°). The nose
+  // sinks more gently (2° in 8 s, the A320 FCOM's figure, where fbw.js takes the A321 from its approach
+  // attitude to −2° in about 8 s) and only to +0.5°: these fly the approach about 1° nose up (the A321
+  // about 2.5°), so −2° would put the nose wheel down first, hard enough to break it hands off.
+  const FLARE_RATE = 8 * DEG, FLARE_RATE_DN = 3 * DEG, FLARE_SINK = 0.25 * DEG, FLARE_THETA_MIN = 0.5 * DEG;
+  const FLARE_THETA_PUSH = -5 * DEG, FLARE_LEAD = 2 * DEG, FLARE_Q_MAX = 3.5 * DEG;
+  const FLARE_THETA_MAX = ((A.PITCH_TAILSTRIKE_DEG ?? 9.7) - 2.2) * DEG;
+  // v0.4.2: with auto-trim, a held trim switch moves the path held at this rate (the flare's attitude
+  // at twice it), a finer control than W/S.
+  const TRIM_PATH_RATE = 0.5 * DEG;
 
   function fbwStep(X, c, E, dt) {
     // On the mains it's the ground law, whatever the blend says, so the nose comes down by itself.
@@ -104,6 +116,17 @@ export function createFbwBoeing(A) {
     elevDirect = clamp(elevDirect, -A.ELEV_DN, A.ELEV_UP);
 
     let elevLaw = 0, protStall = false, protOver = false;
+    // v0.4.2, auto-trim's flare law (fbw.js's): at 50 ft on a landing the attitude is memorised, and from
+    // 30 ft the nose comes down slowly (towards −2°), so you flare yourself; the stick asks for a pitch
+    // rate about the attitude held. On the wheels, on the AP, at TO/GA thrust or with auto-trim off it's over.
+    const trimSw = c.trim || 0;
+    const goAround = c.thrust > 0.9;
+    if (w <= 0) X.flare = false;
+    if (w > 0 && E.autoTrim) {
+      const flareCond = !E.apOn && !goAround && E.aglFt < 50 && E.gearDown && !E.onGround && E.vs < 0.5;
+      if (flareCond && !X.flare && E.aglFt > 30) { X.flare = true; X.flareTheta = E.theta; X.flareT = 0; }
+    }
+    if (X.flare && (E.aglFt > 60 || !E.autoTrim || E.apOn || goAround)) X.flare = false;
     if (w > 0) {
       const nzMax = flaps ? A.NZ_MAX_FLAPS : A.NZ_MAX_CLEAN;
       const nzMin = flaps ? A.NZ_MIN_FLAPS : A.NZ_MIN_CLEAN;
@@ -133,7 +156,7 @@ export function createFbwBoeing(A) {
         // (the autothrottle's), and the trim switches have nothing to do.
         if (E.gearDown && E.flap > 18) {
           if (!X.holdLatched) { X.holdLatched = true; X.gammaRef = E.gamma; }
-          const rate = sp * PATH_RATE;
+          const rate = sp * PATH_RATE + trimSw * TRIM_PATH_RATE;
           X.gammaRef = clamp(X.gammaRef + rate * dt, E.gamma - 2 * DEG, E.gamma + 2 * DEG);
           nzCmd = nzBase + 0.5 * V * rate / G + clamp(V * 0.35 * (X.gammaRef - E.gamma) / G, -0.25, 0.25);
           X.releaseT = 0;
@@ -143,6 +166,8 @@ export function createFbwBoeing(A) {
         } else {
           X.releaseT += dt;
           if (!X.holdLatched && (Math.abs(E.q) < 1.0 * DEG || X.releaseT > 3)) { X.holdLatched = true; X.gammaRef = E.gamma; }
+          // v0.4.2: the trim switches move the path held.
+          if (X.holdLatched && trimSw) X.gammaRef = clamp(X.gammaRef + trimSw * TRIM_PATH_RATE * dt, E.gamma - 2 * DEG, E.gamma + 2 * DEG);
           nzCmd = X.holdLatched ? clamp(nzBase + V * 0.35 * (X.gammaRef - E.gamma) / G, nzBase - 0.25, nzBase + 0.25) : nzBase;
         }
         if (E.ias < vmm) { protStall = true; nzCmd -= Math.min(STALL_NZ_MAX, STALL_NZ_K * (vmm - E.ias)); }
@@ -164,6 +189,19 @@ export function createFbwBoeing(A) {
       // As in fbw.js: the flight path rate for that load factor, as a body pitch rate.
       const gdot = G * (nzCmd * cphi - cg) / V;
       let qCmd = gdot * cphi + G * nzCmd * sphi * sphi / V + 1.0 * G * (nzCmd - E.nz) / V;
+      if (X.flare) {
+        // The flare law's attitude command, X.flareTheta, kept within reach of the attitude (fbw.js).
+        if (E.aglFt < 30) X.flareT += dt;
+        const sink = X.flareT > 0 && X.flareTheta > FLARE_THETA_MIN ? FLARE_SINK : 0;
+        let rate = sp * (sp > 0 ? FLARE_RATE : FLARE_RATE_DN) + trimSw * 2 * TRIM_PATH_RATE - sink;
+        if (rate > 0) rate = Math.min(rate, 2 * Math.max(0, FLARE_THETA_MAX - X.flareTheta));
+        const hi = Math.min(FLARE_THETA_MAX, E.theta + FLARE_LEAD);
+        const lo = Math.min(hi, Math.max(FLARE_THETA_PUSH, E.theta - 2 * DEG));
+        const th = clamp(X.flareTheta + rate * dt, lo, hi);
+        rate = (th - X.flareTheta) / dt;
+        X.flareTheta = th;
+        qCmd = clamp(rate + 1.5 * (th - E.theta), -FLARE_Q_MAX, FLARE_Q_MAX);
+      }
       // Past the stall the tail has no more to give: a held pull mushes a few degrees beyond α max,
       // stalled and sinking, rather than flying on up to a deep stall the law couldn't get out of.
       qCmd = Math.min(qCmd, 0.8 * (E.alphaMax + STALL_MUSH - E.alpha));
@@ -232,7 +270,6 @@ export function createFbwBoeing(A) {
     X.protAlpha = E.apOn && shaker;
     X.protSpeed = false;
     X.alphaFloorTrig = false;
-    X.flare = false;
   }
 
   // ---- the hooks sim.js calls ----
@@ -250,6 +287,7 @@ export function createFbwBoeing(A) {
         boHoldHdg: 0, boHoldLatched: false,          // HDG HOLD
         boTrack: 0,                                  // TO/GA: the track held
         boFlareTau: 0, boRollout: false, boRolloutYaw: 0, boYawClear: false, boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false,
+        boAlignI: 0, boAlignBI: 0,                   // v0.4.2: the alignment's rudder and bank integrals
       };
     },
 

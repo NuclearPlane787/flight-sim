@@ -18,7 +18,8 @@ test('clear weather: both objects hidden, no draw calls, instanced', () => {
   assert.equal(p.stats.drawCalls, 0);
   assert.equal(p.objects.particles.visible, false);
   assert.equal(p.objects.drops.visible, false);
-  assert.equal(scene.children.length, 2);
+  assert.equal(scene.children.length, 3);   // v0.4.2: and the wiper
+  assert.equal(p.objects.wiper.visible, false);
   assert.ok(p.objects.particles.geometry.isInstancedBufferGeometry);
   p.setWeather(null);
   assert.equal(p.stats.drawCalls, 0);
@@ -140,4 +141,25 @@ test('snow: the same system, set to snow', () => {
   assert.equal(p.stats.kind, 'snow');
   assert.equal(p.stats.drawCalls, 1);
   assert.equal(p.objects.particles.material.uniforms.uSnow.value, 1);
+});
+
+// v0.4.2: the wiper, in a seat in the rain: on the seat's side of the aircraft, sweeping below 230 kt, parked above.
+test('the wiper: shown in a seat in the rain, on the seat’s side, parked above 230 kt', () => {
+  const { p } = make();
+  p.setWeather({ ...calmWeather(), preset: 'x', seed: 2, precip: { kind: 'rain', rate: 0.8 } });
+  const cam = camera();
+  cam.near = 0.05;                         // a seat view
+  const st = { ...state, ias: 70, pos: { x: 0, y: 0, z: cam.position.y }, pitch: 0, hdg: 0, roll: 0 };
+  // The captain sits left of the centreline: the camera 0.55 m to the left (scene −x with the heading north).
+  cam.position.x = -0.55;
+  for (let i = 0; i < 300; i++) p.update({ camera: cam, origin: { x: 0, y: 0 }, state: st, dt: 1 / 60 });
+  assert.equal(p.objects.wiper.visible, true);
+  const u = p.objects.drops.material.uniforms;
+  assert.equal(u.uWipe.value.w, -1, 'the captain’s side');
+  assert.ok(u.uWipeT.value.z > 0 && u.uWipeT.value.x > 0, 'sweeping');
+  cam.position.x = 0.55;
+  p.update({ camera: cam, origin: { x: 0, y: 0 }, state: st, dt: 1 / 60 });
+  assert.equal(u.uWipe.value.w, 1, 'the first officer’s side');
+  p.update({ camera: cam, origin: { x: 0, y: 0 }, state: { ...st, ias: 260 * 0.514444 }, dt: 1 / 60 });
+  assert.ok(u.uWipeT.value.z < 0 && u.uWipeT.value.x === 0, 'parked at 260 kt');
 });

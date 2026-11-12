@@ -203,6 +203,8 @@ const PAINT_FRAG = (nGlyphs) => /* glsl */ `
     }
     float dist = length(vRel);
     cov *= 1.0 - smoothstep(7000.0, 12000.0, dist);
+    // v0.4.2: under snow the paint (and the taxiways' painted names) is covered, as the runways' is (airports.js).
+    cov *= 1.0 - 0.92 * uRwySnow;
     if (cov < 0.004) discard;
     vec3 alb = vKp.w < 0.5 ? vec3(0.62, 0.43, 0.05) : vKp.w < 1.5 ? vec3(0.52, 0.52, 0.50) : vec3(0.012, 0.012, 0.012);
     vec3 c = groundLight(alb) + alb * nightLight(vLoc, vRel + uCamPos);
@@ -559,7 +561,7 @@ function simplify(pts, tol) {
 }
 
 // v0.4.1: the taxiway and runway signs (taxisigns.js) as boxes on two posts each array, their faces and letters in
-// front. Exported for tests/taxisigns.test.mjs. → { geo, arrays, mandatory, triangles }
+// front. Exported for tests/taxisigns.test.mjs. → { geo, arrays, mandatory, exits, distance, triangles }
 const SIGN_COL = {
   black: [0.02, 0.02, 0.02], yellow: [0.80, 0.58, 0.04], red: [0.62, 0.035, 0.03], white: [0.86, 0.86, 0.84], body: [0.22, 0.23, 0.24],
 };
@@ -567,6 +569,7 @@ const FACE = {   // background, letters, border (null: none)
   loc: [SIGN_COL.black, SIGN_COL.yellow, SIGN_COL.yellow],
   dir: [SIGN_COL.yellow, SIGN_COL.black, null],
   mand: [SIGN_COL.red, SIGN_COL.white, SIGN_COL.black],
+  dist: [SIGN_COL.black, SIGN_COL.white, null],   // v0.4.2: distance remaining
 };
 export function buildSigns(sites, ox, oy, groundAt, chars) {
   const P = buf(), N = buf(), C = buf(), B = buf(), K = buf(), U = buf();
@@ -595,9 +598,13 @@ export function buildSigns(sites, ox, oy, groundAt, chars) {
     }
     quad([at(-1, -1, h1), at(1, -1, h1), at(1, 1, h1), at(-1, 1, h1)], [0, 1, 0], col, NONE, k, ZERO_UV);
   };
-  let arrays = 0, mandatory = 0;
-  for (const site of [...(sites?.arrays || []), ...(sites?.mandatory || [])]) {
-    if (site.panels[0].kind === 'mand') mandatory++; else arrays++;
+  let arrays = 0, mandatory = 0, exits = 0, distance = 0;
+  const all = [...(sites?.arrays || []), ...(sites?.mandatory || []), ...(sites?.exits || []), ...(sites?.distance || [])];
+  for (const site of all) {
+    if (site.panels[0].kind === 'mand') mandatory++;
+    else if (site.panels[0].kind === 'dist') distance++;
+    else if (sites?.exits?.includes(site)) exits++;
+    else arrays++;
     const { tx, ty } = site, rx = ty, ry = -tx;         // the traffic's way, and its right
     const fn = [-tx, 0, ty];                             // the faces look back at it (scene)
     const W = arrayWidth(site), g0 = groundAt(site.x, site.y);
@@ -646,7 +653,7 @@ export function buildSigns(sites, ox, oy, groundAt, chars) {
   g.setAttribute('sk', new THREE.Float32BufferAttribute(K.a, 4));
   g.setAttribute('suv', new THREE.Float32BufferAttribute(U.a, 4));
   g.setIndex(idx);
-  return { geo: g, arrays, mandatory, triangles: idx.length / 3 };
+  return { geo: g, arrays, mandatory, exits, distance, triangles: idx.length / 3 };
 }
 
 const KIND = { terminal: 0, hangar: 1 };
@@ -889,7 +896,7 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
     sites.push({
       icao: a.icao, group: sub, u, ox, oy, box: [x0, y0, x1, y1], tris: t, drawCalls: meshes.length,
       info: { holds: paint.holds, syntheticHolds: paint.synthetic, stands: paint.stands, bridges: bl.bridges, buildings: bl.buildings, aprons: aprons.length,
-        signArrays: signs.arrays, signsMandatory: signs.mandatory },
+        signArrays: signs.arrays, signsMandatory: signs.mandatory, signsExit: signs.exits, signsDistance: signs.distance },
     });
   }
   scene.add(group);

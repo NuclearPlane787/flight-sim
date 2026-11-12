@@ -44,6 +44,12 @@ export function createAutopilotBoeing(A) {
   // figure, EST for these two]. Gains EST, tuned in tests/weather-autoland.test.mjs.
   const ALIGN_FT = 500, ALIGN_DONE_FT = 200, ALIGN_CRAB = 5 * DEG, ALIGN_KP = 6, ALIGN_KD = 3, ALIGN_L = 0.3;
   const ROLLOUT_XTE_L = 150, ROLLOUT_XTE_MAX = 6 * DEG;   // m, rad: EST, tuned with the alignment
+  // v0.4.2: the alignment's rudder and bank get integrals (per rad·s of error), so the rudder and the bank a slip
+  // needs build up instead of leaving standing errors (6.5° of crab at 200 ft against its 5°, and the track pushed
+  // 5 to 7 m off the centreline by the wheels in 20 kt of crosswind). The rollout's heading loop is stiffer and
+  // better damped (it was 3 and 1.5: a 20 kt crosswind pushed the aircraft 18 m off the centreline).
+  const ALIGN_KI = 4, ALIGN_YAW_I_MAX = 0.25, ALIGN_KIB = 0.5, ALIGN_BANK_I_MAX = 6 * DEG;
+  const ROLL_KP = 8, ROLL_KD = 16;
   const FLARE_FT = 50, RETARD_FT = 25, FLARE_SINK_FPS = 2; // [brief; 777 quiz for the retard]
 
   // ---- the MCP (sim.ap) ----
@@ -365,15 +371,20 @@ export function createAutopilotBoeing(A) {
     const aligning = ap.ap && ils && S.drift !== 0 && ap.lateral === 'LOC' && !E.onGround && E.aglFt < ALIGN_FT && (ap.vertical === 'G/S' || ap.vertical === 'FLARE');
     if (aligning) {
       const crab = wrapPi(E.psi - ils.hdgGrid);
-      if (!X.boAlign) X.boCrab0 = Math.abs(crab);     // the crab it had at 500 ft
+      if (!X.boAlign) { X.boCrab0 = Math.abs(crab); X.boAlignI = 0; X.boAlignBI = 0; }    // the crab it had at 500 ft
       const limit = E.aglFt > ALIGN_DONE_FT
         ? ALIGN_CRAB + Math.max(0, X.boCrab0 - ALIGN_CRAB) * (E.aglFt - ALIGN_DONE_FT) / (ALIGN_FT - ALIGN_DONE_FT)
         : E.aglFt > FLARE_FT ? Math.min(ALIGN_CRAB, X.boCrab0) : Math.min(ALIGN_CRAB, X.boCrab0) * Math.max(0, (E.aglFt - 12) / (FLARE_FT - 12));
       const want = ils.hdgGrid + clamp(crab, -limit, limit);
-      // The slip pushes the track off, so the beam loop tightens while the nose comes round.
-      E.apBank = clamp(2.2 * wrapPi(ils.hdgGrid - Math.atan(xte / (LOC_L * ALIGN_L)) - E.psi - S.drift), -25 * DEG, 25 * DEG);
+      // The slip pushes the track off, so the beam loop tightens while the nose comes round, and the bank the
+      // slip needs builds up in its integral (v0.4.2).
+      const trkErr = wrapPi(ils.hdgGrid - Math.atan(xte / (LOC_L * ALIGN_L)) - E.psi - S.drift);
+      X.boAlignBI = clamp(X.boAlignBI + trkErr * dt, -ALIGN_BANK_I_MAX / ALIGN_KIB, ALIGN_BANK_I_MAX / ALIGN_KIB);
+      E.apBank = clamp(2.2 * trkErr + ALIGN_KIB * X.boAlignBI, -25 * DEG, 25 * DEG);
       X.boAlign = true;
-      X.boAlignYaw = clamp(ALIGN_KP * wrapPi(want - E.psi) - ALIGN_KD * E.r, -1, 1);
+      const err = wrapPi(want - E.psi);
+      X.boAlignI = clamp(X.boAlignI + err * dt, -ALIGN_YAW_I_MAX / ALIGN_KI, ALIGN_YAW_I_MAX / ALIGN_KI);
+      X.boAlignYaw = clamp(ALIGN_KP * err - ALIGN_KD * E.r + ALIGN_KI * X.boAlignI, -1, 1);
     } else if (X.boAlign) { X.boAlign = false; X.boAlignYaw = 0; X.boYawClear = true; }
     // Near the ground the wings stay nearly level.
     if (ap.lateral === 'LOC' && E.aglFt < 200) E.apBank = clamp(E.apBank, -8 * DEG, 8 * DEG);
@@ -428,7 +439,7 @@ export function createAutopilotBoeing(A) {
         const fromRight = -(S.wind.x * Math.cos(E.psi) - S.wind.y * Math.sin(E.psi));   // + : blowing from the right
         X.boRolloutRoll = clamp(fromRight / 15, -1, 1) * 0.4;
       }
-      X.boRolloutYaw = clamp(3 * r - 1.5 * E.r, -1, 1);
+      X.boRolloutYaw = clamp(ROLL_KP * r - ROLL_KD * E.r, -1, 1);
       // Below taxi speed the rollout is over: the AP lets go, so Q/E steer again (it would otherwise
       // hold the centreline at taxi speed with the route turning off; the pilot's usual disconnect).
       if (E.gs < ROLLOUT_END) ap.disconnectAp('rollout');

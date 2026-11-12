@@ -4,6 +4,21 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.4.2 · 2026-11-12 · Practice aids, the autoland, runway signs, and the rest of the weather
+
+- **The crash screen** has a button that rewinds 30 s with Indestructible on, so a crash while practising is one click from flying on.
+- **Boeing auto-trim flares as the A321 does.** Below 50 ft on a landing it holds the attitude and lets the nose sink a little, so you flare yourself and the aircraft settles instead of floating; a long pull no longer balloons it and drops it on its nose wheel. H and Y now nudge the flight path it holds (half a degree a second), finer than W and S.
+- **Indestructible holds up better:** three more skids along the belly, so the fuselage doesn't dip into rough ground between them; a hard stop past 0.6 m, so flying into a hill no longer buries the nose 4 to 6 m deep for a moment; and a gear-up landing gets its landing card.
+- **The Boeing autoland lines up better in a crosswind.** In 20 kt it has 5° of crab left at 200 ft (6.5° before), touches down 1.5 to 2.6 m off the centreline with about 1.4° of crab (5 to 6 m and 3° before), and holds the rollout within about 7 m of the centreline (up to 19 m before).
+- **Runway signs:** beside the runway, 60 m before each named exit, an exit sign with the taxiway's name and an arrow, for each way along it; and distance remaining signs every 1,000 ft along both sides, white numbers on black, in thousands of feet. No no-entry signs: the map data doesn't say which taxiways are one-way.
+- **Predictive windshear:** below 1,200 ft, and on the take-off roll, the weather radar looks along your path from half a mile to a mile and a half ahead for a microburst. WINDSHEAR AHEAD on the PFD and in the voice ("go around, windshear ahead" on a Boeing's approach); in a test it came on about 50 s before the reactive warning.
+- **Hydroplaning:** in heavy rain the runway has standing water, and above about 130 kt the tyres ride on it, so the brakes and the steering hardly grip until you slow down. A message says so.
+- **Wipers:** in rain or snow, in the cockpit and below 230 kt, a wiper sweeps your windshield, faster the harder it rains, and the drops come back behind it.
+- **Spray** off the wheels on a wet or snowy runway, more the faster you roll and the harder it rains.
+- **Snow covers the taxiway paint** and the taxiways' painted names, as it covers the runways'.
+- **Broken cloud far off** was looked at again, side by side with v0.4.1 from 12,000 and 35,000 ft: broken and scattered layers keep their gaps and their cloud out to the haze, so they weren't changed (softening the far edges only blurred them).
+- **The 777's yaw** was measured against the other two types: on final in the same storm it yaws the least (1.2°/s against the A321's 1.5°/s), and its Dutch roll is as well damped, so it wasn't changed.
+
 ## v0.4.1 · 2026-11-11 · Fixes: the wings, landing the 777, storms, and signs on the taxiways
 
 - **No more hole in the 777's wings.** Each had a gap in front of the aileron, just inboard of the raked tip, with the sky showing through it. It's closed, and so are the narrow slots between the slats, and between the flaps and ailerons, on all three aircraft.

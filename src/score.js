@@ -355,12 +355,14 @@ export function createScorer() {
         } else if (e.type === 'bounce' && td) bounces++;
       }
       if (!td || result) return null;
-      if (s.onGround) airborneSince = null;
+      // v0.4.2: on the skids (Indestructible, the gear up) is on the ground too.
+      const grounded = s.onGround || s.scraping;
+      if (grounded) airborneSince = null;
       else if (airborneSince === null) airborneSince = s.t;
       // Off the ground again for 4 s after touching down: a go-around, nothing to score, and
       // the next approach starts afresh.
       if (airborneSince !== null && s.t - airborneSince > 4) { td = null; bounces = 0; clearTrack(); return null; }
-      const stopped = s.onGround && s.gs < 30 / 1.943844;
+      const stopped = grounded && s.gs < 30 / 1.943844;
       if (!stopped && s.t - td.t < 60) return null;
 
       const aim = rf ? aimingPoint(rf.lda) : 400;

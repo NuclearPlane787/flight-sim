@@ -53,6 +53,11 @@ for (const type of ['b787-9', 'b777-300er']) {
       assert.ok(Math.abs(r.td.crab) < 4, `decrabbed: ${r.td.crab}°`);
       assert.ok(Math.abs(r.td.x) < 12, `on the centreline at the wheels: ${r.td.x} m`);
       assert.ok(Math.abs(r.stopX) < 10, `on the centreline at the end: ${r.stopX} m`);
+      // v0.4.2: the alignment's and the rollout's integrals and gains. At v0.4.1: 6.4–6.6° of crab at 200 ft,
+      // about 3° and 5–6 m off the centreline at the wheels, and the rollout up to 19 m off.
+      assert.ok(Math.abs(r.at200.crab) < 5.5, `at 200 ft, ${r.at200.crab.toFixed(1)}° of crab (the target: 5°)`);
+      assert.ok(Math.abs(r.td.crab) < 2.5 && Math.abs(r.td.x) < 4, `at the wheels: ${r.td.crab.toFixed(1)}°, ${r.td.x.toFixed(1)} m`);
+      assert.ok(r.rolloutMax < 9 && Math.abs(r.stopX) < 4, `the rollout: ${r.rolloutMax.toFixed(1)} m at most, ${r.stopX.toFixed(1)} m at the end`);
     }
   });
   test(`${type}: it always tries, in an extreme wind`, () => {
