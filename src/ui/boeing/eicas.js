@@ -4,10 +4,17 @@
 // detents from the type's data (A.FLAP_LEVER, A.CONFIGS). And the time-compression note the engine
 // panel has. Canvas 2D, width s, height 0.62 s, same as ../engines-panel.js.
 //
+// v0.5.0: a design's 3, 4 or 6 engines in one row (../engine-row.js: the labels between the wings'
+// engines as on a 747's, at the left with three), the dials smaller and the readouts under them; two
+// engines draw exactly as before. An engine torn off its pylon (state.engines[i].off): its dials amber
+// with no needle, OFF in the N1 dial, its readouts blank in amber boxes, and an amber "ENG n OFF" under
+// the systems on the right.
+//
 // createEicas(cv) -> { draw(view), setType(def) }
 
 import { C, font, DEG, clamp } from '../common.js';
 import { createEngines } from '../../sim/engines.js';
+import { engineRow, engineCountOf } from '../engine-row.js';
 import { isa, RHO0 } from '../../sim/atmosphere.js';
 import { thrustRefMode, refPhi, flapFraction, leverFraction, flapLabel, egtEstimate, EGT_RED, n2Estimate } from './logic.js';
 
@@ -17,9 +24,10 @@ const N1_MAX = 110, N1_RED = 104;
 
 export function createEicas(cv) {
   const { ctx } = cv;
-  let A = null, eng = null;
+  let A = null, eng = null, tdef = null;
 
   function setType(def) {
+    tdef = def || null;
     A = def?.data || null;
     eng = A ? createEngines(A) : null;
   }
@@ -30,6 +38,15 @@ export function createEicas(cv) {
     const w = ctx.measureText(text).width;
     if (w > maxW) ctx.font = font(size * maxW / w, bold);
   };
+  // fit(), but never under minSize: past that, fillText squeezes the text sideways (squeezeW).
+  let squeezeW = 0;
+  const fitMin = (text, size, maxW, bold, minSize) => {
+    ctx.font = font(size, bold);
+    const w = ctx.measureText(text).width;
+    squeezeW = 0;
+    if (w > maxW) { const f = size * maxW / w; ctx.font = font(Math.max(minSize, f), bold); if (f < minSize) squeezeW = maxW; }
+  };
+  const fill = (t, x, y) => (squeezeW ? ctx.fillText(t, x, y, squeezeW) : ctx.fillText(t, x, y));
 
   function draw(view) {
     const s = cv.w, st = view.state, ap = view.ap || {};
@@ -44,6 +61,10 @@ export function createEicas(cv) {
     ctx.textAlign = 'center';
     ctx.fillStyle = C.cyan; fit(`${ref.mode} ${ref.n1.toFixed(1)}`, s * 0.034, 0.3 * s, true);
     ctx.fillText(`${ref.mode} ${ref.n1.toFixed(1)}`, mid, 0.024 * s);
+
+    const n = engineCountOf(st, tdef);
+    if (n !== 2) engineRowBlock(s, st, e, n, ref, ambient);
+    else {   // two engines: v0.4.4's layout, unchanged
 
     // N1.
     for (let i = 0; i < 2; i++) n1Dial(s, i ? xR : xL, 0.14 * s, 0.08 * s, e[i] || {}, st, ref.n1);
@@ -65,8 +86,9 @@ export function createEicas(cv) {
     for (let i = 0; i < 2; i++) {
       const x = i ? xR : xL, en = e[i] || {};
       const n2 = en.n2 !== undefined ? en.n2 : n2Estimate(en.n1 || 0);
-      box(s, x, rowY, 0.11 * s, n2.toFixed(1), s * 0.032);
-      box(s, x, row2, 0.11 * s, String(Math.round(((en.ffKgS) || 0) * 3600 / 10) * 10), s * 0.032);
+      box(s, x, rowY, 0.11 * s, en.off ? '' : n2.toFixed(1), s * 0.032, C.white, en.off ? C.amber : C.frame);
+      box(s, x, row2, 0.11 * s, en.off ? '' : String(Math.round(((en.ffKgS) || 0) * 3600 / 10) * 10), s * 0.032, C.white, en.off ? C.amber : C.frame);
+    }
     }
 
     // The right-hand side: the totals, then the systems.
@@ -82,6 +104,43 @@ export function createEicas(cv) {
     }
     flaps(s, st, 0.885 * s, 0.045 * s, 0.49 * s);
     simRate(s, view, 0.97 * s, 0.585 * s);
+    // Engines torn off their pylons: an amber line each under the systems (Boeing's caution colour).
+    const offs = []; e.forEach((en, i) => { if (en?.off) offs.push(i + 1); });
+    if (offs.length) {
+      ctx.fillStyle = C.amber; ctx.textAlign = 'left';
+      const lines = offs.length > 4 ? [offs.slice(0, 3).map((i) => `ENG ${i}`).join(' ') + ' OFF', offs.slice(3).map((i) => `ENG ${i}`).join(' ') + ' OFF'] : offs.map((i) => `ENG ${i} OFF`);
+      lines.forEach((t, k) => { fit(t, s * 0.03, 0.4 * s, true); ctx.fillText(t, x0, 0.435 * s + k * 0.04 * s); });
+    }
+  }
+
+  // 3, 4 or 6 engines in a row (engine-row.js), each dial smaller and its readout under it, the rows
+  // at two engines' heights; the labels between the wings' engines, or at the left with three.
+  function engineRowBlock(s, st, e, n, ref, ambient) {
+    const x0 = 0.005 * s, x1 = 0.435 * s, gap = (n >= 6 ? 0.052 : 0.07) * s;
+    const row = engineRow(n, { x0, x1, gap }), w = row.w, lx = row.labelX, lw = gap - 0.006 * s;
+    const r = Math.min(0.08 * s, 0.4 * w), k = r / (0.08 * s), kk = Math.max(0.6, k), rE = 0.775 * r;
+    const bw = Math.min(0.11 * s, 0.9 * w), MIN = 0.022 * s;
+    // The N1 dials centred where two engines' are (0.14 s), the EGT's at 0.332 s, rings and boxes included.
+    // Small dials' boxes a little lower, clear of the engine's number in the dial's open quarter.
+    const dropN = (1 - k) * 0.014 * s;
+    const yN = 0.1325 * s + (1.16 * r + 0.008 * s * kk - (0.55 * r + 0.042 * s + dropN)) / 2;
+    const yE = 0.332 * s + (1.1 * rE - (0.55 * rE + 0.042 * s)) / 2;
+    const rowY = 0.475 * s, row2 = 0.54 * s;
+    for (let i = 0; i < n; i++) {
+      const x = row.xs[i], en = e[i] || {};
+      n1Dial(s, x, yN, r, en, st, ref.n1, { kk, bx: x, by: yN + 0.55 * r + 0.022 * s + dropN, bw, min: MIN, num: i + 1 });
+      egtDial(s, x, yE, rE, en, ambient, { kk, bx: x, by: yE + 0.55 * rE + 0.022 * s, bw, min: MIN });
+      const n2 = en.n2 !== undefined ? en.n2 : n2Estimate(en.n1 || 0);
+      box(s, x, rowY, bw, en.off ? '' : n2.toFixed(1), s * 0.032, C.white, en.off ? C.amber : C.frame, MIN);
+      box(s, x, row2, bw, en.off ? '' : String(Math.round(((en.ffKgS) || 0) * 3600 / 10) * 10), s * 0.032, C.white, en.off ? C.amber : C.frame, MIN);
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = C.white; fit('N1', s * 0.03, lw); ctx.fillText('N1', lx, 0.115 * s);
+    if (st.athrActive) { ctx.fillStyle = C.green; fit('A/T', s * 0.024, lw, true); ctx.fillText('A/T', lx, 0.15 * s); }
+    ctx.fillStyle = C.white; fit('EGT', s * 0.026, lw); ctx.fillText('EGT', lx, 0.325 * s);
+    ctx.fillStyle = C.grey; fit('EST', s * 0.02, lw); ctx.fillText('EST', lx, 0.35 * s);
+    ctx.fillStyle = C.white; fit('N2', s * 0.026, lw); ctx.fillText('N2', lx, rowY); fit('FF', s * 0.026, lw); ctx.fillText('FF', lx, row2);
+    ctx.fillStyle = C.grey; fit('EST', s * 0.018, lw); ctx.fillText('EST', lx, rowY + 0.024 * s); fit('KG/H', s * 0.018, lw); ctx.fillText('KG/H', lx, row2 + 0.024 * s);
   }
 
   // The rated N1 at this altitude and Mach, from the type's engine law. Before setType there's no
@@ -98,13 +157,16 @@ export function createEicas(cv) {
   function units(s, t, x, y) { ctx.fillStyle = C.grey; ctx.font = font(s * 0.02); ctx.textAlign = 'left'; ctx.fillText(t, x + 0.006 * s, y + 0.002 * s); }
 
   // A value in a thin box, Boeing's digital readout.
-  function box(s, x, y, w, t, size, col = C.white, border = C.frame) {
+  // minSize (v0.5.0's smaller boxes): the text no smaller than that, squeezed sideways instead.
+  function box(s, x, y, w, t, size, col = C.white, border = C.frame, minSize) {
     const h = 0.04 * s;
     ctx.strokeStyle = border; ctx.lineWidth = Math.max(1, s * 0.0028);
     ctx.strokeRect(x - w / 2, y - h / 2, w, h);
     ctx.fillStyle = col; ctx.textAlign = 'center';
-    fit(t, size, w - 0.008 * s, true);
-    ctx.fillText(t, x, y);
+    if (minSize === undefined) {
+      fit(t, size, w - 0.008 * s, true);
+      ctx.fillText(t, x, y);
+    } else { fitMin(t, size, w - 0.008 * s, true, minSize); fill(t, x, y); }
   }
 
   // A dial: the white arc, the filled sector up to the value, the needle, the red line.
@@ -123,10 +185,14 @@ export function createEicas(cv) {
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(an) * r * 1.02, y + Math.sin(an) * r * 1.02); ctx.stroke();
   }
 
-  function n1Dial(s, x, y, r, e, st, refN) {
+  // L (3, 4 or 6 engines): { kk, the marks' scale; bx, by, bw, the readout box; min, its least text
+  // size; num, the engine's number }. Without it, two engines' dial exactly as before.
+  function n1Dial(s, x, y, r, e, st, refN, L) {
     const F = (n) => clamp(n, 0, N1_MAX) / N1_MAX;
     const a = (n) => A0 + F(n) * (A1 - A0);
     const n1 = e.n1 || 0;
+    if (L?.num) { ctx.fillStyle = e.off ? C.amber : C.grey; ctx.font = font(s * 0.02); ctx.textAlign = 'center'; ctx.fillText(String(L.num), x + 0.62 * r, y + 0.3 * r); }
+    if (e.off) { offDial(s, x, y, r, L, true); return; }
     arcDial(s, x, y, r, F(n1), F(N1_RED), C.white);
     // The scale's marks, numbered at 0 and 10 (×10 %), as on the real one.
     ctx.strokeStyle = C.white; ctx.lineWidth = Math.max(1, s * 0.0028);
@@ -147,20 +213,39 @@ export function createEicas(cv) {
     if (st.leverN1 > 0) {
       const tl = a(st.leverN1);
       ctx.lineWidth = Math.max(1.5, s * 0.004);
-      ctx.beginPath(); ctx.arc(x + Math.cos(tl) * r * 1.16, y + Math.sin(tl) * r * 1.16, s * 0.008, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + Math.cos(tl) * r * 1.16, y + Math.sin(tl) * r * 1.16, L ? s * 0.008 * L.kk : s * 0.008, 0, Math.PI * 2); ctx.stroke();
     }
-    box(s, x + 0.012 * s, y + 0.054 * s, 0.09 * s, n1.toFixed(1), s * 0.034, n1 > N1_RED ? C.red : C.white);
+    if (L) box(s, L.bx, L.by, L.bw, n1.toFixed(1), s * 0.034, n1 > N1_RED ? C.red : C.white, C.frame, L.min);
+    else box(s, x + 0.012 * s, y + 0.054 * s, 0.09 * s, n1.toFixed(1), s * 0.034, n1 > N1_RED ? C.red : C.white);
     // The reversers: amber while they move, green when they're out.
     if ((e.rev || 0) > 0.02) {
       ctx.fillStyle = e.rev > 0.98 ? C.green : C.amber; ctx.font = font(s * 0.028, true); ctx.textAlign = 'center';
+      if (L) fit('REV', s * 0.028 * L.kk, 1.6 * r, true);
       ctx.fillText('REV', x, y - r * 0.45);
     }
   }
 
-  function egtDial(s, x, y, r, e, ambient) {
+  // An engine torn off: the scale amber, no sector, needle or markers; OFF in the N1 dial; the
+  // readout box blank in amber.
+  function offDial(s, x, y, r, L, isN1) {
+    const kk = L?.kk ?? 1;
+    ctx.strokeStyle = C.amber; ctx.lineWidth = Math.max(1.3, s * 0.0035);
+    ctx.beginPath(); ctx.arc(x, y, r, A0, A1); ctx.stroke();
+    if (isN1) {
+      ctx.fillStyle = C.amber; ctx.textAlign = 'center';
+      fit('OFF', s * 0.032 * kk, 1.5 * r, true); ctx.fillText('OFF', x, y - r * 0.25);
+    }
+    if (L) box(s, L.bx, L.by, L.bw, '', s * 0.03, C.white, C.amber, L.min);
+    else if (isN1) box(s, x + 0.012 * s, y + 0.054 * s, 0.09 * s, '', s * 0.034, C.white, C.amber);
+    else box(s, x + 0.012 * s, y + 0.042 * s, 0.075 * s, '', s * 0.03, C.white, C.amber);
+  }
+
+  function egtDial(s, x, y, r, e, ambient, L) {
+    if (e.off) { offDial(s, x, y, r, L, false); return; }
     const egt = egtEstimate(e.n1 || 0, ambient), MAX = 1100;
     arcDial(s, x, y, r, clamp(egt, 0, MAX) / MAX, EGT_RED / MAX, C.white);
-    box(s, x + 0.012 * s, y + 0.042 * s, 0.075 * s, String(Math.round(egt)), s * 0.03);
+    if (L) box(s, L.bx, L.by, L.bw, String(Math.round(egt)), s * 0.03, C.white, C.frame, L.min);
+    else box(s, x + 0.012 * s, y + 0.042 * s, 0.075 * s, String(Math.round(egt)), s * 0.03);
   }
 
   // The gear: Boeing's three words in one, DOWN in a green box, UP in white, slashes in transit.

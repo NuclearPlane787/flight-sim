@@ -10,6 +10,8 @@
 //   createWidebody(spec, opts?) → { object, update(state, dt), setCockpitView(bool), mesh, triangles,
 //     setLights({ nav, beacon, strobe, landing, taxi, logo }), setNight(0..1), lampPose() → { pos, dir },
 //     setWingFlex(metres), bones, shape, windows }
+//   opts.def (v0.5.0): a design's type entry (src/sim/designs.js designDef()): its engines, one per geo.NACELLES,
+//   each its own engine type (src/engine-model.js), its longer gear (GEAR, GEAR_EXTEND_M), its registration.
 //   setWingFlex is a hook for the bending wing (V030.md's "nice" list): metres of extra lift at the
 //   tips, applied in the vertex shader. main.js drives it from the lift (def.wingFlexM).
 
@@ -22,6 +24,8 @@ import { createWidebodyLivery, finBoxFor, fuseUVFor } from './livery-widebody.js
 import { fuselageShape, curve } from './widebody-shape.js';
 import { boeingWindowOutlines } from './cockpit-windows-boeing.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
+import { addEngine, engineAnimator } from './engine-model.js';
+import { engineOfType } from './sim/engine-types.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -35,19 +39,8 @@ const C = {
   doorIn: '#b9bec5',   // the inside of the gear doors (v0.3.1)
 };
 
-// The nacelle's profile, in fractions: x of half the cowl's length from its centre, r of its radius.
-// The GEnx's long, clean nacelle: no step behind the lip, widest a quarter of the way back.
-const INTAKE = [
-  [0.62, 0.742, 0], [0.78, 0.757, 0.1], [0.92, 0.795, 0.22], [0.975, 0.825, 0.3], [1.0, 0.86, 0.36], [1.0, 0.895, 0.42],
-  [0.975, 0.925, 0.48], [0.93, 0.95, 0.55], [0.80, 0.98, 0.6], [0.55, 1.0, 0.68], [0.2, 0.995, 0.8], [-0.04, 0.975, 1],
-];
 // The side stay's reach from the leg, inboard and up, m; its folding angle follows.
 const STAY_DY = 1.7, STAY_DZ = 0.95;
-const SLEEVE = [
-  // x, r, how far the row follows the chevrons (0..1)
-  [-0.04, 0.975, 0], [-0.4, 0.93, 0], [-0.72, 0.865, 0.1], [-0.88, 0.825, 0.55], [-1.0, 0.79, 1],
-  [-0.995, 0.78, 1], [-0.86, 0.80, 0.5], [-0.5, 0.84, 0], [-0.04, 0.87, 0],
-];
 
 // A tyre with rounded shoulders, about an axle along body y, centred on c.
 function tyre(c, R, W, segs = 20) {
@@ -75,7 +68,12 @@ export function inboardFlapLE(spec) {
 }
 
 export function createWidebody(spec, opts = {}) {
-  const G = spec.geo, N = G.NOSE_X;
+  const def = opts.def || null;
+  const G = def ? def.geo : spec.geo, N = G.NOSE_X;
+  // v0.5.0: the engines, one per nacelle (a design's, or the type's own two), and the gear's extension.
+  const EXT = G.GEAR_EXTEND_M || 0;
+  const NACS = def ? G.NACELLES : G.NACELLES.map((n, i) => ({ ...n, D: G.NACELLE_DIAMETER, L: G.NACELLE_LENGTH, engine: engineOfType(spec.id).id, i }));
+  const engines = [];
   const shape = fuselageShape(spec);
   const { fuseTop, fuseBot, fuseMid, fuseHW, fusePoint } = shape;
   const windows = boeingWindowOutlines(spec, shape);   // one design, for the glass, the livery and the cockpit's shell
@@ -379,113 +377,9 @@ export function createWidebody(spec, opts = {}) {
       b.add(lathe(prof.slice(3), 14, xs2, side * yc, zc), CB, C.wingDark);
     });
 
-    // --- Engine ---
-    const E = G.NACELLES[side > 0 ? 0 : 1];
-    const ex = E.x, ey = E.y, ez = E.z, RN = G.NACELLE_DIAMETER / 2, HL = G.NACELLE_LENGTH / 2, CL = G.NACELLE_CORE_LENGTH;
-    const EN = spec.engine, RF = EN.fanR;
-    // v0.4.3: every part of the engine rides the wing's bend at the pylon's span (ey), as one piece; bent
-    // vertex by vertex, the fan's blades, turning, carried each one's own lift round with them, and the fan
-    // sat off the nacelle's axis in flight (Shane: "the fan blades … aren't centered correctly").
-    const BY = ey;
-    const INT = EN.intake || INTAKE;
-    b.add(lathe(INT.map(([f, r, v]) => ({ x: f * HL, r: r * RN, v })), 48, ex, ey, ez, UV.nacelle), ROOT, '#ffffff', 'keep', BY);
-    // The translating sleeve, with the chevrons on its trailing edge.
-    const REV = bone('rev' + S, 'root', V(ex, ey, ez));
-    {
-      const segs = EN.chevrons ? EN.chevrons * 4 : 48, rows = [];     // chevrons: 0 is a plain nozzle
-      for (const [f, rr, k] of EN.sleeve || SLEEVE) {
-        const row = [];
-        for (let i = 0; i <= segs; i++) {
-          const a = (i / segs) * Math.PI * 2;
-          const tooth = EN.chevrons ? Math.abs((((i / segs) * EN.chevrons) % 1) * 2 - 1) : 1;  // 1 at a chevron's tip, 0 in the notch
-          const x = ex + f * HL - k * EN.chevronDepth * (1 - tooth);          // the notch is cut forward
-          row.push(V(x, ey + rr * RN * Math.cos(a), ez + rr * RN * Math.sin(a)));
-        }
-        rows.push(row);
-      }
-      b.add(grid(rows), REV, C.navy, null, BY);
-    }
-    // Inside: the cascades that show when the sleeve moves back, the fan duct, the core and its plug.
-    b.add(lathe([{ x: -0.04 * HL + 0.0, r: 0.95 * RN }, { x: -0.5 * HL, r: 0.885 * RN }], 32, ex, ey, ez), ROOT, C.cascade, null, BY);
-    const CR = EN.coreR ?? 1;    // the core's radius against the 787's, for a bigger bypass ratio
-    b.add(lathe([
-      { x: 0.42 * HL, r: 0.33 * RN * CR }, { x: -0.1 * HL, r: 0.5 * RN * CR }, { x: -0.7 * HL, r: 0.5 * RN * CR }, { x: -1.0 * HL, r: 0.46 * RN * CR },
-      { x: -HL - 0.55 * CL, r: 0.34 * RN * CR }, { x: -HL - 0.58 * CL, r: 0.27 * RN * CR },
-    ], 32, ex, ey, ez), ROOT, C.core, null, BY);
-    b.add(lathe([{ x: -HL - 0.5 * CL, r: 0.26 * RN * CR }, { x: -HL - 0.8 * CL, r: 0.16 * RN * CR }, { x: -HL - CL, r: 0.01 }], 20, ex, ey, ez), ROOT, C.plug, null, BY);
-    // v0.4.3: the fan case, the duct's wall from the reverser's inner lip forward to the intake's inner end.
-    // Without it the cowl was hollow from the fan's rim back to the reverser, and past the fan face's edge
-    // a look into the intake went through the inside of the cowl, whose faces point out (Shane: "you can
-    // see through the edges"). The fan face now reaches the wall, and a disc behind it faces aft, so a look
-    // up the fan nozzle meets the back of the fan, not the sky ahead of the engine.
-    const SLV = EN.sleeve || SLEEVE, IN0 = INT[0], SL1 = SLV[SLV.length - 1];
-    const wA = { x: SL1[0] * HL, r: SL1[1] * RN }, wB = { x: IN0[0] * HL, r: IN0[1] * RN };
-    let lipI = INT.findIndex(([f]) => f >= 0.999);
-    if (lipI < 1) lipI = 1;
-    const innerR = (x) => {                // the duct's radius at x: the case behind the intake, the intake ahead
-      if (x <= wB.x) return wA.r + (wB.r - wA.r) * clamp((x - wA.x) / (wB.x - wA.x), 0, 1);
-      for (let k = 0; k < lipI; k++) {
-        const x0 = INT[k][0] * HL, x1 = INT[k + 1][0] * HL;
-        if (x <= x1) return (INT[k][1] + (INT[k + 1][1] - INT[k][1]) * clamp((x - x0) / (x1 - x0), 0, 1)) * RN;
-      }
-      return INT[lipI][1] * RN;
-    };
-    b.add(lathe([0, 0.35, 0.7, 1].map((t) => ({ x: wA.x + (wB.x - wA.x) * t, r: wA.r + (wB.r - wA.r) * t })), 48, ex, ey, ez), ROOT, C.fanCase, null, BY);
-    const xFace = ((EN.fanF ?? 0.6) - 0.02) * HL, rFace = Math.max(RF, innerR(xFace) + 0.012);
-    b.add(lathe([{ x: xFace, r: 0 }, { x: xFace, r: rFace }], 32, ex, ey, ez), ROOT, C.fanFace, null, BY);
-    b.add(lathe([{ x: xFace - 0.012, r: rFace }, { x: xFace - 0.012, r: 0 }], 32, ex, ey, ez), ROOT, C.fanFace, null, BY);
-    const FAN = bone('fan' + S, 'root', V(ex, ey, ez), V(1, 0, 0));
-    const fx = (EN.fanF ?? 0.6) * HL, SK = EN.spinnerK ?? 1, HUB = 0.4 * SK;
-    const spinnerAt = [[0.72, 0], [0.62, 0.11], [0.36, 0.27], [0.08, 0.42], [-0.08, 0.46]];
-    b.add(lathe(spinnerAt.map(([x, r]) => ({ x: fx + x * SK, r: r * SK })), 24, ex, ey, ez), FAN, C.navy, null, BY);
-    if (EN.swirl) {
-      // The white spiral painted on the spinner: a ribbon just proud of it, half a turn from tip to base.
-      const spin = curve(spinnerAt.map(([x, r]) => [x, r]).reverse()), rows = [];
-      for (const w of [-1, 1]) {
-        const row = [];
-        for (let k = 0; k <= 14; k++) {
-          const s = k / 14, xs = 0.68 - 0.74 * s, a = s * Math.PI * 1.1 + w * (0.05 + 0.16 * s);
-          const r = (spin(xs) + 0.012) * SK;
-          row.push(V(ex + fx + xs * SK, ey + r * Math.cos(a), ez + r * Math.sin(a)));
-        }
-        rows.push(row);
-      }
-      b.add(grid(rows, { expect: (c) => V(0.4, c.y - ey, c.z - ez) }), FAN, C.white, null, BY);
-    } else b.add(boxAt(ex + fx + 0.3, ey, ez + 0.2, 0.42, 0.05, 0.2), FAN, C.white, null, BY);  // so the rotation shows
-    for (let i = 0; i < EN.fanBlades; i++) {
-      // A blade: long chord, with the twist and sweep a composite fan blade has.
-      const g = new THREE.BoxGeometry(0.62 * SK, 0.03, RF - HUB, 1, 1, 4);
-      const p = g.attributes.position;
-      for (let k = 0; k < p.count; k++) {
-        const r01 = (p.getZ(k) + (RF - HUB) / 2) / (RF - HUB), tw = (58 - 34 * r01) * DEG;
-        const cx = p.getX(k), cy = p.getY(k);
-        p.setXYZ(k, cx * Math.cos(tw) - cy * Math.sin(tw) - 0.16 * r01 * r01, cx * Math.sin(tw) + cy * Math.cos(tw), p.getZ(k));
-      }
-      g.computeVertexNormals();
-      g.translate(0, 0, HUB + (RF - HUB) / 2);
-      g.rotateX((i / EN.fanBlades) * Math.PI * 2);
-      g.translate(ex + fx, ey, ez);
-      b.add(g, FAN, C.blade, null, BY);
-    }
-    // Pylon: a profile in (x, z) extruded sideways, from the cowl's top into the wing and back
-    // under it to the fairing behind the trailing edge.
-    {
-      const w = wingSec(Math.abs(ey), side), sh = new THREE.Shape();
-      const lower = (x) => foilPoint(w, clamp((w.le.x - x) / w.chord, 0, 1), -1).z;
-      const xNoz = ex - HL, tail = w.le.x - w.chord * 0.95;
-      const pts = [
-        [ex + 0.5 * HL, ez + RN * 0.97], [ex + 0.05 * HL, ez + RN + 0.08], [w.le.x + 0.15, w.le.z + 0.05], [w.le.x - 1.2, lower(w.le.x - 1.2) + 0.2],
-        [tail + 1.4, lower(tail + 1.4) + 0.06], [tail, lower(tail) - 0.02], [tail - 0.7, lower(tail) - 0.2],
-        [tail + 0.2, lower(tail) - 0.5], [xNoz - 1.0, ez + RN * 0.42], [xNoz, ez + RN * 0.52], [xNoz + 0.15, ez + RN * 0.72],
-        [ex - 0.2 * HL, ez + RN * 0.9],
-      ];
-      pts.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
-      const PD = EN.pylonDepth ?? 0.5;
-      const g = new THREE.ExtrudeGeometry(sh, { depth: PD, bevelEnabled: false });
-      g.translate(0, 0, -PD / 2);
-      g.applyMatrix4(new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, -1, ey, 0, 1, 0, 0, 0, 0, 0, 1));
-      b.add(g, ROOT, C.pylon, null, BY);
-    }
+    // --- Engines (v0.5.0: src/engine-model.js, one per nacelle on this wing; the type's two as they always were) ---
+    // v0.4.3: every part of an engine rides the wing's bend at its pylon's span, as one piece (bend: true).
+    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: true }));
 
     // --- Main gear: a four- or six-wheel bogie on a leg that folds inward into the belly ---
     const gm = side > 0 ? G.GEAR.left : G.GEAR.right;
@@ -495,7 +389,8 @@ export function createWidebody(spec, opts = {}) {
     const zLow = axleZ + 0.72;
     b.add(cylBetween(pivot, V(gm.x, gm.y, zLow), 0.2, 0.19, 14), LEG, C.gear);
     // Side stay (to the fairing), drag brace (forward).
-    const midZ = (pivot.z + zLow) / 2 - 0.3;
+    // (A design's longer gear lengthens the leg below the wing; the stays keep their place under it.)
+    const midZ = (pivot.z + zLow + EXT) / 2 - 0.3;
     // The side stay folds up against the leg as it retracts (update() rotates it), or it would
     // come out through the top of the wing.
     const STAY = bone('stay' + S, 'mainLeg' + S, V(gm.x, gm.y, midZ), V(1, 0, 0));
@@ -550,6 +445,9 @@ export function createWidebody(spec, opts = {}) {
     b.add(sphereAt(tipS.le.clone().add(V(-0.1, side * 0.04, 0)), 0.08), ROOT, side > 0 ? C.red : C.green);
     b.add(sphereAt(foilPoint(wingSec(lightY, side), lightF, -1).add(V(0, 0, 0.02)), 0.14), ROOT, C.lamp);
   }
+
+  // The tail engine (a design's third), on the centreline through the fin's root.
+  for (const n of NACS) if (n.tail) engines.push(addEngine(b, bone, n, { wingSec, bend: true, finLeX: curve(spec.fin.leTable) }));
 
   // --- Horizontal stabiliser (trimmable) with elevators ---
   const TPG = G.TAILPLANE, stY = TPG.span / 2, tanLe = Math.tan(TP.leSweepDeg * DEG), tanSD = Math.tan(TP.dihedralDeg * DEG);
@@ -655,7 +553,7 @@ export function createWidebody(spec, opts = {}) {
 
   // --- Mesh, material, skeleton ---
   const geometry = b.build();
-  const { map, emissiveMap } = createWidebodyLivery(spec, shape, windows, opts.registration || spec.registration);
+  const { map, emissiveMap } = createWidebodyLivery(spec, shape, windows, opts.registration || def?.registration || spec.registration);
   const material = new THREE.MeshStandardMaterial({
     map, emissiveMap, emissive: 0xffffff, emissiveIntensity: 0.6, vertexColors: true, roughness: 0.42, metalness: 0.08,
   });
@@ -740,7 +638,8 @@ export function createWidebody(spec, opts = {}) {
   const rot = (name, angle) => { const bn = B[name]; bn.quaternion.setFromAxisAngle(bn.userData.axis, angle); };
   const move = (name, dx, dy, dz) => { const bn = B[name]; bn.position.copy(bn.userData.rest).add(toModel(dx, dy, dz, tmp)); };
   const slide = (name, d) => { const bn = B[name]; bn.position.copy(bn.userData.rest).addScaledVector(bn.userData.axis, d); };
-  let fanL = 0, fanR = 0, wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
+  let wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
+  const animateEngines = engineAnimator(engines, B, toModel);
   const TILT = spec.gear.tiltDeg * DEG, SPOILERS = WS.spoilers;
   const SP_NAMES = { L: SPOILERS.map((_, i) => `spoiler${i + 1}L`), R: SPOILERS.map((_, i) => `spoiler${i + 1}R`) };
   // How far the bogie hangs: fully when the strut's unloaded, flat once it takes weight.
@@ -749,7 +648,7 @@ export function createWidebody(spec, opts = {}) {
   const WHEEL_NAMES = [];
   for (let i = 0; i < NAXLES; i++) WHEEL_NAMES.push('mainWheelL' + i, 'mainWheelR' + i);
   const EMPTY_LIST = [];
-  const FT = WS.flapTravel, REV_T = spec.engine.revTravel;
+  const FT = WS.flapTravel;
   const FLAP_OUT_DEG = WS.flapOutDeg ?? 20, FLPRN = WS.flaperonDroop ?? [0.8, 30], AFT_F = WS.flapInAft;
   const steerMax = (spec.data?.STEER_TILLER ?? 70 * DEG);
 
@@ -820,13 +719,8 @@ export function createWidebody(spec, opts = {}) {
     rot('noseDoorL', doors); rot('noseDoorR', -doors);
     rot('mainDoorL', -doors); rot('mainDoorR', doors);
 
-    // Engines.
-    const en = state.engines || EMPTY_LIST;
-    fanL = (fanL + ((en[0]?.n1 || 0) / 100) * 6.5 * Math.PI * 2 * dt) % (Math.PI * 2);
-    fanR = (fanR + ((en[1]?.n1 || 0) / 100) * 6.5 * Math.PI * 2 * dt) % (Math.PI * 2);
-    rot('fanL', fanL); rot('fanR', fanR);
-    move('revL', -REV_T * clamp(en[0]?.rev || 0, 0, 1), 0, 0);
-    move('revR', -REV_T * clamp(en[1]?.rev || 0, 0, 1), 0, 0);
+    // Engines: each fan and reverser its own engine's; one torn off is gone with its pylon.
+    animateEngines(state.engines || EMPTY_LIST, dt);
 
     // Lights, as aircraft.js.
     gearNow = gp;

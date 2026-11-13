@@ -23,11 +23,14 @@
 <div id="dev"></div>
 <script type="module">
 // ?scene=fl350|final|takeoff|stall-near|climb|stand, &type=<a Boeing's id>: the mock.
-// ?real=fl350|final|slow: the real sim (createSim) and its real sim.ap, stepping in real time.
+// &engines=3|4|6: a design's engine count (the mock only); &off=2,3: engines torn off; &rev=0.5|1: the reversers.
+// ?real=fl350|final|slow: the real sim (createSim) and its real sim.ap, stepping in real time; with &engines=n,
+// a design of the type with n engines (v0.5.0).
 import { createHud } from '../src/ui/hud.js';
 import { findEnd } from '../src/ui/common.js';
 import { typeById } from '../src/sim/types.js';
 import { createSim } from '../src/sim/sim.js';
+import { newDesign, normalizeDesign, designDef } from '../src/sim/designs.js';
 import { loadAirportsOrMock, loadCoastOrMock } from './dev-ui-mock.js';
 import { makeBoeingState, makeBoeingAp, SCENES } from './dev-ui-boeing-mock.js';
 
@@ -40,11 +43,12 @@ const { airports } = await loadAirportsOrMock();
 const { coast } = await loadCoastOrMock();
 await Promise.all(['400 16px B612', '700 16px B612', '400 16px "B612 Mono"', '700 16px "B612 Mono"', '600 16px Barlow'].map((f) => document.fonts.load(f))).catch(() => {});
 const hud = createHud(document.getElementById('hud'), { airports, coast });
-hud.setType(def);
-
 const real = q.get('real');
+const design = real && q.get('engines') ? normalizeDesign(newDesign(def.id, { count: Number(q.get('engines')) })) : null;
+hud.setType(design ? designDef(design) : def);
+
 let sim = null;
-let st = makeBoeingState(A), ap = makeBoeingAp(st);
+let st = makeBoeingState(A, Number(q.get('engines')) || 2), ap = makeBoeingAp(st);
 const controls = { spoilersArmed: scene === 'final' };
 const dep = findEnd(airports, 'RKSS', '14R'), arr = findEnd(airports, 'RKPC', '07');
 if (real) {
@@ -54,12 +58,14 @@ if (real) {
     final: { altFt: 1300, ias: 150, nm: 4, lever: A.FLAP_LEVER.length - 1, gear: true, fuel: 12000 },
     slow: { altFt: 8000, ias: 175, nm: 40, lever: 0, gear: false, fuel: 40000 } }[real];
   const d = P.nm * 1852;
-  sim = createSim({ type: def.id });
+  sim = createSim({ type: design || def.id });
   sim.reset({ x: arr.end.x - Math.sin(h) * d, y: arr.end.y - Math.cos(h) * d, hdg: h, onGround: false, z: arr.end.elevM + P.altFt * FT, iasMs: P.ias * KT,
     flapLever: P.lever, gearDown: P.gear, fuelKg: P.fuel, payloadKg: 30000 });
   st = sim.state; ap = sim.ap;
   for (let i = 0; i < 240; i++) sim.step(1 / 120);
 } else SCENES[scene](st, ap, A, { dep, arr });
+for (const i of (q.get('off') || '').split(',').filter(Boolean)) if (st.engines[i - 1]) Object.assign(st.engines[i - 1], { off: true, n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0 });
+if (q.get('rev')) for (const e of st.engines) if (!e.off) e.rev = Number(q.get('rev'));
 const view = { state: st, ap, dest: arr.end, timeScale: q.get('rate') ? Number(q.get('rate')) : 1, timeScaleActual: q.get('rate') ? Number(q.get('rate')) : 1, paused: false, controls, viewId: 'captain' };
 
 document.getElementById('dev').innerHTML = `${def.name} · ` + Object.keys(SCENES).map((s) => `<a href="?scene=${s}">${s}</a>`).join('');

@@ -81,9 +81,11 @@ export const TYPE_LIST = () => Object.values(TYPES).filter((t) => t.ready !== fa
 export const typeById = (id) => TYPES[id] || TYPES[DEFAULT_TYPE];
 
 const kits = new Map();
+// v0.5.0: a type id, or a type entry (a design's, from src/sim/designs.js: its kit is made from its own data, once).
 export function kitFor(id) {
-  const def = typeById(id);
-  let k = kits.get(def.id);
+  const def = id && typeof id === 'object' ? id : typeById(id);
+  const ck = def.key || def.id;
+  let k = kits.get(ck);
   if (!k) {
     const A = def.data;
     k = { fm: createFlightModel(A), eng: createEngines(A), gear: createGear(A), fbw: createFbw(A), auto: createAutopilot(A), boeing: null };
@@ -94,7 +96,8 @@ export function kitFor(id) {
       k.auto = createAutopilotBoeing(A);
       k.boeing = law.hooks;
     }
-    kits.set(def.id, k);
+    if (def.key && kits.size > 40) for (const key of kits.keys()) if (!TYPES[key]) { kits.delete(key); break; }
+    kits.set(ck, k);
   }
   return k;
 }

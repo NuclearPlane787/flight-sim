@@ -90,12 +90,13 @@ const CONF = {
 };
 const VFE = { '0': 350, '1': 235, '1+F': 225, '2': 215, '3': 195, FULL: 190 };
 
-export function makeState() {
+// n: the engine count (v0.5.0's designs have 2, 3, 4 or 6).
+export function makeState(n = 2) {
   return {
     t: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, hdg: 0, pitch: 0, roll: 0, quat: { x: 0, y: 0, z: 0, w: 1 },
     p: 0, q: 0, r: 0, alpha: 0, beta: 0, ias: 0, cas: 0, tas: 0, gs: 0, mach: 0, vs: 0, nz: 1, agl: 0, groundH: 0,
     onGround: true, wow: { nose: true, left: true, right: true }, mass: 78000, fuelKg: 9800, fuel: { left: 4100, right: 4100, center: 1600 }, cgMac: 0.28,
-    engines: [0, 1].map(() => ({ n1: 20, n1Target: 20, ffKgS: 0.08, thrustN: 0, rev: 0 })), thrustLever: 0, detent: 'IDLE',
+    engines: Array.from({ length: n }, () => ({ n1: 20, n1Target: 20, ffKgS: 0.08, thrustN: 0, rev: 0 })), thrustLever: 0, detent: 'IDLE',
     flapLever: 1, config: '1+F', slatDeg: 18, flapDeg: 10, gearPos: 1, gearDoors: 0, gearCompression: { nose: 0, left: 0, right: 0 },
     steerAngle: 0, wheelRate: { nose: 0, main: 0 },
     surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },

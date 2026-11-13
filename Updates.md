@@ -4,6 +4,14 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.5.0 · 2026-11-13 · The warehouse: your own aircraft
+
+- **Warehouse** on the main menu: make your own aircraft from the A321neo, the 787-9 or the 777-300ER. Choose how many engines (2, 4 or 6 in pairs on the wings, or 3 with one in the tail), which ones (the LEAP-1A, the GEnx-1B or the GE90-115B), where each pair hangs on the wing, how strong they are (half to three times), the empty weight, the fuel capacity, longer gear, a name and a registration. The aircraft turns in 3D beside the parts, with the numbers that follow: empty weight, payload room, thrust to weight, range, the tail-strike angle, and each engine's ground clearance and pylon load.
+- **Fly them:** saved designs are cards in New scenario's aircraft picker, under the three types. A scenario keeps its own copy of the design, so changing the design later doesn't change a saved flight. The logbook names the design.
+- **Realistic limits:** each pylon holds about one and a half times its engine's rated thrust. Turn the thrust up past that and an engine tears off at full power: it's gone from the wing, the screens show it OFF, and the aircraft yaws towards the dead side. Two GE90s on an A321 sit a metre into the runway until you lengthen the gear, and their thrust line, far below the centre of gravity, wants a gentle hand on the levers.
+- **Every engine counts:** the engines' weight moves the centre of gravity and the inertia, each engine has its own thrust, fuel flow and sound, and the A321's engine panel and the Boeings' EICAS show all of them.
+- **The three aircraft fly exactly as before:** each one's recorded test flight matches to the ninth decimal place.
+
 ## v0.4.4 · 2026-11-13 · A wide view, the view switch in the cockpit, living auroras, and the gear tucked away
 
 - **Hide panels:** a switch at the top left hides the PFD, the ND and the engine panel for a wide view, and Show panels brings them back. The FCU (or MCP) and the view switch stay, and the choice is kept for next time.

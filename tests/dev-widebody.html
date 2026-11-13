@@ -25,12 +25,20 @@ import * as THREE from '../vendor/three.module.js';
 import { toModel } from '../src/aircraft.js';
 import { createWidebody } from '../src/widebody.js';
 import * as SPECS from '../src/widebody-specs.js';
+import { designDef, isDesign, newDesign } from '../src/sim/designs.js';
 
 const DEG = Math.PI / 180;
-const TYPE = new URLSearchParams(location.search).get('type') || 'b787-9';
+const params = new URLSearchParams(location.search);
+// v0.5.0: ?design=<JSON> builds a design (a design object, or newDesign's extras on ?type's base), e.g.
+// ?type=b777-300er&design={"count":4}. Its engines and gear come from designDef().
+const designParam = params.get('design');
+const DESIGN = designParam ? (() => { const d = JSON.parse(designParam); return isDesign(d) ? d : newDesign(params.get('type') || 'b787-9', d); })() : null;
+const DEF = DESIGN ? designDef(DESIGN) : null;
+const TYPE = DESIGN ? DESIGN.base : params.get('type') || 'b787-9';
 const spec = Object.values(SPECS).find((s) => s.id === TYPE);
 if (!spec) throw new Error(`no widebody spec ${TYPE}`);
-const G = spec.geo;
+const G = DEF ? DEF.geo : spec.geo;
+const NENG = G.NACELLES.length;
 // The views were framed on the 787-9; a longer type moves the cameras back in proportion.
 const K = G.LENGTH / 62.81;
 const renderer = new THREE.WebGLRenderer({ antialias: true, reversedDepthBuffer: true, preserveDrawingBuffer: true });
@@ -64,7 +72,7 @@ ground.receiveShadow = true;
 scene.add(ground);
 
 const t0 = performance.now();
-const aircraft = createWidebody(spec);
+const aircraft = createWidebody(spec, DEF ? { def: DEF } : {});
 const buildMs = performance.now() - t0;
 scene.add(aircraft.object);
 const standing = G.TAXI_ATTITUDE_DEG * DEG;
@@ -80,7 +88,7 @@ const state = {
   t: 0, surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },
   slatDeg: 0, flapDeg: 0, gearPos: 1, gearDoors: 0,
   gearCompression: { nose: comp.nose.staticComp, left: comp.main.staticComp, right: comp.main.staticComp }, steerAngle: 0, wheelRate: { nose: 0, main: 0 },
-  engines: [{ n1: 20, rev: 0 }, { n1: 20, rev: 0 }],
+  engines: Array.from({ length: NENG }, () => ({ n1: 20, rev: 0 })),
 };
 
 const ui = document.getElementById('ui');
@@ -97,8 +105,8 @@ for (const [name, min, max, val, fn] of [
   ['compr main', 0, 0.6, comp.main.staticComp, (v) => (state.gearCompression.left = state.gearCompression.right = v)],
   ['steer°', -70, 70, 0, (v) => (state.steerAngle = v * DEG)],
   ['wheel rad/s', 0, 30, 0, (v) => (state.wheelRate.main = v, state.wheelRate.nose = v * 1.3)],
-  ['N1 %', 0, 100, 20, (v) => (state.engines[0].n1 = state.engines[1].n1 = v)],
-  ['reverser', 0, 1, 0, (v) => (state.engines[0].rev = state.engines[1].rev = v)],
+  ['N1 %', 0, 100, 20, (v) => state.engines.forEach((e) => (e.n1 = v))],
+  ['reverser', 0, 1, 0, (v) => state.engines.forEach((e) => (e.rev = v))],
   ['flex m', 0, 4, 0, (v) => aircraft.setWingFlex(v)],
 ]) {
   const l = document.createElement('label');
@@ -202,6 +210,18 @@ addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); pe
 setView('threeQuarter');
 requestAnimationFrame(frame);
 
+function geoHash(g) {
+  let h1 = 0x811c9dc5 >>> 0, n = 0;
+  for (const k of ['position', 'normal', 'uv', 'color', 'bendY']) {
+    if (!g.attributes[k]) continue;
+    const a = g.attributes[k].array;
+    const u = new Uint32Array(a.buffer, a.byteOffset, a.length);
+    for (let i = 0; i < u.length; i++) { h1 = Math.imul(h1 ^ u[i], 16777619) >>> 0; n++; }
+  }
+  const ix = g.index.array;
+  for (let i = 0; i < ix.length; i++) h1 = Math.imul(h1 ^ ix[i], 16777619) >>> 0;
+  return { hash: h1.toString(16), words: n, indices: ix.length };
+}
 window.dev = {
   set(patch) {
     const merge = (a, b) => { for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) merge(a[k] ??= {}, b[k]); else a[k] = b[k]; } };
@@ -253,6 +273,9 @@ window.dev = {
     bellyLow: Math.min(...spec.fairing.bot.map((p) => p[1])),
   },
   type: spec.id,
+  // v0.5.0: the design shown (null for the type itself), its nacelles, and a hash of the built geometry.
+  design: DESIGN, nacelles: DEF ? DEF.geo.NACELLES : null,
+  geoHash() { return geoHash(aircraft.mesh.geometry); },
   // The seat view for a look past the hidden nose.
   defaults: { nose: comp.nose.staticComp, main: comp.main.staticComp },
   ready: true,

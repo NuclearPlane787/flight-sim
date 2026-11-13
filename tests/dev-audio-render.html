@@ -23,6 +23,11 @@ const { strikesBetween } = await import('../src/sim/lightning.js');   // v0.4.0
 // widebody reads its entry in the registry; until that entry has its `sound` (or exists at all: the
 // 777-300ER joins later), the spec and the rest come from here, so its sound can be checked now.
 const TYPE = params.get('type') || 'a321neo';
+// v0.5.0: ?engines=<n> renders a design of that type with n engines (its own engine type), the same
+// scenarios; window.runEngines() compares 2, 3, 4 and 6 (and engines torn off) whatever the page's.
+const designs = await import('../src/sim/designs.js');
+const designFor = (count) => designs.designDef(designs.normalizeDesign({ ...designs.newDesign(TYPE), count }));
+const ENGINES_N = +(params.get('engines') || 0);
 let def = null;
 if (TYPE !== 'a321neo') {
   const [{ TYPES }, { GENX_1B, GE90_115B }] = await Promise.all([import('../src/sim/types.js'), import('../src/audio/engine-sounds.js')]);
@@ -31,7 +36,8 @@ if (TYPE !== 'a321neo') {
   def = { ...pending, ...TYPES[TYPE] };
   if (!def.sound) def.sound = pending.sound;
 }
-const SPEC = def ? def.sound : synthModule.LEAP_1A || { n1Hz: 3894 / 101 / 60, fanBlades: 18 };
+if (ENGINES_N) def = designFor(ENGINES_N);
+const SPEC = def ? def.sound || synthModule.LEAP_1A : synthModule.LEAP_1A || { n1Hz: 3894 / 101 / 60, fanBlades: 18 };
 // What this type's engines do on a take-off (engines.js); the A321's clips keep their v0.2.2 values.
 const CLIP_N1 = def ? def.data?.N1_TOGA ?? 97 : 95;
 const TAU = def ? [def.data?.SPOOL_TAU_LOW ?? 3, def.data?.SPOOL_TAU_HIGH ?? 1.1] : [2.6, 0.9];
@@ -44,17 +50,17 @@ const KT = 1 / 1.943844; // kt → m/s
 // ---- scripted states ----
 
 // One state object, mutated every frame (like the sim's).
-function baseState() {
+function baseState(count = def?.engineCount || 2) {
   return {
     t: 0, ias: 0, gs: 0, vs: 0, onGround: true, gearPos: 1, flapDeg: 0, slatDeg: 0,
     pos: { x: 0, y: 0, z: 200 }, sat: 15, wind: { x: 0, y: 0, z: 0, meanX: 0, meanY: 0 },   // v0.4.0 (null weather ignores them)
     speedbrake: 0, groundSpoilers: 0, brakes: { left: 0, right: 0 }, parkingBrake: false,
-    engines: [{ n1: 20.5, rev: 0 }, { n1: 20.5, rev: 0 }],
+    engines: Array.from({ length: count }, () => ({ n1: 20.5, rev: 0 })),
     warnings: { stall: false, overspeed: false, apDisc: false },
   };
 }
-const n1 = (s, v) => { s.engines[0].n1 = v; s.engines[1].n1 = v; };
-const rev = (s, v) => { s.engines[0].rev = v; s.engines[1].rev = v; };
+const n1 = (s, v) => { for (const e of s.engines) e.n1 = v; };
+const rev = (s, v) => { for (const e of s.engines) e.rev = v; };
 const lerp = (a, b, f) => a + (b - a) * Math.max(0, Math.min(1, f));
 
 // Each scenario: dur (s), step(s, t, opts) sets the state for time t.
@@ -154,6 +160,8 @@ const CLIPS = {
   'clip-approach-cockpit': steady('cockpit', 56, 140, { gear: 1, flap: 25, slat: 27, hunt: true }),
   'clip-approach-3rd': steady('orbitSide', 56, 140, { gear: 1, flap: 25, slat: 27, hunt: true }),
   'clip-landing-cockpit': SCEN['landing-in'],
+  // v0.5.0: with ?engines=6, a design's six engines on the take-off roll, from 3rd person beside it.
+  'clip-takeoff-3rd-side': takeoff('orbitSide'),
 };
 // ---- v0.4.0: the weather's scenarios (run by window.runWeather; prepare() fills the rest) ----
 const heavyRain = { precip: { kind: 'rain', rate: 1 }, lightning: 0, wind: { fromDeg: 0, kt: 0, gustKt: 0 }, turbulence: 'none', seed: 1 };
@@ -229,17 +237,19 @@ const timing = { calls: 0, ms: 0, max: 0 };
 
 // noeng (v0.3.1): the same clip with the engines stopped, to tell the engines from the rest (wind,
 // packs, rolling) in a mix.
-async function render(name, { noeng = false } = {}) {
+// v0.5.0: as (a design's def, or null for the A321neo as always), off (engines torn off: their indices).
+async function render(name, { noeng = false, as = def, off = [] } = {}) {
   const sc = SCEN[name];
   sc.prepare?.();
   const len = Math.round(sc.dur * SR);
   const ctx = new OfflineAudioContext(2, len, SR);
   const synth = createSynth({ context: ctx });
-  if (def) synth.setType(def);
+  if (as) synth.setType(as);
   if (sc.siren && !def) synth.setType({ sound: SPEC, family: 'boeing' });   // the siren is a Boeing's
   if (sc.weather && synth.setWeather) synth.setWeather(sc.weather);
   await synth.start();
-  const s = baseState();
+  const s = baseState(as?.engineCount || 2);
+  for (const i of off) s.engines[i].off = true;
   const o = { inside: true, timeScale: 1, paused: false };
   const frames = Math.floor(sc.dur * FPS) - 1;
   for (let k = 0; k < frames; k++) {
@@ -364,7 +374,7 @@ function clicks([L, R]) {
   return { ratio: Math.round(worst * 10) / 10, at: Math.round(at * 1000) / 1000 };
 }
 
-async function runAll(names = Object.keys(SCEN).filter((k) => !k.startsWith('clip-') && !k.startsWith('wx-'))) {
+async function runAll(names = Object.keys(SCEN).filter((k) => !k.startsWith('clip-') && !k.startsWith('wx-') && !k.startsWith('eng-'))) {
   const res = {};
   for (const name of names) {
     const pcm = await render(name);
@@ -508,6 +518,46 @@ window.renderClip = async (name, opts = {}) => {
   return { wav: btoa(bin), rms: w.rms, peak: w.peak, dur: SCEN[name].dur };
 };
 window.clipNames = () => Object.keys(CLIPS);
+
+// ---- v0.5.0: more engines ----
+// The page's type as a design with 2, 3, 4 and 6 engines (its own engine type), from outside and in
+// the cockpit, at TOGA and at idle: the levels (RMS over 1–7 s: the twin's tones beat slowly at idle, a
+// cycle in about 3 s; the mean of `trials` renders, since each engine's noise starts somewhere random), against two. And six with one, three and all torn off (in the cockpit at TOGA).
+// The engines alone (no wind: the scenarios' IAS 0), so the count is all that changes.
+Object.assign(SCEN, {
+  'eng-toga-out': { dur: 7, step(s, t, o) { Object.assign(o, VIEW.orbitSide); n1(s, CLIP_N1); } },
+  'eng-toga-in': { dur: 7, step(s, t, o) { o.inside = true; n1(s, CLIP_N1); } },
+  'eng-idle-out': { dur: 7, step(s, t, o) { Object.assign(o, VIEW.orbitSide); n1(s, 20.5); } },
+  'eng-cruise-in': { dur: 7, step(s, t, o) { o.inside = true; s.onGround = false; s.gearPos = 0; n1(s, 82); } },
+});
+window.runEngines = async (trials = 3) => {
+  const out = { type: TYPE, levels: {}, off: {}, timing: {} };
+  const lvl = async (name, as, off = []) => {
+    let p = 0, peak = 0, nan = 0;
+    for (let k = 0; k < trials; k++) {
+      const pcm = await render(name, { as, off }), m = measure(pcm, 1, 7);
+      // The stereo power (L² + R²)/2, not the mono mix's: equal-power panning keeps it whatever the pan,
+      // and the engines nearer the middle would otherwise read up to 1 dB louder in mono.
+      const [Lc, Rc] = pcm, a = SR, b = 7 * SR;
+      let e = 0; for (let i = a; i < b; i++) e += (Lc[i] * Lc[i] + Rc[i] * Rc[i]) / 2;
+      p += e / (b - a); peak = Math.max(peak, m.peak); nan += m.nan;
+    }
+    return { rms: p > 0 ? 10 * Math.log10(p / trials) : -200, peak, nan };
+  };
+  for (const count of [2, 3, 4, 6]) {
+    const as = designFor(count);
+    out.levels[count] = { engines: as.engineCount, name: as.engineName };
+    for (const name of ['eng-toga-out', 'eng-toga-in', 'eng-idle-out', 'eng-cruise-in']) out.levels[count][name] = await lvl(name, as);
+    // The render's own cost per second of sound (OfflineAudioContext, so the audio thread's work).
+    const t0 = performance.now(); await render('eng-toga-out', { as }); out.timing[count] = (performance.now() - t0) / SCEN['eng-toga-out'].dur;
+  }
+  const six = designFor(6);
+  // In the cockpit at TOGA (under the limiter, so the level is the voices' own).
+  out.off.one = await lvl('eng-toga-in', six, [0]);
+  out.off.three = await lvl('eng-toga-in', six, [0, 1, 2]);
+  out.off.all = await lvl('eng-toga-in', six, [0, 1, 2, 3, 4, 5]);
+  return out;
+};
 document.getElementById('out').textContent = 'ready';
 </script>
 </body>

@@ -7,12 +7,12 @@ import { machFromIas, iasFromTas, tasFromIas, isa } from '../src/sim/atmosphere.
 
 const DEG = Math.PI / 180, KT = 0.514444, FT = 0.3048;
 
-export function makeBoeingState(A) {
-  const st = makeState();
+export function makeBoeingState(A, n = 2) {
+  const st = makeState(n);
   Object.assign(st, { vRef: 0, vmm: 0, vStick: 0, shaker: false, pliDeg: 12, protStall: false, protOver: false, protBank: false,
     config: 'UP', flapLever: 0, flapDeg: 0, slatDeg: 0, mass: 210000, fuelKg: 45000, leverN1: 0, athrActive: false });
   st.fuel = { left: 15000, right: 15000, center: 15000 };
-  st.engines = [0, 1].map(() => ({ n1: A.N1_IDLE, n1Target: A.N1_IDLE, ffKgS: 0.2, thrustN: 0, rev: 0 }));
+  st.engines = Array.from({ length: n }, () => ({ n1: A.N1_IDLE, n1Target: A.N1_IDLE, ffKgS: 0.2, thrustN: 0, rev: 0 }));
   return st;
 }
 

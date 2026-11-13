@@ -70,6 +70,31 @@ export const LEAP_1A = {
 // two beat, gently, as unsynchronised engines do.
 const TONE2 = 0.65;
 
+// v0.5.0: any number of engines, up to six (a design's), each its own voices at its own N1. The
+// spread: engine i runs split^SPREAD[i] faster, so every pair beats (two engines: 0 and 1, as before;
+// more: steps of 2/(n−1) of the split, shuffled so neighbours differ, the slowest pair beating at 0.4
+// of the twin's rate with six), and every other engine's tones are TONE2 quieter (so n engines' tones
+// add up as n/2 twins'). Nothing scales the level by the count: n engines' voices are incoherent
+// (their own noise loops, wanders and pitches), so they add in power, +10·log10(n/2) dB over two
+// (+3.0 dB with four, +4.8 with six), as real engines do. tests/audio-render.mjs measures it.
+export const MAX_ENGINES = 6;
+const SPREAD_RANK = { 3: [0, 2, 1], 4: [0, 2, 3, 1], 5: [0, 3, 1, 4, 2], 6: [0, 3, 1, 4, 2, 5] };
+function spreadOf(count) {
+  if (count <= 2) return [0, 1].slice(0, count);
+  return SPREAD_RANK[count].map((r) => r * 2 / (count - 1));
+}
+// Each engine's place across the aircraft (−1 left … 1 right) from its y (left +); a tail engine 0.
+// Two engines are −1 and 1, as before v0.5.0.
+function sidesOf(def, count) {
+  const E = def?.geo?.ENGINES;
+  if (count === 2 || !E || E.length !== count) return count === 2 ? [-1, 1] : Array.from({ length: count }, (_, i) => (count === 1 ? 0 : -1 + 2 * i / (count - 1)));
+  const span = Math.max(1e-6, ...E.map((e) => Math.abs(e.y)));
+  return E.map((e) => -e.y / span);
+}
+const countOf = (def) => Math.max(1, Math.min(MAX_ENGINES, def?.geo?.ENGINES?.length ?? def?.engineCount ?? 2)) | 0;
+// The gain nodes an engine's level goes through (silenced when it goes).
+const VOICES = ['fan', 'buzz', 'whine', 'fanNoise', 'jet', 'core', 'rev'];
+
 // Overall levels (tuned by measurement): PRE feeds the limiter; the warnings' peaks.
 const PRE = 0.7;
 const CAV_PEAK = 0.3, CHIME = 0.4, CRICKET = 0.3, STALL_TONE = 0.2;
@@ -131,6 +156,8 @@ export function createSynth({ context = null } = {}) {
   let vol = FULL_VOLUME;
   let inside = true;
   let SND = LEAP_1A;  // the engine's numbers (v0.3.0: setType)
+  // v0.5.0: how many engines, where (sides: −1 left … 1 right), and each one's spread (above).
+  let count = 2, sides = [-1, 1], spread = spreadOf(2);
   let boeing = false;  // v0.4.0: a Boeing sounds a siren with its windshear warning
   // v0.4.0: the weather settings (null: none) and its nodes, made only when asked for.
   let wxSet = null;
@@ -257,6 +284,63 @@ export function createSynth({ context = null } = {}) {
     return nodes[nodes.length - 1];
   }
 
+  // One engine's voices (see the top): the fan's tones and the buzz-saw (custom waveforms at the N1
+  // shaft's frequency, wavering a little in level and pitch), the core's whine, and the fan's
+  // broadband, the jet's roar and the combustion rumble; into its own panner. Its noise loops share
+  // the kit's buffers, each from its own random place (so the engines' noises are incoherent and add
+  // in power). `src` lists its sources, to stop them if the engine goes (setType to fewer engines).
+  // Two engines are built exactly as before v0.5.0, node for node and in the same order.
+  function makeEngine(kit, pan) {
+    const src = [];
+    const wanderAt = (depth) => {
+      const s = ctx.createBufferSource(); s.buffer = kit.wander; s.loop = true;
+      s.start(0, Math.random() * kit.wander.duration);   // each one somewhere else in it
+      src.push(s);
+      const g = gain(depth); s.connect(g); return g;
+    };
+    const loop = (buf) => { const s = noise(buf); src.push(s); return s; };
+    const p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(kit.worldBus);
+    const fanOsc = ctx.createOscillator(); fanOsc.setPeriodicWave(kit.fanWave); fanOsc.frequency.value = 13; fanOsc.start();
+    const buzzOsc = ctx.createOscillator(); buzzOsc.setPeriodicWave(kit.buzzWave); buzzOsc.frequency.value = 13; buzzOsc.start();
+    // Pitch: ±4 cents (measured fan tones wander under 0.5 %); level: ±15 % (fan), ±20 % (buzz).
+    const pitch = wanderAt(4); pitch.connect(fanOsc.detune); pitch.connect(buzzOsc.detune);
+    const fanAm = gain(1), buzzAm = gain(1);
+    wanderAt(0.15).connect(fanAm.gain); wanderAt(0.20).connect(buzzAm.gain);
+    const fan = gain(0), buzz = gain(0);
+    chain(fanOsc, fanAm, fan, p);
+    chain(buzzOsc, buzzAm, filter('lowpass', 2400, 0.5), buzz, p);   // its top orders soften
+    const whineOsc = osc('triangle', 2200);
+    const whine = gain(0);
+    chain(whineOsc, filter('lowpass', 5000, 0.5), whine, p);
+    const fanBp = filter('bandpass', 1000, 0.55);
+    const fanNoise = gain(0);
+    chain(loop(kit.white), fanBp, fanNoise, p);
+    const jetLp = filter('lowpass', 300, 0.6);
+    const jet = gain(0);
+    chain(loop(kit.pink), filter('highpass', 35, 0.7), jetLp, jet, p);
+    const coreLp = filter('lowpass', 150, 0.5);
+    const core = gain(0);
+    chain(loop(kit.brown), coreLp, core, p);
+    const revBp = filter('bandpass', 700, 0.6);
+    const rev = gain(0);
+    chain(loop(kit.white), revBp, rev, p);
+    src.push(fanOsc, buzzOsc, whineOsc);
+    return { p, fanOsc, buzzOsc, fan, buzz, whineOsc, whine, fanBp, fanNoise, jetLp, jet, coreLp, core, revBp, rev, src };
+  }
+
+  // v0.5.0: more or fewer engines after start() (a design flown after a type): the new ones are made
+  // as above; the ones gone fade, stop and are disconnected a moment later (reap()).
+  function resizeEngines() {
+    const E = n.engines;
+    while (E.length > count) {
+      const g = E.pop(), now = ctx.currentTime;
+      for (const k of VOICES) silence(g[k]);
+      for (const s of g.src) { try { s.stop(now + 0.4); } catch { /* already stopped */ } }
+      dying.push({ node: g.p, at: now + 0.5 });
+    }
+    while (E.length < count) E.push(makeEngine(n.kit, sides[E.length] * 0.6));
+  }
+
   function build() {
     const white = noiseBuffer(false);
     const brown = noiseBuffer(true);
@@ -277,42 +361,10 @@ export function createSynth({ context = null } = {}) {
     const muffle = filter('lowpass', 1200); // cockpit: low; outside: wide open
     chain(worldBus, muffle, pre);
 
-    // Engines (see the top): per engine, the fan's tones and the buzz-saw (custom waveforms at
-    // the N1 shaft's frequency, wavering a little in level and pitch), the core's whine, and
-    // the fan's broadband, the jet's roar and the combustion rumble; panned left and right.
-    const wanderAt = (depth) => {
-      const s = ctx.createBufferSource(); s.buffer = wander; s.loop = true;
-      s.start(0, Math.random() * wander.duration);   // each one somewhere else in it
-      const g = gain(depth); s.connect(g); return g;
-    };
-    const engines = [-0.6, 0.6].map((pan) => {
-      const p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(worldBus);
-      const fanOsc = ctx.createOscillator(); fanOsc.setPeriodicWave(fanWave); fanOsc.frequency.value = 13; fanOsc.start();
-      const buzzOsc = ctx.createOscillator(); buzzOsc.setPeriodicWave(buzzWave); buzzOsc.frequency.value = 13; buzzOsc.start();
-      // Pitch: ±4 cents (measured fan tones wander under 0.5 %); level: ±15 % (fan), ±20 % (buzz).
-      const pitch = wanderAt(4); pitch.connect(fanOsc.detune); pitch.connect(buzzOsc.detune);
-      const fanAm = gain(1), buzzAm = gain(1);
-      wanderAt(0.15).connect(fanAm.gain); wanderAt(0.20).connect(buzzAm.gain);
-      const fan = gain(0), buzz = gain(0);
-      chain(fanOsc, fanAm, fan, p);
-      chain(buzzOsc, buzzAm, filter('lowpass', 2400, 0.5), buzz, p);   // its top orders soften
-      const whineOsc = osc('triangle', 2200);
-      const whine = gain(0);
-      chain(whineOsc, filter('lowpass', 5000, 0.5), whine, p);
-      const fanBp = filter('bandpass', 1000, 0.55);
-      const fanNoise = gain(0);
-      chain(noise(white), fanBp, fanNoise, p);
-      const jetLp = filter('lowpass', 300, 0.6);
-      const jet = gain(0);
-      chain(noise(pink), filter('highpass', 35, 0.7), jetLp, jet, p);
-      const coreLp = filter('lowpass', 150, 0.5);
-      const core = gain(0);
-      chain(noise(brown), coreLp, core, p);
-      const revBp = filter('bandpass', 700, 0.6);
-      const rev = gain(0);
-      chain(noise(white), revBp, rev, p);
-      return { p, fanOsc, buzzOsc, fan, buzz, whineOsc, whine, fanBp, fanNoise, jetLp, jet, coreLp, core, revBp, rev };
-    });
+    // Engines (see the top): one set of voices per engine (v0.5.0: as many as the type or design has,
+    // up to six), made by makeEngine() below; panned by where each hangs.
+    const kit = { white, pink, brown, wander, fanWave, buzzWave, worldBus };
+    const engines = sides.map((side) => makeEngine(kit, side * 0.6));
 
     const windBp = filter('bandpass', 500, 0.6);
     const wind = gain(0);
@@ -381,7 +433,7 @@ export function createSynth({ context = null } = {}) {
     chain(stallOsc, filter('lowpass', 1800), stallTone, warnBus);
 
     return {
-      pre, master, warnBus, worldBus, muffle, engines, windBp, wind, spoilerLp, spoiler, rollLp, rolling,
+      pre, master, warnBus, worldBus, muffle, kit, engines, windBp, wind, spoilerLp, spoiler, rollLp, rolling,
       gearOsc, gear, flapOsc, flap, thump, thumpNoise, squeal, cav, cavOsc, chime, cricket, stallTone,
       packs, brakeRumble, brakeSqueal, clunk, clunkNoise,
     };
@@ -697,7 +749,10 @@ export function createSynth({ context = null } = {}) {
     const near = 1 / (1 + Math.max(0, dist - 75) / 150);   // 3rd person's 75 m: 1; 300 m: 0.4; 1.5 km: 0.1
 
     set(n.worldBus.gain, paused || fast ? 0 : near, 0.05);
-    set(n.warnBus.gain, paused ? 0 : fast ? 0.25 : 1, 0.05);
+    // v0.5.0: more than two engines are louder (+10·log10(n/2) dB), so the warnings come up as much and
+    // stay about as clear over them as over two (two: 1, as before; time compression mutes the engines).
+    const warnK = n.engines.length > 2 ? Math.sqrt(n.engines.length / 2) : 1;
+    set(n.warnBus.gain, paused ? 0 : fast ? 0.25 : warnK, 0.05);
     // The cockpit's walls; outside, the air dulls a distant aircraft.
     set(n.muffle.frequency, inside ? INSIDE_LP : Math.max(3500, 16000 * Math.min(1, 120 / Math.max(dist, 1))), 0.1);
     set(n.packs.gain, mix('packs') * 0.02, 0.2);   // 0.035 under the old 900 Hz low-pass (v0.3.1)
@@ -707,29 +762,38 @@ export function createSynth({ context = null } = {}) {
 
     // Engines (see the top).
     const engines = s.engines;
-    for (let i = 0; i < 2; i++) {
+    // v0.5.0: every engine the type or design has; one torn off (`off`) or missing is silent. A state
+    // with more engines than setType() said (it wasn't told of a design) grows the voices once, spread
+    // evenly across, rather than leave engines unheard.
+    if (engines && engines.length > n.engines.length && n.engines.length < MAX_ENGINES) {
+      count = Math.min(MAX_ENGINES, engines.length); sides = sidesOf(null, count); spread = spreadOf(count);
+      resizeEngines();
+    }
+    for (let i = 0; i < n.engines.length; i++) {
       const e = engines && engines[i], E = n.engines[i];
-      const pct = e ? Math.max(0, e.n1 || 0) : 0;
+      const pct = e && !e.off ? Math.max(0, e.n1 || 0) : 0;
       const n1 = clamp01(pct / 100), on = running(n1);
       const pw = clamp01((n1 - 0.2) / 0.765);             // power, idle 0 … TOGA 1
-      const shaft = Math.max(1, pct) * SND.n1Hz * (i ? SND.split : 1);
-      set(E.p.pan, (i ? 1 : -1) * (inside ? 0.35 : 0.6), 0.2);
+      const d = spread[i], k = d === 0 ? 1 : d === 1 ? SND.split : Math.pow(SND.split, d);
+      const tone = i % 2 ? TONE2 : 1;
+      const shaft = Math.max(1, pct) * SND.n1Hz * k;
+      set(E.p.pan, sides[i] * (inside ? 0.35 : 0.6), 0.2);
       set(E.fanOsc.frequency, shaft, 0.1);
       set(E.buzzOsc.frequency, shaft, 0.1);
-      set(E.whineOsc.frequency, SND.coreOrder * (SND.n2Base + SND.n2Slope * pct) * SND.n2Hz * (i ? SND.split : 1), 0.1);
+      set(E.whineOsc.frequency, SND.coreOrder * (SND.n2Base + SND.n2Slope * pct) * SND.n2Hz * k, 0.1);
       set(E.fanBp.frequency, Math.max(300, 1.4 * SND.fanBlades * shaft), 0.1);
       set(E.jetLp.frequency, SND.jetHz[0] + SND.jetHz[1] * pw, 0.15);
       set(E.coreLp.frequency, SND.coreHz[0] + SND.coreHz[1] * pw, 0.15);
       // Levels: the fan's tones grow with its tip speed; the buzz-saw comes in as the tips
       // go supersonic (72–95 % N1), ahead of the engine; the jet's roar steeply with power,
       // behind it.
-      set(E.fan.gain, ENG.fan * G('fan') * (i ? TONE2 : 1) * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
-      set(E.buzz.gain, ENG.buzz * G('buzz') * (i ? TONE2 : 1) * mix('buzz') * on * smooth(SND.buzzFrom, SND.buzzTo, n1) * (0.2 + 0.8 * ahead));
+      set(E.fan.gain, ENG.fan * G('fan') * tone * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
+      set(E.buzz.gain, ENG.buzz * G('buzz') * tone * mix('buzz') * on * smooth(SND.buzzFrom, SND.buzzTo, n1) * (0.2 + 0.8 * ahead));
       set(E.whine.gain, ENG.whine * G('whine') * mix('whine') * on * (0.6 + 0.4 * n1) * (0.5 + 0.5 * ahead));
       set(E.fanNoise.gain, ENG.fanNoise * G('fanNoise') * mix('fanNoise') * on * (0.1 + 0.9 * n1 * n1 * n1));
       set(E.jet.gain, ENG.jet * G('jet') * mix('jet') * on * Math.pow(pw, 2.2) * (0.35 + 0.65 * behind));
       set(E.core.gain, ENG.core * G('core') * mix('core') * on * (0.3 + 0.7 * Math.pow(pw, 1.5)) * (0.6 + 0.4 * behind));
-      const rev = e ? clamp01(e.rev || 0) : 0;
+      const rev = e && !e.off ? clamp01(e.rev || 0) : 0;
       set(E.rev.gain, mix('reverser') * rev * (0.15 + n1 * n1) * 0.7);
       set(E.revBp.frequency, 400 + n1 * 600, 0.15);
     }
@@ -862,13 +926,19 @@ export function createSynth({ context = null } = {}) {
       applyWeather();
     },
     // The aircraft type's engine (v0.3.0): new waveforms if the sound has started already.
+    // v0.5.0: and its engine count (def.geo.ENGINES, or def.engineCount; up to six) and where each
+    // hangs (ENGINES' y): engines added or taken away if the sound has started.
     setType(def) {
       SND = def?.sound || LEAP_1A;
       boeing = def?.family === 'boeing';
+      count = countOf(def); sides = sidesOf(def, count); spread = spreadOf(count);
       if (!n) return;
       const fanWave = harmonicWave(fanAmps(), 11), buzzWave = harmonicWave(buzzAmps(), 23);
+      n.kit.fanWave = fanWave; n.kit.buzzWave = buzzWave;
       for (const E of n.engines) { E.fanOsc.setPeriodicWave(fanWave); E.buzzOsc.setPeriodicWave(buzzWave); }
+      resizeEngines();
     },
+    get engineCount() { return n ? n.engines.length : count; },
     // Fade out and suspend the context (start() brings it back).
     stop() {
       if (!ctx) return Promise.resolve();

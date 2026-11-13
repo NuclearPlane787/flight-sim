@@ -123,7 +123,7 @@ function polyFuse(ctx, pts, mirror) {
   ctx.closePath();
 }
 
-function paintFuselage(ctx, glow, windows = []) {
+function paintFuselage(ctx, glow, windows = [], registration = REGISTRATION) {
   const W = ATLAS, H = 1024;
   ctx.fillStyle = glow ? '#000' : COLORS.white;
   ctx.fillRect(0, 0, W, H);
@@ -194,7 +194,7 @@ function paintFuselage(ctx, glow, windows = []) {
     sideTransform(ctx, side, -10.6, 30);
     ctx.font = '700 40px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = COLORS.navy;
-    ctx.fillText('HL8787', 0, 0);
+    ctx.fillText(registration, 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
   // Cockpit windows: the glass itself is geometry (aircraft.js), with crisp edges. This dark
@@ -281,14 +281,17 @@ export function paintNacelle(ctx, glow) {
   ctx.fillStyle = COLORS.blue; ctx.fillRect(X0, vy(0.655), W, vy(0.635) - vy(0.655));
 }
 
+// The A321's own registration; a design paints its own (v0.5.0).
+export const REGISTRATION = 'HL8787';
+
 // Builds the colour and emissive atlases. fuseTop(x) is the fuselage's top line (body z);
-// windows, the cockpit windows' outlines (cockpit-windows.js).
-export function createLiveryTextures(fuseTop, windows = []) {
+// windows, the cockpit windows' outlines (cockpit-windows.js); registration, the one on the rear fuselage.
+export function createLiveryTextures(fuseTop, windows = [], registration = REGISTRATION) {
   const make = (glow) => {
     const c = document.createElement('canvas');
     c.width = c.height = ATLAS;
     const ctx = c.getContext('2d');
-    paintFuselage(ctx, glow, windows);
+    paintFuselage(ctx, glow, windows, registration || REGISTRATION);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     paintFin(ctx, glow, fuseTop);
     paintNacelle(ctx, glow);

@@ -7,6 +7,8 @@
 //     file named v030-sound-<type>-<clip>
 //   FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ node tests/audio-clips.mjs outDir   (the cloud container)
 // SYNTH=<url relative to tests/> renders another copy of the synth (an older one, to compare).
+// v0.5.0: --count N renders the type as a design with N engines, each file named v050-<N>-engines-<type>-<clip>:
+//   node tests/audio-clips.mjs --type b777-300er --count 6 "../../Claude outputs/flight-sim" clip-takeoff-3rd-side clip-takeoff-cockpit
 // v0.4.0, the weather's clips (saved as v040-*.wav):
 //   node tests/audio-clips.mjs "../../Claude outputs/flight-sim" clip-v040-rain-cockpit clip-v040-rain-3rd \
 //     clip-v040-thunder-near-cockpit clip-v040-thunder-near-3rd clip-v040-thunder-far-cockpit clip-v040-gusty-approach
@@ -20,6 +22,8 @@ const { chromium } = CLOUD ? createRequire(import.meta.url)('playwright') : awai
 const ROOT = process.env.E2E_ROOT || 'http://localhost:8001/';
 const argv = process.argv.slice(2), ti = argv.indexOf('--type');
 const type = ti >= 0 ? argv.splice(ti, 2)[1] : '';
+const ci = argv.indexOf('--count');
+const count = ci >= 0 ? argv.splice(ci, 2)[1] : '';
 const [out = 'clips', ...only] = argv;
 mkdirSync(out, { recursive: true });
 let ffmpeg = true;
@@ -32,13 +36,14 @@ try {
   page.on('pageerror', (e) => errors.push(String(e)));
   const query = new URLSearchParams();
   if (type) query.set('type', type);
+  if (count) query.set('engines', count);
   if (process.env.SYNTH) query.set('synth', process.env.SYNTH);
   await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html' + (query.size ? '?' + query : ''));
   await page.waitForFunction(() => typeof window.renderClip === 'function', null, { timeout: 30000 });
   const names = only.length ? only : await page.evaluate(() => window.clipNames());
   for (const name of names) {
     const r = await page.evaluate((n) => window.renderClip(n), name);
-    const file = `${out}/${type ? `v030-sound-${type}-` : ''}${name.replace(/^clip-/, '')}.wav`;
+    const file = `${out}/${count ? `v050-${count}-engines-${type || 'a321neo'}-` : type ? `v030-sound-${type}-` : ''}${name.replace(/^clip-/, '')}.wav`;
     writeFileSync(file, Buffer.from(r.wav, 'base64'));
     if (ffmpeg) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', file, '-codec:a', 'libmp3lame', '-b:a', '160k', file.replace(/\.wav$/, '.mp3')]);
     console.log(`${name}: ${r.dur} s, ${r.rms.toFixed(1)} dB RMS, peak ${r.peak.toFixed(3)} → ${file}`);

@@ -20,6 +20,7 @@ import { ScenarioStore, whereText, legacyId } from './scenarios.js';
 import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js';
 import { createClock, afternoonOf } from './clock.js';
 import { typeById, DEFAULT_TYPE } from './sim/types.js';
+import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
 import { runwayStateOf } from './sim/weather.js';
@@ -121,19 +122,27 @@ async function boot() {
   // The aircraft and its cockpit, one pair per type, built the first time it's flown (v0.3.0).
   let aircraft = null, cockpit = null, spray = null;
   const models = new Map();
+  // v0.5.0: `id` is a type id or a type entry (a design's, from sim/designs.js: its own model, kept by its key).
   function modelFor(id) {
-    let m = models.get(id);
+    const def = typeof id === 'object' ? id : typeById(id);
+    const key = def.key || def.id;
+    let m = models.get(key);
     if (!m) {
-      const b = assetsMod.buildersFor(id);
+      const b = assetsMod.buildersFor(def.design ? def : def.id);
       m = { aircraft: b.createAircraft(), cockpit: b.createCockpit() };
       m.aircraft.object.add(m.cockpit.object);
       // v0.4.2: the wheels' spray on a wet or snowy runway.
-      m.spray = createSpray(typeById(id).geo.GEAR, world.uniforms);
+      m.spray = createSpray(def.geo.GEAR, world.uniforms);
       m.aircraft.object.add(m.spray.object);
-      models.set(id, m);
+      // A design's model is kept for its last flight only: an edited design is a new one (the base types' stay). Not
+      // disposed (its parts may share buffers with the base's): the browser frees it with the page.
+      if (def.design) for (const [k, old] of models) if (old.design && k !== key && old.aircraft !== aircraft) models.delete(k);
+      m.design = !!def.design;
+      models.set(key, m);
     }
     return m;
   }
+
   function showModel(id) {
     if (aircraft) scene.remove(aircraft.object);
     ({ aircraft, cockpit, spray } = modelFor(id));
@@ -185,13 +194,15 @@ async function boot() {
     ]).catch(() => {});
   }
   // The aircraft type: everything that reads it, in one place. Before a reset or a restore.
+  // v0.5.0: id may be a design (the plan's or a save's): it flies as its own type entry (sim/designs.js).
   let flyingType = null;
   function useType(id) {
-    const def = typeById(id);
-    if (flyingType === def.id) return def;
-    flyingType = def.id;
-    sim.setType(def.id);
-    showModel(def.id);
+    const def = resolveDef(id);
+    const key = def.key || def.id;
+    if (flyingType === key) return def;
+    flyingType = key;
+    sim.setType(def.design || def.id);
+    showModel(def);
     rig.setType(def);
     scorer.setType(def);
     callouts.setType(def);
@@ -335,7 +346,7 @@ async function boot() {
 
   function startFlight(p, { keepClock = false } = {}) {
     plan = p;
-    useType(p.type);
+    useType(p.design || p.type);
     // v0.4.0: the plan's weather, before the aircraft is placed (the reset and the trim read the wind).
     sim.setWeather(presetWeather(p.weather || 'clear', weatherContext(airports, p)));
     store.save('lastflight', p);
@@ -386,6 +397,7 @@ async function boot() {
     const at = arrivedAt();
     if (at) Object.assign(defaults, { origin: at.icao, start: 'gate', stand: at.stand, depRunway: '' });
     if (!defaults.type) defaults.type = sim.type.id;   // a plan from before v0.3.0
+    if (current && sim.design) defaults.design = sim.design;   // v0.5.0: the scenario's own copy of its design
     const p = await setup.show(defaults, { title: 'New flight', cancel: !!plan, lockType: !!current });
     if (!p) {
       input.setEnabled(true);
@@ -417,6 +429,7 @@ async function boot() {
     if (dest) distNm = Math.hypot(dest.end.x - s.pos.x, dest.end.y - s.pos.y) / NM;
     return {
       route: `${plan.origin}–${plan.dest}`,
+      ...(sim.design ? { design: sim.design.name } : {}),   // v0.5.0: the Load list names the design
       where: whereText({ onGround: s.onGround, altFt: s.pos.z * FT, distNm, destIcao: plan.dest, phase: gate.phase,
         icao: a ? a.icao : plan.origin, stand: gate.phase === 'arrived' ? (gate.route?.stand ?? gate.stand?.ref) : (gate.phase === 'parked' ? (gate.stand?.ref ?? plan.stand) : null), crashed: !!crashed }),
     };
@@ -446,7 +459,7 @@ async function boot() {
     store.save('lastflight', plan);
     dest = runwayEnds(plan.dest, plan.arrRunway);
     destOther = dest ? dest.other : null;
-    useType(st.sim?.type || plan.type);       // a save from before v0.3.0 is the A321neo
+    useType(st.sim?.design || st.sim?.type || plan.design || plan.type);   // a save from before v0.3.0 is the A321neo; v0.5.0: a design whole
     gate.deserialize(st.gate, plan);          // may reset the sim (a gate start), so before restore
     sim.restore(st.sim);
     applyFlightOpts();                        // v0.4.1: the settings', not the save's
@@ -868,6 +881,8 @@ async function boot() {
       }
       // v0.4.1: Indestructible held it together.
       if (e.type === 'damage') toast(`Indestructible: that was a crash (${e.reason})`, 3500);
+      // v0.5.0: a pylon past its limit.
+      if (e.type === 'engineOff') { toast(`Engine ${e.engine + 1} tore off its pylon: too much thrust for it`, 5000); clearPrediction(); }
       if (e.type === 'apDisconnect') { setTimeScale(1); clearPrediction(); }
       if (e.type === 'apDisconnect' && e.reason === 'rollout') toast('Rollout done: the autopilot’s off, you have the aircraft', 3500);
       if (e.type === 'athrWake') toast('AIRSPEED LOW: the autothrottle woke up', 3000);
@@ -897,6 +912,7 @@ async function boot() {
     });
     store.addLogEntry({
       date: new Date().toISOString(), version: VERSION.number, type: sim.type.id,
+      ...(sim.design ? { design: sim.design.name, designId: sim.design.id, engines: sim.type.engineName } : {}),   // v0.5.0
       ...(current ? { scenarioId: current.id, scenarioName: current.name } : { scenarioId: 'unsaved', scenarioName: 'Unsaved flights' }), route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
       depRunway: plan.start === 'runway' ? plan.depRunway : null, arrRunway: le ? le.end.ident : null, gate: plan.start === 'gate' ? plan.stand ?? null : null,
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,
@@ -1271,7 +1287,9 @@ async function boot() {
   if (TEST && params.get('origin')) {
     startFlight({ origin: params.get('origin'), depRunway: params.get('dep') || '14R', dest: params.get('dest') || 'RKPC',
       arrRunway: params.get('arr') || '07', start: params.get('start') || 'runway', stand: params.get('stand') || null, pax: 180, cargoKg: 2000,
-      fuelKg: Number(params.get('fuel')) || 7500, waypoints: [], type: params.get('type') || undefined });
+      fuelKg: Number(params.get('fuel')) || 7500, waypoints: [], type: params.get('type') || undefined,
+      // v0.5.0: a design for the checks, as JSON (sim/designs.js's shape)
+      ...(params.get('design') ? (() => { const d = JSON.parse(params.get('design')); return { design: d, type: d.base }; })() : {}) });
   } else {
     // The main menu, over a still: nothing renders or steps behind it (PLAN.md → CPU at runtime).
     paused = true;

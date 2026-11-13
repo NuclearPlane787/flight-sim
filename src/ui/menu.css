@@ -116,3 +116,12 @@
 .fsui-dlg .fsui-name { flex: 1; max-width: 360px; font: 600 15px var(--font); color: #f0f0f0; background: #0a0e11;
   border: 1px solid #44505a; border-radius: 5px; padding: 6px 8px; outline: none; user-select: text; -webkit-user-select: text; }
 .fsui-dlg .fsui-name:focus { border-color: #2fe3ff; }
+
+/* ---- v0.5.0: New scenario's picker, the saved designs (warehouse) under the three types (setup.js) ---- */
+.fsui-designs-h { margin: 10px 0 5px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #8a9097; }
+.fsui-designs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-height: 260px; overflow-y: auto; padding: 1px; }
+.fsui-designs[hidden], .fsui-designs-h[hidden] { display: none; }
+.fsui-tc.fsui-dc .fsui-tc-head small { color: #9fb3c2; }
+.fsui-tc .fsui-dc-tag { display: inline-block; margin-left: 6px; padding: 0 5px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #0b1014; background: #2fe3ff; border-radius: 3px; vertical-align: 2px; }
+@media (max-width: 900px) { .fsui-designs { grid-template-columns: minmax(0, 1fr); } }

@@ -12,7 +12,8 @@
 import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
 import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind, microburstInto } from './weather.js';
 import { leverToPhi } from './engines.js';
-import { typeById, kitFor, DEFAULT_TYPE } from './types.js';
+import { kitFor, DEFAULT_TYPE } from './types.js';
+import { resolveDef, isDesign } from './designs.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -49,7 +50,14 @@ const PWS_F = 0.13, PWS_NEAR_M = 926, PWS_FAR_M = 2778, PWS_TOP_M = 1200 * 0.304
 const defaultGround = () => FLAT;
 const FLAT = { h: 0, kind: 'runway' };
 
-function newCore(A, boeing) {
+// v0.5.0: the engines' state is a list, one entry per engine (ENGINES' order: engine 1 is the left outboard of
+// a pair, as before), in the core as parallel arrays of numbers so a snapshot is plain JSON:
+// eN1 (N1, %), eN1t (its target), eRev (the reverser, 0..1), eThr (thrust, N), eFf (fuel flow, kg/s).
+// Saves from before v0.5.0 have n1L, n1R, … instead: restore() migrates them (migrateEngines()).
+export const ENGINE_FIELDS = ['eN1', 'eN1t', 'eRev', 'eThr', 'eFf'];
+const OLD_ENGINE_FIELDS = { eN1: ['n1L', 'n1R'], eN1t: ['n1tL', 'n1tR'], eRev: ['revL', 'revR'], eThr: ['thrL', 'thrR'], eFf: ['ffL', 'ffR'] };
+const filled = (n, v) => { const a = new Array(n); for (let i = 0; i < n; i++) a[i] = v; return a; };
+function newCore(A, boeing, n) {
   return {
     t: 0,
     px: 0, py: 0, pz: 0, vn: 0, ve: 0, vd: 0,
@@ -64,8 +72,9 @@ function newCore(A, boeing) {
     // fuel added (or taken off) since the flight began, so the logbook's fuel used stays the burn. In the
     // core, so a save, a rewind and a copy carry them.
     paxN: null, cargoKg: null, fuelAddedKg: 0,
-    n1L: A.N1_IDLE, n1R: A.N1_IDLE, revL: 0, revR: 0,
-    n1tL: A.N1_IDLE, n1tR: A.N1_IDLE, thrL: 0, thrR: 0, ffL: 0, ffR: 0,
+    eN1: filled(n, A.N1_IDLE), eN1t: filled(n, A.N1_IDLE), eRev: filled(n, 0), eThr: filled(n, 0), eFf: filled(n, 0),
+    // v0.5.0: the engines torn off their pylons (bit i: engine i), and the mass they took with them.
+    eOff: 0,
     fuelL: 3000, fuelR: 3000, fuelC: 0,
     slat: 0, flap: 0, cfg: '0', lever1F: false, prevLever: 0,
     gearPos: 1, gearDoors: 0,
@@ -98,9 +107,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   let typeDef, A, kit, coefficients, liftCurve, machLift, clOfAlpha, engineStep, togaThrust, idleN1, detentName,
     leverToPhi, leverForPhi, n1ForPhi, LEVER_CL, legStep, fbwStep, apStep, athrStep, AP_FIELDS,
     GEAR, GROUND_Z, ENGINES, CRASH_POINTS, SKID_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG;
+  // v0.5.0: a type id or a design (src/sim/designs.js); a design flies its own data and geometry on its base's kit.
   const bindKit = (id) => {
-    typeDef = typeById(id);
-    A = typeDef.data; kit = kitFor(id);
+    typeDef = resolveDef(id);
+    A = typeDef.data; kit = kitFor(typeDef);
     ({ coefficients, liftCurve, machLift, clOfAlpha } = kit.fm);
     ({ engineStep, togaThrust, idleN1, detentName, leverToPhi, leverForPhi, n1ForPhi, LEVER_CL } = kit.eng);
     ({ legStep } = kit.gear); ({ fbwStep } = kit.fbw); ({ apStep, athrStep, AP_FIELDS } = kit.auto);
@@ -109,7 +119,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     CONFIG_BY_LEVER = A.FLAP_LEVER; NEXT_CONFIG = A.NEXT_CONFIG;
   };
   bindKit(type);
-  const X = newCore(A, kit.boeing);
+  const X = newCore(A, kit.boeing, ENGINES.length);
   const events = [];
 
   const controls = {
@@ -131,10 +141,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     onGround: true, wow: { nose: false, left: false, right: false },
     mass: 0, fuelKg: 0, fuel: { left: 0, right: 0, center: 0 }, cgMac: 0.25, cgX: 0,
     payloadKg: 0, paxN: null, cargoKg: null, fuelAddedKg: 0,   // v0.3.2 (the core's)
-    engines: [
-      { n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0 },
-      { n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0 },
-    ],
+    engines: [],   // one per engine (mkEngines)
     thrustLever: 0, detent: 'IDLE',
     // v0.2.2: the A/THR is moving the lever; the N1 the lever asks for, here and now (the
     // engine panel's cyan ring).
@@ -211,10 +218,18 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     alphaMax: 0.3, vls: 0, vsw: 0, slat: 0, flap: 0, apOn: false, apGamma: 0, apBank: 0,
     fAlong: 0, mass: 1, iasDot: 0, autoTrim: false,
   };
-  const eng = [
-    { n1: 0, n1Target: 0, rev: 0, thrustN: 0, ffKgS: 0, fuelOk: true },
-    { n1: 0, n1Target: 0, rev: 0, thrustN: 0, ffKgS: 0, fuelOk: true },
-  ];
+  // The engines' scratch (engineStep's), and the public list, one per engine of the type.
+  let eng, NE = 0;
+  const mkEngines = () => {
+    NE = ENGINES.length;
+    eng = [];
+    state.engines.length = 0;
+    for (let i = 0; i < NE; i++) {
+      eng.push({ n1: 0, n1Target: 0, rev: 0, thrustN: 0, ffKgS: 0, fuelOk: true });
+      state.engines.push({ n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0, off: false });
+    }
+  };
+  mkEngines();
   // Gear legs, positions relative to the CG filled each step.
   const mkLeg = (g, d, isNose) => ({
     bx: g.x, by: g.y, bz: g.z - d.staticComp, // uncompressed tyre bottom, FLU
@@ -239,12 +254,35 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   let mass = 0, cgX = 0, Ixx = 1, Iyy = 1, Izz = 1, Ixz = A.IXZ;
   function massProps() {
     const wing = X.fuelL + X.fuelR, fuel = wing + X.fuelC;
+    if (A.DESIGN) { massPropsDesign(wing, fuel); return; }
     mass = A.OEW + X.payload + fuel;
     cgX = (A.OEW * A.CG_OEW_X + X.payload * A.CG_PAYLOAD_X + wing * A.CG_WING_FUEL_X + X.fuelC * A.CG_CENTER_FUEL_X) / mass;
     const zfw = A.OEW + X.payload + X.fuelC;
     Ixx = A.IXX_ZFW_PER_KG * zfw + A.IXX_WING_FUEL_R2 * wing;
     Iyy = A.IYY_PER_KG * mass;
     Izz = A.IZZ_ZFW_PER_KG * zfw + A.IZZ_WING_FUEL_R2 * wing;
+  }
+  // v0.5.0, a design: its OEW and CG already have its engines (designs.js); the inertias add the engines' point
+  // masses beyond the per-kg terms; an engine torn off takes its installed mass away from where it hung.
+  function massPropsDesign(wing, fuel) {
+    let oew = A.OEW, mx = A.OEW * A.CG_OEW_X, dIxx = A.DESIGN_DIXX, dIyy = A.DESIGN_DIYY, dIzz = A.DESIGN_DIZZ;
+    if (X.eOff) {
+      const m = A.ENGINE_MASS_KG, N = typeDef.geo.NACELLES;
+      for (let i = 0; i < NE; i++) {
+        if (!(X.eOff & (1 << i))) continue;
+        const n = N[i], rx = n.x - A.CG_OEW_X;
+        oew -= m; mx -= m * n.x;
+        dIxx -= m * (n.y * n.y + n.z * n.z - A.IXX_ZFW_PER_KG);
+        dIyy -= m * (rx * rx + n.z * n.z - A.IYY_PER_KG);
+        dIzz -= m * (rx * rx + n.y * n.y - A.IZZ_ZFW_PER_KG);
+      }
+    }
+    mass = oew + X.payload + fuel;
+    cgX = (mx + X.payload * A.CG_PAYLOAD_X + wing * A.CG_WING_FUEL_X + X.fuelC * A.CG_CENTER_FUEL_X) / mass;
+    const zfw = oew + X.payload + X.fuelC;
+    Ixx = A.IXX_ZFW_PER_KG * zfw + A.IXX_WING_FUEL_R2 * wing + dIxx;
+    Iyy = A.IYY_PER_KG * mass + dIyy;
+    Izz = A.IZZ_ZFW_PER_KG * zfw + A.IZZ_WING_FUEL_R2 * wing + dIzz;
   }
   // Fuel into the tanks, at a reset and from the Weight window (v0.3.2): the wings fill first, the
   // centre tank takes the rest.
@@ -424,17 +462,27 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.phiNow = phiFwd;
     const revCmd = revSel ? clamp(-lever, 0, 1) : 0;
     const fuelTotal = X.fuelL + X.fuelR + X.fuelC;
-    eng[0].n1 = X.n1L; eng[0].rev = X.revL; eng[0].fuelOk = fuelTotal > 0;
-    eng[1].n1 = X.n1R; eng[1].rev = X.revR; eng[1].fuelOk = fuelTotal > 0;
     // A flat rating: up to ISA + 15 the engine makes its thrust as if the air were at ISA for that pressure.
     const sigmaT = flatSigma(sigma, atm.T);
-    engineStep(eng[0], phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
-    engineStep(eng[1], phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
-    X.n1L = eng[0].n1; X.n1R = eng[1].n1; X.revL = eng[0].rev; X.revR = eng[1].rev;
-    X.n1tL = eng[0].n1Target; X.n1tR = eng[1].n1Target; X.thrL = eng[0].thrustN; X.thrR = eng[1].thrustN;
-    X.ffL = eng[0].ffKgS; X.ffR = eng[1].ffKgS;
+    for (let i = 0; i < NE; i++) {
+      const e = eng[i];
+      if (X.eOff & (1 << i)) { e.n1 = e.n1Target = e.thrustN = e.ffKgS = e.rev = 0; X.eN1[i] = X.eN1t[i] = X.eThr[i] = X.eFf[i] = X.eRev[i] = 0; continue; }
+      e.n1 = X.eN1[i]; e.rev = X.eRev[i]; e.fuelOk = fuelTotal > 0;
+      engineStep(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
+      X.eN1[i] = e.n1; X.eRev[i] = e.rev; X.eN1t[i] = e.n1Target; X.eThr[i] = e.thrustN; X.eFf[i] = e.ffKgS;
+      // v0.5.0: past its pylon's limit (a design's: 1.5 × its engine type's rated thrust) the engine tears off. It's
+      // a failure, not a crash: Indestructible doesn't stop it. From this step on it makes no thrust and burns
+      // nothing, and its mass is gone (massProps).
+      if (A.PYLON_LIMITS_N !== undefined && Math.abs(e.thrustN) > A.PYLON_LIMITS_N[i]) {
+        X.eOff |= 1 << i;
+        e.thrustN = e.ffKgS = 0; X.eN1[i] = X.eN1t[i] = X.eThr[i] = X.eFf[i] = X.eRev[i] = 0;
+        events.push({ type: 'engineOff', engine: i, reason: 'pylon' });
+      }
+    }
     // The N1 the lever asks for here and now (the panel's ring): where the needle settles.
-    X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigmaT, mach)) : X.n1tL;
+    // (In reverse, the first engine still on its pylon's target: engine 1's for a base type.)
+    let iRef = 0; while (X.eOff & (1 << iRef) && iRef < NE - 1) iRef++;
+    X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigmaT, mach)) : X.eN1t[iRef];
 
     // Spoilers: speed brakes (inhibited in FULL, α prot, TOGA/MCT), ground spoilers.
     const leverIdle = lever <= 0.02;
@@ -482,7 +530,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const fAeroX = F[0], fAeroZ = F[2];
 
     // Thrust at the engines (along body x).
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < NE; i++) {
       const T = eng[i].thrustN;
       const rx = ENGINES[i].x - cgX, ry = -ENGINES[i].y, rz = -ENGINES[i].z;
       F[0] += T;
@@ -526,6 +574,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       const kS = mass * SKID.k, cS = mass * SKID.c;
       for (let i = 0; i < SKID_POINTS.length; i++) {
         const c = SKID_POINTS[i];
+        if (c.engine !== undefined && X.eOff & (1 << c.engine)) continue;   // v0.5.0: an engine that's gone
         const rx = c.x - cgX, ry = -c.y, rz = -c.z;
         const dn = R[0] * rx + R[1] * ry + R[2] * rz, de = R[3] * rx + R[4] * ry + R[5] * rz, dd = R[6] * rx + R[7] * ry + R[8] * rz;
         const pen = groundFn(X.px + de, X.py + dn).h - (X.pz - dd);
@@ -610,12 +659,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.prevIas = iasTrendBase;
     X.t += dt;
 
-    // ---- fuel: centre tank first, then each engine from its own wing ----
-    for (let i = 0; i < 2; i++) {
+    // ---- fuel: centre tank first, then each engine from its own wing (one on the centreline: the left first) ----
+    for (let i = 0; i < NE; i++) {
       let burn = eng[i].ffKgS * dt;
       if (X.fuelC > 0) { const b = Math.min(burn, X.fuelC); X.fuelC -= b; burn -= b; }
       if (burn > 0) {
-        if (i === 0) { const b = Math.min(burn, X.fuelL); X.fuelL -= b; burn -= b; if (burn > 0) X.fuelR = Math.max(0, X.fuelR - burn); }
+        if (ENGINES[i].y >= 0) { const b = Math.min(burn, X.fuelL); X.fuelL -= b; burn -= b; if (burn > 0) X.fuelR = Math.max(0, X.fuelR - burn); }
         else { const b = Math.min(burn, X.fuelR); X.fuelR -= b; burn -= b; if (burn > 0) X.fuelL = Math.max(0, X.fuelL - burn); }
       }
     }
@@ -694,6 +743,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       computeR();
       for (let i = 0; i < CRASH_POINTS.length; i++) {
         const c = CRASH_POINTS[i];
+        if (c.engine !== undefined && X.eOff & (1 << c.engine)) continue;   // v0.5.0: an engine that's gone
         const rx = c.x - cgX, ry = -c.y, rz = -c.z;
         const dd = R[6] * rx + R[7] * ry + R[8] * rz;
         if (X.pz - dd < gh) {
@@ -851,10 +901,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     S.fuel.left = X.fuelL; S.fuel.right = X.fuelR; S.fuel.center = X.fuelC;
     S.cgX = cgX; S.cgMac = 0.25 - cgX / A.MAC;
     massState(S);
-    const e0 = S.engines[0], e1 = S.engines[1];
-    e0.n1 = X.n1L; e0.n1Target = X.n1tL; e0.ffKgS = X.ffL; e0.thrustN = X.thrL; e0.rev = X.revL;
-    e1.n1 = X.n1R; e1.n1Target = X.n1tR; e1.ffKgS = X.ffR; e1.thrustN = X.thrR; e1.rev = X.revR;
-    S.fuelFlowKgS = X.ffL + X.ffR;
+    let ffSum = 0;
+    for (let i = 0; i < NE; i++) {
+      const e = S.engines[i];
+      e.n1 = X.eN1[i]; e.n1Target = X.eN1t[i]; e.ffKgS = X.eFf[i]; e.thrustN = X.eThr[i]; e.rev = X.eRev[i]; e.off = (X.eOff & (1 << i)) !== 0;
+      ffSum = i === 0 ? X.eFf[0] : ffSum + X.eFf[i];
+    }
+    S.fuelFlowKgS = ffSum;
     S.thrustLever = controls.thrust; S.detent = detentName(controls.thrust);
     S.athrActive = X.athrDriving; S.leverN1 = X.leverN1;
     S.flapLever = controls.flapLever; S.config = X.cfg; S.slatDeg = X.slat; S.flapDeg = X.flap;
@@ -926,7 +979,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
   // ---- initial conditions ----
   function reset(ic = {}) {
-    Object.assign(X, newCore(A, kit.boeing));
+    Object.assign(X, newCore(A, kit.boeing, NE));
     events.length = 0;
     controls.pitch = controls.roll = controls.yaw = 0;
     controls.brakeL = controls.brakeR = 0; controls.speedbrake = 0;
@@ -961,7 +1014,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       const refZ = g.h + GROUND_Z;
       X.px = (ic.x || 0) + cgX * Math.sin(hdg); X.py = (ic.y || 0) + cgX * Math.cos(hdg); X.pz = refZ;
       X.ths = X.thsTakeoff;
-      X.n1L = X.n1R = A.N1_IDLE;
+      X.eN1.fill(A.N1_IDLE);
       X.flt = 0;
       // Let the struts settle (time doesn't advance).
       const savedP = controls.parkingBrake;
@@ -1005,6 +1058,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     s.slat = X.slat; s.flap = X.flap; s.gear = X.gearPos; s.doors = 0; s.sb = 0; s.gsp = 0;
     s.spL = s.spR = 0; s.ail = 0; s.rud = 0; s.hWing = zRef - g.h;
     let thrust = 0;
+    // The thrust line's height: the engines' mean (with a pair, exactly ENGINES[0].z, as before).
+    let zThrust = 0;
+    for (let i = 0; i < NE; i++) zThrust += ENGINES[i].z;
+    zThrust /= NE;
     for (let it = 0; it < 30; it++) {
       s.alpha = alpha; s.ths = ths;
       coefficients(s, co);
@@ -1017,7 +1074,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       thrust = D / Math.cos(alpha);
       // Pitching moment about the CG (aero at ref + thrust line below the CG).
       const myAero = qbar * A.S * A.MAC * co.Cm + cgX * (-(co.CL * Math.cos(alpha) + co.CD * Math.sin(alpha)) * qbar * A.S);
-      const myThr = -ENGINES[0].z * thrust;
+      const myThr = -zThrust * thrust;
       ths -= (myAero + myThr) / (qbar * A.S * A.MAC * A.CM.ths);
       ths = clamp(ths, -A.THS_DN, A.THS_UP);
     }
@@ -1043,12 +1100,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const sigma = flatSigma(atm.rho / RHO0, atm.T);
     const toga = togaThrust(sigma, Mn);
     const idleT = A.T_IDLE * Math.pow(sigma, A.LAPSE_SIGMA_EXP) * Math.max(0, 1 - 1.2 * Mn);
-    const per = thrust / 2;
+    const per = thrust / NE;
     const fr = Math.sqrt(clamp((per - idleT) / (toga - idleT), 0, 1));
     const n1i = idleN1(sigma, Mn);
-    X.n1L = X.n1R = X.n1tL = X.n1tR = n1i + (A.N1_TOGA - n1i) * fr;
-    X.thrL = X.thrR = per;
-    X.ffL = X.ffR = Math.max(A.FF_IDLE * (0.55 + 0.45 * sigma), (A.TSFC_C0 + A.TSFC_C1 * Mn) * Math.sqrt(atm.T / T0) * per);
+    const n1Trim = n1i + (A.N1_TOGA - n1i) * fr;
+    const ffTrim = Math.max(A.FF_IDLE * (0.55 + 0.45 * sigma), (A.TSFC_C0 + A.TSFC_C1 * Mn) * Math.sqrt(atm.T / T0) * per);
+    X.eN1.fill(n1Trim); X.eN1t.fill(n1Trim); X.eThr.fill(per); X.eFf.fill(ffTrim);
     const phi = fr * fr;
     X.phiNow = phi; X.athrPhi = phi;
     // Lever: at the trim thrust. With A/THR on it's the A/THR's from the first step (v0.2.2: it
@@ -1069,18 +1126,22 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const apSnap = {};
     for (const k of AP_FIELDS) apSnap[k] = ap[k];
     const snap = { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
+    for (const k of ENGINE_FIELDS) snap.core[k] = X[k].slice();
+    if (typeDef.design) snap.design = typeDef.design;   // v0.5.0: the design itself, whole (designs.js)
     if (wxS) snap.weather = wxS;   // the default weather writes nothing: absent means calm
     for (const k in opts) if (opts[k]) (snap.options ??= {})[k] = true;   // only those on: absent means off
     return snap;
   }
   // Changes the aircraft type. The sim's objects stay the same; the core goes back to a fresh
   // one, so call reset() or restore() next.
+  // v0.5.0: id may be a design (src/sim/designs.js).
   function setType(id) {
-    const def = typeById(id);
+    const def = resolveDef(id);
     if (def === typeDef) return;
-    bindKit(def.id);
+    bindKit(def.design || def.id);
     for (const k of Object.keys(X)) delete X[k];
-    Object.assign(X, newCore(A, kit.boeing));
+    mkEngines();
+    Object.assign(X, newCore(A, kit.boeing, NE));
     Ixz = A.IXZ;
     mkLegs();
     for (const k of Object.keys(ap)) delete ap[k];
@@ -1092,12 +1153,14 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (!keepWeather) setWeather(snap.weather || null);
     for (const k in opts) setOption(k, !!snap.options?.[k]);
     // A save from before v0.3.0 has no type: it's the A321neo.
-    setType(snap.type || DEFAULT_TYPE);
+    // v0.5.0: a save with a design flies that design (saved whole, so deleting or editing it later changes nothing).
+    setType(isDesign(snap.design) ? snap.design : snap.type || DEFAULT_TYPE);
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
-      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0,
+      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0,
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
+    migrateEngines(snap.core);
     Object.assign(controls, snap.controls);
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
     [wowN, wowL, wowR] = snap.wow;
@@ -1114,6 +1177,22 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       X.wsValid = false;
       X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : casFromTasP(V, atm.p, atm.a);
     }
+  }
+
+  // v0.5.0: the engines' arrays, the core's own copies (never the snapshot's), from a save of any version. One
+  // from before v0.5.0 has the two engines by name (n1L, n1R, …): they become the list, and the names go.
+  function migrateEngines(c) {
+    for (const k of ENGINE_FIELDS) {
+      const old = OLD_ENGINE_FIELDS[k];
+      let a = Array.isArray(c[k]) ? c[k] : old.every((o) => o in c) ? old.map((o) => c[o]) : null;
+      if (!a || a.length !== NE) {
+        const fresh = newCore(A, null, NE)[k];
+        if (a) for (let i = 0; i < NE; i++) fresh[i] = a[Math.min(i, a.length - 1)];
+        a = fresh;
+      }
+      X[k] = a.slice();
+    }
+    for (const k in OLD_ENGINE_FIELDS) for (const o of OLD_ENGINE_FIELDS[k]) delete X[o];
   }
 
   // v0.3.2: change the load, in flight or on the ground (the Weight window). payloadKg and fuelKg
@@ -1189,7 +1268,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad,
     setIndestructible: (on) => setOption('indestructible', on), setAutoTrim: (on) => setOption('autoTrim', on),
     setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, get weather() { return wxS; }, get baro() { return { hpa: X.baroHpa, std: X.baroStd }; },
-    get type() { return typeDef; }, get leverClimb() { return LEVER_CL; }, _core: X };
+    get type() { return typeDef; }, get design() { return typeDef.design || null; },
+    get massProps() { massProps(); return { mass, cgX, Ixx, Iyy, Izz, Ixz }; },   // v0.5.0: for the tests
+    get leverClimb() { return LEVER_CL; }, _core: X };
 }
 
 export { leverToPhi };

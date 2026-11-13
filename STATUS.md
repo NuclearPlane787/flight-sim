@@ -2074,3 +2074,210 @@ v0.4.0 was pushed (`c4aac7c`) before this was synced; the Mac's tree was v0.4.0'
 - the Games project doc.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.4.4`, then Cmd+Shift+R in the app. Then v0.5.0 from `HANDOFF.md`'s first section.
+
+## 2026-11-13, 03:35 KST: v0.5.0 briefed for an overnight Claude Code run (Cowork session)
+
+**Shane** (2026-11-13, after pushing v0.4.4 as `d484689`): "Write the v0.5.0 brief now so it can run overnight. I'll start the session."
+
+**His answers** to `HANDOFF.md`'s questions (asked in one go, each with a default):
+
+- **The scope:** "Engines, weight, fuel": the engine count (2, 3, 4 or 6), where they hang on each wing, which engine (LEAP-1A, GEnx-1B, GE90-115B), a thrust scale, the empty weight and the fuel capacity. Not the wing, the fuselage or the tail.
+- **Where:** "Main menu page": the aircraft in 3D to orbit, the parts beside it, live numbers; saved designs in New scenario's aircraft picker.
+- **The limits:** "Realistic limits": a pylon holds about 1.5 times its engine's thrust, and past it the engine tears off in flight; a big engine on a small aircraft scrapes unless the gear is lengthened in the warehouse.
+- **The deadline:** 08:00 KST (he chose it; offered 09:00, 11:00 and 13:00).
+
+**Taken as `HANDOFF.md` had them** (not asked): a design's base is one of the three types; the screens show every engine and the synth gives each its own voice up to six (voices by side if time runs short); this run builds it.
+
+**Decided in the Cowork session:** each engine brings its own pylon, rated for 1.5 times its own type's rated take-off thrust, so it's the thrust scale that pulls one off (a GE90 on an A321 holds at 100 %); engines on the wings in symmetric pairs, three being a pair and one in the tail (DC-10 style, built last); the structural limits stay the base type's.
+
+**Written:** `V050.md` (the brief: his words and decisions, the rules, five parts in priority order with the Boeings' golden flights recorded first from v0.4.4's pushed code, the definition of done, the run's rules, where things are, the starting prompt and `/goal`); `HANDOFF.md` (where you start; its questions marked settled).
+
+**Next:** Shane starts the run (`caffeinate -dims claude --permission-mode auto -n flight-sim-v050`, then the prompt and the `/goal` at the end of `V050.md`). After it, a Cowork session reviews it as `HANDOFF.md`'s first section says.
+
+## 2026-11-13, 03:31 KST: v0.5.0 run started; Part 1 done (Claude Code)
+
+Started 03:26 KST (`date`). Read `AGENTS.md` (both), `HANDOFF.md`, `V050.md`, `STATUS.md`'s newest entries and `ROADMAP.md`'s "The long term". A pristine copy of v0.4.4's `src/` and `tests/` is kept in `/tmp/flight-sim/base044/` for comparisons.
+
+### Part 1: the Boeings' golden flights, then the engines as a list
+
+1. **The Boeings' golden flights, recorded before any change** (03:28 KST, from v0.4.4's code): `tests/golden-boeing-flight.mjs` (the A321's script made to take the type: RKSS 14R, flaps 15 on the 787 and 20 on the 777, VR 150 and 158 kt, the take-off, gear up at 50 ft, the AP at 400 ft with HDG SEL 170, FLCH to 12,000 ft at 220 kt, flaps up above 3,000 ft at 250 kt, at 300 s down to 9,000 ft at 280 kt and HDG 200, at 500 s V/S 1,200 to 14,000 ft; 765 s, the state every second, with both engines' N1 and thrust), kept as `tests/fixtures/golden-b787-9.json.gz` and `golden-b777-300er.json.gz`, and `tests/golden-boeing.test.mjs` (to 1e-9, and the modes at the end). Recorded with `node tests/golden-boeing-flight.mjs record <type>`: both end at 13,992 ft, 282 kt, in HDG SEL / ALT / SPD. The A321's golden files are untouched.
+2. **The engines as a list** (`src/sim/sim.js`): the core's `n1L`, `n1R`, `n1tL`, `n1tR`, `revL`, `revR`, `thrL`, `thrR`, `ffL`, `ffR` are now five arrays, one entry per engine (`ENGINE_FIELDS`: `eN1`, `eN1t`, `eRev`, `eThr`, `eFf`), stepped in one loop over `ENGINES`; the thrust and its moments, the fuel burn (each engine from the centre tank, then its own side's wing, by `ENGINES[i].y`; a centreline engine the left first) and `state.engines` (one entry per engine; `mkEngines()`) loop over the list in the same order, so a pair adds up as `thrL + thrR` did. `trimAirborne()` splits the thrust by the count, at the engines' mean height (for a pair exactly `ENGINES[0].z`). The levers, the A/THR and the reversers command every engine (one demand, one loop).
+3. **Saves:** `snapshot()` copies the arrays (the snapshot never shares the core's); `restore()` runs `migrateEngines()`, which turns a v0.4.4 save's names into the list and deletes them.
+
+**Evidence:**
+- `python3 tools/cpu-guard.py --minutes 10 -- node --test tests/*.test.mjs`: before the change 676/676 (the 674 old tests and the two new goldens; `/tmp/flight-sim/unit-baseline.txt`), after it **676/676**, the three golden flights to 1e-9 (`/tmp/flight-sim/unit-p1.txt`). No old test touched.
+- `tests/engines-list.test.mjs` (new, 7/7): each type's snapshot round trip through JSON (flown on 20 s with a roll input, positions to 1e-9); a v0.4.4-style save with the names restored into the list and flown on exactly; the levers and reversers on both engines.
+- **Real v0.4.4 snapshots** (`/tmp/flight-sim/oldsnap.mjs`: the pristine copy's sim makes the save, v0.5.0's restores it, both fly 30 s): position and fuel differences **0** on all three types.
+- `cpu-guard.py --sweep`: clean.
+
+### Decisions made in the run (v0.5.0)
+
+1. The Boeings' golden script is the A321's with each type's own take-off flaps and VR, its MCP's calls (HDG SEL, FLCH) and a 15 s longer roll; the loads are 30 t of fuel and 25 t of payload (787), 40 t and 30 t (777).
+2. The core keeps the engines as parallel arrays of numbers (not an array of objects), so a snapshot stays flat JSON and `{ ...X }` plus five `slice()`s copies it.
+
+## 2026-11-13, 03:37 KST: v0.5.0, Part 2's data shape fixed; the jobs handed out (Claude Code)
+
+### The shared interfaces (the subagents build on these)
+
+- **A design** (`src/sim/designs.js`, mine): `{ v: 1, id, name, registration, base, engine, count, stations, thrustScale, oewDeltaKg, fuelCapacityKg, gearExtendM }`. `base` is `'a321neo' | 'b787-9' | 'b777-300er'`; `engine` an id in `src/sim/engine-types.js` (`'leap-1a' | 'genx-1b' | 'ge90-115b'`); `count` 2, 3, 4 or 6; `stations` the wing pairs' spanwise stations in metres from the centreline, inboard first (3 engines: one pair plus one in the tail). `normalizeDesign()` clamps everything to V050's ranges; `newDesign(base)` is its base exactly.
+- **A design's type entry:** `designDef(design)` (memoized) is a `TYPES` entry with the base's `id` and `family` (so the models, cockpits and screens are the base's), and the design's `data` (the engine type's numbers, scaled; OEW, CG and inertia terms; tanks; tail-strike angle), `geo` (`ENGINES` and `NACELLES` one per engine, each nacelle `{ x, y, z, D, L, engine, i, tail? }`; `GEAR` and `GROUND_Z` lowered by `gearExtendM`, `GEAR_EXTEND_M`; `CRASH_POINTS` with one engine strike per nacelle, tagged `engine: i`), `limits` (OEW, FUEL_MAX), `fuel`, `sound`, `registration`, `name`, `engineName` ("4 × GE90-115B"), `engine`, `engineCount`, and `design` (the normalized design). `resolveDef(x)` takes a type id or a design. `designNumbers(def)`: the warehouse's numbers.
+- **The sim:** `createSim({ type })` and `sim.setType(x)` take a type id or a design; `sim.design` is the design (or null); `sim.snapshot()` has `design` (the whole object) when flying one, and `restore()` flies it. `state.engines` has one entry per engine (`n1`, `n1Target`, `ffKgS`, `thrustN`, `rev`, `off`). Engine order: engine 1 is the left outboard; the left wing's outboard to inboard, (the tail engine), then the right wing's inboard to outboard. Event `engineOff` `{ engine, reason: 'pylon' }`.
+- **Engine types** (`src/sim/engine-types.js`): `ENGINE_TYPES[id]` `{ id, name, short, from, data, nacelle: { D, L }, fanM, dryKg, installedKg }`; `engineOfType(typeId)`; `pylonLimitN(eng)`.
+
+## 2026-11-13, 03:45 KST: v0.5.0, Part 2 and Part 5's physics in the sim (Claude Code)
+
+**Built** (mine): `src/sim/engine-types.js` (the three engines as parts: each one's numbers picked from its own type's data module, its nacelle from its geometry, dry and installed weights, `pylonLimitN()`); `src/sim/designs.js` (the shape, `normalizeDesign()`, `newDesign()`, `designDef()`, `resolveDef()`, `stationRange()`, `designNumbers()`); `kitFor()` in `src/sim/types.js` takes a type entry (a design's kit from its own data); `src/sim/sim.js`: `setType()`/`createSim({ type })` take a design, the snapshot carries it whole, `massPropsDesign()` (the design's OEW, CG and the engines' point-mass inertias; an engine torn off takes its mass from where it hung), the pylon check in the engine loop (`engineOff` event; the engine stops, burns nothing, and its crash point and skid go with it), `sim.design`, `sim.massProps` (for tests).
+
+**Evidence:**
+- `tests/designs.test.mjs` (new), 10/10: a design that is its base flies **each of the three golden flights to 1e-9**; `normalizeDesign()`'s ranges and stations; a four-engine 777's snapshot through JSON (the design whole, 4 engines), flown on 20 s to 1e-9 after the design object was edited; the prediction flies the snapshot's design (to 1e-6 against a plain sim) and not its base's path; a four-engine 777's mass, CG and Ixx, Iyy, Izz against a hand sum of two point masses (to 1e-6); one engine of four at idle: Δr in one step equal to Ixx·ΣyᵢΔTᵢ/det·dt (to 0.1 %), and 20 s on the heading 0.5° or more towards the idle side; a pylon at 2× thrust gives way at take-off thrust after lift-off (the weaker first, its mass gone, thrust and fuel flow 0), the pilot pulls back to 0.8, and it flies on for 20 s yawing towards the dead side; a GE90 A321 scrapes (clearance < 0) and clears with 1.5 m of gear, the tail-strike angle up 3° or more, the A321neo's own 0.45 m.
+- All unit tests: **698/698** (`/tmp/flight-sim/unit-p2b.txt`; includes the subagents' new tests so far). `--sweep` clean.
+
+### Decisions made in the run (v0.5.0), continued
+
+3. **The engine's installed weight is 1.45 × its dry weight** [EST] (engine, nacelle, reverser, pylon, systems); a design's OEW, CG and inertias change by the installed weights it adds and takes away. The dry weights are the makers' published figures, marked [EST] in `engine-types.js` because the TCDS weren't read in the run.
+4. **What an engine type brings:** its own numbers (`ENGINE_KEYS`: thrust, lapse, idle, spool, TSFC, reversers). The lever law and the climb/MCT fractions (`RATING`) stay the airframe's. **The thrust scale** multiplies the thrust, the idle thrust and the idle fuel flow (above idle the fuel flow is TSFC × thrust, so it follows).
+5. **Fuel capacity:** the wings keep their tanks (or each half of a capacity smaller than both); the centre tank takes the rest.
+6. **The nacelles' place:** each station's nacelle follows the wing's leading-edge sweep and dihedral from the base's, with its top where the base nacelle's top is and its aft end where the base's aft end is (a bigger engine reaches lower and further forward); the thrust point keeps the base's offset from the nacelle's centre. Three engines: a pair on the wings and one on the centreline through the fin's root, its centre a little above the crown (`tailEngine()`), with no crash point of its own.
+7. **The pylons:** 1.5 × the engine type's rated take-off thrust is the least each holds; as built each has a margin of 0 to 25 % over it, fixed by the design's id and the engine's place (an integer hash: deterministic in node, the page and the worker), so a pylon past its limit goes first and the rest don't all go in the same step. With 2× thrust the static thrust (2.0) is past every limit, so on the runway pylons go during the spool-up; **an outboard engine lost at 40 kt spins the aircraft off the runway whatever the pedals do** (below VMCG), which is right, so the "flies on" test pushes take-off thrust just after lift-off (heavy, 155 kt) instead.
+8. **Engine numbering:** engine 1 is the left outboard, then the left wing inboard, (the tail engine), the right wing inboard to outboard. Fuel: each engine draws the centre tank first, then its own side's wing.
+
+## 2026-11-13, 03:47 KST: v0.5.0, designs fly end to end in node; main.js reads designs (Claude Code)
+
+**main.js** (mine): `useType()` takes a type id or a design (`resolveDef()`), keyed by the design's contents; `modelFor()` builds a design's model from `buildersFor(def)` (the model subagent's) and keeps one design model at a time; `startFlight()` flies `plan.design` when there is one; `applyState()` restores `st.sim.design` (the save's, whole); the `engineOff` event toasts "Engine n tore off its pylon"; the logbook entry has `design`, `designId` and `engines` ("4 × GE90-115B"); a `?design=<json>` test start.
+
+**`tests/designs-flight.test.mjs`** (new), 2/2: the game's own test pilot (`tests/e2e-controller.js`, run in node with a stand-in `window.__fs`) on flat ground:
+- **a four-engine 777-300ER**: rotate at 160 kt, lift-off at 190 kt, on the AP (FLCH) to 8,000 ft at 134 s; then a 10 nm final: AP off at 3,213 ft, flaps 30, flare at 70 ft, touchdown −1.53 m/s, 1.44 g, on the centreline 539 m past the threshold, stopped.
+- **a GE90 A321 with 1.5 m longer gear** (the lever at 0.3: at full thrust its thrust-to-weight is over 1 and the low thrust line pitches it into a tail strike on the roll; 0.3 is still more thrust than the A321neo's TOGA): rotate at 145 kt, lift-off at 186 kt, 8,000 ft at 94 s; touchdown −1.32 m/s, 1.53 g, on the centreline 562 m in, stopped.
+
+### Decisions made in the run (v0.5.0), continued
+
+9. **A design's model** is kept only for its last flight (an edited design is a new type entry); it isn't disposed (its parts may share buffers with the base's model), so it's freed with the page.
+
+## 2026-11-13, 03:50 KST: v0.5.0, the screens for any number of engines (subagent, reviewed)
+
+The screens subagent's report, checked against the files: `src/ui/engine-row.js` (new: `engineRow()`, `engineCountOf()`), `src/ui/engines-panel.js` (`setType()`; with a count other than two, `engineRowBlock()` draws the dials in a row in the space two used, engine 1 at the left, the labels between the wings; an engine `off` in amber with OFF and XX), `src/ui/boeing/eicas.js` (N1, EGT, N2 and FF for any count; an engine off amber with an "ENG n OFF" line), `src/ui/hud.js` (the A321 panel gets `setType(def)`; mine: the panel's redraw signature now includes engines 3 to 6 and `off`), the dev pages' `&engines=`, `&off=`, `&rev=` and a real-sim 4-engine 777 design.
+
+**Evidence (theirs):** 719/719 unit tests (incl. `tests/engine-row.test.mjs`, 3); **two engines pixel-identical to v0.4.4** on 20 dev-ui pages (the A321's three phases, both Boeings' six, the reversers on both), compared on the canvases at dpr 2 against `/tmp/flight-sim/base044` served beside it. Pictures (`Claude outputs/flight-sim/`): `v050-screens-a321-{2eng,2eng-v044,3eng,4eng,6eng,4eng-off3,2eng-off1}.png`, `v050-screens-eicas-{2eng,2eng-v044,3eng,4eng,6eng,6eng-off2-5,2eng-off2,4eng-real-sim}.png`. **Weak:** six engines are small at 1440×900 (A321 dials about 13 px in radius, readouts at about 8.5 px; the EICAS's 5-digit FF squeezed to about 80 %).
+
+## 2026-11-13, 03:52 KST: v0.5.0, the model from the design (subagent, reviewed) and the designs in the game on the Mac's GPU (Claude Code)
+
+**The model** (the model subagent; checked against the files and its pictures): `src/engine-model.js` (new: `addEngine()`, one builder for all three engine types, each with its own look (the LEAP-1A's from `aircraft.js`, the GEnx-1B's and GE90-115B's from `widebody.js`, moved here unchanged); a bone per engine (`eng<i>`, with `fan<i>` and `rev<i>` under it) so a torn-off engine and its pylon hide; the pylon up into the wing section at its station; the tail engine with a fin-root fillet over it; `bendY` per station on the Boeings; `engineAnimator()`); `createAircraft({ def })` and `createWidebody(spec, { def })` (the nacelles, longer legs by `GEAR_EXTEND_M`, the design's registration); `buildersFor(def)`; `livery.js` takes the registration; the dev pages' `?design=`; `look.cjs` takes a design and `FS_CHROME=1`. **Its evidence:** the three base types' geometry arrays bit for bit as v0.4.4's (from a type id and from `newDesign(base)`); on the GPU the same draw calls and triangles as v0.4.4 (A321 5 / 58,384, 787 4 / 72,686, 777 4 / 79,170); designs add no draw call; pictures `v050-model-*.png` (777×4, GE90 A321 with 1.5 m gear, 787×6 with the wing bent 3 m, 777×3 and 787×3 tails, an engine off, long gear retracted, registrations). I looked at `v050-model-777x4-front` and `v050-model-a321-ge90-gear15-side`: right. **Fixed by me after its report:** the A321 has no `FIN` in its geometry, so the tail engine sat 3 m ahead of the fin: `FIN_ROOT_LE` (−15.0 m, `aircraft.js`'s `finSec()`) in `designs.js`.
+
+**`tests/browser-designs.mjs`** (new), `python3 tools/cpu-guard.py --minutes 15 -- node tests/browser-designs.mjs` on 8014, Chrome on the M5, 1440×900, a fresh profile: **14/14.**
+- **60 fps with six engines in 3rd person:** a six-engine 787 from the plan (`plan.design`): on Gimpo 14R 60 fps, 0.86 M triangles, 39 draws; over Seoul at 3,000 ft 60 fps, 0.79 M, 31 draws. No console errors.
+- **A scenario with a design through a real reload:** a four-engine 777 scenario, flown 10 s, saved, the page reloaded: 4 engines, the design's name and count, the same place to 0 m, the same time and mass.
+- **The designs in the air** (3rd person over Seoul) and **an engine torn off** (the 2× 777, take-off thrust with the brakes on: engine 1 off at 4.0 s, the other kept as the levers came back).
+- Pictures looked at: `v050-air-6x787.png` (six GEnx on the 787 over the Han, the EICAS with six engines' N1, EGT, N2 and FF), `v050-air-ge90-a321.png` (the A321's GE90 nacelle, FOB 18,510), `v050-engine-off.png` (the 777 on 14R with engine 1 gone, the EICAS's engine 1 amber OFF and "ENG 1 OFF", the toast "Engine 1 tore off its pylon"); also `v050-air-{4x777,ge90-a321,6x787}-below.png`, `v050-reloaded-4x777-final.png`.
+
+Unit tests after both: 719/719 (`/tmp/flight-sim/unit-p3.txt`).
+
+## 2026-11-13, 03:53 KST: v0.5.0, the engines' sound for any number (subagent, reviewed)
+
+`src/audio/synth.js`: `makeEngine(kit, pan)` (v0.4.4's per-engine voices, node for node; shared noise buffers, each engine its own sources at random offsets), the count from `def.geo.ENGINES` (1 to 6, `MAX_ENGINES`), each engine panned by its y (a twin exactly as before, the tail engine centred), a spread of shaft speeds so they beat (a twin's `SPLIT` and `TONE2` as before), an engine `off` or missing silent, no gain per count (incoherent voices add in power), the warnings bus × √(n/2) above two engines; `setType()` after `start()` adds or retires voices. `main.js`'s `useType()` keys on a design's contents, so a design always reaches `synth.setType(def)` (the subagent's worry about `def.id` doesn't apply).
+
+**Evidence (theirs):** `tests/audio-engines.test.mjs` (new, 5); 719/719; **a twin identical to v0.4.4** by the full node/buffer/parameter trace (`audio-weather.test.mjs`'s `calmTrace`) against the pristine copy, for each type and with `setType` after `start()`; `audio-render.mjs --engines` **55/55 on each type** (45 base + 10 new); six engines +4.4 to +5.5 dB over two (expected +4.8) except TOGA outside, held by the limiter (+2.5 to +3.7); one engine off −0.9 to −1.1 dB, three −2.9 to −3.3. Clips: `v050-six-engines.wav`/`.mp3` (a six-engine GE90 777's take-off roll from beside it), and twin/six comparisons `v050-{2,6}-engines-b777-300er-takeoff-{3rd-side,cockpit}.*`. **Nobody has listened to them.** Weak: the suite on a six-engine design is 44/45 (the stall warning 4.7–5.6 dB over six engines at TOGA, against 6); no distance by an engine's place, only pan.
+
+## 2026-11-13, 03:55 KST: v0.5.0, the warehouse (subagent, reviewed); the Warehouse button is on (Claude Code)
+
+**The warehouse subagent:** `src/designs-store.js` (new: `DesignStore`, one normalized list under `gamedump:flight-sim:designs`, newest first; list, get, save, draft, create, duplicate, rename, remove; storage-full safe), `src/ui/warehouse.js` + `warehouse.css` (new: the list, with New from each type, Open, Rename, Duplicate, Delete; the editor: name, registration, count, engine type, a slider per pair within `stationRange()`, thrust, empty weight, fuel, gear; the live numbers from `designNumbers()` with each engine's clearance standing and at the tail strike and its pylon's load, amber and red; the aircraft in 3D on its own renderer, drawn on demand only (drag to orbit, pinch or scroll to zoom), disposed on Back), `src/ui/menu.js` (the Warehouse button after Load scenario, `WAREHOUSE_ON`), `src/ui/setup.js` (the designs' cards under the three types; a picked design's limits, fuel rule and tanks; `plan.design` whole, `plan.type` its base). Tests: `tests/designs-store.test.mjs` (6), `tests/warehouse.test.mjs` (10), `tests/browser-warehouse.mjs`.
+
+**Mine:** New flight keeps a scenario's own copy of its design (`defaults.design`); the Load list shows "design (base)" (`summary.design`, kept by `scenarios.js`); the logbook's type column shows the design's name with its base and "2 × GE90-115B"; **`WAREHOUSE_ON = true`** (the warehouse test's flag check updated to say it's on: its own new test, not an old assertion); `browser-warehouse.mjs` on 8014 and an end-to-end check added: after Fly, the game flies the picked design and it takes off.
+
+**Evidence:** unit tests **719/719** (`/tmp/flight-sim/unit-p4.txt`). `python3 tools/cpu-guard.py --minutes 8 -- node tests/browser-warehouse.mjs` (Chrome on the M5, 1440×900, fresh profile): **all passed, no page errors**: the button on the menu after Load scenario; a 777 made with 4 engines (4 rows, 2 sliders), the view turned by drag and scroll, saved (4 × GE90, thrust 1.2, HL7004), the 3D view gone after Back, **0 animation frames requested** in the menu before and after; the GE90 A321 red (4 cells), clear with 1.5 m of gear; Back unsaved asks; after a reload both listed; duplicate, rename, delete; two design cards under the three types, a card "4 × GE90-115B on the 777-300ER", the design's tanks, the load cut to fit, Fly; `plan.design` whole; **the game flies the GE90 A321 picked (2 engines, 1.5 m gear) and it lifts off to 100 m**; every key under the prefix. Pictures looked at: `v050-warehouse-777-quad.png` (the quad 777 in 3D; "Every check passes"; clearances 1.76 and 0.91 m; pylons 64–78 %), `v050-warehouse-a321-ge90-red.png` (the GE90 under the A321 into the ground; the red banner; −1.08 m and −0.24 m in red; T/W 1.08); also `v050-warehouse-list.png`, `v050-warehouse-a321-ge90-gear.png`, `v050-warehouse-picker.png`.
+
+### Decisions made in the run (v0.5.0), continued
+
+10. **The Warehouse button is on** for v0.5.0: a design is made in the warehouse, picked in New scenario and flown (`browser-warehouse.mjs`), and survives a reload in a scenario (`browser-designs.mjs`).
+11. **The editor's scroll zooms** (the brief: "zoomed by pinching or scrolling"); a sideways swipe turns it.
+
+## 2026-11-13, 04:06 KST: v0.5.0, the reviewer's findings fixed; the old browser checks (Claude Code)
+
+**The reviewer subagent** (its own context; read the code against `V050.md` and `/tmp/flight-sim/base044`, ran its own scripts in `/tmp/flight-sim/review/`): 719/719; the base types' arithmetic, a base-equivalent design (mass properties bit-identical, a 60 s take-off identical), a torn-off engine's mass, a v0.4.4-shaped save restored into a sim flying a design, a design's round trip, `normalizeDesign()` idempotent over 3,000 random designs, no `Math.random`, the keys, the warehouse's clean-up: all correct. **Its findings, and what was done:**
+- **A (correctness): a design's `MAX_PAYLOAD` was the base's,** so the sim cut a lighter design's payload (an A321 at −15 % OEW flew 25,100 kg when 29,496 kg was loaded) and let a heavier one past MZFW. **Fixed:** `MAX_PAYLOAD = MZFW − the design's OEW` (`buildData()`); tested (29,496 kg is flown).
+- **B: the pylons' margins came from the design's id,** so a copy (Duplicate) could tear an engine off where the original didn't, and the margin (to 25 %) meant 1.85× might never tear off. **Fixed:** seeded by the design's parts (not its id, name or registration) and 0 to 10 % (so past about 1.5 to 1.65); tested (two designs with the same parts and other ids have the same limits). The pylon tests' design is now `{ count: 2, thrustScale: 2, oewDeltaKg: 750 }`, whose weaker pylon is at 1.501.
+- **C: nacelles could overlap** (three pairs of GE90s on an A321: stations 2 m apart): **fixed:** `designNumbers().overlap` and a red issue in the warehouse ("The nacelles overlap…"); tested.
+- Nice to have, done: in reverse the panel's ring read engine 1's target even with engine 1 gone (now the first engine still on its pylon; engine 1 for a base type). Left (in the final entry): crash points' order for a base-equivalent design (round-off under Indestructible only), the A321's longer leg possibly showing through the fuselage retracted, the airframe moving by the CG's jump when an engine tears off, the clearance numbers at standard-day thrust.
+
+**Old checks on v0.5.0's code** (Chrome on the M5, 8014, through the guard): `browser-scenarios.mjs` **23/23**, `browser-e2e.mjs` **12/12** (`/tmp/flight-sim/reg-browser-*.txt`). Unit tests after the fixes: **719/719** (`/tmp/flight-sim/unit-rev.txt`).
+
+## 2026-11-13, 04:10 KST: v0.5.0, the run's final entry (Claude Code)
+
+The run went from 03:26 to 04:10 KST: all five parts are built and checked, and the Warehouse is on the main menu. What follows is the definition of done (`V050.md`) against the evidence above, what's weak, and how Shane can check it. `src/version.js`, `Updates.md`, `ROADMAP.md`, `PLAN.md` and `AGENTS.md`'s State are the Cowork session's, as the brief says; `README.md` has the warehouse.
+
+### The definition of done
+
+- [x] **Unit tests:** **719/719** (`python3 tools/cpu-guard.py --minutes 10 -- node --test tests/*.test.mjs`, `/tmp/flight-sim/unit-final.txt`).
+  - **The types don't change:** the three golden flights to 1e-9 (the Boeings' recorded from v0.4.4's code before any change, `tests/golden-boeing*.mjs`), and a design that is its base flies each of them to 1e-9 too; the 674 old tests pass with their assertions unchanged (the reviewer diffed them against v0.4.4: only the dev/audio harnesses gained options).
+  - **Part 2's tests** (`tests/designs.test.mjs`): a design's round trip, the prediction, asymmetric thrust by the sum of the moments, a four-engine 777's mass, CG and inertias against a hand sum; v0.4.4 saves (`tests/engines-list.test.mjs`, and real v0.4.4 snapshots: Δ 0).
+  - **Flying designs** (`tests/designs-flight.test.mjs`): a four-engine 777 and a GE90 A321 with 1.5 m gear take off, climb on the AP to 8,000 ft and land with the game's test pilot (−1.53 and −1.32 m/s, on the centreline).
+  - **A pylon at 2× thrust** gives way at take-off thrust (the weaker first, its mass gone), and the aircraft flies on, yawing towards the dead side.
+- [x] **In Chrome on the M5** (Playwright, `channel: 'chrome'`, fresh profiles, 1440×900, port 8014):
+  - the warehouse: a design made, edited, saved, reloaded, duplicated, renamed and deleted (`browser-warehouse.mjs`, all passed);
+  - a design flown from New scenario (made in the warehouse, picked, flown off the runway), and a scenario with a design through a reload (the same place to 0 m) (`browser-warehouse.mjs`, `browser-designs.mjs` 14/14);
+  - **60 fps with six engines in 3rd person:** 60 fps on Gimpo 14R (0.86 M triangles, 39 draws) and over Seoul at 3,000 ft (0.79 M, 31 draws);
+  - nothing old broken: `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` all passed on the 787-9 and on the 777-300ER, `browser-picker.mjs` passed, `audio-render.mjs` **45/45** on the A321neo, 787-9 and 777-300ER (the "30/30" of the brief has been 45 since v0.4.0).
+- [x] **Pictures, each looked at** (`Claude outputs/flight-sim/`): the warehouse with the four-engine 777 (`v050-warehouse-777-quad.png`), the GE90 A321 with long gear (`v050-warehouse-a321-ge90-gear.png`, and red without it: `-red.png`) and a six-engine 787 (`v050-warehouse-787-six.png`: three GEnx a side, the clearances, the pylons at 61–65 %); each in the air in 3rd person (`v050-air-{4x777,ge90-a321,6x787}.png`, `-below`); the engine panel and the EICAS with four and six engines (`v050-screens-*`, `v050-air-6x787.png` in the game); an engine torn off (`v050-engine-off.png`); the models (`v050-model-*`).
+- [x] **A reviewer subagent** checked the build against `V050.md` with its own context; its correctness finding (a design's payload limit) and the two behaviour ones (pylon margins by id, overlapping nacelles) are fixed and tested.
+- [x] **CPU:** `cpu-guard.py --status`: no slots in use; `--sweep`: clean; the 8014 server stopped (`/tmp/flight-sim/pids`), and so are the subagents' (8015–8018); no browsers left.
+
+### Done after the review
+
+- The warehouse's range uses the base's default load or as much of it as MZFW leaves (it assumed a load the GE90 A321 can't carry); an amber warning when thrust to weight is over 1 (full thrust on the runway pitches the nose up).
+
+### What's weak, or not done
+
+- **Nobody has listened** to the engines' sound with 3 to 6 engines (`v050-six-engines.wav`, `v050-{2,6}-engines-b777-300er-takeoff-*`: measured, not heard). The engines are placed by pan only, not by distance. On a six-engine design the audio suite is 44/45 (the stall warning 4.7–5.6 dB over six engines at TOGA, against 6).
+- **Six engines on the screens are small** at 1440×900 (A321 dials about 13 px in radius; the EICAS's 5-digit FF squeezed to about 80 %).
+- **The model:** pylons at stations other than the base's pass through the slats with the slats out (no gap cut); a lengthened leg may show through the fuselage when retracted on the A321 (the gear-up pictures from below look clean; not checked from every angle); the tail engine's look (`v050-model-777x3-tail.png`) is simple.
+- **Physics:** when an engine tears off, the CG jumps (about 0.45 m for a GEnx on a 787), and the drawn airframe moves by it in one step; the pylon's numbers in the warehouse are at standard-day thrust (a cold day's flat-rated thrust is higher); a base-equivalent design lists its crash points in another order (round-off only, with Indestructible scraping).
+- **The dry weights:** the LEAP-1A's from the FAA TCDS E00089EN (3,153 kg); the GEnx-1B's (6,147 kg) and GE90-115B's (8,283 kg) from secondary sources, marked [EST]; the installed weight is 1.45 × dry [EST].
+- **Not flown by hand.** No one has flown a design with the keyboard: the tests fly scripted pilots.
+
+### Decisions made in the run (v0.5.0), the rest
+
+12. **The pylon test flies in the air,** heavy, just after lift-off (see 7): on the runway an outboard engine lost at 40 kt can't be held.
+13. **The GE90 A321's pilot uses about a third of the lever** (its thrust-to-weight at full thrust is over 1 and its thrust line far below the CG); the warehouse warns of it.
+14. **Each subagent had its own port** (8015 the model, 8016 the screens, 8017 the synth, 8018 the warehouse), so no two servers or browser profiles crossed; all stopped.
+
+### How Shane can check it
+
+1. `sh tools/push.sh v0.5.0` after the Cowork session's write-up, then Cmd+Shift+R.
+2. Main menu → **Warehouse** → New design from the 777-300ER → Count 4 → Save. New scenario → the design's card under the three types → Fly. The EICAS shows four engines.
+3. In the Warehouse, a new A321neo with GE90-115B engines: the clearances go red; drag Gear extension to +1.5 m and they clear. Fly it with the levers at about a third for the take-off.
+4. A design with thrust scale 2 (any type): at take-off thrust an engine tears off its pylon (the toast, the screens' OFF, and it's gone from the model).
+
+## 2026-11-13, 09:30 KST: v0.5.0, reviewed and written up (Cowork session)
+
+**Shane** (2026-11-13, morning): "The agent finished at 4:30am?!? How did it take only an hour? Anyways v0.5.0 is finished for you to check and bump on the actual game."
+
+**How it was so quick:** the run went from 03:26 to 04:10 KST. Part 1 (the Boeings' golden flights, the engines as arrays) took it about ten minutes alone; at 03:37 it fixed the design's data shape and handed four subagents a job each on their own port (the model 8015, the screens 8016, the synth 8017, the warehouse 8018), while it built the sim's side; then a reviewer subagent and the old browser checks. `HANDOFF.md`'s table of where the parts model plugs in meant no time went on finding things.
+
+### Checked
+
+- **Its entries against `V050.md`'s definition of done,** item by item: every item has its evidence (commands, counts, pictures); its weak points are listed in its final entry and now in `ROADMAP.md`'s "Found while building v0.5.0".
+- **The tree:** the 49 files it created or changed (newer than `V050.md`) staged and laid over v0.4.4's copy here; the two trees' hashes then equal (334 files outside `reference/`). `HANDOFF.md` was touched but unchanged.
+- **Unit tests:** on the Mac through the guard **715/719** at first, and the same here: the Boeings' two golden flights and the two "a design that is its base" ones failed, by `thrL` at 1.7e-9 and 2.2e-9 N. Not a change in the flight: the fixtures were recorded with macOS's node, and Linux's node (the Mac's VM and the cloud container) flies them to roundoff (the first difference 5e-18 m/s at 8 s; the worst 1.5e-13 and 5.1e-13 of the value; only the thrust, about 1e5 N, passes an absolute 1e-9). **Fixed:** `goldenWorst()` in `tests/golden-boeing-flight.mjs` compares to 1e-9 of the value above 1 (absolute below 1), used by `golden-boeing.test.mjs` and `designs.test.mjs`; the fixtures weren't touched, and the A321's golden test still passes absolutely. Then **719/719** here, and **on the Mac through the guard after the sync: 719/719** in 18 s (peak 0.57 GB), the sweep clean.
+- **In the cloud container** (v0.5.0's code, served on 8765): `wing-gaps.cjs` all passed (both Boeings bend after the skinning); `weight-copy.cjs` ALL PASS; `athr-lever.cjs` all pass; `route-views.cjs` 16/16 (landed B 89, as before); `weather-final.cjs` ALL PASS; `v044-hud.cjs` all ok (36 checks: the view switch in both seats and Hide panels, the A321 and the 777 at three window sizes, through a reload); no console errors.
+- **The designs in the game, from the cloud** (`tests/cloud/v050-designs.cjs`, new: `?design=`): a four-GE90 777 and a GE90 A321 with 1.5 m more gear on Gimpo 14R: the sim reports 4 and 2 engines and the design's name; the stills from the side and ahead show four GE90s on the 777 and the A321's two clearing the runway on long legs (`Claude outputs/flight-sim/v050-review-designs.jpg`).
+- **Its pictures, looked at:** the warehouse list and the editor for the four-engine 777, the GE90 A321 in red (−1.08 m clearance) and the six-engine 787; the three designs over Seoul with the EICAS's four and six engines and the A321's GE90s; the engine torn off (the toast, "ENG 1 OFF"); the tail engines on the 777 and the A321; the six-engine 787 with the wing bent; the picker's design cards.
+
+### Fixed in the review
+
+- The Boeings' golden comparison (above).
+- `README.md` said each pylon holds "0 to 25 %" more as built; the reviewer subagent's fix made it 0 to 10 % (`designs.js`), so the README says that now.
+
+### Not checked by anyone
+
+- **Listening** to three to six engines, and **flying a design by hand.** The warehouse on the Mac's screen by Shane.
+
+### Written up
+
+- `src/version.js`: `Flight Sim v0.5.0 · CL#261113`;
+- `Updates.md`; `README.md` (the pylons' margin);
+- `PLAN.md`: "The parts model and the warehouse (v0.5.0)";
+- `ROADMAP.md`: row 1 and v0.5.0 done in the plan; "Found while building v0.5.0";
+- `AGENTS.md`: State;
+- `HANDOFF.md`: its first section is now v0.6.0's (East Asia: seven questions with their defaults, the brief's parts, where the terrain plugs in); the versions table; "v0.5.0: the parts model and the warehouse"; two pitfalls (golden flights across node builds; stale files in the cloud's upload folder);
+- the Games project doc.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.5.0`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome). Then v0.6.0 from `HANDOFF.md`'s first section.

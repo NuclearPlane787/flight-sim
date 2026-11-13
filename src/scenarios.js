@@ -100,7 +100,7 @@ export class ScenarioStore {
     const idx = this.index();
     let id = newId(now);
     while (idx.some((e) => e.id === id)) id = newId(now);
-    const entry = { id, name: clean, created: now, savedAt: now, type: typeFrom(summary, state) || DEFAULT_TYPE, summary: { route: summary.route || '', where: summary.where || '' } };
+    const entry = { id, name: clean, created: now, savedAt: now, type: typeFrom(summary, state) || DEFAULT_TYPE, summary: { route: summary.route || '', where: summary.where || '', ...(summary.design ? { design: String(summary.design) } : {}) } };
     if (legacy) entry.legacy = true;
     // The record first, then the index; if the index is refused, take the record back.
     if (!this.put(SCEN_PREFIX + id, { v: 1, id, name: clean, savedAt: now, state })) return { ok: false, error: 'quota' };
@@ -116,7 +116,7 @@ export class ScenarioStore {
     if (i < 0) return { ok: false, error: 'missing' };
     const e = idx[i], k = SCEN_PREFIX + id, old = this.raw(k);
     if (!this.put(k, { v: 1, id, name: e.name, savedAt: now, state })) { this.undo(k, old); return { ok: false, error: 'quota' }; }
-    idx[i] = { ...e, savedAt: now, type: typeFrom(summary, state) || e.type, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '' } : e.summary };
+    idx[i] = { ...e, savedAt: now, type: typeFrom(summary, state) || e.type, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '', ...(summary.design ? { design: String(summary.design) } : {}) } : e.summary };
     if (!this.put(INDEX_KEY, idx)) { this.undo(k, old); return { ok: false, error: 'quota' }; }
     return { ok: true };
   }

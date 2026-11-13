@@ -5,6 +5,10 @@
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/audio-render.mjs [--type b787-9] [--json out.json]
 //
 // --type (v0.3.0): that aircraft type's engine (b787-9, b777-300er; without it the A321neo).
+// --count N (v0.5.0): the same checks on a design of that type with N engines (3, 4 or 6).
+// --engines (v0.5.0): also renders the type as a design with 2, 3, 4 and 6 engines and checks the levels:
+//   n engines about 10·log10(n/2) dB over two (their voices are incoherent, so they add in power), six
+//   with engines torn off quieter by about as much, all off as quiet as no engines, and the cost.
 //
 // In the cloud container (v0.2.2): FS_CLOUD=1 E2E_ROOT=http://127.0.0.1:8765/ node tests/audio-render.mjs
 // (its preinstalled Playwright and headless Chromium; NODE_PATH=$(npm root -g)). SYNTH=<url
@@ -21,7 +25,7 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 
 const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
-let r, wx;
+let r, wx, eng = null;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
@@ -29,11 +33,14 @@ try {
   page.on('pageerror', (e) => errors.push(String(e)));
   const ti = process.argv.indexOf('--type'), query = new URLSearchParams();
   if (ti > 0) query.set('type', process.argv[ti + 1]);
+  const ci = process.argv.indexOf('--count');
+  if (ci > 0) query.set('engines', process.argv[ci + 1]);
   if (process.env.SYNTH) query.set('synth', process.env.SYNTH);
   await page.goto(ROOT + 'games/flight-sim/tests/dev-audio-render.html' + (query.size ? '?' + query : ''));
   await page.waitForFunction(() => typeof window.runAudio === 'function', null, { timeout: 30000 });
   r = await page.evaluate(() => window.runAudio());
   wx = await page.evaluate(() => window.runWeather());   // v0.4.0
+  if (process.argv.includes('--engines')) eng = await page.evaluate(() => window.runEngines(5));   // v0.5.0
   check('no page errors', errors.length === 0, errors.join(' | '));
 } finally {
   await browser.close();
@@ -125,6 +132,38 @@ check('thunder delay: colder air is slower (the sound\'s speed from the temperat
 check('thunder: near loud and short, far quieter, longer and duller', far.peakDb < near.peakDb - 6 && far.lenS > near.lenS * 1.3 && far.centroid < near.centroid * 0.7, `near ${f1(near.peakDb)} dB, ${near.lenS.toFixed(1)} s, ${Math.round(near.centroid)} Hz; far ${f1(far.peakDb)} dB, ${far.lenS.toFixed(1)} s, ${Math.round(far.centroid)} Hz`);
 check('gusts: the wind\'s noise swings 6+ dB, 4+ dB more than without the weather', X.gustSwing > 6 && X.gustSwing - X.noGustSwing > 4, `${f1(X.gustSwing)} dB (no weather ${f1(X.noGustSwing)} dB)`);
 check('Boeing siren over the quiet cockpit (+15 dB)', X.siren.rms - X.sirenBase.rms > 15, `${f1(X.sirenBase.rms)} → ${f1(X.siren.rms)} dB`);
+
+// ---- v0.5.0: more engines (--engines) ----
+if (eng) {
+  const L = eng.levels, two = L[2];
+  console.log(`\nengines (v0.5.0), ${eng.type} as a design; RMS dB over 1-7 s, the mean of 5 renders, stereo power (expected over two: 3 +1.8, 4 +3.0, 6 +4.8):`);
+  console.log('count  name                 toga-out  toga-in  idle-out  cruise-in   (over two)          ms per s rendered');
+  for (const [c, v] of Object.entries(L)) {
+    const d = (k) => (v[k].rms - two[k].rms >= 0 ? '+' : '') + f1(v[k].rms - two[k].rms);
+    console.log(`${c.padEnd(6)} ${v.name.padEnd(20)} ${f1(v['eng-toga-out'].rms).padStart(8)} ${f1(v['eng-toga-in'].rms).padStart(8)} ${f1(v['eng-idle-out'].rms).padStart(9)} ${f1(v['eng-cruise-in'].rms).padStart(10)}   ${['eng-toga-out', 'eng-toga-in', 'eng-idle-out', 'eng-cruise-in'].map(d).join(' ')}   ${eng.timing[c].toFixed(1)}`);
+  }
+  const six = L[6]['eng-toga-in'].rms;
+  console.log(`six at TOGA in the cockpit ${f1(six)} dB; one torn off ${f1(eng.off.one.rms)} (expected ${f1(six + 10 * Math.log10(5 / 6))}), three ${f1(eng.off.three.rms)} (expected ${f1(six + 10 * Math.log10(3 / 6))}), all ${f1(eng.off.all.rms)}`);
+  const all = [...Object.values(L).flatMap((v) => Object.values(v).filter((x) => x && typeof x === 'object')), eng.off.one, eng.off.three];
+  check('engines: 2, 3, 4 and 6 built (each the count asked for)', [2, 3, 4, 6].every((c) => L[c].engines === c), Object.values(L).map((v) => v.engines).join(' '));
+  check('engines: no NaN, no clipping with six', all.every((x) => x.nan === 0 && x.peak < 0.98), `max peak ${Math.max(...all.map((x) => x.peak)).toFixed(3)}`);
+  // TOGA outside is the loudest steady sound, where the limiter already works with two engines, so it
+  // holds more engines lower: there they must be louder, in order, but not past the rule.
+  {
+    const k = 'eng-toga-out', d = (c) => L[c][k].rms - two[k].rms, want = (c) => 10 * Math.log10(c / 2);
+    check('engines: toga-out (the limiter at work): 3, 4 and 6 louder than 2, in order, by at most 10·log10(n/2) + 0.5 dB',
+      d(3) > 0.5 && d(4) > d(3) && d(6) > d(4) && [3, 4, 6].every((c) => d(c) < want(c) + 0.5), [3, 4, 6].map((c) => `${c}: +${f1(d(c))} (${f1(want(c))})`).join(', '));
+  }
+  for (const k of ['eng-toga-in', 'eng-idle-out', 'eng-cruise-in']) {
+    const d = (c) => L[c][k].rms - two[k].rms, want = (c) => 10 * Math.log10(c / 2);
+    check(`engines: ${k.slice(4)}: 3, 4 and 6 louder than 2 by 10·log10(n/2) dB, ±1 dB`, [3, 4, 6].every((c) => Math.abs(d(c) - want(c)) < 1),
+      [3, 4, 6].map((c) => `${c}: +${f1(d(c))} (${f1(want(c))})`).join(', '));
+  }
+  check('engines: one of six torn off drops the level (0.8 dB, 0.3-1.5)', six - eng.off.one.rms > 0.3 && six - eng.off.one.rms < 1.5, `${f1(six - eng.off.one.rms)} dB`);
+  check('engines: three of six torn off drop it 3 dB, ±1', Math.abs(six - eng.off.three.rms - 3) < 1, `${f1(six - eng.off.three.rms)} dB`);
+  check('engines: all six torn off: only the cockpit air conditioning left (20+ dB down)', six - eng.off.all.rms > 20, `${f1(eng.off.all.rms)} dB`);
+  check('engines: six cost under 3 times two to render', eng.timing[6] < 3 * eng.timing[2], `${eng.timing[6].toFixed(1)} vs ${eng.timing[2].toFixed(1)} ms per s`);
+}
 
 const failed = results.filter((x) => !x).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

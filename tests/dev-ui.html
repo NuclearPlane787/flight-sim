@@ -44,7 +44,8 @@ const hud = createHud(document.getElementById('hud'), { airports, coast });
 const map = createMap(document.getElementById('map-root'), { airports, coast });
 const setup = createSetup(document.getElementById('setup-root'), { airports, coast });
 
-const st = makeState(), ap = makeAp(st);
+// &engines=3|4|6: a design's engine count; &off=2,3: engines torn off their pylons; &rev=0.5|1: the reversers.
+const st = makeState(Number(q.get('engines')) || 2), ap = makeAp(st);
 const controls = { law: 'normal', spoilersArmed: true };
 hud.onlaw = (l) => { controls.law = l; };
 const view = { state: st, ap, dest: null, timeScale: 1, timeScaleActual: 1, paused: false, controls };
@@ -128,6 +129,8 @@ if (scene === 'runway' || scene === 'setup') sceneRunway();
 else if (scene === 'climb' || scene === 'map') sceneClimb();
 else if (scene === 'approach') sceneApproach();
 else { onRunway(gimpo.end, 0); st.config = '1+F'; derive(st, gimpo.end.elevM); }
+for (const i of (q.get('off') || '').split(',').filter(Boolean)) if (st.engines[i - 1]) Object.assign(st.engines[i - 1], { off: true, n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0 });
+if (q.get('rev')) for (const e of st.engines) if (!e.off) e.rev = Number(q.get('rev'));
 
 // A mock predicted path: turn onto the selected heading at 3°/s, climb at 2,000 ft/min, 5 s samples.
 function mockPrediction() {

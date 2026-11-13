@@ -7,17 +7,20 @@
 // aircraft costs one draw call (plus one for the light glows, src/aircraft-lights.js).
 //
 //   createAircraft(opts?) → { object, update(state, dt), setCockpitView(bool), mesh, triangles,
+//     (opts.def: a design's type entry, src/sim/designs.js designDef(): its engines (one per geo.NACELLES, each
+//     its own engine type, src/engine-model.js), its gear (GEAR, GEAR_EXTEND_M) and its registration; v0.5.0)
 //     setLights({ nav, beacon, strobe, landing, taxi, logo }), setNight(0..1),
 //     lampPose() → { pos, dir } }
 // lampPose() is in the model frame of `object` (X = −body y, i.e. right; Y up; Z = −body x, aft):
 // the landing lamps' midpoint and beam while they're on, else the nose gear's taxi lamp.
 
 import * as THREE from '../vendor/three.module.js';
-import { TAIL_X, NOSE_X, GEAR, NACELLES, WING, GROUND_Z } from './geometry.js';
+import { TAIL_X, NOSE_X, GEAR, NACELLES, NACELLE_DIAMETER, NACELLE_LENGTH, WING, GROUND_Z } from './geometry.js';
 import { createLiveryTextures, UV, FIN_BOX } from './livery.js';
 import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
+import { addEngine, engineAnimator } from './engine-model.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -434,6 +437,11 @@ const C = {
 
 export function createAircraft(opts = {}) {
   const staticComp = { ...STATIC_COMPRESSION, ...(opts.staticCompression || {}) };
+  // v0.5.0: a design's engines and gear (designDef()'s geo), or the A321's own.
+  const def = opts.def || null, GEO = def ? def.geo : null;
+  const GEAR_ = GEO ? GEO.GEAR : GEAR, EXT = GEO?.GEAR_EXTEND_M || 0;
+  const NACS = GEO ? GEO.NACELLES : NACELLES.map((n, i) => ({ ...n, D: NACELLE_DIAMETER, L: NACELLE_LENGTH, engine: 'leap-1a', i }));
+  const engines = [];
   const b = new Builder();
   const bones = [], B = {};
 
@@ -603,72 +611,23 @@ export function createAircraft(opts = {}) {
     }
     parts[S] = true;
 
-    // Engine: nacelle, pylon, fan and the translating cowl of the thrust reverser.
-    const E = NACELLES[side > 0 ? 0 : 1];
-    const ex = E.x, ey = E.y, ez = E.z;
-    b.add(lathe([
-      { x: 1.45, r: 0.93, v: 0 }, { x: 1.9, r: 0.95, v: 0.12 }, { x: 2.25, r: 0.985, v: 0.24 }, { x: 2.42, r: 1.01, v: 0.3 },
-      { x: 2.5, r: 1.04, v: 0.36 }, { x: 2.53, r: 1.08, v: 0.42 }, { x: 2.51, r: 1.12, v: 0.48 }, { x: 2.44, r: 1.155, v: 0.55 },
-      { x: 2.2, r: 1.19, v: 0.6 }, { x: 1.6, r: 1.215, v: 0.68 }, { x: 0.8, r: 1.21, v: 0.8 }, { x: 0.05, r: 1.18, v: 1 },
-    ], 44, ex, ey, ez, UV.nacelle), ROOT, '#ffffff', 'keep');
-    const REV = bone('rev' + S, 'root', V(ex, ey, ez));
-    b.add(lathe([
-      { x: 0.05, r: 1.18 }, { x: -0.6, r: 1.125 }, { x: -1.2, r: 1.02 }, { x: -1.5, r: 0.94 },
-      { x: -1.45, r: 0.9 }, { x: -0.9, r: 0.95 }, { x: 0.0, r: 1.02 },
-    ], 44, ex, ey, ez), REV, C.navy);
-    b.add(lathe([{ x: 0.0, r: 1.09 }, { x: -0.6, r: 1.06 }], 32, ex, ey, ez), ROOT, C.cascade);
-    b.add(lathe([{ x: 0.6, r: 0.62 }, { x: -0.6, r: 0.72 }, { x: -1.5, r: 0.64 }, { x: -2.05, r: 0.52 }, { x: -2.08, r: 0.46 }], 32, ex, ey, ez), ROOT, C.core);
-    b.add(lathe([{ x: -1.9, r: 0.43 }, { x: -2.3, r: 0.25 }, { x: -2.52, r: 0.02 }], 24, ex, ey, ez), ROOT, C.plug);
-    // v0.4.3: the fan case, from the reverser cowl's inner lip (x 0.0) forward to the intake's inner end (1.45):
-    // the cowl was hollow there, so past the fan face's rim a look into the intake went through the inside of
-    // the cowl, whose faces point out (Shane: "you can see through the edges"). The fan face reaches it, and
-    // a disc just behind faces aft, so a look up the fan nozzle meets the fan, not the sky in front.
-    b.add(lathe([{ x: 0.0, r: 1.02 }, { x: 0.5, r: 0.989 }, { x: 1.0, r: 0.958 }, { x: 1.45, r: 0.93 }], 44, ex, ey, ez), ROOT, C.fanCase);
-    b.add(lathe([{ x: 1.32, r: 0.0 }, { x: 1.32, r: 0.95 }], 32, ex, ey, ez), ROOT, C.fanFace);
-    b.add(lathe([{ x: 1.308, r: 0.95 }, { x: 1.308, r: 0.0 }], 32, ex, ey, ez), ROOT, C.fanFace);
-    b.add(lathe([{ x: -0.25, r: 1.0 }, { x: -0.25, r: 0.68 }], 32, ex, ey, ez), ROOT, C.fanFace);
-    const FAN = bone('fan' + S, 'root', V(ex, ey, ez), V(1, 0, 0));
-    b.add(lathe([{ x: 2.0, r: 0.0 }, { x: 1.93, r: 0.15 }, { x: 1.76, r: 0.29 }, { x: 1.55, r: 0.38 }, { x: 1.42, r: 0.39 }], 24, ex, ey, ez), FAN, C.navy);
-    // one white swirl on the spinner so the rotation shows
-    b.add(boxAt(ex + 1.72, ey, ez + 0.16, 0.36, 0.05, 0.2).rotateX(0).translate(0, 0, 0), FAN, C.white);
-    for (let i = 0; i < 18; i++) {
-      const g = new THREE.BoxGeometry(0.34, 0.03, 0.56);
-      g.rotateZ(38 * DEG);          // blade twist (about the radial axis, z here)
-      g.translate(0, 0, 0.66);
-      g.rotateX((i / 18) * Math.PI * 2);
-      g.translate(ex + 1.45, ey, ez);
-      b.add(g, FAN, C.blade);
-    }
-    // Pylon: a profile in (x, z) extruded sideways. Its lower edge sits inside the nacelle's
-    // top and its upper edge rises to the wing's leading edge, then runs on inside the wing.
-    {
-      const sh = new THREE.Shape();
-      const w = wingSec(Math.abs(ey), side);
-      const lower = (x) => foilPoint(w, clamp((w.le.x - x) / w.chord, 0, 1), -1).z;  // wing's lower surface
-      const pts = [[ex + 1.8, ez + 1.15], [ex + 0.6, ez + 1.42], [w.le.x + 0.1, w.le.z + 0.01], [ex - 2.2, lower(ex - 2.2) + 0.1],
-        [ex - 4.2, lower(ex - 4.2) + 0.06], [ex - 4.9, lower(ex - 4.9) + 0.04], [ex - 5.2, lower(ex - 5.2) - 0.14],
-        [ex - 3.8, ez + 1.13], [ex - 2.0, ez + 0.89], [ex - 1.0, ez + 0.98], [ex + 1.0, ez + 1.15]];
-      pts.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
-      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.42, bevelEnabled: false });
-      g.translate(0, 0, -0.21);
-      // shape (X, Y, Z) → body (x = X, y = −Z, z = Y)
-      g.applyMatrix4(new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, -1, ey, 0, 1, 0, 0, 0, 0, 0, 1));
-      b.add(g, ROOT, C.pylon);
-    }
+    // Engines (v0.5.0: src/engine-model.js, one per nacelle on this wing; the A321's two as they always were).
+    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: false }));
 
     // Main gear: retracts inward into the belly. Wheels sit at z = −GROUND_Z at static compression.
-    const gm = side > 0 ? GEAR.left : GEAR.right;
+    const gm = side > 0 ? GEAR_.left : GEAR_.right;
     const TYRE_R = WHEEL_R_MAIN;
     const axleZ = gm.z + TYRE_R;
     // The leg hangs from inside the wing (its pivot and braces moved up with the wing in v0.1.2).
     const pivot = V(gm.x, gm.y, -0.9);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
-    b.add(cylBetween(pivot, V(gm.x, gm.y, -2.7), 0.15, 0.14, 14), LEG, C.gear);
+    // v0.5.0: a design's longer gear (EXT) lengthens the leg below the wing; the pivot and braces stay.
+    b.add(cylBetween(pivot, V(gm.x, gm.y, -2.7 - EXT), 0.15, 0.14, 14), LEG, C.gear);
     b.add(cylBetween(V(gm.x, gm.y, -2.15), V(gm.x, gm.y - side * 0.95, -0.98), 0.06, 0.06, 8), LEG, C.gear);
     b.add(cylBetween(V(gm.x, gm.y, -2.0), V(gm.x + 1.0, gm.y, -0.98), 0.06, 0.06, 8), LEG, C.gear);
     b.add(boxAt(gm.x, gm.y + side * 0.24, -1.76, 0.75, 0.04, 1.52), LEG, C.navy);
     const PIS = bone('mainPiston' + S, 'mainLeg' + S, V(gm.x, gm.y, axleZ), V(0, 0, 1));
-    b.add(cylBetween(V(gm.x, gm.y, -2.6), V(gm.x, gm.y, axleZ), 0.1, 0.1, 12), PIS, C.chrome);
+    b.add(cylBetween(V(gm.x, gm.y, -2.6 - EXT), V(gm.x, gm.y, axleZ), 0.1, 0.1, 12), PIS, C.chrome);
     b.add(cylBetween(V(gm.x, gm.y - 0.5, axleZ), V(gm.x, gm.y + 0.5, axleZ), 0.075, 0.075, 8), PIS, C.gear);
     b.add(cylBetween(V(gm.x, gm.y, axleZ + 0.05), V(gm.x + 0.45, gm.y, axleZ + 0.6), 0.04, 0.04, 6), PIS, C.gear);
     const WH = bone('mainWheel' + S, 'mainPiston' + S, V(gm.x, gm.y, axleZ), V(0, 1, 0));
@@ -687,6 +646,9 @@ export function createAircraft(opts = {}) {
     // Retractable landing light, under the inner wing between the fuselage and the engine.
     b.add(sphereAt(foilPoint(wingSec(LAND_Y, side), LAND_F, -1).add(V(0, 0, 0.02)), 0.11), ROOT, C.lamp);
   }
+
+  // The tail engine (a design's third), on the centreline through the fin's root.
+  for (const n of NACS) if (n.tail) engines.push(addEngine(b, bone, n, { wingSec, bend: false, finLeX: (z) => finSec(z).le.x }));
 
   // Horizontal stabiliser (trimmable) with elevators.
   const STAB = bone('stab', 'root', V(-19.4, 0, 0.35), V(0, 1, 0));
@@ -730,7 +692,7 @@ export function createAircraft(opts = {}) {
   }
 
   // Nose gear: retracts forward. Nosewheel steering about the leg axis.
-  const NG = GEAR.nose, NTYRE = WHEEL_R_NOSE;
+  const NG = GEAR_.nose, NTYRE = WHEEL_R_NOSE;
   const nAxle = V(NG.x, 0, NG.z + NTYRE), nPivot = V(16.1, 0, -1.3);
   const nAxis = nPivot.clone().sub(nAxle).normalize();
   const NLEG = bone('noseLeg', 'root', nPivot, V(0, 1, 0));
@@ -761,7 +723,7 @@ export function createAircraft(opts = {}) {
 
   // --- Mesh, material, skeleton ---
   const geometry = b.build();
-  const { map, emissiveMap } = createLiveryTextures(fuseTop, windowOutlines());
+  const { map, emissiveMap } = createLiveryTextures(fuseTop, windowOutlines(), opts.registration || def?.registration);
   const material = new THREE.MeshStandardMaterial({
     map, emissiveMap, emissive: 0xffffff, emissiveIntensity: 0.6,
     vertexColors: true, roughness: 0.42, metalness: 0.08,
@@ -837,7 +799,9 @@ export function createAircraft(opts = {}) {
   };
   const slide = (name, d) => { const bn = B[name]; bn.position.copy(bn.userData.rest).addScaledVector(bn.userData.axis, d); };
   void qa;
-  let fanL = 0, fanR = 0, wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
+  let wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
+  const animateEngines = engineAnimator(engines, B, toModel);
+  const NO_ENGINES = [];
 
   function update(state = {}, dt = 0) {
     clock += dt;
@@ -882,14 +846,8 @@ export function createAircraft(opts = {}) {
     rot('noseDoorL', doors); rot('noseDoorR', -doors);
     rot('mainDoorL', -doors); rot('mainDoorR', doors);
 
-    // Engines: fans (a visual rate that reads as spinning), reversers.
-    const en = state.engines || [];
-    const rate = (n1) => ((n1 || 0) / 100) * 7.5 * Math.PI * 2;
-    fanL = (fanL + rate(en[0]?.n1) * dt) % (Math.PI * 2);
-    fanR = (fanR + rate(en[1]?.n1) * dt) % (Math.PI * 2);
-    rot('fanL', fanL); rot('fanR', fanR);
-    move('revL', -0.6 * clamp(en[0]?.rev || 0, 0, 1), 0, 0);
-    move('revR', -0.6 * clamp(en[1]?.rev || 0, 0, 1), 0, 0);
+    // Engines: each fan (a visual rate that reads as spinning) and reverser its own engine's; one torn off is gone.
+    animateEngines(state.engines || NO_ENGINES, dt);
 
     // Lights: steady nav, flashing beacons and strobes (aircraft-lights.js), the lamps.
     gearNow = gp;

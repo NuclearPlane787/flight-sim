@@ -22,7 +22,16 @@
 import * as THREE from '../vendor/three.module.js';
 import { createAircraft, toModel } from '../src/aircraft.js';
 import { createCockpit } from '../src/cockpit.js';
-import { EYES, GROUND_Z } from '../src/geometry.js';
+import { EYES, GROUND_Z as GROUND_Z0 } from '../src/geometry.js';
+import { designDef, isDesign, newDesign } from '../src/sim/designs.js';
+
+// v0.5.0: ?design=<JSON> builds a design on the A321 (a design object, or { base, ...newDesign's extras }), e.g.
+// ?design={"engine":"ge90-115b","gearExtendM":1.5}. Its engines and gear come from designDef().
+const designParam = new URLSearchParams(location.search).get('design');
+const DESIGN = designParam ? (() => { const d = JSON.parse(designParam); return isDesign(d) ? d : newDesign('a321neo', d); })() : null;
+const DEF = DESIGN ? designDef(DESIGN) : null;
+const GROUND_Z = DEF ? DEF.geo.GROUND_Z : GROUND_Z0;
+const NENG = DEF ? DEF.geo.NACELLES.length : 2;
 
 const DEG = Math.PI / 180;
 // Same renderer settings as main.js.
@@ -58,7 +67,7 @@ line.rotation.x = -Math.PI / 2; line.position.set(0, -GROUND_Z + 0.01, 0);
 scene.add(line);
 
 const t0 = performance.now();
-const aircraft = createAircraft();
+const aircraft = createAircraft(DEF ? { def: DEF } : {});
 const cockpit = createCockpit();
 const buildMs = performance.now() - t0;
 aircraft.object.add(cockpit.object);
@@ -73,7 +82,7 @@ const state = {
   t: 0, surfaces: { elevator: 0, stab: 0, aileronL: 0, aileronR: 0, rudder: 0, spoilersL: [0, 0, 0, 0, 0], spoilersR: [0, 0, 0, 0, 0] },
   slatDeg: 0, flapDeg: 0, flapLever: 0, gearPos: 1, gearDoors: 0,
   gearCompression: { nose: 0.16, left: 0.22, right: 0.22 }, steerAngle: 0, wheelRate: { nose: 0, main: 0 },
-  engines: [{ n1: 20, rev: 0 }, { n1: 20, rev: 0 }], thrustLever: 0, speedbrake: 0,
+  engines: Array.from({ length: NENG }, () => ({ n1: 20, rev: 0 })), thrustLever: 0, speedbrake: 0,
 };
 const controls = { pitch: 0, roll: 0, yaw: 0, thrust: 0, flapLever: 0, speedbrake: 0, gearDown: true };
 
@@ -93,8 +102,8 @@ const sliders = [
   ['compr nose', 0, 0.4, 0.16, (v) => (state.gearCompression.nose = v)],
   ['steer°', -70, 70, 0, (v) => (state.steerAngle = v * DEG)],
   ['wheel rad/s', 0, 30, 0, (v) => (state.wheelRate.main = v, state.wheelRate.nose = v * 1.6)],
-  ['N1 %', 0, 100, 20, (v) => (state.engines[0].n1 = state.engines[1].n1 = v)],
-  ['reverser', 0, 1, 0, (v) => (state.engines[0].rev = state.engines[1].rev = v)],
+  ['N1 %', 0, 100, 20, (v) => state.engines.forEach((e) => (e.n1 = v))],
+  ['reverser', 0, 1, 0, (v) => state.engines.forEach((e) => (e.rev = v))],
   ['thrust lever', -1, 1, 0, (v) => (state.thrustLever = controls.thrust = v)],
   ['flap lever', 0, 4, 0, (v) => (state.flapLever = controls.flapLever = Math.round(v))],
   ['stick pitch', -1, 1, 0, (v) => (controls.pitch = v)],
@@ -206,6 +215,17 @@ addEventListener('resize', () => {
 setView('threeQuarter');
 requestAnimationFrame(frame);
 
+function geoHash(g) {
+  let h1 = 0x811c9dc5 >>> 0, n = 0;
+  for (const k of ['position', 'normal', 'uv', 'color']) {
+    const a = g.attributes[k].array;
+    const u = new Uint32Array(a.buffer, a.byteOffset, a.length);
+    for (let i = 0; i < u.length; i++) { h1 = Math.imul(h1 ^ u[i], 16777619) >>> 0; n++; }
+  }
+  const ix = g.index.array;
+  for (let i = 0; i < ix.length; i++) h1 = Math.imul(h1 ^ ix[i], 16777619) >>> 0;
+  return { hash: h1.toString(16), words: n, indices: ix.length };
+}
 // Hooks for tests/browser-aircraft.mjs.
 window.dev = {
   set(patch) {
@@ -231,6 +251,10 @@ window.dev = {
     orbit.target.copy(toModel(target[0], target[2], target[1]));
   },
   png() { render(0); return renderer.domElement.toDataURL('image/png'); },
+  // v0.5.0: the design shown (null for the A321 itself), its nacelles, and a hash of the built geometry's
+  // positions, normals, uvs and colours (for checking a base type builds as before).
+  design: DESIGN, nacelles: DEF ? DEF.geo.NACELLES : null,
+  geoHash() { return geoHash(aircraft.mesh.geometry); },
   ready: true,
 };
 </script>

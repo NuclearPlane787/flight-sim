@@ -4,8 +4,10 @@
 // the left, the buttons on the right, a gradient over a still picked at random per visit.
 //
 //   const menu = createMenu(root, { version, backdrops, scenarios, onContinue(id), onNew(), onLoad(id),
-//                                   onLogbook(), onSettings(), onControls(), onExit? });
+//                                   onLogbook(), onSettings(), onControls(), onExit?, onWarehouseClose? });
 //   menu.show(); menu.hide(); menu.refresh(); menu.isOpen
+//   menu.openWarehouse() → Promise (v0.5.0: the Warehouse page, ui/warehouse.js, loaded on first use; the menu
+//   opens and closes it itself, behind WAREHOUSE_ON or the URL's ?warehouse=1; onWarehouseClose() after it closes)
 //   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky?, onIndestructible?, onAutoTrim? });
 //   const controls = createControlsPage(root, { sky? });   controls.setFamily(def.family) for the type flown
 //   page.open(); page.close(); page.isOpen; page.onclose = () => {}
@@ -14,6 +16,14 @@
 // menu: it's plain DOM over a still.
 
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
+
+// v0.5.0: the Warehouse button, off until a design flies end to end. `?warehouse=1` in the page's URL shows it
+// anyway (the tests and the dev checks).
+export const WAREHOUSE_ON = true;
+export function warehouseEnabled(search) {
+  if (WAREHOUSE_ON) return true;
+  try { return new URLSearchParams(search ?? globalThis.location?.search ?? '').get('warehouse') === '1'; } catch { return false; }
+}
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -41,7 +51,7 @@ function arrowNav(e, items) {
   return true;
 }
 
-export function createMenu(root, { version = '', backdrops = [], scenarios, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit } = {}) {
+export function createMenu(root, { version = '', backdrops = [], scenarios, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose } = {}) {
   const el = document.createElement('div');
   el.className = 'fsm';
   el.hidden = true;
@@ -57,6 +67,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
         <button class="primary" data-k="continue" hidden>Continue<small data-o="contSub"></small></button>
         <button data-k="new">New scenario</button>
         <button data-k="load">Load scenario</button>
+        <button data-k="warehouse" hidden>Warehouse<small>Your designs: engines, weight, fuel and gear</small></button>
         <button data-k="logbook">Logbook</button>
         <button data-k="settings">Settings</button>
         <button data-k="controls">Controls</button>
@@ -81,6 +92,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
   let loadMsg = '', loadMsgBad = false; // a Duplicate's result, over the list
 
   $('version').textContent = version;
+  btn('warehouse').hidden = !warehouseEnabled();
   keepPointer(el);
 
   function setBackdrop() {
@@ -115,7 +127,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
     } else {
       main = `<div class="fsm-row-main">
           <b>${esc(e.name)}</b>
-          <small>${esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
+          <small>${s.design ? `${esc(s.design)} (${esc(typeName(e.type))})` : esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
         </div>
         <span class="fsm-when">${esc(savedText(e.savedAt))}</span>`;
     }
@@ -211,6 +223,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
   btn('continue').onclick = () => { const id = btn('continue').dataset.id; if (id) onContinue?.(id); };
   btn('new').onclick = () => onNew?.();
   btn('load').onclick = () => showPage('load');
+  btn('warehouse').onclick = () => openWarehouse();
   btn('logbook').onclick = () => onLogbook?.();
   btn('settings').onclick = () => onSettings?.();
   btn('controls').onclick = () => onControls?.();
@@ -221,6 +234,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
   el.addEventListener('keyup', (e) => e.stopPropagation());
   el.addEventListener('keydown', (e) => {
     e.stopPropagation();
+    if (page === 'warehouse') return;   // the Warehouse page keeps its own keys
     if (page === 'main') { arrowNav(e, navItems()); return; }
     // Load scenario
     const row = e.target.closest?.('.fsm-row[data-id]');
@@ -246,8 +260,34 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
   function onWindowKey(e) {
     if (el.hidden || (e.target !== document.body && e.target !== document.documentElement)) return;
     e.stopPropagation();
+    if (page === 'warehouse') { if (e.key === 'Escape') { e.preventDefault(); warehouse?.back(); } return; }
     if (e.key === 'Escape' && page === 'load') { e.preventDefault(); showPage('main'); }
     else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab') { e.preventDefault(); showPage(page); }
+  }
+
+  // ---- The Warehouse (v0.5.0): a page of its own over the menu, loaded the first time ----
+  let warehouse = null, warehouseLoad = null;
+  function openWarehouse() {
+    if (!warehouseLoad) {
+      warehouseLoad = import('./warehouse.js').then((m) => {
+        warehouse = m.createWarehouse(root);
+        warehouse.onclose = () => {
+          if (el.hidden) return;
+          showPage('main');
+          btn('warehouse').focus({ preventScroll: true });
+          onWarehouseClose?.();
+        };
+        return warehouse;
+      }).catch((err) => { warehouseLoad = null; throw err; });
+    }
+    return warehouseLoad.then((w) => {
+      if (el.hidden) return w;
+      page = 'warehouse';
+      editing = confirming = null;
+      $('nav').hidden = true; $('load').hidden = true;
+      w.open();
+      return w;
+    });
   }
 
   function show() {
@@ -262,13 +302,15 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
     window.removeEventListener('keydown', onWindowKey, true);
     if (el.contains(document.activeElement)) document.activeElement.blur();
     el.hidden = true;
+    if (warehouse?.isOpen) warehouse.close();   // its onclose sees the menu hidden and does nothing more
+    if (page === 'warehouse') page = 'main';
   }
   // The list changed elsewhere (a save, a rename): redraw what's showing, keeping the page.
   function refresh() {
     if (page === 'load') renderLoad(); else renderMain();
   }
 
-  return { show, hide, refresh, get isOpen() { return !el.hidden; }, get page() { return page; }, showPage };
+  return { show, hide, refresh, openWarehouse, get isOpen() { return !el.hidden; }, get page() { return page; }, showPage, get warehouse() { return warehouse; } };
 }
 
 // ---- Settings and Controls: a centred card over whatever is showing ----

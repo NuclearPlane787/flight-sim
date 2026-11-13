@@ -228,7 +228,7 @@ export function createLogbook(root, { load, save, onclose } = {}) {
       return `<div class="fslb-row${on ? ' on' : ''}" data-i="${i}">
           <span class="date">${esc(d.day)}<small>${esc(d.time)}</small></span>
           <span class="route">${esc(e.route || '—')}${names ? `<small class="sc">${esc(nameOf(scenarioOf(e, legacyId)))}</small>` : ''}</span>
-          <span class="type">${esc(typeName(e.type))}${e.indestructible ? '<small>Indestructible</small>' : ''}</span>
+          <span class="type">${e.design ? `${esc(e.design)} <small>${esc(typeName(e.type))}${e.engines ? ' · ' + esc(e.engines) : ''}</small>` : esc(typeName(e.type))}${e.indestructible ? '<small>Indestructible</small>' : ''}</span>
           <span class="rwy">${rwys}${e.gate ? `<small>Gate ${esc(e.gate)}</small>` : ''}</span>
           <span class="num">${fmtDuration(e.airTimeS)}</span>
           <span class="num">${fmtKg(e.fuelUsedKg)}</span>

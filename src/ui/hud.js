@@ -130,7 +130,7 @@ export function createHud(root, { airports, coast } = {}) {
       };
       if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(boeing.fcu.el);
     }
-    if (toBoeing) { boeing.pfd.setType(def); boeing.eng.setType(def); }
+    if (toBoeing) { boeing.pfd.setType(def); boeing.eng.setType(def); } else airbus.eng.setType(def);
     if (toBoeing === isBoeing) { poke(); return; }
     const next = toBoeing ? boeing : airbus, was = fcu;
     next.nd.setRange(nd.range);        // the range the pilot chose stays
@@ -179,6 +179,9 @@ export function createHud(root, { airports, coast } = {}) {
       r(st.gearPos, 50), r(st.speedbrake, 50), r(st.groundSpoilers, 50), r(st.brakes?.left, 20), r(st.brakes?.right, 20), st.parkingBrake,
       (sp.spoilersL || []).map((x) => r(x, 20)).join(), (sp.spoilersR || []).map((x) => r(x, 20)).join(),
       v.timeScale, r(v.timeScaleActual, 10), v.paused, v.controls?.spoilersArmed];
+    // v0.5.0: engines 3 to 6, and any engine torn off (a design's): their changes redraw the panel too.
+    const en = st.engines || [];
+    if (en.length !== 2 || en.some((e) => e.off)) sE.push(en.map((e) => `${r(e.n1, 10)},${r(e.n1Target)},${r(e.ffKgS, 360)},${r(e.rev, 50)},${e.off ? 1 : 0}`).join('|'));
     // What only the Boeing screens show (their FMA's armed modes, the tape's speeds, the stab trim).
     if (isBoeing) {
       sP.push(st.autoTrim ? 0 : r(st.vRef), r(st.vmm), r(st.vStick), r(st.pliDeg, 5), st.shaker, ap.armedLateral, ap.armedVertical, r(st.flapDeg), r(st.slatDeg));

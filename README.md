@@ -118,11 +118,35 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 
 **Flying a Boeing:** trim for the speed you want (H, Y), and it holds that speed hands off. Thrust moves the nose, and flaps and gear slow you only if you trim down too. Flare with back pressure; nothing does it for you. With Boeing auto-trim on (Settings), it's the A321's way instead: let go and the flight path holds, the thrust (or the autothrottle) sets the speed, and with the flaps for landing W and S nudge the path.
 
+## The warehouse (v0.5.0)
+
+**Warehouse** on the main menu, after Load scenario: your own aircraft, each made on one of the three types (its base). Mouse and touchpad only.
+
+- **The list:** New from the A321neo, the 787-9 or the 777-300ER; Open (or click the row), Rename, Duplicate, Delete.
+- **The editor:** the aircraft in 3D on the left (drag to go round it, pinch or scroll to zoom, double-click to recentre), the parts on the right:
+  - the **engines**: how many (2, 4 or 6 on the wings in pairs; 3 is a pair and one in the tail, through the fin's root), which (the LEAP-1A, the GEnx-1B or the GE90-115B, each with its own numbers, weight, size and sound), each pair's station along the wing, and a **thrust scale** (0.5 to 3);
+  - the **empty weight** (−15 % to +30 %), the **fuel capacity** (half to twice the base's; the change is in the centre tank) and the **gear** (up to 1.5 m longer, main and nose);
+  - its name and registration (painted on it).
+- **The numbers**, live: the empty weight (with the engines' own weights), the base's MTOW (the structural limits stay the base's, so heavier engines and more fuel eat into the payload), the fuel, thrust to weight at MTOW, a range, the tail-strike angle, and per engine its ground clearance standing and at the tail-strike attitude and its pylon's load at full thrust against its limit. Amber is a warning; red will fail (a pylon) or touch (a nacelle).
+- **Fly it:** saved designs are cards in New scenario's aircraft picker, under the three types. A scenario keeps its own copy of the design, so editing or deleting it later doesn't change a saved flight.
+
+**What it does in flight:**
+
+- Off-centre thrust yaws: an engine at idle, reversing alone or gone pulls the nose towards the dead side (on the runway, below about 110 kt, nothing holds it straight: reject the take-off).
+- Each pylon holds 1.5 times its engine type's rated take-off thrust (CS-25's ultimate factor), and each a little more as built (0 to 10 %). Past it, at the thrust scale's top end, the engine **tears off**: it stops, its weight goes, the model loses it and its pylon, and the screens show it OFF. Indestructible doesn't stop it (it's a failure, not a crash).
+- A big engine on a small aircraft scrapes: two GE90s on an A321 sit a metre into the runway unless the gear is lengthened (1.5 m clears them by 0.4 m). They also give it a thrust-to-weight over 1 and a thrust line far below its centre of gravity, so full thrust on the runway pitches it into a tail strike: take off with about a third of the lever.
+- More engines burn more fuel only by the weight they add: the fuel flow is the thrust's.
+- The A321's engine panel and the Boeings' EICAS draw every engine; the synth gives each its own voice, up to six.
+
 ## Code map
 
 | Path | What |
 |---|---|
 | `src/sim/types.js` | the type registry: each type's data, geometry and what the screens say (`typeById`, `kitFor`, `TYPE_LIST`) |
+| `src/sim/designs.js`, `src/sim/engine-types.js` | v0.5.0: a design (one plain object) and its type entry (`designDef()`: the engines' places, mass, CG and inertias, tanks, gear, pylons; `designNumbers()`); the three engine types as parts |
+| `src/designs-store.js`, `src/ui/warehouse.js`, `src/ui/warehouse.css` | v0.5.0: the designs saved (`gamedump:flight-sim:designs`); the Warehouse page and its 3D view |
+| `src/engine-model.js` | v0.5.0: one engine builder for all three aircraft (each engine type's nacelle and pylon at its station, the tail engine, each fan on its own engine's N1) |
+| `src/ui/engine-row.js` | v0.5.0: the engine panel's and the EICAS's row of dials for 3, 4 or 6 engines |
 | `src/type-assets.js` | each type's model and cockpit builders (the page only) |
 | `src/sim/b787-9.js`, `src/sim/b777-300er.js`, `src/geometry-b787-9.js`, `src/geometry-b777-300er.js` | the Boeings' numbers and geometry |
 | `src/sim/fbw-boeing.js`, `src/sim/autopilot-boeing.js` | Boeing's C*U law, the trim and soft protections; the autothrottle and the MCP's modes, LOC, G/S, autoland (`reference/notes/boeing-fbw-ap.md`) |
@@ -180,7 +204,8 @@ All in localStorage, under `gamedump:flight-sim:`:
 
 - `scenarios`: the scenario index (id, name, created, savedAt, a summary); `scenario:<id>`: each scenario's whole state (a few KB, up to about 70 KB with a long approach track);
 - `logbook`: every flight, tagged with its scenario's id and name (v0.1.x's untagged flights count as Scenario 1's);
-- `settings` (volume, callouts, the readout, the setup's last plan) and `lastflight` (the last flight's plan).
+- `settings` (volume, callouts, the readout, the setup's last plan) and `lastflight` (the last flight's plan);
+- `designs` (v0.5.0): the warehouse's designs, one list.
 
 ## Data credits
 
