@@ -2,7 +2,7 @@
 
 Read this first if you're picking the game up. Its first section is the job in hand; the rest is how the game is built and how to work on it. Then read `AGENTS.md` (the rules), `ROADMAP.md`'s "The long term" (where the game is going) and the newest entries in `STATUS.md` (what was done, with the evidence).
 
-It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run, reviewed it, and then made v0.4.1 (Shane's fixes after flying it), v0.4.2 (the list of what was already known) v0.4.3 (Shane's findings from testing v0.4) and v0.4.4, then settled v0.5.0's scope with Shane, briefed the Claude Code run that built it (2026-11-13, 03:26 to 04:10 KST), and reviewed it. That last session wrote this first section for the next one.
+It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run, reviewed it, and then made v0.4.1 (Shane's fixes after flying it), v0.4.2 (the list of what was already known) v0.4.3 (Shane's findings from testing v0.4) and v0.4.4, then settled v0.5.0's scope with Shane, briefed the Claude Code run that built it (2026-11-13, 03:26 to 04:10 KST), and reviewed it. That last session wrote this first section for the next one, then made v0.5.1 (the warehouse's hangar).
 
 ## The next session: v0.6.0, East Asia, from start to finish
 
@@ -18,10 +18,10 @@ Your last job is to rewrite this section for the session after you (v0.7.0 in th
 
 ### Where you start
 
-- **v0.5.0 was written up and ready to push** when this was last updated (2026-11-13, about 09:30 KST): the Warehouse, built by a Claude Code run from `V050.md` and reviewed. Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
-- **Passing at v0.5.0:**
-  - 719 unit tests (`node --test tests/*.test.mjs`, about 18 s on the Mac through the guard), the three golden flights among them;
-  - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weight-copy.cjs`, `athr-lever.cjs`, `route-views.cjs`, `weather-final.cjs` and `v044-hud.cjs` (`STATUS.md`'s review entry has the results);
+- **v0.5.0 is pushed** (`3aeaa07`), and **v0.5.1 was written up and ready to push** when this was last updated (2026-11-13, about 10:55 KST): the warehouse's 3D view is now the inside of a hangar. Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **Passing at v0.5.1:**
+  - 722 unit tests (`node --test tests/*.test.mjs`, about 18 s on the Mac through the guard), the three golden flights among them;
+  - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weight-copy.cjs`, `athr-lever.cjs`, `route-views.cjs`, `weather-final.cjs` and `v044-hud.cjs` (`STATUS.md`'s v0.5.0 review entry has the results), and `v051-hangar.cjs` (v0.5.1's);
   - on the Mac's GPU (the run): `browser-designs.mjs` 14/14 (60 fps with six engines at Gimpo and over Seoul), `browser-warehouse.mjs`, `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` on both Boeings, `browser-picker.mjs`, `audio-render.mjs` 45/45 on each type.
 - **Two settings change how a test flight behaves** (v0.4.1, in Settings, saved under `gamedump:flight-sim:settings`): Indestructible (no crash ends a flight) and Boeing auto-trim (since v0.4.2 with a flare law below 50 ft). A browser check that expects a crash, or Boeing's speed-stable law, must start with them off (a fresh profile has them off).
 - **Any flight may fly a design** (v0.5.0): a check that expects a type's own numbers starts from the type, not from a saved scenario that might hold a design. `?design=<json>` starts one in a test.
@@ -105,7 +105,8 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | v0.4.2 | The known list: the crash screen's Rewind with Indestructible on; Boeing auto-trim's flare and H/Y; Indestructible's belly skids, hard stop and gear-up card; the Boeing autoland nearer the centreline in a crosswind; runway exit and distance remaining signs; predictive windshear; hydroplaning; wipers; spray; snow over the taxiway paint | yes (`8381dfa`) |
 | v0.4.3 | Shane's findings: the slats and flaps stay on the bent wing in flight; solid engines with centred fans; the 777 settles after a pitch input as the 787; auroras on every clear night | yes (`1f04a03`) |
 | v0.4.4 | Hide panels; the view switch kept at the top right in the cockpit; auroras that undulate; the Boeings' main legs folded into the wing; the A321's setup weights | yes (`d484689`) |
-| v0.5.0 | The Warehouse: designs on any of the three types (engines: count, type, stations, thrust; empty weight, fuel, longer gear, name, registration), flown from New scenario; engines as parts in the sim, the model, the screens and the sound; pylons that give way | not yet when this was written: `sh tools/push.sh v0.5.0` |
+| v0.5.0 | The Warehouse: designs on any of the three types (engines: count, type, stations, thrust; empty weight, fuel, longer gear, name, registration), flown from New scenario; engines as parts in the sim, the model, the screens and the sound; pylons that give way | yes (`3aeaa07`) |
+| v0.5.1 | The warehouse is a hangar: steel frames and roof trusses, skylights and lamps, offices, racks, benches and a spare engine along the walls, sliding doors part open onto the apron, a painted floor with the stand's lead-in and a stop bar per type, people walking; the camera stays inside | not yet when this was written: `sh tools/push.sh v0.5.1` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
@@ -114,6 +115,7 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 - **v0.3.2's** is in its two `STATUS.md` entries ("2026-11-08, 15:05 KST" and the one after): 521 unit tests, `tests/cloud/weight-copy.cjs` (new) and `route-views.cjs`.
 - **v0.4.1's** is in its `STATUS.md` entry ("2026-11-11, 00:20 KST"): 646 unit tests, the cloud checks, and before/after pictures of the wings, the signs and the card.
 - **v0.5.0's** is in its `STATUS.md` entries: the brief's ("2026-11-13, 03:35 KST"), the run's (from "03:26" to its final entry, "04:10 KST") and the review's ("2026-11-13, 09:30 KST"): 719 unit tests, the run's Chrome checks on the Mac, the cloud checks, and the pictures `v050-*.png`.
+- **v0.5.1's** is in its `STATUS.md` entry ("2026-11-13, 10:55 KST"): 722 unit tests, `tests/cloud/v051-hangar.cjs` and the pictures `v051-hangar-*.jpg`.
 - **v0.4.4's** is in its `STATUS.md` entry ("2026-11-13, 03:15 KST").
 - **v0.4.3's** is in its `STATUS.md` entry ("2026-11-13, 01:35 KST"): 674 unit tests, the cloud checks, before/after pictures of the bent wings, the engines and the fan, the aurora, and the pitch measurements (`tests/boeing-pitch-settle.test.mjs`).
 - **v0.4.2's** is in its `STATUS.md` entry ("2026-11-12, 23:05 KST"): 668 unit tests, the cloud checks, and pictures of the runway signs, the snow over the paint, both PFDs' windshear warning, the wiper, the spray and the crash screen (`tests/cloud/v042-shots.cjs`). It also says why broken cloud far off and the 777's yaw were left as they were.
@@ -263,6 +265,14 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | `src/world/spray.js` | `createSpray(GEAR, uniforms)`, `sprayAmount()`: instanced sprites per leg in the model's frame, a function of a clock (no per-frame state). |
 | `tests/cloud/v042-shots.cjs` | v0.4.2's pictures, some against v0.4.1 served beside it as `games/flight-sim-041/`. |
 | New tests | `boeing-autotrim-787`, `yaw-approach`, `windshear-ahead`, `spray`; `boeing-autotrim`, `indestructible`, `taxisigns`, `weather-autoland` (tightened) and `weather-precip` grew. |
+
+### v0.5.1: the hangar
+
+| File | What's there |
+|---|---|
+| `src/ui/hangar.js` | `HANGAR` (the room's size), `cameraBox(floorY)`, `rayExit(p, u, box)`, `walkPath(s)` and `WALK_LENGTH` (pure, node-tested in `tests/hangar.test.mjs`); `createHangar(THREE, { maxAnisotropy })` → `{ group, update(tSec), dispose() }`: an `Acc` per material merges boxes, beams, cylinders and quads (struct, clad, floor, mark, hatch, decal, glow, out); canvas textures for the cladding, the epoxy floor, the hatching and a 2048 × 1024 atlas of signs and floor lettering; `createPeople()` as five instanced meshes. Three.js frame as the models': x right, y up, z aft; the floor y = 0 in the group. |
+| `src/ui/warehouse.js` | `createView()`: the hangar at the design's wheels, its lights, the camera clamped with `rayExit()`, the 30 fps loop (`ANIM_MS`) only while shown, `setAnimate()`, `busy` = a rebuild pending; `window.__fsw` is the open view, for checks. |
+| `tests/cloud/v051-hangar.cjs` | Each type in the editor from the cloud: pictures from several views, draw calls, the people moving and holding still, nothing running after Back. |
 
 ### v0.5.0: the parts model and the warehouse
 

@@ -4,6 +4,15 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.5.1 · 2026-11-13 · The warehouse is a hangar
+
+- **A real hangar round your design.** The warehouse's flat grey ground is now the inside of a maintenance hangar big enough for the 777-300ER: steel columns and roof trusses, a corrugated roof with skylights, rows of high-bay lamps, sprinkler pipes and ventilation ducts, and glazing high on the walls.
+- **The way in:** behind the tail are the hangar doors the aircraft came in by: four sliding leaves a side on their floor tracks, pushed back to leave the middle open onto a sunny apron, under a door header with warning beacons.
+- **Along the walls:** two storeys of offices and workshops across the back with a mezzanine and stairs, under the company's sign and a clock; pallet racking full of boxes, workbenches and tool chests, a spare engine on its stand, a forklift, a tug, tyres, fire points, exits and safety signs in Korean and English.
+- **A painted floor:** grey epoxy with its joints, the stand's yellow lead-in line with a stop bar for each type's nose wheel, a dashed box round the parking area with its tie-down points, green walkways, and keep-clear hatching inside the doors and at the office doors.
+- **People** in hi-vis vests and hard hats walk the walkways, and a few work at the benches, by the spare engine and at the tug.
+- **The camera stays inside:** zoom out and it stops at the wall, the roof or the floor instead of going through. The lens is wider, so the whole 777 still fits.
+
 ## v0.5.0 · 2026-11-13 · The warehouse: your own aircraft
 
 - **Warehouse** on the main menu: make your own aircraft from the A321neo, the 787-9 or the 777-300ER. Choose how many engines (2, 4 or 6 in pairs on the wings, or 3 with one in the tail), which ones (the LEAP-1A, the GEnx-1B or the GE90-115B), where each pair hangs on the wing, how strong they are (half to three times), the empty weight, the fuel capacity, longer gear, a name and a registration. The aircraft turns in 3D beside the parts, with the numbers that follow: empty weight, payload room, thrust to weight, range, the tail-strike angle, and each engine's ground clearance and pylon load.

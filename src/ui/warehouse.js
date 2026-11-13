@@ -137,11 +137,15 @@ export function orbitWheel(view, e, limits = [12, 400]) {
 }
 
 // ---- The 3D view ----
-// Its own renderer and scene: a sky colour, a hemisphere light and a sun with shadows, a ground plane at the
-// design's wheels with a 10 m grid. Rebuilt (the old model's geometry and materials disposed) when viewKey changes,
-// at most every 150 ms while a slider moves.
+// Its own renderer and scene: the hangar (src/ui/hangar.js, v0.5.1) with its floor at the design's wheels, lit by
+// a hemisphere light, the high-bay lamps' light from above with shadows, and daylight through the doors. The
+// camera goes round the design and stays inside the hangar: zoomed out against a wall, it stops at the wall.
+// The model is rebuilt (the old one's geometry and materials disposed) when viewKey changes, at most every 150 ms
+// while a slider moves. The people walk at 30 frames a second while the view is shown, and nothing runs once the
+// page is hidden or the view is disposed.
+const ANIM_MS = 33;
 async function createView(host, onStatus) {
-  const [THREE, assets] = await Promise.all([import('../../vendor/three.module.js'), import('../type-assets.js')]);
+  const [THREE, assets, hangarMod] = await Promise.all([import('../../vendor/three.module.js'), import('../type-assets.js'), import('./hangar.js')]);
   const canvas = document.createElement('canvas');
   canvas.className = 'fsw-canvas';
   host.prepend(canvas);
@@ -151,35 +155,37 @@ async function createView(host, onStatus) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.shadowMap.enabled = true;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#7f9bb8');
-  scene.add(new THREE.HemisphereLight('#d6e6ff', '#7a7468', 2.0));
-  const sun = new THREE.DirectionalLight('#fff4e0', 2.4);
-  sun.position.set(-30, 60, 40);
+  scene.background = new THREE.Color('#c6d5e2');   // the sky through the doors
+  scene.add(new THREE.HemisphereLight('#eef3f8', '#8f8c84', 1.5));
+  const sun = new THREE.DirectionalLight('#fbfcff', 1.9);   // the lamps overhead: the design's shadow on the floor
+  sun.position.set(-18, 80, 22);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 });
-  scene.add(sun, sun.target);
-  const groundMat = new THREE.MeshStandardMaterial({ color: '#6f7377', roughness: 0.95 });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  const grid = new THREE.GridHelper(200, 20, '#8d9297', '#80858a');
-  grid.material.transparent = true; grid.material.opacity = 0.5;
-  scene.add(ground, grid);
-  const camera = new THREE.PerspectiveCamera(35, 1.6, 0.5, 3000);
+  const daylight = new THREE.DirectionalLight('#fff0da', 0.6);   // through the open doors, behind the tail
+  daylight.position.set(0, 18, 140);
+  scene.add(sun, sun.target, daylight);
+  const hangar = hangarMod.createHangar(THREE, { maxAnisotropy: renderer.capabilities.getMaxAnisotropy() });
+  scene.add(hangar.group);
+  const camera = new THREE.PerspectiveCamera(50, 1.6, 1.0, 3000);
 
-  let view = null, model = null, builtKey = null, pending = null, timer = 0, lastBuild = 0, raf = 0, disposed = false;
-  let groundY = -3.9, distLim = [12, 400], baseDist = 75;
-  const target = new THREE.Vector3();
+  let view = null, model = null, builtKey = null, pending = null, timer = 0, lastBuild = 0, raf = 0, anim = 0, animate = true, disposed = false;
+  let groundY = -3.9, distLim = [12, 150], baseDist = 50, camBox = hangarMod.cameraBox(groundY);
+  const target = new THREE.Vector3(), t0 = performance.now(), U = [0, 0, 0], P = [0, 0, 0];
 
   function frame() {
     raf = 0;
     if (disposed || !view) return;
     const cp = Math.cos(view.pitch);
-    camera.position.set(target.x + view.dist * cp * Math.sin(view.yaw), target.y + view.dist * Math.sin(view.pitch), target.z + view.dist * cp * Math.cos(view.yaw));
-    if (camera.position.y < groundY + 1) camera.position.y = groundY + 1;
+    U[0] = cp * Math.sin(view.yaw); U[1] = Math.sin(view.pitch); U[2] = cp * Math.cos(view.yaw);
+    P[0] = target.x; P[1] = target.y; P[2] = target.z;
+    // Out to the view's distance, or to the hangar's wall, roof or floor if that comes first.
+    const d = Math.min(view.dist, hangarMod.rayExit(P, U, camBox));
+    camera.position.set(target.x + d * U[0], target.y + d * U[1], target.z + d * U[2]);
     camera.lookAt(target);
+    if (animate) hangar.update((performance.now() - t0) / 1000);
     renderer.render(scene, camera);
+    if (animate && !anim && !document.hidden) anim = setTimeout(() => { anim = 0; request(); }, ANIM_MS);
   }
   const request = () => { if (!raf && !disposed && !document.hidden) raf = requestAnimationFrame(frame); };
 
@@ -217,17 +223,19 @@ async function createView(host, onStatus) {
       engines: def.geo.ENGINES.map(() => ({ n1: 0, rev: 0 })), thrustLever: 0, speedbrake: 0, pitch: 0, roll: 0, hdg: 0 }, 0);
     scene.add(model.object);
     groundY = -def.geo.GROUND_Z;
-    ground.position.y = groundY; grid.position.y = groundY + 0.01;
+    hangar.group.position.y = groundY;
+    camBox = hangarMod.cameraBox(groundY);
     target.set(0, groundY * 0.45, 0);
     sun.target.position.set(0, groundY, 0);
     const span = def.geo.SPAN || 40;
     Object.assign(sun.shadow.camera, { left: -span * 0.8, right: span * 0.8, top: span * 1.2, bottom: -span * 1.2 });
     sun.shadow.camera.updateProjectionMatrix();
-    const d0 = (def.orbitDist ?? 75) * 0.95;
+    // The game's 3rd-person distance, for this view's wider lens (50° against 35°).
+    const d0 = (def.orbitDist ?? 75) * 0.65;
     if (!view) view = { yaw: HOME.yaw, pitch: HOME.pitch, dist: d0 };
     else if (Math.abs(baseDist - d0) > 1e-6 && Math.abs(view.dist - baseDist) < 1e-6) view.dist = d0;
     baseDist = d0;
-    distLim = [Math.max(10, span * 0.45), span * 8];
+    distLim = [Math.max(8, span * 0.3), 150];
     builtKey = key;
     onStatus?.('');
     request();
@@ -277,20 +285,23 @@ async function createView(host, onStatus) {
     disposed = true;
     if (raf) cancelAnimationFrame(raf);
     if (timer) clearTimeout(timer);
-    raf = timer = 0;
+    if (anim) clearTimeout(anim);
+    raf = timer = anim = 0;
     ro?.disconnect();
     document.removeEventListener('visibilitychange', onVis);
     disposeModel();
-    ground.geometry.dispose(); groundMat.dispose(); grid.geometry.dispose(); grid.material.dispose();
+    hangar.dispose();
     renderer.dispose();
     renderer.forceContextLoss?.();
     canvas.remove();
   }
   return {
     setDesign, dispose, request, resize,
+    // The people stop (and stay where they are) with false; true starts them again.
+    setAnimate(on) { animate = !!on; if (!animate && anim) { clearTimeout(anim); anim = 0; } request(); },
     get view() { return view; },
     get builtKey() { return builtKey; },
-    get busy() { return !!(raf || timer); },
+    get busy() { return !!(timer || pending); },
     info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }),
   };
 }
@@ -573,11 +584,12 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       .then((v) => {
         if (gen !== viewGen || page !== 'editor' || el.hidden) { v.dispose(); return; }
         view = v; viewLoading = null;
+        window.__fsw = v;   // for the browser checks
         view.setDesign(cur, true);
       })
       .catch((err) => { viewLoading = null; if (gen === viewGen) { $('viewMsg').textContent = `No 3D view: ${err.message}`; $('viewMsg').hidden = false; } });
   }
-  function stopView() { viewGen++; view?.dispose(); view = null; }
+  function stopView() { viewGen++; view?.dispose(); view = null; if (window.__fsw) window.__fsw = null; }
   function leaveEditor(force) {
     if (!force && dirty()) { $('ask').hidden = false; act('keep').focus(); return false; }
     stopView();

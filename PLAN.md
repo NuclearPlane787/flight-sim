@@ -90,6 +90,8 @@ Numbered as in the planning questions, in his words where it matters.
 - **The screens and the sound:** the engine panel and the EICAS draw every engine (`src/ui/engine-row.js`); the synth gives each engine its own voice, up to six, panned by its place. Two engines draw and sound exactly as before.
 - **The warehouse** (`src/ui/warehouse.js`, `src/designs-store.js`): the designs under `gamedump:flight-sim:designs`; the editor's 3D view draws only while it's open.
 
+**The hangar (v0.5.1).** The warehouse's view stands the design in a maintenance hangar (`src/ui/hangar.js`), one size for every type: 150 m by 140 m inside, 28 m to the trusses' bottom chords, the doorway 120 m wide and 24.8 m high, sized for the 777-300ER with room to walk round it. The aircraft's nose points at the offices along the back wall; behind its tail the doors' leaves are slid back to leave the middle 70 m open onto a sunlit apron, as it came in. The floor's lead-in line has a stop bar at each type's nose wheel (`GEAR.nose`). Everything static is merged by material (eight meshes), the people are five instanced meshes, and the camera stays inside the room (`cameraBox()`, `rayExit()`). The people walk only while the editor is shown, at 30 frames a second.
+
 ## The aircraft: A321neo
 
 ### Published numbers (Airbus's A321neo page)

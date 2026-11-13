@@ -1320,7 +1320,7 @@ Shane, before v0.2.1 was pushed: "Group these in with 0.2.1: 1. For steering the
 
 **Checks:**
 
-- **Unit tests: 275 pass** (one new in `tests/sky.test.mjs`: the faint end brighter, first magnitude unchanged, `starGeometry()` using `starBrightness()`), in the cloud container and on the Mac through the guard (below).
+- **Unit tests: 275 pass** (one new in `tests/sky.test.mjs`: the faint end brighter, first magnitude unchanged, `starGeometry()` using `starBrightness()`), in the cloud container and on the Mac through the guard after the sync: 722/722 in 17 s (peak 0.59 GB), the sweep clean.
 - **New `tests/cloud/camera-drag.cjs`** (2 minutes, the real mouse through Playwright): **23/23**. In the nose, the captain's seat and 3rd person, a 200 px drag right turns exactly the speed above (37.5°, 38.8°, 45.8° at 800 px high) and down raises the pitch; the cursor is a hand, grabbing while dragging; the nose stops at 170° and 80°; a click and a 2 px wobble change nothing; a double-click recentres; a click then a press-and-drag (Chrome fires `dblclick` for it) keeps the drag; a drag across the PFD carries on; a drag that starts on the ND, and one on the map, leave the camera alone; the view switch still clicks; the swipe and the pinch still work; no page errors.
 - `tests/browser-boot.mjs` (the Mac's Chrome, not run here) has a drag check next to its swipe check.
 - **Not done:** dragging on the Mac's own trackpad; how fast the drag feels is a guess (the speeds above are easy to change: `DRAG_LOOK`, `DRAG_ORBIT`).
@@ -2281,3 +2281,35 @@ The run went from 03:26 to 04:10 KST: all five parts are built and checked, and 
 - the Games project doc.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.5.0`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome). Then v0.6.0 from `HANDOFF.md`'s first section.
+
+## 2026-11-13, 10:55 KST: v0.5.1, the warehouse is a hangar (Cowork session)
+
+**Shane** (after pushing v0.5.0, `3aeaa07`): "For v0.5.1, the current warehouse is just a flat world. Let's make it the inside of an actual warehouse. I think KSP does this. Have stuff on the walls that resemble one, maybe people walking near the edges, the roof above you looks like an actual warehouse roof, and the gate in the front where the airplane would come in looks accurate. Paint the floor appropriately as well. I have until 11:25am."
+
+### What changed
+
+- **`src/ui/hangar.js` (new):** `createHangar(THREE)` builds the room the warehouse's view stands the design in: 150 m by 140 m inside, 28 m to the trusses' bottom chords, sized for the 777-300ER with room to walk round it. The aircraft's nose points at the back wall; the doors are behind its tail.
+  - **Structure and roof:** I-section columns every 10 m with knee braces; a pitched truss over each pair (bottom chord, top chord 30 m at the walls to 34 m at the ridge, verticals every 7.5 m, diagonals); purlins; a corrugated deck with four skylight strips; 117 high-bay lamps hung below the trusses; red sprinkler mains; ventilation ducts down both sides; glazing high on the side walls; a concrete plinth with a yellow line.
+  - **The doors:** a 120 m doorway, 24.8 m high, under a header with stiffeners and amber beacons; four 15 m leaves a side on their own floor tracks, with ribs, edge frames, vision panels, hazard-striped leading edges and a wicket door, slid back to leave the middle 70 m open; the rails across the floor; outside, a sunlit apron with the lead-in line running on and the airport's buildings and tower beyond.
+  - **Along the walls:** two storeys of lit offices and workshops across the back with doors, a mezzanine with yellow railings and stairs, the company's sign (Nuclear Airlines · Engineering · Hangar 1 · 격납고 1) on the columns and a clock with Korea's time when the view opened; pallet racking with boxes on both sides; workbenches, a pegboard and tool chests; a spare engine on its transport stand beside a work platform; a forklift, a nitrogen cart, stacked tyres, a tug with its tow bar, tool carts; extinguishers and fire signs, exit doors with 비상구 EXIT signs, hearing-protection and no-smoking signs, 5 km/h signs by the doors.
+  - **The floor:** a tiled epoxy texture with saw-cut joints every 7.5 m and scuffs; the stand's yellow lead-in line with a stop bar and its type's name at each type's nose wheel (`GEAR.nose`); a dashed box round the parking area with tie-down points; green walkways with white edges (WALKWAY · 보행로); keep-clear hatching inside the doors (HANGAR DOOR · KEEP CLEAR) and at the office doors.
+  - **People:** 14 in hi-vis vests, hard hats and dark trousers, as five instanced meshes: nine walk the walkways' loop at their own pace and direction (`walkPath()`), legs and arms swinging, five stand at the benches, by the spare engine, at the tug and at an office door.
+  - Everything static is merged by material into eight meshes; with the people and the aircraft the view draws 16 calls (the 777: 124,000 triangles, about 40,000 of them the hangar). It builds in about 0.1 to 0.2 s. Pure helpers for the tests: `HANGAR`, `cameraBox()`, `rayExit()`, `walkPath()`.
+- **`src/ui/warehouse.js`:** the hangar replaces the ground plane and grid. The lights: a hemisphere light (1.5), the lamps' directional light from overhead with the design's shadow (1.9), and daylight through the doors (0.6); the sky colour outside. The lens is 50° (was 35°), the start distance the type's orbit distance × 0.65 (was × 0.95), the zoom 8 m to 150 m, and the camera stops at the hangar's walls, roof and floor (`rayExit()` against `cameraBox()`). The people walk at 30 frames a second while the editor is shown; nothing runs once the page is hidden or the view is disposed. `setAnimate(on)` stops and starts them; `busy` is now only a rebuild pending; `window.__fsw` is the open view, for the checks.
+
+### Checks
+
+- **Unit tests:** 722/722 here (3 new in `tests/hangar.test.mjs`: the ray to the camera's box, the walkways' loop staying on the walkways and out of the parking area, every type through the doors (with 1.5 m more gear), under the trusses and clear of the walkways), and on the Mac through the guard (below).
+- **In the cloud** (`tests/cloud/v051-hangar.cjs`, new, headless Chromium with SwiftShader): ALL PASS. A new design of each type opens in the editor (16 draw calls each; 124k, 104k and 118k triangles); two pictures a second apart differ (the people walk) and hold still with `setAnimate(false)`; after Back to the menu, no frames over 1.5 s, as in the menu before; no page errors.
+- **Pictures looked at:** each type from the start view, the 777 towards the doors, towards the back wall, from above, low under the wing towards the roof, from the side. Fixed from them: a bright specular streak on the floor in front of the nose (the floor's roughness 0.42 → 0.78, its colour darker), a near-black door header (lighter, with stiffeners), and the sign behind the back wall's columns (now on them). Pictures `Claude outputs/flight-sim/v051-hangar-*.jpg`.
+- **The Mac's tree** matched the workspace's before the sync (the 335 files outside `reference/` and `__pycache__`, `warehouse.js` aside), and the two are equal after it (338 files).
+
+### Not checked
+
+- **On the Mac's GPU and screen:** the look in Chrome and the frame rate with the people walking (16 draw calls; SwiftShader drew it). `tests/browser-warehouse.mjs` wasn't run on the Mac; its "nothing left running after Back" is checked the same way by `v051-hangar.cjs`.
+
+### Written up
+
+`src/version.js` (`Flight Sim v0.5.1 · CL#261113`), `Updates.md`, `README.md` (the warehouse, the code map), `PLAN.md` (the hangar), `ROADMAP.md` ("Found while building v0.5.1"), `AGENTS.md` (State), `HANDOFF.md` (v0.5.0 pushed, v0.5.1 in the versions table, "v0.5.1: the hangar"; its first section stays v0.6.0's), and the Games project doc.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.5.1`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome).

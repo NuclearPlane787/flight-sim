@@ -127,6 +127,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
   - the **engines**: how many (2, 4 or 6 on the wings in pairs; 3 is a pair and one in the tail, through the fin's root), which (the LEAP-1A, the GEnx-1B or the GE90-115B, each with its own numbers, weight, size and sound), each pair's station along the wing, and a **thrust scale** (0.5 to 3);
   - the **empty weight** (−15 % to +30 %), the **fuel capacity** (half to twice the base's; the change is in the centre tank) and the **gear** (up to 1.5 m longer, main and nose);
   - its name and registration (painted on it).
+- **The hangar** (v0.5.1): the design stands in a maintenance hangar, its nose to the offices at the back and its tail to the doors it came in by (part open onto the apron); the stand's lead-in line has a stop bar for each type's nose wheel, and people walk the green walkways. The camera stays inside: zoomed out, it stops at the wall, the roof or the floor.
 - **The numbers**, live: the empty weight (with the engines' own weights), the base's MTOW (the structural limits stay the base's, so heavier engines and more fuel eat into the payload), the fuel, thrust to weight at MTOW, a range, the tail-strike angle, and per engine its ground clearance standing and at the tail-strike attitude and its pylon's load at full thrust against its limit. Amber is a warning; red will fail (a pylon) or touch (a nacelle).
 - **Fly it:** saved designs are cards in New scenario's aircraft picker, under the three types. A scenario keeps its own copy of the design, so editing or deleting it later doesn't change a saved flight.
 
@@ -144,6 +145,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 |---|---|
 | `src/sim/types.js` | the type registry: each type's data, geometry and what the screens say (`typeById`, `kitFor`, `TYPE_LIST`) |
 | `src/sim/designs.js`, `src/sim/engine-types.js` | v0.5.0: a design (one plain object) and its type entry (`designDef()`: the engines' places, mass, CG and inertias, tanks, gear, pylons; `designNumbers()`); the three engine types as parts |
+| `src/ui/hangar.js` | v0.5.1: the warehouse's hangar (`createHangar()`: merged by material, the people instanced), the camera's box (`cameraBox()`, `rayExit()`) and the walkways' loop (`walkPath()`) |
 | `src/designs-store.js`, `src/ui/warehouse.js`, `src/ui/warehouse.css` | v0.5.0: the designs saved (`gamedump:flight-sim:designs`); the Warehouse page and its 3D view |
 | `src/engine-model.js` | v0.5.0: one engine builder for all three aircraft (each engine type's nacelle and pylon at its station, the tail engine, each fan on its own engine's N1) |
 | `src/ui/engine-row.js` | v0.5.0: the engine panel's and the EICAS's row of dials for 3, 4 or 6 engines |

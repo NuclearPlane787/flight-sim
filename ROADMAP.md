@@ -167,6 +167,15 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.18.0 | **The cabin** (row 2): walking while the autopilot flies, in a cabin that moves with the aircraft (turbulence makes you stagger); passengers as many as the Weight tab says, and crew; one type first (the 777-300ER). | |
 | any time | **Replays and the flight recorder** (row 14), and **challenges** (row 15): a first set after v0.4.0, more with failures. | v0.4.0 for the challenges |
 
+## Found while building v0.5.1 (left for later)
+
+- **The doors don't move:** they're drawn part open. A switch to open and close them, and a design rolled out onto the apron for a look in daylight, would come next.
+- **The people walk a fixed loop** round the walkways and pass through each other at the corners; they don't react to anything.
+- **One hangar for every type:** sized for the 777-300ER with room round it, so the A321 looks small in it.
+- **No sound** in the warehouse (the lamps' hum, distant work).
+- **Built each time the editor opens** (about 0.1 to 0.2 s); it could be kept between opens.
+- **Seen only in SwiftShader** in the cloud when it was written up, not on the Mac's GPU.
+
 ## Found while building v0.5.0 (left for later)
 
 From the run's final entry and the review (`STATUS.md`, 2026-11-13):
