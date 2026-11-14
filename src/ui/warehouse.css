@@ -92,3 +92,53 @@
   .fsw-side { border-left: 0; border-top: 1px solid #26313a; }
 }
 
+
+/* ---- v0.5.2: the parts palette and the tools over the view; the part's panel ---- */
+.fsw-palette { position: absolute; left: 10px; top: 10px; z-index: 2; width: 178px; display: flex; flex-direction: column; gap: 5px;
+  padding: 10px; box-sizing: border-box; max-height: calc(100% - 56px); overflow-y: auto;
+  background: rgba(10, 15, 20, 0.84); border: 1px solid #36414a; border-radius: 8px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35); }
+.fsw-palette h4 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #2fe3ff; }
+.fsw-pal-g { margin-top: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8a9097; }
+.fsw-pal-b { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 9px; text-align: left; cursor: pointer;
+  font: 600 13.5px var(--font); color: #eef3f7; background: #16212b; border: 1px solid #3a4853; border-radius: 6px; }
+.fsw-pal-b small { font-weight: 400; font-size: 11.5px; color: #9aa6b0; }
+.fsw-pal-b:hover:not(:disabled) { border-color: #2fe3ff; }
+.fsw-pal-b.on { background: #0e4a5a; border-color: #2fe3ff; box-shadow: inset 0 0 0 1px #2fe3ff; }
+.fsw-pal-b:disabled { opacity: 0.4; cursor: default; }
+.fsw-hang { display: flex; }
+.fsw-hang button { flex: 1; font-size: 12px; padding: 4px 6px; }
+.fsw-check { display: flex; align-items: center; gap: 7px; margin: 6px 0 2px; font-size: 13px; color: #c9d3db; cursor: pointer; }
+.fsw-check input { accent-color: #2fe3ff; }
+.fsw-pal-note { font-size: 12px; color: var(--warn); }
+.fsw-pal-note:empty { display: none; }
+.fsw-tools { position: absolute; right: 10px; top: 10px; z-index: 2; display: flex; gap: 6px; }
+.fsw-tools .fsui-b { font-size: 13px; padding: 5px 11px; background: rgba(16, 24, 31, 0.9); }
+.fsw-tools .fsui-b:disabled { opacity: 0.45; cursor: default; }
+.fsw-tools .fsui-b[aria-pressed="true"] { border-color: #2fe3ff; color: #7cf0ff; }
+.fsw-legend { position: absolute; right: 10px; bottom: 10px; margin: 0; display: flex; align-items: center; gap: 6px; padding: 4px 9px;
+  font-size: 12px; color: #e6edf3; background: rgba(8, 12, 16, 0.55); border-radius: 5px; pointer-events: none; }
+.fsw-legend[hidden] { display: none; }
+.fsw-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-left: 6px; }
+.fsw-legend i.com { background: conic-gradient(#ffd400 0 25%, #111 0 50%, #ffd400 0 75%, #111 0); }
+.fsw-legend i.cot { background: #e040fb; }
+.fsw-viewhelp { max-width: calc(100% - 400px); }
+.fsw-canvas.place { cursor: crosshair; }
+.fsw-canvas.over { cursor: pointer; }
+.fsw-h small { margin-left: 8px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #8a9097; }
+.fsw-plist { display: flex; flex-direction: column; gap: 3px; }
+.fsw-prow { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 6px 9px; text-align: left; cursor: pointer;
+  font: 13.5px var(--font); color: #dfe6ec; background: #0b1014; border: 1px solid #1d272f; border-radius: 5px; }
+.fsw-prow:hover { border-color: #2fe3ff; }
+.fsw-prow b { color: #7cf0ff; font-weight: 600; }
+.fsw-prow small { flex: none; font-size: 12px; color: #8a9097; }
+.fsw-sel { padding: 10px 12px 12px; background: #0c1a22; border: 1px solid #1f5566; border-radius: 8px; }
+.fsw-sel h3 { margin: 0; font-size: 16px; }
+.fsw-sel h3 small { font-size: 12.5px; font-weight: 400; color: #8a9097; }
+.fsw-btns { display: flex; gap: 8px; margin-top: 10px; }
+.fsw-seg button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 1100px) { .fsw-viewhelp { max-width: calc(100% - 220px); } }
+.fsw-pal-sub { margin-top: 2px; text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+.fsw-tip { position: absolute; z-index: 3; margin: 0; padding: 4px 9px; max-width: 260px; font-size: 12.5px; line-height: 1.3; color: #eafff2;
+  background: rgba(10, 40, 24, 0.86); border: 1px solid #2c7a4a; border-radius: 5px; pointer-events: none; }
+.fsw-tip.bad { color: #ffe0e0; background: rgba(60, 12, 12, 0.88); border-color: #c33; }
+.fsw-tip[hidden] { display: none; }

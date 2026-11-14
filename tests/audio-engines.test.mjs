@@ -150,3 +150,30 @@ test('update() with six engines: no nodes, finite values, cheap (mock context: <
   assert.equal(m.stats.bad, 0);
   assert.ok(ms < 0.05, `${ms.toFixed(4)} ms per update`);
 });
+
+// v0.5.2: mixed engine types, each its own voice: a GE90 pair beside an A321's LEAP-1As runs its fan's tones at its
+// own shaft frequency (its N1 rpm), its waveforms its own; engines of one type keep the kit's (as before).
+test('mixed engines: each type at its own frequencies and with its own waveforms', async () => {
+  const { addPart } = await import('../src/sim/designs.js');
+  const { GE90_115B } = await import('../src/audio/engine-sounds.js');
+  const def = designDef(addPart(newDesign('a321neo'), { kind: 'engine', engine: 'ge90-115b', mount: 'wing', side: 1, s: 10 }));
+  assert.equal(def.sounds.length, 4);
+  assert.equal(designDef(newDesign('b777-300er', { count: 4 })).sounds, undefined);
+  const m = mockContext();
+  const waves = [];
+  const make = m.ctx.createPeriodicWave;
+  m.ctx.createPeriodicWave = (...a) => { const w = make(...a); waves.push(w); return w; };
+  const synth = createSynth({ context: m.ctx });
+  synth.setType(def); await synth.start();
+  const s = state(4, 90), o = { inside: false, aft: 0, dist: 100 };
+  run(m.ctx, synth, s, o, 5);
+  const fanHz = () => m.engines().map((e) => m.all.find((x) => x.kind === 'osc' && x.outs.some((g) => e.gains.some((h) => g.outs?.includes(h)))).frequency.last);
+  const hz = fanHz(), ge = def.sounds.map((x) => x === GE90_115B);
+  assert.ok(ge.filter(Boolean).length === 2);
+  const geHz = hz.filter((_, i) => ge[i]), leapHz = hz.filter((_, i) => !ge[i]);
+  // The GE90's N1 shaft turns slower than the LEAP-1A's at the same N1.
+  assert.ok(Math.max(...geHz) < Math.min(...leapHz), `GE90 ${geHz.map((f) => f.toFixed(1))} vs LEAP ${leapHz.map((f) => f.toFixed(1))}`);
+  assert.ok(Math.abs(geHz[0] / (90 * GE90_115B.n1Hz) - 1) < 0.01);
+  assert.ok(waves.length >= 4, 'the GE90\'s own fan and buzz-saw waveforms made too');
+  assert.equal(m.stats.bad, 0);
+});

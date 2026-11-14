@@ -51,7 +51,7 @@ function arrowNav(e, items) {
   return true;
 }
 
-export function createMenu(root, { version = '', backdrops = [], scenarios, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose } = {}) {
+export function createMenu(root, { version = '', backdrops = [], scenarios, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose, onFlyDesign } = {}) {
   const el = document.createElement('div');
   el.className = 'fsm';
   el.hidden = true;
@@ -277,6 +277,8 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
           btn('warehouse').focus({ preventScroll: true });
           onWarehouseClose?.();
         };
+        // v0.5.2: the warehouse's Fly it: the warehouse closes, and New scenario opens with the design picked.
+        if (onFlyDesign) warehouse.onfly = (d) => { warehouse.close(); onFlyDesign(d); };
         return warehouse;
       }).catch((err) => { warehouseLoad = null; throw err; });
     }

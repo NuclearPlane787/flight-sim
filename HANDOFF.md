@@ -4,6 +4,10 @@ Read this first if you're picking the game up. Its first section is the job in h
 
 It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run, reviewed it, and then made v0.4.1 (Shane's fixes after flying it), v0.4.2 (the list of what was already known) v0.4.3 (Shane's findings from testing v0.4) and v0.4.4, then settled v0.5.0's scope with Shane, briefed the Claude Code run that built it (2026-11-13, 03:26 to 04:10 KST), and reviewed it. That last session wrote this first section for the next one, then made v0.5.1 (the warehouse's hangar).
 
+## First: v0.5.3, a Claude Code run (2026-11-14)
+
+Before v0.6.0, Shane runs v0.5.3 in Claude Code from `V053.md` (written by the Cowork session that made v0.5.1 and v0.5.2): the airframe from parts, its handling from them (Shane, 2026-11-14: "Handling from parts", one rigid body, no flex and no breaking). The run writes `STATUS.md` and `README.md`; the version's write-up (`src/version.js`, `Updates.md`, `ROADMAP.md`, `PLAN.md`, `AGENTS.md`'s State, this file's versions table) is a Cowork session's review afterwards: check the run against `V053.md`'s definition of done, run `tests/cloud/v052-editor.cjs` and `v052-designs.cjs` with the other cloud checks, and write it up. The run doesn't read this file's v0.6.0 section as its job.
+
 ## The next session: v0.6.0, East Asia, from start to finish
 
 Shane, 2026-11-10: "I would rather a new session work completely from end to end of an update." That's you:
@@ -18,10 +22,10 @@ Your last job is to rewrite this section for the session after you (v0.7.0 in th
 
 ### Where you start
 
-- **v0.5.0 is pushed** (`3aeaa07`), and **v0.5.1 was written up and ready to push** when this was last updated (2026-11-13, about 10:55 KST): the warehouse's 3D view is now the inside of a hangar. Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **v0.5.1 is pushed**, **v0.5.2 was written up and ready to push** when this was last updated (2026-11-14, morning: parts anywhere in the warehouse, KSP's way), and **v0.5.3 comes first** (above). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
 - **Passing at v0.5.1:**
-  - 722 unit tests (`node --test tests/*.test.mjs`, about 18 s on the Mac through the guard), the three golden flights among them;
-  - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weight-copy.cjs`, `athr-lever.cjs`, `route-views.cjs`, `weather-final.cjs` and `v044-hud.cjs` (`STATUS.md`'s v0.5.0 review entry has the results), and `v051-hangar.cjs` (v0.5.1's);
+  - 744 unit tests at v0.5.2 (`node --test tests/*.test.mjs`, about 20 s on the Mac through the guard), the three golden flights among them;
+  - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weight-copy.cjs`, `athr-lever.cjs`, `route-views.cjs`, `weather-final.cjs` and `v044-hud.cjs` (`STATUS.md`'s v0.5.0 review entry has the results), `v051-hangar.cjs` (v0.5.1's), and `v052-editor.cjs` and `v052-designs.cjs` (v0.5.2's);
   - on the Mac's GPU (the run): `browser-designs.mjs` 14/14 (60 fps with six engines at Gimpo and over Seoul), `browser-warehouse.mjs`, `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` on both Boeings, `browser-picker.mjs`, `audio-render.mjs` 45/45 on each type.
 - **Two settings change how a test flight behaves** (v0.4.1, in Settings, saved under `gamedump:flight-sim:settings`): Indestructible (no crash ends a flight) and Boeing auto-trim (since v0.4.2 with a flare law below 50 ft). A browser check that expects a crash, or Boeing's speed-stable law, must start with them off (a fresh profile has them off).
 - **Any flight may fly a design** (v0.5.0): a check that expects a type's own numbers starts from the type, not from a saved scenario that might hold a design. `?design=<json>` starts one in a test.
@@ -106,7 +110,8 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | v0.4.3 | Shane's findings: the slats and flaps stay on the bent wing in flight; solid engines with centred fans; the 777 settles after a pitch input as the 787; auroras on every clear night | yes (`1f04a03`) |
 | v0.4.4 | Hide panels; the view switch kept at the top right in the cockpit; auroras that undulate; the Boeings' main legs folded into the wing; the A321's setup weights | yes (`d484689`) |
 | v0.5.0 | The Warehouse: designs on any of the three types (engines: count, type, stations, thrust; empty weight, fuel, longer gear, name, registration), flown from New scenario; engines as parts in the sim, the model, the screens and the sound; pylons that give way | yes (`3aeaa07`) |
-| v0.5.1 | The warehouse is a hangar: steel frames and roof trusses, skylights and lamps, offices, racks, benches and a spare engine along the walls, sliding doors part open onto the apron, a painted floor with the stand's lead-in and a stop bar per type, people walking; the camera stays inside | not yet when this was written: `sh tools/push.sh v0.5.1` |
+| v0.5.1 | The warehouse is a hangar: steel frames and roof trusses, skylights and lamps, offices, racks, benches and a spare engine along the walls, sliding doors part open onto the apron, a painted floor with the stand's lead-in and a stop bar per type, people walking; the camera stays inside | yes |
+| v0.5.2 | Parts anywhere, KSP's way: engines under or over the wing, on the rear fuselage or in the tail (up to 8, mixed types, nudged and turned), wing tanks, hold tanks and ballast, each with its mass, drag and thrust line; the editor's palette, ghost, mirror, select, drag, undo and redo, the CoM and CoT, new checks, Fly it | not yet when this was written: `sh tools/push.sh v0.5.2` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
@@ -116,6 +121,7 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 - **v0.4.1's** is in its `STATUS.md` entry ("2026-11-11, 00:20 KST"): 646 unit tests, the cloud checks, and before/after pictures of the wings, the signs and the card.
 - **v0.5.0's** is in its `STATUS.md` entries: the brief's ("2026-11-13, 03:35 KST"), the run's (from "03:26" to its final entry, "04:10 KST") and the review's ("2026-11-13, 09:30 KST"): 719 unit tests, the run's Chrome checks on the Mac, the cloud checks, and the pictures `v050-*.png`.
 - **v0.5.1's** is in its `STATUS.md` entry ("2026-11-13, 10:55 KST"): 722 unit tests, `tests/cloud/v051-hangar.cjs` and the pictures `v051-hangar-*.jpg`.
+- **v0.5.2's** is in its `STATUS.md` entry ("2026-11-14"): 744 unit tests, `tests/cloud/v052-editor.cjs` and `v052-designs.cjs`, and the pictures `v052-*.jpg`.
 - **v0.4.4's** is in its `STATUS.md` entry ("2026-11-13, 03:15 KST").
 - **v0.4.3's** is in its `STATUS.md` entry ("2026-11-13, 01:35 KST"): 674 unit tests, the cloud checks, before/after pictures of the bent wings, the engines and the fan, the aurora, and the pitch measurements (`tests/boeing-pitch-settle.test.mjs`).
 - **v0.4.2's** is in its `STATUS.md` entry ("2026-11-12, 23:05 KST"): 668 unit tests, the cloud checks, and pictures of the runway signs, the snow over the paint, both PFDs' windshear warning, the wiper, the spray and the crash screen (`tests/cloud/v042-shots.cjs`). It also says why broken cloud far off and the 777's yaw were left as they were.
@@ -265,6 +271,18 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | `src/world/spray.js` | `createSpray(GEAR, uniforms)`, `sprayAmount()`: instanced sprites per leg in the model's frame, a function of a clock (no per-frame state). |
 | `tests/cloud/v042-shots.cjs` | v0.4.2's pictures, some against v0.4.1 served beside it as `games/flight-sim-041/`. |
 | New tests | `boeing-autotrim-787`, `yaw-approach`, `windshear-ahead`, `spray`; `boeing-autotrim`, `indestructible`, `taxisigns`, `weather-autoland` (tightened) and `weather-precip` grew. |
+
+### v0.5.2: parts anywhere
+
+| File | What's there |
+|---|---|
+| `src/sim/designs.js` | A design is `v: 2` with `parts` (engines, tanks, ballast; mirror twins by `pair`). `normalizeDesign()` migrates v0.5.0's fields exactly (and an old caller's `{ ...design, count }` still rebuilds the engines from them). `addPart()`, `updatePart()` (the twin follows the shared fields; a part moved to the tail loses its twin), `removePart()`, `setMirror()`. `airframe(base)` (the mounts' sketch of the wing and fuselage), `mountRange()`, `placeEngine()`, `placeTank()`, `placeBallast()`. `buildGeo()`: `NACELLES` with each part's id and mount, `THRUST_DIRS`, `PODS`, tank-strike crash points; the base's exact geometry when the engines are its own (`baseEngines()`). `buildData()`: `ENGINE_DATA` (mixed engines), `ENGINE_MASSES`, `DRAG_PARTS`, the tanks' fuel; v0.5.0's pylon scatter key for designs v0.5.0 could have made (`v1Shape()`). `def.sounds` for mixed types. |
+| `src/sim/sim.js` | `bindKit()`: an engine kit per `ENGINE_DATA` entry (cached by the frozen object); the engine loop steps each with its own; `DRAG_PARTS` against the airflow with their moments (before `fAeroX`); the thrust along `THRUST_DIRS` with full moments (straight thrust takes the old exact path); `ENGINE_MASSES` in `massPropsDesign()`. |
+| `src/engine-model.js` | `addEngine()`: a turned engine through one rotation about its centre (its fan's axis too); `overwingPylon()`, `bodyPylon()` (the body's half-width from `host.bodyHalf`); `addPod()` for a wing tank (bone `pod<k>`, its span as the bend on the Boeings). |
+| `src/ui/warehouse.js` | The editor: `PALETTE`, the view's hooks (`down` claims a press on a part, `move`, `up`, `hover`, `click`, `cancel`, `leave`), the overlay (`setOverlay()`: ghosts, selection lines, the hold's parts, the CoM and CoT, drawn without depth test), `project()`, the camera's view offset for the palette; pure: `readout()`, `thrustLine()`, `editDesign()`, `editPart()`, `placement()`, `hitAirframe()`, `partBox()`, `partBoxes()`, `rayBox()`, `pickPart()`, `createHistory()`, `viewKey()` (the parts it draws, not thrust or the hold). `window.__wh` is the page, `window.__fsw` the view. Fly it calls `api.onfly`. |
+| `src/audio/synth.js` | `SNDS` (`def.sounds`): each engine's spec in `update()`, and its waveforms (`wavesOf()`, `applyWaves()`). |
+| `tests/designs-parts.test.mjs`, `tests/warehouse.test.mjs`, `tests/designs-flight.test.mjs`, `tests/audio-engines.test.mjs` | The parts' API, mounts, data and sim effects; the editor's pure parts; two parts designs flown; mixed engines' voices. |
+| `tests/cloud/v052-editor.cjs`, `v052-designs.cjs` | The editor's flows from the cloud (attach, select, drag, undo, delete, checks, Save, Fly it); three parts designs in the game. |
 
 ### v0.5.1: the hangar
 

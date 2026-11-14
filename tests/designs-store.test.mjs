@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DesignStore, DESIGNS_KEY } from '../src/designs-store.js';
-import { normalizeDesign, newDesign } from '../src/sim/designs.js';
+import { normalizeDesign, newDesign, v1View } from '../src/sim/designs.js';
 
 class Mem {
   constructor() { this.m = new Map(); this.full = false; this.writes = 0; }
@@ -26,8 +26,8 @@ test('create, list, get: newest first, normalized, free names', () => {
   assert.equal(a.design.name, 'My A321neo');
   assert.equal(b.design.name, 'My A321neo 2');
   assert.equal(c.design.name, 'My 777-300ER');
-  assert.equal(c.design.count, 4);
-  assert.equal(c.design.stations.length, 2);
+  assert.equal(v1View(c.design).count, 4);
+  assert.equal(v1View(c.design).stations.length, 2);
   const ids = st.list().map((d) => d.id);
   assert.deepEqual(ids, [c.design.id, b.design.id, a.design.id]);
   assert.equal(new Set(ids).size, 3);
@@ -43,10 +43,10 @@ test('save normalizes and replaces in place; out-of-range values clamp', () => {
   const a = st.create('b787-9').design, b = st.create('a321neo').design;
   const r = st.save({ ...a, thrustScale: 9, gearExtendM: -3, oewDeltaKg: 1e9, count: 5, engine: 'nope' });
   assert.ok(r.ok);
-  assert.equal(r.design.thrustScale, 3);
+  assert.equal(v1View(r.design).thrustScale, 3);
   assert.equal(r.design.gearExtendM, 0);
-  assert.equal(r.design.count, 2);
-  assert.equal(r.design.engine, 'genx-1b');
+  assert.equal(v1View(r.design).count, 2);
+  assert.equal(v1View(r.design).engine, 'genx-1b');
   assert.deepEqual(r.design, normalizeDesign(r.design));
   assert.deepEqual(st.list().map((d) => d.id), [b.id, a.id], 'the order stays');
 });
@@ -58,7 +58,7 @@ test('duplicate names a copy, rename checks the name, remove drops it', () => {
   assert.equal(c1.design.name, 'My A321neo (copy)');
   assert.equal(c2.design.name, 'My A321neo (copy 2)');
   assert.notEqual(c1.design.id, a.id);
-  assert.equal(c1.design.engine, 'ge90-115b');
+  assert.equal(v1View(c1.design).engine, 'ge90-115b');
   assert.equal(c1.design.gearExtendM, 1.5);
   assert.deepEqual(st.duplicate('nope'), { ok: false, error: 'missing' });
   assert.deepEqual(st.rename(a.id, 'x'), { ok: false, error: 'name' });
@@ -100,5 +100,5 @@ test('no storage, broken JSON, junk entries: an empty or cleaned list, never a t
   mem.m.set(DESIGNS_KEY, JSON.stringify([null, 3, { base: 'concorde', id: 'x' }, { base: 'a321neo' }, good, { ...good, name: 'dupe id' }, { ...good, id: 'dbig', thrustScale: 50 }]));
   const l = new DesignStore(mem).list();
   assert.deepEqual(l.map((d) => d.id), ['dgood', 'dbig']);
-  assert.equal(l[1].thrustScale, 3);
+  assert.equal(v1View(l[1]).thrustScale, 3);
 });

@@ -510,11 +510,13 @@ async function boot() {
     }
     lastAutosave = performance.now();
   }
-  async function newScenario() {
+  async function newScenario(design = null) {
     menu.hide();
     const last = store.load('lastflight', null);
-    // Decision 4: a new scenario starts clear, whatever the last flight flew in.
-    const p = await setup.show(last ? { ...last, weather: 'clear' } : { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' },
+    // Decision 4: a new scenario starts clear, whatever the last flight flew in. v0.5.2: from the warehouse's Fly it,
+    // with that design picked.
+    const from = last ? { ...last, weather: 'clear' } : { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' };
+    const p = await setup.show(design ? { ...from, design, type: design.base } : from,
       { title: 'New scenario', name: scenarios ? scenarios.defaultName() : 'Scenario 1', nameField: true, cancel: true });
     if (!p) { menu.show(); menu.refresh(); return; }
     const name = p.name; delete p.name;
@@ -1173,6 +1175,7 @@ async function boot() {
     onContinue: (id) => loadScenario(id),
     onLoad: (id) => loadScenario(id),
     onNew: () => newScenario(),
+    onFlyDesign: (d) => newScenario(d),   // v0.5.2: the warehouse's Fly it
     onLogbook: () => openLogbook(false),
     onSettings: () => settingsPage.open(),
     onControls: () => controlsPage.open(),

@@ -1,11 +1,11 @@
 // v0.5.0, flying designs: a four-engine 777 and a GE90 A321 with its gear lengthened take off and climb, then fly a
-// 10 nm final and land, flown by the game's test pilot (tests/e2e-controller.js, run here in node with a stand-in
+// 10 nm final and land (v0.5.2: and two designs made of parts), flown by the game's test pilot (tests/e2e-controller.js, run here in node with a stand-in
 // for the page: window.__fs's sim and input). Flat ground at height 0; the runway along grid north from (0, 0).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createSim } from '../src/sim/sim.js';
-import { newDesign, designDef, designNumbers } from '../src/sim/designs.js';
+import { newDesign, designDef, designNumbers, addPart } from '../src/sim/designs.js';
 
 const KT = 0.514444, FT = 0.3048, NM = 1852, DEG = Math.PI / 180, DT = 1 / 120;
 const SRC = readFileSync(new URL('./e2e-controller.js', import.meta.url), 'utf8');
@@ -38,7 +38,7 @@ function takeoffAndClimb(design, lever) {
   let apOn = false, maxPitch = 0;
   for (let k = 0; k < 120 * 240; k++) {
     r.step();
-    maxPitch = Math.max(maxPitch, s.pitch / DEG);
+    if (s.agl < 35 * FT) maxPitch = Math.max(maxPitch, s.pitch / DEG);   // the rotation's, not the climb's
     assert.equal(s.crashed, null, `${def.engineName}: crashed (${s.crashed}) at ${s.t.toFixed(1)} s: ${r.log.join(' | ')}`);
     if (!s.onGround && s.agl > 50 * FT) sim.controls.gearDown = false;
     if (!apOn && s.agl > 600 * FT && sim._core.airTime > 6) {
@@ -85,11 +85,18 @@ const CASES = [
   // up on the runway into a tail strike (the physics: tests/designs.test.mjs's numbers). Its pilot takes off at about
   // a third of the lever, which is still more thrust than the A321neo's own TOGA.
   { name: 'a GE90 A321 with 1.5 m longer gear', design: newDesign('a321neo', { id: 'fly-ge90-a321', engine: 'ge90-115b', gearExtendM: 1.5 }), lever: 0.3 },
+  // v0.5.2, designs made of parts: four LEAP-1As (a pair over the wing) with two wing tanks; a 787 with a LEAP-1A pair
+  // over the wing beside its GEnx (mixed engines, each its own thrust). Their pilots take off part way (light, the
+  // A321's full thrust would lift its nose: the warehouse warns past 0.8).
+  { name: 'an A321 with a LEAP pair over the wing and two wing tanks', design: addPart(addPart(newDesign('a321neo', { id: 'fly-overwing' }),
+    { kind: 'engine', engine: 'leap-1a', mount: 'overwing', side: 1, s: 9.5 }), { kind: 'tank', mount: 'wing', side: 1, s: 12, kg: 3000 }), lever: 0.55 },
+  { name: 'a 787-9 with a LEAP-1A pair over the wing', design: addPart(newDesign('b787-9', { id: 'fly-787-mixed' }), { kind: 'engine', engine: 'leap-1a', mount: 'overwing', side: 1, s: 15 }), lever: 0.8 },
 ];
 for (const C of CASES) {
   test(`${C.name} takes off, climbs on the autopilot and lands`, () => {
     const def = designDef(C.design), N = designNumbers(def);
     assert.ok(N.engines.every((e) => e.clearRestM > 0), 'the nacelles clear the ground at rest');
+    assert.ok(N.cgShiftMac > -0.12 && N.cgShiftMac < 0.25, `the CG within the warehouse's limits: ${(N.cgShiftMac * 100).toFixed(1)} % MAC`);
     const up = takeoffAndClimb(C.design, C.lever);
     assert.ok(up.apOn, `climbed out to the AP: ${up.log.join(' | ')}`);
     assert.ok(up.s.pos.z > 7900 * FT, `climbed to 8,000 ft: ${(up.s.pos.z / FT).toFixed(0)} ft`);

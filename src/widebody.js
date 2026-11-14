@@ -24,7 +24,7 @@ import { createWidebodyLivery, finBoxFor, fuseUVFor } from './livery-widebody.js
 import { fuselageShape, curve } from './widebody-shape.js';
 import { boeingWindowOutlines } from './cockpit-windows-boeing.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
-import { addEngine, engineAnimator } from './engine-model.js';
+import { addEngine, addPod, engineAnimator } from './engine-model.js';
 import { engineOfType } from './sim/engine-types.js';
 
 const DEG = Math.PI / 180;
@@ -379,7 +379,9 @@ export function createWidebody(spec, opts = {}) {
 
     // --- Engines (v0.5.0: src/engine-model.js, one per nacelle on this wing; the type's two as they always were) ---
     // v0.4.3: every part of an engine rides the wing's bend at its pylon's span, as one piece (bend: true).
-    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: true }));
+    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: true, bodyHalf: G.FUSELAGE_WIDTH / 2 }));
+    // v0.5.2: a design's external tanks under this wing.
+    ((def && G.PODS) || []).forEach((t, k) => { if ((t.y >= 0) === (side > 0)) addPod(b, bone, t, { wingSec, bend: true }, k); });
 
     // --- Main gear: a four- or six-wheel bogie on a leg that folds inward into the belly ---
     const gm = side > 0 ? G.GEAR.left : G.GEAR.right;

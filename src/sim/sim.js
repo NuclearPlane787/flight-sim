@@ -11,7 +11,7 @@
 
 import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
 import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind, microburstInto } from './weather.js';
-import { leverToPhi } from './engines.js';
+import { leverToPhi, createEngines } from './engines.js';
 import { kitFor, DEFAULT_TYPE } from './types.js';
 import { resolveDef, isDesign } from './designs.js';
 
@@ -101,12 +101,13 @@ function newCore(A, boeing, n) {
 
 // type: a type id (src/sim/types.js), the A321neo by default. sim.setType(id) changes it (and
 // resets nothing else: call reset() or restore() next).
+const ENG_KITS = new WeakMap();   // v0.5.2: engine models per engine's numbers (a design's mixed engines)
 export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   const groundFn = ground || defaultGround;
   // Everything the type decides, bound by bindType() below.
   let typeDef, A, kit, coefficients, liftCurve, machLift, clOfAlpha, engineStep, togaThrust, idleN1, detentName,
     leverToPhi, leverForPhi, n1ForPhi, LEVER_CL, legStep, fbwStep, apStep, athrStep, AP_FIELDS,
-    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, SKID_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG;
+    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, SKID_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG, engKits = null;
   // v0.5.0: a type id or a design (src/sim/designs.js); a design flies its own data and geometry on its base's kit.
   const bindKit = (id) => {
     typeDef = resolveDef(id);
@@ -116,6 +117,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     ({ legStep } = kit.gear); ({ fbwStep } = kit.fbw); ({ apStep, athrStep, AP_FIELDS } = kit.auto);
     ({ GEAR, GROUND_Z, ENGINES, CRASH_POINTS } = typeDef.geo);
     SKID_POINTS = skidPoints(CRASH_POINTS);
+    // v0.5.2: a design with mixed engines (types or thrusts) has an engine model per engine, from its own numbers.
+    engKits = A.ENGINE_DATA ? A.ENGINE_DATA.map((d) => { let k = ENG_KITS.get(d); if (!k) { k = createEngines({ ...A, ...d }); ENG_KITS.set(d, k); } return k; }) : null;
     CONFIG_BY_LEVER = A.FLAP_LEVER; NEXT_CONFIG = A.NEXT_CONFIG;
   };
   bindKit(type);
@@ -267,9 +270,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   function massPropsDesign(wing, fuel) {
     let oew = A.OEW, mx = A.OEW * A.CG_OEW_X, dIxx = A.DESIGN_DIXX, dIyy = A.DESIGN_DIYY, dIzz = A.DESIGN_DIZZ;
     if (X.eOff) {
-      const m = A.ENGINE_MASS_KG, N = typeDef.geo.NACELLES;
+      const N = typeDef.geo.NACELLES;
       for (let i = 0; i < NE; i++) {
         if (!(X.eOff & (1 << i))) continue;
+        const m = A.ENGINE_MASSES ? A.ENGINE_MASSES[i] : A.ENGINE_MASS_KG;
         const n = N[i], rx = n.x - A.CG_OEW_X;
         oew -= m; mx -= m * n.x;
         dIxx -= m * (n.y * n.y + n.z * n.z - A.IXX_ZFW_PER_KG);
@@ -468,7 +472,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       const e = eng[i];
       if (X.eOff & (1 << i)) { e.n1 = e.n1Target = e.thrustN = e.ffKgS = e.rev = 0; X.eN1[i] = X.eN1t[i] = X.eThr[i] = X.eFf[i] = X.eRev[i] = 0; continue; }
       e.n1 = X.eN1[i]; e.rev = X.eRev[i]; e.fuelOk = fuelTotal > 0;
-      engineStep(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
+      (engKits ? engKits[i].engineStep : engineStep)(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
       X.eN1[i] = e.n1; X.eRev[i] = e.rev; X.eN1t[i] = e.n1Target; X.eThr[i] = e.thrustN; X.eFf[i] = e.ffKgS;
       // v0.5.0: past its pylon's limit (a design's: 1.5 × its engine type's rated thrust) the engine tears off. It's
       // a failure, not a crash: Indestructible doesn't stop it. From this step on it makes no thrust and burns
@@ -527,15 +531,34 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     M[0] = qS * A.SPAN * (co.Cl - rollCtrl);
     M[1] = qS * A.MAC * co.Cm - (-cgX) * F[2];
     M[2] = qS * A.SPAN * co.Cn + (-cgX) * F[1];
+    // v0.5.2, a design's parts' drag (its nacelles beyond the base's, its external tanks): each against the airflow at
+    // its own place, with its moments about the CG (a lone engine far out on one side yaws the nose towards it).
+    const DP = A.DRAG_PARTS;
+    if (DP !== undefined && V > 2) {
+      for (let i = 0; i < DP.length; i++) {
+        const p = DP[i], dq = qbar * p.cda * iv;
+        const fx = -dq * u, fy = -dq * v, fz = -dq * w;
+        const rx = p.x - cgX, ry = -p.y, rz = -p.z;
+        F[0] += fx; F[1] += fy; F[2] += fz;
+        M[0] += ry * fz - rz * fy; M[1] += rz * fx - rx * fz; M[2] += rx * fy - ry * fx;
+      }
+    }
     const fAeroX = F[0], fAeroZ = F[2];
 
-    // Thrust at the engines (along body x).
+    // Thrust at the engines (along body x; a design's engines along their own lines, v0.5.2).
+    const TD = typeDef.geo.THRUST_DIRS;
     for (let i = 0; i < NE; i++) {
       const T = eng[i].thrustN;
       const rx = ENGINES[i].x - cgX, ry = -ENGINES[i].y, rz = -ENGINES[i].z;
-      F[0] += T;
-      M[1] += rz * T;
-      M[2] += -ry * T;
+      if (!TD) {
+        F[0] += T;
+        M[1] += rz * T;
+        M[2] += -ry * T;
+        continue;
+      }
+      const dr = TD[i], fx = T * dr[0], fy = -T * dr[1], fz = -T * dr[2];
+      F[0] += fx; F[1] += fy; F[2] += fz;
+      M[0] += ry * fz - rz * fy; M[1] += rz * fx - rx * fz; M[2] += rx * fy - ry * fx;
     }
 
     // Gear (only when near the ground and the legs are down and locked).

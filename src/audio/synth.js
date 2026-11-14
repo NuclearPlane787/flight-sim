@@ -77,8 +77,8 @@ const TONE2 = 0.65;
 // add up as n/2 twins'). Nothing scales the level by the count: n engines' voices are incoherent
 // (their own noise loops, wanders and pitches), so they add in power, +10·log10(n/2) dB over two
 // (+3.0 dB with four, +4.8 with six), as real engines do. tests/audio-render.mjs measures it.
-export const MAX_ENGINES = 6;
-const SPREAD_RANK = { 3: [0, 2, 1], 4: [0, 2, 3, 1], 5: [0, 3, 1, 4, 2], 6: [0, 3, 1, 4, 2, 5] };
+export const MAX_ENGINES = 8;   // v0.5.2: a design's up to eight
+const SPREAD_RANK = { 3: [0, 2, 1], 4: [0, 2, 3, 1], 5: [0, 3, 1, 4, 2], 6: [0, 3, 1, 4, 2, 5], 7: [0, 4, 1, 5, 2, 6, 3], 8: [0, 4, 1, 5, 2, 6, 3, 7] };
 function spreadOf(count) {
   if (count <= 2) return [0, 1].slice(0, count);
   return SPREAD_RANK[count].map((r) => r * 2 / (count - 1));
@@ -156,6 +156,11 @@ export function createSynth({ context = null } = {}) {
   let vol = FULL_VOLUME;
   let inside = true;
   let SND = LEAP_1A;  // the engine's numbers (v0.3.0: setType)
+  // v0.5.2: a design's mixed engine types: each engine's own numbers (def.sounds; null: all SND's), and each spec's
+  // waveforms, made once.
+  let SNDS = null;
+  const specOf = (i) => (SNDS && SNDS[i]) || SND;
+  const waves = new Map();
   // v0.5.0: how many engines, where (sides: −1 left … 1 right), and each one's spread (above).
   let count = 2, sides = [-1, 1], spread = spreadOf(2);
   let boeing = false;  // v0.4.0: a Boeing sounds a siren with its windshear warning
@@ -165,7 +170,7 @@ export function createSynth({ context = null } = {}) {
   let siren = null;
   const dying = [];    // fading groups: disconnected a moment later, in update()
   let gustIas = -1, gustDev = 0, gustT = -1;   // the gusts' filters
-  const G = (voice) => SND.gain[voice] ?? 1;
+  const G = (voice, S = SND) => S.gain[voice] ?? 1;
 
   // Edge detectors and state between updates.
   let hasPrev = false, pT = 0, pGear = 0, pFlap = 0, pSlat = 0, pGround = false, pRev = 0;
@@ -229,8 +234,8 @@ export function createSynth({ context = null } = {}) {
 
   // The fan's tones, at the N1 shaft's frequency: the blade-passing frequency (18) and its
   // harmonics, each with sidebands, and the shaft's own first orders.
-  function fanAmps() {
-    const B = SND.fanBlades;
+  function fanAmps(S = SND) {
+    const B = S.fanBlades;
     const a = new Float32Array(4 * B + 1);
     a[1] = 0.10; a[2] = 0.06; a[3] = 0.04;
     a[B] = 1.0; a[B - 1] = a[B + 1] = 0.18; a[B - 2] = a[B + 2] = 0.07;
@@ -241,8 +246,8 @@ export function createSynth({ context = null } = {}) {
   // The buzz-saw: every shaft order, uneven (each blade a little different), strongest from
   // a third to two thirds of the blade-passing frequency (the 6th to the 12th with 18 blades),
   // weak at the first few, fading above.
-  function buzzAmps() {
-    const lo = SND.fanBlades / 3, hi = 2 * SND.fanBlades / 3;
+  function buzzAmps(S = SND) {
+    const lo = S.fanBlades / 3, hi = 2 * S.fanBlades / 3;
     const a = new Float32Array(61);
     let s = 7;
     const rnd = () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return s / 4294967296; };
@@ -250,8 +255,21 @@ export function createSynth({ context = null } = {}) {
       const env = k < lo ? 0.15 + 0.85 * (k / lo) * (k / lo) : k <= hi ? 1 : hi / k;
       a[k] = env * (0.25 + 0.75 * rnd());
     }
-    a[SND.fanBlades] = Math.max(a[SND.fanBlades], 0.6);
+    a[S.fanBlades] = Math.max(a[S.fanBlades], 0.6);
     return a;
+  }
+  // A spec's two waveforms (v0.5.2), made once per spec.
+  function wavesOf(S) {
+    let w = waves.get(S);
+    if (!w) { w = { fan: harmonicWave(fanAmps(S), 11), buzz: harmonicWave(buzzAmps(S), 23) }; waves.set(S, w); }
+    return w;
+  }
+  // Each engine's waveforms: its own spec's when the engines are mixed, else the kit's (as before v0.5.2).
+  function applyWaves() {
+    n.engines.forEach((E, i) => {
+      const w = SNDS ? wavesOf(specOf(i)) : { fan: n.kit.fanWave, buzz: n.kit.buzzWave };
+      E.fanOsc.setPeriodicWave(w.fan); E.buzzOsc.setPeriodicWave(w.buzz);
+    });
   }
 
   function noise(buf) {
@@ -338,7 +356,11 @@ export function createSynth({ context = null } = {}) {
       for (const s of g.src) { try { s.stop(now + 0.4); } catch { /* already stopped */ } }
       dying.push({ node: g.p, at: now + 0.5 });
     }
-    while (E.length < count) E.push(makeEngine(n.kit, sides[E.length] * 0.6));
+    while (E.length < count) {
+      const e = makeEngine(n.kit, sides[E.length] * 0.6);
+      if (SNDS) { const w = wavesOf(specOf(E.length)); e.fanOsc.setPeriodicWave(w.fan); e.buzzOsc.setPeriodicWave(w.buzz); }
+      E.push(e);
+    }
   }
 
   function build() {
@@ -774,25 +796,26 @@ export function createSynth({ context = null } = {}) {
       const pct = e && !e.off ? Math.max(0, e.n1 || 0) : 0;
       const n1 = clamp01(pct / 100), on = running(n1);
       const pw = clamp01((n1 - 0.2) / 0.765);             // power, idle 0 … TOGA 1
-      const d = spread[i], k = d === 0 ? 1 : d === 1 ? SND.split : Math.pow(SND.split, d);
+      const S = specOf(i);
+      const d = spread[i], k = d === 0 ? 1 : d === 1 ? S.split : Math.pow(S.split, d);
       const tone = i % 2 ? TONE2 : 1;
-      const shaft = Math.max(1, pct) * SND.n1Hz * k;
+      const shaft = Math.max(1, pct) * S.n1Hz * k;
       set(E.p.pan, sides[i] * (inside ? 0.35 : 0.6), 0.2);
       set(E.fanOsc.frequency, shaft, 0.1);
       set(E.buzzOsc.frequency, shaft, 0.1);
-      set(E.whineOsc.frequency, SND.coreOrder * (SND.n2Base + SND.n2Slope * pct) * SND.n2Hz * k, 0.1);
-      set(E.fanBp.frequency, Math.max(300, 1.4 * SND.fanBlades * shaft), 0.1);
-      set(E.jetLp.frequency, SND.jetHz[0] + SND.jetHz[1] * pw, 0.15);
-      set(E.coreLp.frequency, SND.coreHz[0] + SND.coreHz[1] * pw, 0.15);
+      set(E.whineOsc.frequency, S.coreOrder * (S.n2Base + S.n2Slope * pct) * S.n2Hz * k, 0.1);
+      set(E.fanBp.frequency, Math.max(300, 1.4 * S.fanBlades * shaft), 0.1);
+      set(E.jetLp.frequency, S.jetHz[0] + S.jetHz[1] * pw, 0.15);
+      set(E.coreLp.frequency, S.coreHz[0] + S.coreHz[1] * pw, 0.15);
       // Levels: the fan's tones grow with its tip speed; the buzz-saw comes in as the tips
       // go supersonic (72–95 % N1), ahead of the engine; the jet's roar steeply with power,
       // behind it.
-      set(E.fan.gain, ENG.fan * G('fan') * tone * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
-      set(E.buzz.gain, ENG.buzz * G('buzz') * tone * mix('buzz') * on * smooth(SND.buzzFrom, SND.buzzTo, n1) * (0.2 + 0.8 * ahead));
-      set(E.whine.gain, ENG.whine * G('whine') * mix('whine') * on * (0.6 + 0.4 * n1) * (0.5 + 0.5 * ahead));
-      set(E.fanNoise.gain, ENG.fanNoise * G('fanNoise') * mix('fanNoise') * on * (0.1 + 0.9 * n1 * n1 * n1));
-      set(E.jet.gain, ENG.jet * G('jet') * mix('jet') * on * Math.pow(pw, 2.2) * (0.35 + 0.65 * behind));
-      set(E.core.gain, ENG.core * G('core') * mix('core') * on * (0.3 + 0.7 * Math.pow(pw, 1.5)) * (0.6 + 0.4 * behind));
+      set(E.fan.gain, ENG.fan * G('fan', S) * tone * mix('fan') * on * (0.3 + 0.7 * Math.pow(n1, 2.2)) * (0.7 + 0.3 * ahead));
+      set(E.buzz.gain, ENG.buzz * G('buzz', S) * tone * mix('buzz') * on * smooth(S.buzzFrom, S.buzzTo, n1) * (0.2 + 0.8 * ahead));
+      set(E.whine.gain, ENG.whine * G('whine', S) * mix('whine') * on * (0.6 + 0.4 * n1) * (0.5 + 0.5 * ahead));
+      set(E.fanNoise.gain, ENG.fanNoise * G('fanNoise', S) * mix('fanNoise') * on * (0.1 + 0.9 * n1 * n1 * n1));
+      set(E.jet.gain, ENG.jet * G('jet', S) * mix('jet') * on * Math.pow(pw, 2.2) * (0.35 + 0.65 * behind));
+      set(E.core.gain, ENG.core * G('core', S) * mix('core') * on * (0.3 + 0.7 * Math.pow(pw, 1.5)) * (0.6 + 0.4 * behind));
       const rev = e && !e.off ? clamp01(e.rev || 0) : 0;
       set(E.rev.gain, mix('reverser') * rev * (0.15 + n1 * n1) * 0.7);
       set(E.revBp.frequency, 400 + n1 * 600, 0.15);
@@ -910,6 +933,7 @@ export function createSynth({ context = null } = {}) {
         if (!context && !AC) return Promise.resolve(false);
         ctx = context || new AC(); // tests pass an OfflineAudioContext
         n = build();
+        if (SNDS) applyWaves();   // v0.5.2: mixed engines' own waveforms
         applyWeather();
       }
       if (context) return Promise.resolve(true); // offline: rendering drives it
@@ -930,6 +954,7 @@ export function createSynth({ context = null } = {}) {
     // hangs (ENGINES' y): engines added or taken away if the sound has started.
     setType(def) {
       SND = def?.sound || LEAP_1A;
+      SNDS = Array.isArray(def?.sounds) ? def.sounds.map((x) => x || LEAP_1A) : null;
       boeing = def?.family === 'boeing';
       count = countOf(def); sides = sidesOf(def, count); spread = spreadOf(count);
       if (!n) return;
@@ -937,6 +962,7 @@ export function createSynth({ context = null } = {}) {
       n.kit.fanWave = fanWave; n.kit.buzzWave = buzzWave;
       for (const E of n.engines) { E.fanOsc.setPeriodicWave(fanWave); E.buzzOsc.setPeriodicWave(buzzWave); }
       resizeEngines();
+      if (SNDS) applyWaves();
     },
     get engineCount() { return n ? n.engines.length : count; },
     // Fade out and suspend the context (start() brings it back).

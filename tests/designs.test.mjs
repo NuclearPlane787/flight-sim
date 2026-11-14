@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createSim } from '../src/sim/sim.js';
 import { predictSync } from '../src/sim/predict-core.js';
-import { newDesign, designDef, normalizeDesign, stationRange, designNumbers } from '../src/sim/designs.js';
+import { newDesign, designDef, normalizeDesign, stationRange, designNumbers, v1View } from '../src/sim/designs.js';
 import { ENGINE_TYPES } from '../src/sim/engine-types.js';
 import { typeById } from '../src/sim/types.js';
 import * as goldA from './golden-a321-flight.mjs';
@@ -48,14 +48,15 @@ function cruising(design, { z = 3000, kt = 250, thrust = 0.75 } = {}) {
 test('normalizeDesign clamps to the brief\'s ranges, and the stations stay apart and in range', () => {
   const d = normalizeDesign({ base: 'b777-300er', engine: 'ge90-115b', count: 6, stations: [1, 1, 99], thrustScale: 9, oewDeltaKg: -1e9, fuelCapacityKg: 1e9, gearExtendM: 7 });
   const A = typeById('b777-300er').data;
-  assert.equal(d.thrustScale, 3); assert.equal(d.gearExtendM, 1.5);
+  const V = v1View(d);
+  assert.equal(V.thrustScale, 3); assert.equal(d.gearExtendM, 1.5);
   assert.equal(d.oewDeltaKg, Math.round(-0.15 * A.OEW)); assert.equal(d.fuelCapacityKg, Math.round(2 * A.FUEL_MAX));
   const [lo, hi] = stationRange('b777-300er', 'ge90-115b', 6);
-  assert.equal(d.stations.length, 3);
-  for (let i = 0; i < 3; i++) assert.ok(d.stations[i] >= lo - 1e-9 && d.stations[i] <= hi + 1e-9);
-  for (let i = 1; i < 3; i++) assert.ok(d.stations[i] - d.stations[i - 1] >= ENGINE_TYPES['ge90-115b'].nacelle.D + 0.5 - 1e-9);
-  assert.equal(normalizeDesign({ base: 'b787-9', count: 5 }).count, 2);
-  assert.equal(normalizeDesign({ base: 'b787-9', count: 3 }).stations.length, 1);
+  assert.equal(V.stations.length, 3);
+  for (let i = 0; i < 3; i++) assert.ok(V.stations[i] >= lo - 1e-9 && V.stations[i] <= hi + 1e-9);
+  for (let i = 1; i < 3; i++) assert.ok(V.stations[i] - V.stations[i - 1] >= ENGINE_TYPES['ge90-115b'].nacelle.D + 0.5 - 1e-9);
+  assert.equal(v1View(normalizeDesign({ base: 'b787-9', count: 5 })).count, 2);
+  assert.equal(v1View(normalizeDesign({ base: 'b787-9', count: 3 })).stations.length, 1);
 });
 
 test('a design\'s snapshot carries the design whole, round-trips through JSON and flies on to 1e-9', () => {
@@ -99,7 +100,7 @@ test('a four-engine 777\'s mass, CG and inertias against a hand sum', () => {
   const d = newDesign('b777-300er', { count: 4 });
   const def = designDef(d);
   const outer = def.geo.NACELLES[0];
-  assert.ok(Math.abs(outer.y - d.stations[1]) < 1e-12 && def.geo.NACELLES.length === 4);
+  assert.ok(Math.abs(outer.y - v1View(d).stations[1]) < 1e-12 && def.geo.NACELLES.length === 4);
   // The inner pair is where the base's engines are.
   assert.ok(Math.abs(def.geo.NACELLES[1].x - T.geo.NACELLES[0].x) < 1e-12 && Math.abs(def.geo.NACELLES[1].z - T.geo.NACELLES[0].z) < 1e-12);
   const m = E.installedKg;

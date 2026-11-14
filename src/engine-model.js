@@ -62,11 +62,71 @@ export function addEngine(b, bone, n, host) {
   const side = n.y >= 0 ? 1 : -1;
   const eng = 'eng' + k, fan = 'fan' + k, rev = 'rev' + k;
   const EB = bone(eng, 'root', V(n.x, n.y, n.z));
-  // The bend: a rigid engine rides the wing at its own span; the tail engine isn't on the wing (span 0).
-  const BY = host.bend ? (n.tail ? 0 : n.y) : null;
-  if (look.style === 'leap') leapEngine(b, bone, n, host, EB, eng, fan, rev, side, BY);
-  else wideEngine(b, bone, n, host, EB, eng, fan, rev, side, BY, look);
+  // The bend: a rigid engine rides the wing at its own span; the tail engine and a body engine (v0.5.2) aren't on
+  // the wing (span 0).
+  const BY = host.bend ? (n.tail || n.mount === 'body' ? 0 : n.y) : null;
+  // v0.5.2: a design's engine turned a few degrees (its thrust line, designs.js placeEngine()): every part, pylon
+  // included, turns about the nacelle's centre (yaw about z, then pitch about y), and the fan's axis with it.
+  let bb = b, bn = bone;
+  if (n.yaw || n.pitch) {
+    const R = new THREE.Matrix4().makeTranslation(n.x, n.y, n.z)
+      .multiply(new THREE.Matrix4().makeRotationZ(-(n.yaw || 0) * DEG))
+      .multiply(new THREE.Matrix4().makeRotationY(-(n.pitch || 0) * DEG))
+      .multiply(new THREE.Matrix4().makeTranslation(-n.x, -n.y, -n.z));
+    const R3 = new THREE.Matrix3().setFromMatrix4(R);
+    bb = { add: (g, ...rest) => b.add(g.applyMatrix4(R), ...rest) };
+    bn = (name, parent, pivot, axis = V(1, 0, 0)) => bone(name, parent, pivot, axis.clone().applyMatrix3(R3).normalize());
+  }
+  if (look.style === 'leap') leapEngine(bb, bn, n, host, EB, eng, fan, rev, side, BY);
+  else wideEngine(bb, bn, n, host, EB, eng, fan, rev, side, BY, look);
   return { k, eng, fan, rev, rate: look.rate, travel: look.travel };
+}
+
+// v0.5.2: the pylons of the mounts that aren't under the wing. A profile in (x, z) extruded sideways ((X, Y, Z) →
+// body (X, −Z + y, Y)), or for the body's stub a plan in (x, y) extruded up ((X, Y, Z) → body (X, Y, Z + z)).
+const SIDEWAYS = (y) => new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, -1, y, 0, 1, 0, 0, 0, 0, 0, 1);
+function blade(pts, depth, y) {
+  const sh = new THREE.Shape();
+  pts.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
+  const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
+  g.translate(0, 0, -depth / 2);
+  return g.applyMatrix4(SIDEWAYS(y));
+}
+// Over the wing: a blade from the nacelle's underside down into the wing's upper surface (HondaJet style).
+function overwingPylon(b, n, host, EB, BY) {
+  const R = n.D / 2, side = n.y >= 0 ? 1 : -1, w = host.wingSec(Math.abs(n.y), side);
+  const upper = (x) => foilPoint(w, clamp((w.le.x - x) / w.chord, 0, 1), 1).z;
+  const xa = n.x + 0.18 * n.L, xb = n.x - 0.32 * n.L, zt = n.z - 0.7 * R;
+  const pts = [[xa, zt], [xb - 0.4, zt], [xb, upper(xb) - 0.12], [xa - 0.3, upper(xa - 0.3) - 0.12]];
+  b.add(blade(pts, Math.max(0.3, 0.16 * n.D), n.y), EB, C.pylon, null, BY);
+}
+// On the rear fuselage's side: a short swept stub from inside the skin out into the nacelle (MD-80 style).
+function bodyPylon(b, n, host, EB, BY) {
+  const R = n.D / 2, side = n.y >= 0 ? 1 : -1, yIn = side * (host.bodyHalf - 0.6), yOut = n.y - side * 0.7 * R;
+  const sh = new THREE.Shape();
+  const P = [[n.x + 0.25 * n.L, yIn], [n.x - 0.38 * n.L, yIn], [n.x - 0.3 * n.L, yOut], [n.x + 0.12 * n.L, yOut]];
+  P.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+  const depth = Math.max(0.35, 0.18 * n.D);
+  const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
+  g.translate(0, 0, n.z - depth / 2);
+  b.add(g, EB, C.pylon, null, BY);
+}
+
+// v0.5.2: an external fuel tank (designs.js placeTank()): a teardrop on a short pylon up into the wing's underside.
+// Its bone 'pod<k>' at its centre; it rides the bent wing at its span.
+export function addPod(b, bone, t, host, k) {
+  const R = t.D / 2, L = t.L, side = t.y >= 0 ? 1 : -1;
+  const PB = bone('pod' + k, 'root', V(t.x, t.y, t.z));
+  const BY = host.bend ? t.y : null;
+  b.add(lathe([
+    { x: 0.5 * L, r: 0.0 }, { x: 0.46 * L, r: 0.3 * R }, { x: 0.38 * L, r: 0.62 * R }, { x: 0.26 * L, r: 0.88 * R }, { x: 0.1 * L, r: R },
+    { x: -0.14 * L, r: R }, { x: -0.3 * L, r: 0.84 * R }, { x: -0.42 * L, r: 0.55 * R }, { x: -0.5 * L, r: 0.12 * R },
+  ], 28, t.x, t.y, t.z), PB, C.white, null, BY);
+  b.add(lathe([{ x: 0.06 * L, r: R * 1.004 }, { x: -0.02 * L, r: R * 1.004 }], 28, t.x, t.y, t.z), PB, C.navy, null, BY);
+  const w = host.wingSec(Math.abs(t.y), side);
+  const lower = (x) => foilPoint(w, clamp((w.le.x - x) / w.chord, 0, 1), -1).z;
+  const xa = t.x + 0.2 * L, xb = t.x - 0.22 * L, zb = t.z + 0.6 * R;
+  b.add(blade([[xa, zb], [xb, zb], [xb - 0.3, lower(xb - 0.3) + 0.12], [xa - 0.4, lower(xa - 0.4) + 0.12]], Math.max(0.16, 0.14 * t.D), t.y), PB, C.pylon, null, BY);
 }
 
 // The LEAP-1A: nacelle, pylon, fan and the translating cowl of the thrust reverser (aircraft.js until v0.5.0).
@@ -106,6 +166,8 @@ function leapEngine(b, bone, n, host, EB, eng, fan, rev, side, BY) {
     b.add(g, FAN, C.blade, null, BY);
   }
   if (n.tail) { tailFillet(b, n, host, EB, BY); return; }
+  if (n.mount === 'overwing') { overwingPylon(b, n, host, EB, BY); return; }
+  if (n.mount === 'body') { bodyPylon(b, n, host, EB, BY); return; }
   // Pylon: a profile in (x, z) extruded sideways. Its lower edge sits inside the nacelle's
   // top and its upper edge rises to the wing's leading edge, then runs on inside the wing.
   {
@@ -213,6 +275,8 @@ function wideEngine(b, bone, n, host, EB, eng, fan, rev, side, BY, look) {
     b.add(g, FAN, C.blade, null, BY);
   }
   if (n.tail) { tailFillet(b, n, host, EB, BY); return; }
+  if (n.mount === 'overwing') { overwingPylon(b, n, host, EB, BY); return; }
+  if (n.mount === 'body') { bodyPylon(b, n, host, EB, BY); return; }
   // Pylon: a profile in (x, z) extruded sideways, from the cowl's top into the wing and back
   // under it to the fairing behind the trailing edge.
   {

@@ -450,7 +450,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     const out = { origin: plan.origin, depRunway: plan.depRunway, dest: plan.dest, arrRunway: plan.arrRunway, start: plan.start, type: type.id,
       pax: plan.pax, cargoKg: plan.cargoKg, fuelKg: plan.fuelKg, waypoints: (plan.waypoints || []).map((p) => [p[0], p[1]]),
       payloadKg: plan.pax * L.PAX_KG + plan.cargoKg };
-    if (type.design) out.design = { ...type.design, stations: type.design.stations.slice() };
+    if (type.design) out.design = JSON.parse(JSON.stringify(type.design));   // its own copy (the type entry's is frozen)
     if (plan.start === 'gate') out.stand = plan.stand;
     saveStored(out);
     if (opts.nameField) out.name = cleanName(f('name').value);

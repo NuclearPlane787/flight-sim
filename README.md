@@ -118,36 +118,48 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 
 **Flying a Boeing:** trim for the speed you want (H, Y), and it holds that speed hands off. Thrust moves the nose, and flaps and gear slow you only if you trim down too. Flare with back pressure; nothing does it for you. With Boeing auto-trim on (Settings), it's the A321's way instead: let go and the flight path holds, the thrust (or the autothrottle) sets the speed, and with the flaps for landing W and S nudge the path.
 
-## The warehouse (v0.5.0)
+## The warehouse (v0.5.0, parts anywhere since v0.5.2)
 
-**Warehouse** on the main menu, after Load scenario: your own aircraft, each made on one of the three types (its base). Mouse and touchpad only.
+**Warehouse** on the main menu, after Load scenario: your own aircraft, each built on one of the three types (its base: its wing, fuselage, tail and limits). Mouse and touchpad, and a few keys of its own.
 
 - **The list:** New from the A321neo, the 787-9 or the 777-300ER; Open (or click the row), Rename, Duplicate, Delete.
-- **The editor:** the aircraft in 3D on the left (drag to go round it, pinch or scroll to zoom, double-click to recentre), the parts on the right:
-  - the **engines**: how many (2, 4 or 6 on the wings in pairs; 3 is a pair and one in the tail, through the fin's root), which (the LEAP-1A, the GEnx-1B or the GE90-115B, each with its own numbers, weight, size and sound), each pair's station along the wing, and a **thrust scale** (0.5 to 3);
-  - the **empty weight** (−15 % to +30 %), the **fuel capacity** (half to twice the base's; the change is in the centre tank) and the **gear** (up to 1.5 m longer, main and nose);
-  - its name and registration (painted on it).
+- **The editor** (v0.5.2, KSP's way): the aircraft in 3D in the middle (drag to go round it, pinch or scroll to zoom, double-click to recentre), the **parts palette** over its left edge, and the side panel on the right.
+  - **Attach:** pick a part in the palette (the LEAP-1A, the GEnx-1B or the GE90-115B; a wing tank, a hold tank, ballast) and move the pointer over the aircraft: its ghost follows, snapped to where it would go (0.25 m steps), green where it fits and red where it doesn't (another part in the way, the limits, a second engine in the tail), with its name and place beside the pointer. Click to attach it; Shift+click keeps it in hand for another; right-click or Esc puts it back.
+  - **Where engines go:** dropped on the wing, under it or over it (the palette's Under / Over); on the rear fuselage's sides; on the fin, one in the tail. Up to 8 engines and 24 parts.
+  - **Mirror** (on by default) attaches a twin on the other side and keeps the pair together whichever you edit; turn it off for one side alone. A part's own Mirror box pairs or unpairs it later.
+  - **Select, move, remove:** click a part to select it (its box lights up, its twin's dimmer), drag it to move it (the ghost shows where), Delete or Backspace removes it (and its twin), Esc lets go. **Z** undoes and **Shift+Z** redoes every change (the buttons at the top right too); a slider's drag is one step. The name and registration aren't steps.
+  - **A part's settings** (the side panel, while it's selected): its mount, its engine, where it sits (out from the centreline, or back from the nose), nudged forward or aft (±3 m) and up or down (±1 m), toed in or out and pitched (±10°), its thrust (0.5 to 3 times its type's), or a tank's fuel (1,000 to 8,000 kg under the wing, to 3,000 kg in the hold) and the ballast's mass (100 to 6,000 kg).
+  - **With nothing selected:** the name and registration (painted on it), the parts as a list (a click selects one), the **structure's weight** (−15 % to +30 % of the base's), the **wing and centre tanks** (half to twice the base's) and the **gear** (up to 1.5 m longer).
+  - **The balance:** the centre of mass at the default load (a yellow and black ball) and the centre of thrust (magenta, its arrow along the resultant thrust) drawn over the model; the CoM · CoT button hides them.
 - **The hangar** (v0.5.1): the design stands in a maintenance hangar, its nose to the offices at the back and its tail to the doors it came in by (part open onto the apron); the stand's lead-in line has a stop bar for each type's nose wheel, and people walk the green walkways. The camera stays inside: zoomed out, it stops at the wall, the roof or the floor.
-- **The numbers**, live: the empty weight (with the engines' own weights), the base's MTOW (the structural limits stay the base's, so heavier engines and more fuel eat into the payload), the fuel, thrust to weight at MTOW, a range, the tail-strike angle, and per engine its ground clearance standing and at the tail-strike attitude and its pylon's load at full thrust against its limit. Amber is a warning; red will fail (a pylon) or touch (a nacelle).
-- **Fly it:** saved designs are cards in New scenario's aircraft picker, under the three types. A scenario keeps its own copy of the design, so editing or deleting it later doesn't change a saved flight.
+- **The numbers**, live: the empty weight (with every part's weight), the base's MTOW (the structural limits stay the base's, so parts and fuel eat into the payload), the fuel, thrust to weight at MTOW, a range, the tail-strike angle, the drag the parts add, the CG against the base's, the thrust's yaw and pitch at full power, and per engine and wing tank its ground clearance standing and at the tail-strike attitude (and each pylon's load at full thrust against its limit).
+- **The checks:** amber warns, red will fail or touch:
+  - **red:** no engines (Save and Fly it wait for one); a nacelle or tank touching the ground, standing or at the tail-strike attitude; parts overlapping; a pylon past its limit; thrust lopsided past an engine failure on the base (the rudder can't hold it on the runway); the CG more than 12 % MAC aft of the base's (past its static margin) or 25 % forward;
+  - **amber:** under 0.3 m of clearance; a pylon past 90 %; lopsided thrust past a tenth of an engine failure; the CG 5 % aft or 10 % forward; the thrust's pitch 2.5 times the base's; thrust to weight over 0.8 when light (full power on the runway can lift the nose into a tail strike); little thrust (under 0.22 at MTOW); under half the base's payload room.
+- **Fly it:** saved designs are cards in New scenario's aircraft picker, under the three types; the editor's **Fly it** saves the design and opens New scenario with it picked. A scenario keeps its own copy of the design, so editing or deleting it later doesn't change a saved flight. v0.5.0's designs open as they were.
 
 **What it does in flight:**
 
-- Off-centre thrust yaws: an engine at idle, reversing alone or gone pulls the nose towards the dead side (on the runway, below about 110 kt, nothing holds it straight: reject the take-off).
-- Each pylon holds 1.5 times its engine type's rated take-off thrust (CS-25's ultimate factor), and each a little more as built (0 to 10 %). Past it, at the thrust scale's top end, the engine **tears off**: it stops, its weight goes, the model loses it and its pylon, and the screens show it OFF. Indestructible doesn't stop it (it's a failure, not a crash).
-- A big engine on a small aircraft scrapes: two GE90s on an A321 sit a metre into the runway unless the gear is lengthened (1.5 m clears them by 0.4 m). They also give it a thrust-to-weight over 1 and a thrust line far below its centre of gravity, so full thrust on the runway pitches it into a tail strike: take off with about a third of the lever.
-- More engines burn more fuel only by the weight they add: the fuel flow is the thrust's.
-- The A321's engine panel and the Boeings' EICAS draw every engine; the synth gives each its own voice, up to six.
+- **Each part's weight** where it is: the CG and the inertias follow (ballast aft moves the CG aft; a long wing's engines roll it slower).
+- **Each part's drag** where it is, against the airflow (a nacelle about CD 0.05 on its frontal area, a wing tank 0.08): a lone wing tank or engine far out yaws the nose towards its side.
+- **Each engine's thrust along its own line:** toe-in on a pair cancels, a lone toed engine yaws, pitched engines push up or down with their moments. Mixed engines each run on their own numbers (thrust, spool, fuel flow) and sound like themselves.
+- **Fuel in the tanks** joins the centre tank's (burned first), its CG the mean of where it is.
+- **Off-centre thrust yaws:** an engine at idle, reversing alone or gone pulls the nose towards the dead side (on the runway, below about 110 kt, nothing holds it straight: reject the take-off).
+- **The pylons:** each holds 1.5 times its engine type's rated take-off thrust (CS-25's ultimate factor), and each a little more as built (0 to 10 %). Past it the engine **tears off**: it stops, its weight goes, the model loses it and its pylon, and the screens show it OFF. Indestructible doesn't stop it (it's a failure, not a crash).
+- **A big engine on a small aircraft scrapes:** two GE90s on an A321 sit a metre into the runway unless the gear is lengthened (1.5 m clears them by 0.4 m). They also give it a thrust-to-weight over 1 and a thrust line far below its centre of gravity, so full thrust on the runway pitches it into a tail strike: take off with about a third of the lever.
+- **More engines burn more fuel** by the weight and drag they add: the fuel flow is the thrust's.
+- **The screens and the sound:** the A321's engine panel and the Boeings' EICAS draw every engine (up to 8); the synth gives each its own voice.
+- **The wing, the fuselage and the tail** are still the base's, with its lift and stability: v0.5.3 builds them from parts too (`V053.md`).
 
 ## Code map
 
 | Path | What |
 |---|---|
 | `src/sim/types.js` | the type registry: each type's data, geometry and what the screens say (`typeById`, `kitFor`, `TYPE_LIST`) |
-| `src/sim/designs.js`, `src/sim/engine-types.js` | v0.5.0: a design (one plain object) and its type entry (`designDef()`: the engines' places, mass, CG and inertias, tanks, gear, pylons; `designNumbers()`); the three engine types as parts |
+| `src/sim/designs.js`, `src/sim/engine-types.js` | v0.5.0: a design (one plain object) and its type entry (`designDef()`: the engines' places, mass, CG and inertias, tanks, gear, pylons; `designNumbers()`); the three engine types as parts. v0.5.2: a design is parts (`parts`, `addPart()`, `updatePart()`, `removePart()`, `setMirror()`), each mount's place and range (`placeEngine()`, `placeTank()`, `placeBallast()`, `mountRange()`, `airframe()`), each engine's own numbers when they're mixed, the thrust lines, the parts' drag |
 | `src/ui/hangar.js` | v0.5.1: the warehouse's hangar (`createHangar()`: merged by material, the people instanced), the camera's box (`cameraBox()`, `rayExit()`) and the walkways' loop (`walkPath()`) |
-| `src/designs-store.js`, `src/ui/warehouse.js`, `src/ui/warehouse.css` | v0.5.0: the designs saved (`gamedump:flight-sim:designs`); the Warehouse page and its 3D view |
-| `src/engine-model.js` | v0.5.0: one engine builder for all three aircraft (each engine type's nacelle and pylon at its station, the tail engine, each fan on its own engine's N1) |
+| `src/designs-store.js`, `src/ui/warehouse.js`, `src/ui/warehouse.css` | v0.5.0: the designs saved (`gamedump:flight-sim:designs`); the Warehouse page and its 3D view. v0.5.2: the KSP editor (the palette, the ghost and the pointer's hooks, `hitAirframe()`, `placement()`, `pickPart()`, the overlay with the CoM and CoT, `readout()` and `thrustLine()`, undo and redo with `createHistory()`, Fly it) |
+| `src/engine-model.js` | v0.5.0: one engine builder for all three aircraft (each engine type's nacelle and pylon at its station, the tail engine, each fan on its own engine's N1). v0.5.2: the over-wing and body pylons, a turned engine, a wing tank (`addPod()`) |
 | `src/ui/engine-row.js` | v0.5.0: the engine panel's and the EICAS's row of dials for 3, 4 or 6 engines |
 | `src/type-assets.js` | each type's model and cockpit builders (the page only) |
 | `src/sim/b787-9.js`, `src/sim/b777-300er.js`, `src/geometry-b787-9.js`, `src/geometry-b777-300er.js` | the Boeings' numbers and geometry |
@@ -207,7 +219,7 @@ All in localStorage, under `gamedump:flight-sim:`:
 - `scenarios`: the scenario index (id, name, created, savedAt, a summary); `scenario:<id>`: each scenario's whole state (a few KB, up to about 70 KB with a long approach track);
 - `logbook`: every flight, tagged with its scenario's id and name (v0.1.x's untagged flights count as Scenario 1's);
 - `settings` (volume, callouts, the readout, the setup's last plan) and `lastflight` (the last flight's plan);
-- `designs` (v0.5.0): the warehouse's designs, one list.
+- `designs` (v0.5.0): the warehouse's designs, one list (v0.5.2: each a list of parts; v0.5.0's open as they were).
 
 ## Data credits
 

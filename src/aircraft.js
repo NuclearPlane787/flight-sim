@@ -20,7 +20,7 @@ import { createLiveryTextures, UV, FIN_BOX } from './livery.js';
 import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
-import { addEngine, engineAnimator } from './engine-model.js';
+import { addEngine, addPod, engineAnimator } from './engine-model.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -612,7 +612,9 @@ export function createAircraft(opts = {}) {
     parts[S] = true;
 
     // Engines (v0.5.0: src/engine-model.js, one per nacelle on this wing; the A321's two as they always were).
-    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: false }));
+    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: false, bodyHalf: (GEO?.FUSELAGE_WIDTH ?? 3.95) / 2 }));
+    // v0.5.2: a design's external tanks under this wing.
+    (GEO?.PODS || []).forEach((t, k) => { if ((t.y >= 0) === (side > 0)) addPod(b, bone, t, { wingSec, bend: false }, k); });
 
     // Main gear: retracts inward into the belly. Wheels sit at z = −GROUND_Z at static compression.
     const gm = side > 0 ? GEAR_.left : GEAR_.right;

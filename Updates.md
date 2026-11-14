@@ -4,6 +4,19 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.5.2 · 2026-11-14 · The warehouse, KSP's way: parts anywhere
+
+- **Build it from parts.** The warehouse's editor works like a sandbox now: pick a part from the palette over the aircraft (the LEAP-1A, the GEnx-1B, the GE90-115B, a wing tank, a hold tank, ballast) and it follows the pointer over the airframe as a ghost, green where it fits and red where it doesn't, with its name and where it would go beside the pointer. Click to attach it.
+- **Engines go where you put them:** under the wing, over it on a pylon above, on the rear fuselage's sides, or one in the tail. Up to eight, each its own type and thrust, and each can be nudged forward, back, up or down and turned a few degrees (toed in or out, pitched up or down).
+- **Mirror** puts a twin on the other side and keeps the two together as you edit either. Turn it off for a lopsided aircraft.
+- **Fuel and weight as parts:** teardrop tanks under the wing (each brings its fuel and its drag), tanks in the cargo hold, and ballast to move the centre of gravity.
+- **Click a part to select it,** drag it to move it, Delete removes it. Its settings take over the side panel: its mount, its engine, where it sits, its nudges and turns, its thrust or its fuel. **Undo and Redo** (Z and Shift+Z) step through every change.
+- **See the balance:** the centre of mass (yellow and black) and the centre of thrust (magenta, its arrow along the thrust) show over the model as you build.
+- **New checks:** lopsided thrust (more yaw than an engine failure is red: the rudder can't hold it on the runway), the centre of gravity's move fore and aft, parts in each other's way, the thrust's pitch, every engine's and tank's ground clearance, and too much thrust for a light aircraft (full power can lift the nose into a tail strike). An aircraft with no engines can't be saved.
+- **Each part flies:** its weight where it is (the centre of gravity and the inertia follow), its drag where it is (a lone wing tank pulls the nose towards it), and each engine its thrust along its own line. Mixed engines each run on their own numbers and sound like themselves.
+- **Fly it** from the warehouse: the design is saved, and New scenario opens with it picked.
+- Designs from v0.5.0 open as they were and fly the same.
+
 ## v0.5.1 · 2026-11-13 · The warehouse is a hangar
 
 - **A real hangar round your design.** The warehouse's flat grey ground is now the inside of a maintenance hangar big enough for the 777-300ER: steel columns and roof trusses, a corrugated roof with skylights, rows of high-bay lamps, sprinkler pipes and ventilation ducts, and glazing high on the walls.
