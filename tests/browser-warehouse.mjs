@@ -27,6 +27,7 @@ const viewReady = async (page) => {
 const badCells = (page) => page.$$eval('.fsw .fsw-eng td.bad', (e) => e.length);
 const engRows = (page) => page.$$eval('.fsw .fsw-eng tbody tr', (e) => e.length);
 const worst = (page) => page.$eval('.fsw', (e) => e.dataset.worst || '');
+const engs = (d) => (d?.parts || []).filter((p) => p.kind === 'engine');   // v0.5.2's designs are parts
 const stored = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('gamedump:flight-sim:designs') || '[]'));
 // requestAnimationFrame calls over `ms` (the page's own and the warehouse's), counted by a wrapper.
 const rafOver = (page, ms) => page.evaluate((ms) => new Promise((res) => { const n0 = window.__raf; setTimeout(() => res(window.__raf - n0), ms); }), ms);
@@ -61,11 +62,17 @@ try {
   await page.click('.fsw [data-new="b777-300er"]');
   await viewReady(page);
   check('a new 777 passes every check', (await worst(page)) === 'ok');
-  await page.click('.fsw [data-seg="count"] button[data-v="4"]');
+  // (v0.5.3 run) v0.5.2's editor has no engine-count buttons or thrust slider (engines are parts, placed from the
+  // palette): the four-engine 777 at 1.2 thrust opens as v0.5.0's count and thrustScale fields make it.
+  // (from the list, as a player opens one: Back from the new, unsaved 777 asks; Discard)
+  await page.click('.fsw [data-a="back"]');
+  if (!(await page.$eval('.fsw [data-o="ask"]', (e) => e.hidden))) await page.click('.fsw [data-a="discard"]');
+  await page.waitForSelector('.fsw [data-o="listPage"]:not([hidden])');
+  await page.evaluate(async () => { const D = await import('./src/sim/designs.js'); window.__wh.openEditor(D.newDesign('b777-300er', { count: 4, thrustScale: 1.2 })); });
+  await viewReady(page);
   await page.waitForTimeout(300);
   check('four engines in the table', (await engRows(page)) === 4);
-  check('two station sliders', (await page.$$('.fsw [data-p="station"]')).length === 2);
-  await setRange(page, '.fsw [data-p="thrustScale"]', 1.2);
+  check('two wing pairs (the parts)', await page.evaluate(() => window.__wh.design.parts.filter((p) => p.kind === 'engine' && p.side > 0).length === 2));
   await setRange(page, '.fsw [data-p="fuelFrac"]', 1.3);
   await typeIn(page, 'name', 'Quad 777');
   await typeIn(page, 'registration', 'hl7004');
@@ -93,7 +100,7 @@ try {
   await page.click('.fsw [data-a="save"]');
   check('saved', /Saved/.test(await page.textContent('.fsw [data-o="msg"]')));
   let st = await stored(page);
-  check('stored: 4 × GE90, thrust 1.2, HL7004', st.length === 1 && st[0].count === 4 && st[0].thrustScale === 1.2 && st[0].registration === 'HL7004' && st[0].name === 'Quad 777', JSON.stringify(st[0]));
+  check('stored: 4 × GE90, thrust 1.2, HL7004', st.length === 1 && engs(st[0]).length === 4 && engs(st[0]).every((p) => p.engine === 'ge90-115b' && p.thrust === 1.2) && st[0].registration === 'HL7004' && st[0].name === 'Quad 777', JSON.stringify(st[0]).slice(0, 300));
   await shot(page, 'v050-warehouse-777-quad.png');
 
   // ---- A GE90 on the A321: red, then cleared with long gear ----
@@ -101,9 +108,8 @@ try {
   await page.waitForSelector('.fsw [data-o="listPage"]:not([hidden])');
   check('Back after a save goes straight to the list', (await rows(page)).length === 1);
   check('the 3D view is gone', (await page.$$('.fsw canvas')).length === 0);
-  await page.click('.fsw [data-new="a321neo"]');
-  await viewReady(page);
-  await page.click('.fsw [data-seg="engine"] button[data-v="ge90-115b"]');
+  // (v0.5.3 run) no engine segment since v0.5.2: an A321 with a GE90 pair opens as v0.5.0's engine field makes it
+  await page.evaluate(async () => { const D = await import('./src/sim/designs.js'); window.__wh.openEditor(D.newDesign('a321neo', { engine: 'ge90-115b' })); });
   await viewReady(page);
   await page.waitForTimeout(400);
   check('GE90 A321: red clearance', (await badCells(page)) >= 2 && (await worst(page)) === 'bad', `${await badCells(page)} red cells`);
@@ -151,7 +157,7 @@ try {
   // Open one, check it's the one saved.
   await page.click('.fsw .fsm-row:has-text("Quad 777") .fsm-row-main');
   await viewReady(page);
-  check('opened: four engines, thrust 1.2', (await engRows(page)) === 4 && (await page.$eval('.fsw [data-p="thrustScale"]', (e) => Number(e.value))) === 1.2);
+  check('opened: four engines, thrust 1.2', (await engRows(page)) === 4 && (await page.evaluate(() => window.__wh.design.parts.filter((p) => p.kind === 'engine').every((p) => p.thrust === 1.2))));
   await page.keyboard.press('Escape');
   await page.waitForSelector('.fsw [data-o="listPage"]:not([hidden])');
   await page.keyboard.press('Escape');
@@ -181,7 +187,7 @@ try {
   await page.click('[data-a="fly"]');
   await page.waitForTimeout(1500);
   const last = await page.evaluate(() => JSON.parse(localStorage.getItem('gamedump:flight-sim:settings') || '{}').lastPlan);
-  check('plan.type is the base, plan.design the design whole', last?.type === 'a321neo' && last?.design?.id === want.id && last.design.engine === 'ge90-115b' && last.design.gearExtendM === 1.5, JSON.stringify(last?.design));
+  check('plan.type is the base, plan.design the design whole', last?.type === 'a321neo' && last?.design?.id === want.id && engs(last.design).every((p) => p.engine === 'ge90-115b') && last.design.gearExtendM === 1.5, JSON.stringify(last?.design));
   // End to end (the run's lead, v0.5.0): the game flies the design picked, and it takes off.
   await page.waitForFunction(() => window.__fs && !window.__fs.inMenu && window.__fs.plan, null, { timeout: 60000 });
   const flying = await page.evaluate(async () => {

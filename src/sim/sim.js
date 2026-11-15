@@ -14,6 +14,7 @@ import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind, mi
 import { leverToPhi, createEngines } from './engines.js';
 import { kitFor, DEFAULT_TYPE } from './types.js';
 import { resolveDef, isDesign } from './designs.js';
+import { partsDeltaInto, clmaxDelta } from './parts-aero.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -295,7 +296,27 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.fuelL = X.fuelR = wing / 2; X.fuelC = fuel - wing;
   }
   // The stabiliser's take-off setting for the CG (the fly-by-wire trims to it on the ground).
-  const takeoffThs = () => clamp((-0.5 + 20 * (0.25 - cgX / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
+  const takeoffThs0 = () => clamp((-0.5 + 20 * (0.25 - cgX / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
+  // v0.5.3: a design's airframe pitches differently on the ground (a bigger tail's download, its stabiliser's power):
+  // the setting that gives it the base's pitching moment at the ground attitude with the base's setting, on the design's
+  // own stabiliser power. (The types and base-airframe designs take the base's schedule exactly.)
+  const tsS = { alpha: 0, beta: 0, M: 0.2, phat: 0, qhat: 0, rhat: 0, adothat: 0, slat: 0, flap: 0, gear: 1, doors: 0, sb: 0, gsp: 0, spL: 0, spR: 0, ail: 0, rud: 0, ths: 0, hWing: 4 };
+  const tsO = { CL: 0, CD: 0, CY: 0, Cl: 0, Cm: 0, Cn: 0, CmElev: 0, clmax: 0, alphaMax: 0, ge: 1 };
+  const takeoffThs = () => {
+    if (A.PARTS_AERO === undefined) return takeoffThs0();
+    // the schedule read at the CG this load would have on the base's airframe (the airframe's own structure moved it;
+    // ballast, engines and tanks keep their moves, as on the base's airframe)
+    const cgEq = cgX - (A.AIRFRAME_CG_SHIFT || 0) * A.OEW / mass;
+    const t = clamp((-0.5 + 20 * (0.25 - cgEq / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
+    const cmAt = (ths, parts) => {
+      tsS.slat = X.slat; tsS.flap = X.flap; tsS.hWing = A.WING_HEIGHT; tsS.ths = ths;
+      coefficients(tsS, tsO);
+      if (parts) partsDeltaInto(A.PARTS_AERO, tsS, tsO);
+      return tsO.Cm;
+    };
+    const h = 0.01, base = cmAt(t, false), d0 = cmAt(t, true), slope = (cmAt(t + h, true) - d0) / h;
+    return slope > 0.1 ? clamp(t - (d0 - base) / slope, -A.THS_DN, A.THS_UP) : t;
+  };
   // The load's fields in the public state (updateState, setLoad).
   function massState(S) {
     S.payloadKg = X.payload; S.paxN = X.paxN ?? null; S.cargoKg = X.cargoKg ?? null; S.fuelAddedKg = X.fuelAddedKg || 0;
@@ -437,8 +458,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // Speeds for the protections.
     liftCurve(X.slat, X.flap, lc); machLift(lc, mach);
     E.alphaMax = lc.alphaMax;
-    E.nAlpha = Math.max(0.3, qbar * A.S * lc.a / (mass * G));
-    const wq = 2 * mass * G / (RHO0 * A.S);
+    // v0.5.3: a design's wing lifts more or less than its base's: its speeds come from its own maximum lift
+    const kL = A.PARTS_AERO === undefined ? 1 : 1 + clmaxDelta(A.PARTS_AERO, X.slat, X.flap, mach) / lc.clmax;
+    E.nAlpha = kL === 1 ? Math.max(0.3, qbar * A.S * lc.a / (mass * G)) : Math.max(0.3, qbar * A.S * lc.a * kL / (mass * G));
+    const wq = kL === 1 ? 2 * mass * G / (RHO0 * A.S) : 2 * mass * G / (RHO0 * A.S) / kL;
     E.vls = A.VLS_FACTOR * Math.sqrt(wq / lc.clmax);
     E.vsw = Math.sqrt(wq / clOfAlpha(lc, lc.alphaMax - A.ALPHA_SW_MARGIN));
     E.iasDot = X.iasDot;
@@ -520,6 +543,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     cs.sb = X.sb; cs.gsp = X.gsp; cs.spL = X.spL; cs.spR = X.spR; cs.ail = X.ail; cs.rud = X.rud; cs.ths = X.ths;
     cs.hWing = aglEst + A.WING_HEIGHT;
     coefficients(cs, co);
+    // v0.5.3, a design whose airframe isn't its base's: lumped(base) + parts(design) − parts(base) (src/sim/parts-aero.js),
+    // with the ailerons' and the roll spoilers' powers the design's. The types (and designs on the base's airframe) skip it.
+    let clAil = A.CL_ROLL.aileron, clSp = A.CL_ROLL.spoiler;
+    if (A.PARTS_AERO !== undefined) { partsDeltaInto(A.PARTS_AERO, cs, co); clAil += co.dClAil; clSp += co.dClSp; }
     const qS = qbar * A.S;
     const ca = Math.cos(alpha), sa = Math.sin(alpha);
     const iv = V > 2 ? 1 / V : 0;
@@ -623,7 +650,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // feel it, and the roll-rate feedback catches it. Exactly M[0] with no turbulence.
     E.lOther = M[0] - qS * A.SPAN * A.CL_ROLL.p * (-Wd.p * A.SPAN / (2 * Vn));
     E.elevScale = qS * A.MAC * co.CmElev;
-    E.rollScale = qS * A.SPAN * (A.CL_ROLL.aileron * A.AIL_MAX + A.CL_ROLL.spoiler);
+    E.rollScale = qS * A.SPAN * (clAil * A.AIL_MAX + clSp);
     const iasKt = ias / A.KT;
     E.rudLim = iasKt < 160 ? A.RUD_MAX : Math.max(3.5 * A.DEG, A.RUD_MAX * (160 / iasKt) * (160 / iasKt));
     fbwStep(X, controls, E, dt);
@@ -635,7 +662,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.spL = approach(X.spL, Math.max(0, -X.uRoll), 3 * dt);
     X.rud = approach(X.rud, X.rudCmd, A.RUD_RATE * dt);
     M[1] += E.elevScale * X.elev;
-    M[0] += qS * A.SPAN * (A.CL_ROLL.aileron * X.ail + A.CL_ROLL.spoiler * (X.spR - X.spL));
+    M[0] += qS * A.SPAN * (clAil * X.ail + clSp * (X.spR - X.spL));
 
     // ---- integrate (semi-implicit Euler) ----
     const ax = F[0] / mass, ay = F[1] / mass, az = F[2] / mass;
@@ -952,7 +979,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
     // Speeds for the tape (IAS ≈ EAS at these speeds).
     liftCurve(X.slat, X.flap, lc); machLift(lc, mach);
-    const wq = 2 * mass * G / (RHO0 * A.S);
+    const kL = A.PARTS_AERO === undefined ? 1 : 1 + clmaxDelta(A.PARTS_AERO, X.slat, X.flap, mach) / lc.clmax;
+    const wq = kL === 1 ? 2 * mass * G / (RHO0 * A.S) : 2 * mass * G / (RHO0 * A.S) / kL;
     S.vls = A.VLS_FACTOR * Math.sqrt(wq / lc.clmax);
     S.vsw = speedAtAlpha(wq, lc.alphaMax - A.ALPHA_SW_MARGIN);
     S.valphaProt = speedAtAlpha(wq, lc.alphaMax - A.ALPHA_PROT_MARGIN);
@@ -1088,6 +1116,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     for (let it = 0; it < 30; it++) {
       s.alpha = alpha; s.ths = ths;
       coefficients(s, co);
+      if (A.PARTS_AERO !== undefined) partsDeltaInto(A.PARTS_AERO, s, co);
       // Lift + thrust·sin α = weight; moment about the CG = 0 with the elevator at 0.
       const need = mass * G - thrust * Math.sin(alpha);
       const L = co.CL * qbar * A.S;

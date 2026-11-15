@@ -12,8 +12,18 @@ import * as A321 from './a321neo.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+// v0.5.3, Part 3: a gain that works in surface deflection, scaled by the inverse of the design's control power per
+// inertia against its base's (A.GAIN_SCALE, src/sim/designs.js's gainScale()), within ×0.5 to ×2. A type, or a design
+// on its base's airframe, has no GAIN_SCALE: exactly 1, so its arithmetic is the same to the bit (x · 1 === x).
+export const gainFor = (ratio) => (ratio > 0 && Number.isFinite(ratio) ? clamp(1 / ratio, 0.5, 2) : 1);
 
 export function createFbw(A) {
+  // v0.5.3, Part 3: the pitch and roll loops invert the sim's moments with the design's own control powers and
+  // inertias (E.elevScale, E.rollScale, E.Iyy, E.Ixx), so they need nothing. What works in surface deflection does:
+  // the ground mode's direct pitch (the stick's elevator and its pitch damping) by the pitch power, the yaw damper and the turn coordination
+  // (rudder per rad/s and per rad of sideslip) by the rudder's.
+  const GS = A.GAIN_SCALE;
+  const K_PITCH = GS ? gainFor(GS.pitch) : 1, K_YAW = GS ? gainFor(GS.yaw) : 1;
   // In the landing configuration the stick asks for a flight-path rate (see the pitch section).
   const PATH_RATE = 3.5 * A.DEG;       // at full stick
 
@@ -43,7 +53,7 @@ export function createFbw(A) {
     // a held key (full aft stick within 0.3 s) rotates at about 3–4°/s, as a pilot would, not
     // 15°/s into a tail strike. Airborne, the normal or alternate law takes over (flt).
     const elevRaw = sp > 0 ? sp * A.ELEV_UP * 0.75 : sp * A.ELEV_DN;
-    const elevDirect = clamp(elevRaw - 4 * E.q, -A.ELEV_DN, A.ELEV_UP);
+    const elevDirect = clamp((elevRaw - 4 * E.q) * K_PITCH, -A.ELEV_DN, A.ELEV_UP);
     let elevLaw = 0;
     let protAlpha = false, protSpeed = false;
     // On the wheels the flare is over (else a touch-and-go would lift off in the flare law).
@@ -204,9 +214,9 @@ export function createFbw(A) {
     let rud = sy * rudLim;
     if (flt > 0) {
       const rTurn = G * sphi / V;
-      const kr = Math.min(1.2, 40 / V);
+      const kr = Math.min(1.2, 40 / V) * K_YAW;
       let aug = -kr * (E.r - rTurn);              // yaw damper
-      if (normal) aug += 0.8 * E.beta;             // turn coordination
+      if (normal) aug += 0.8 * K_YAW * E.beta;             // turn coordination
       rud += flt * aug;
     }
     X.rudCmd = clamp(rud, -rudLim, rudLim);

@@ -4,6 +4,17 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.5.3 · 2026-11-15 · The airframe from parts
+
+- **Reshape the airframe.** In the warehouse, click the wing, the tailplane, the fin or the fuselage, and its sliders take over the side panel: the wing's span and chord (0.8 to 1.3 times the base's), its sweep (±8°) and its dihedral (−3° to +8°), each side on its own if Mirror is off; the tailplane's and the fin's size (0.6 to 1.6 times); plugs in the fuselage ahead of and behind the wing (−4 to +6 m each). A green outline shows the new shape while a slider moves, the model follows when you let go, and Z undoes it. The A321's sharklets can come off.
+- **It flies from its parts.** Each wing, each half of the tailplane and the fin is a row of strips, each in its own airflow, and the fuselage adds its own forces, so the handling follows the shape: a bigger tailplane is steadier and stiffer in pitch, a smaller fin is less steady in yaw, a longer wing lifts more and lands slower, and a wing longer on one side rolls the aircraft. The stall and approach speeds on the tape follow the wing's area, so a bigger wing opens the coffin corner. The three aircraft themselves fly exactly as before.
+- **The model follows:** the wing with its flaps, slats, ailerons, spoilers, lights and engines (the Boeings' wings still bend), the tails scaled, the fuselage longer or shorter with its windows repeated or removed, never stretched.
+- **The structure has weight:** a longer or swept wing, a bigger tail or a longer body weighs more and moves the centre of gravity, and a bigger wing holds more fuel.
+- **New checks:** the static margin (red when the centre of gravity is behind the neutral point), the directional stability, the stall and approach speeds, the tail-strike angle, the load on the nose wheel standing and at full thrust, and the wingspan's code letter against the stand's. A design whose engines or tanks touch the ground standing can be saved, but not flown until it's fixed.
+- **The controls tune themselves** to the new tail and wing (the yaw damper and the turn coordination), and the stabiliser's take-off setting allows for a bigger or smaller tailplane.
+- **Stands fit the design:** one with a longer wing gets only the stands it fits, and parks with its own nose on the stop mark.
+- Also: the keys stay in the warehouse after an undo, and a drag survives the pointer being taken away mid-drag. Designs from v0.5.2 open and fly as they did.
+
 ## v0.5.2 · 2026-11-14 · The warehouse, KSP's way: parts anywhere
 
 - **Build it from parts.** The warehouse's editor works like a sandbox now: pick a part from the palette over the aircraft (the LEAP-1A, the GEnx-1B, the GE90-115B, a wing tank, a hold tank, ballast) and it follows the pointer over the airframe as a ghost, green where it fits and red where it doesn't, with its name and where it would go beside the pointer. Click to attach it.

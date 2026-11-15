@@ -325,7 +325,8 @@ async function boot() {
 
   // What a widebody needs kept clear round its stand (undefined for code C: as before v0.3.0).
   function standClear() {
-    const t = sim.type;
+    const t = sim.type, D = t.geo.DESIGN_SHAPE;   // v0.5.3: a design with its own airframe, by its own span and length
+    if (D) return { span: D.spanM, length: D.lengthM, path: gate.pushPath?.() };
     return t.icaoCode === 'E' ? { span: t.geo.SPAN, length: t.geo.LENGTH, path: gate.pushPath?.() } : undefined;
   }
   // What a Boeing's LOC, G/S and LNAV follow: the destination's ILS and the map's route (v0.3.0).

@@ -13,12 +13,17 @@
 // Body axes: x forward, y right, z down; p roll right +, q pitch up +, r yaw right +.
 
 import { RHO0 } from './atmosphere.js';
+import { gainFor } from './fbw.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 export function createFbwBoeing(A) {
   const KT = A.KT, DEG = A.DEG;
+  // v0.5.3, Part 3 (as fbw.js): the inversions need nothing; the gains in surface deflection scale by the inverse of
+  // the design's control power per inertia against its base's (1 for a type or a design on its base's airframe).
+  const GS = A.GAIN_SCALE;
+  const K_PITCH = GS ? gainFor(GS.pitch) : 1, K_YAW = GS ? gainFor(GS.yaw) : 1;
   // Minimum manoeuvring speed (the top of the amber band) over the 1 g stall [EST, notes §3]: about
   // 1.3 VS at low speed, and it comes up to the buffet limit at high Mach through the CLmax that
   // machLift() lowers. A type's data may set its own.
@@ -117,7 +122,7 @@ export function createFbwBoeing(A) {
       const qdot = 3.5 * (sp * ROT_RATE - E.q);
       elevDirect = (E.Iyy * qdot - E.myOther) / E.elevScale;
     } else {
-      elevDirect = sp * (sp > 0 ? A.ELEV_UP : A.ELEV_DN) * 0.75 - 4 * E.q;
+      elevDirect = (sp * (sp > 0 ? A.ELEV_UP : A.ELEV_DN) * 0.75 - 4 * E.q) * K_PITCH;
     }
     elevDirect = clamp(elevDirect, -A.ELEV_DN, A.ELEV_UP);
 
@@ -263,8 +268,8 @@ export function createFbwBoeing(A) {
     let rud = sy * rudLim;
     if (w > 0) {
       const rTurn = G * sphi / V;
-      const kr = Math.min(1.2, 40 / V);
-      rud += w * (-kr * (E.r - rTurn) + 0.8 * E.beta);
+      const kr = Math.min(1.2, 40 / V) * K_YAW;
+      rud += w * (-kr * (E.r - rTurn) + 0.8 * K_YAW * E.beta);
     }
     X.rudCmd = clamp(rud, -rudLim, rudLim);
 

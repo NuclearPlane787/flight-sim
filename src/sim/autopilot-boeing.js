@@ -11,6 +11,7 @@
 import { createEngines } from './engines.js';
 import { RHO0 } from './atmosphere.js';
 import { magToGrid } from '../world/frame.js';
+import { gainFor } from './fbw.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -25,6 +26,10 @@ export function createAutopilotBoeing(A) {
   const { leverToPhi, leverForPhi } = createEngines(A);
   const KT = A.KT, FT = A.FT, FPM = A.FPM, DEG = A.DEG;
   const VMM_FACTOR = A.VMM_FACTOR ?? 1.3;   // as fbw-boeing.js
+  // v0.5.3, Part 3: the modes ask the law for a path and a bank, so they need nothing for a design; the one loop that
+  // works the rudder itself (the runway alignment's) scales by the inverse of the design's rudder power per inertia
+  // against its base's (src/sim/fbw.js's gainFor(): 1 for a type or a design on its base's airframe).
+  const K_YAW = A.GAIN_SCALE ? gainFor(A.GAIN_SCALE.yaw) : 1;
 
   const SERVO_RATE = 0.22;        // lever travel per second [EST]: idle to full in about 4.5 s
   const OVERRIDE_LAG = 1.0;       // s after the hand comes off before the A/T takes the lever back
@@ -384,7 +389,7 @@ export function createAutopilotBoeing(A) {
       X.boAlign = true;
       const err = wrapPi(want - E.psi);
       X.boAlignI = clamp(X.boAlignI + err * dt, -ALIGN_YAW_I_MAX / ALIGN_KI, ALIGN_YAW_I_MAX / ALIGN_KI);
-      X.boAlignYaw = clamp(ALIGN_KP * err - ALIGN_KD * E.r + ALIGN_KI * X.boAlignI, -1, 1);
+      X.boAlignYaw = clamp(K_YAW * (ALIGN_KP * err - ALIGN_KD * E.r + ALIGN_KI * X.boAlignI), -1, 1);
     } else if (X.boAlign) { X.boAlign = false; X.boAlignYaw = 0; X.boYawClear = true; }
     // Near the ground the wings stay nearly level.
     if (ap.lateral === 'LOC' && E.aglFt < 200) E.apBank = clamp(E.apBank, -8 * DEG, 8 * DEG);

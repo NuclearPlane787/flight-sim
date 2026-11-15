@@ -43,6 +43,8 @@ const DEG = Math.PI / 180;
 
 // Mid-fuselage cabin doors (x centre). Type C doors, 0.81 × 1.85 m.
 export const DOORS = [16.55, 7.9, -3.1, -14.5];
+// The cabin windows' row: the first at x0, then one every `pitch` aft (aircraft.js lays a design's plugs in bays of it).
+export const WINDOW = { x0: 15.6, pitch: 0.533 };
 
 function fuseU(x) { return (x - TAIL_X) / LENGTH; }
 // Fuselage (x, θ in degrees) → fuselage-canvas pixel (region at the top of the atlas).
@@ -159,7 +161,7 @@ function paintFuselage(ctx, glow, windows = [], registration = REGISTRATION) {
   const doorClear = (x) => DOORS.every((d) => Math.abs(x - d) > 0.75);
   const wingExit = (x) => true;
   for (const side of [1, -1]) {
-    for (let x = 15.6; x > -13.6; x -= 0.533) {
+    for (let x = WINDOW.x0; x > -13.6; x -= WINDOW.pitch) {
       if (!doorClear(x) || !wingExit(x)) continue;
       sideTransform(ctx, side, x, 8.5);
       ctx.fillStyle = COLORS.glass;

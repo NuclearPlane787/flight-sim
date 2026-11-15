@@ -2368,3 +2368,401 @@ The run went from 03:26 to 04:10 KST: all five parts are built and checked, and 
 `src/version.js` (`Flight Sim v0.5.2 · CL#261114`), `Updates.md`, `README.md` (the warehouse, the code map), `PLAN.md` ("Parts anywhere (v0.5.2)"), `ROADMAP.md` (row 1, v0.5.1 to v0.5.3 in the plan, "Found while building v0.5.2"), `AGENTS.md` (State, Next), `HANDOFF.md` (v0.5.3 first, the versions table, "v0.5.2: parts anywhere"), `V053.md` (the brief for v0.5.3's Claude Code run), and the Games project doc.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.5.2`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome), then starts v0.5.3 from `V053.md`'s starting prompt.
+
+## 2026-11-15, 04:04 KST: v0.5.3 run started (Claude Code)
+
+- `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`: `31c1fb3 v0.5.2` on top, so the run starts from a pushed version.
+- Read AGENTS.md (root and game), HANDOFF.md, V053.md, STATUS.md's v0.5.2 entry, ROADMAP's long term.
+
+### Decisions made in the run (v0.5.3)
+
+- **The deadline.** The starting prompt says "Deadline: 11:30 KST, Sunday 15 November 2026" and, from the brief's template, "At 16:00 KST start the wrap-up … stop at 16:30". The 16:00/16:30 lines belong to the old default deadline (V053.md: "the run ends at the deadline … with the wrap-up from 30 minutes before"), and the /goal says 11:30. So: wrap-up from 11:00 KST, stop at 11:30.
+- **Subagents:** at most 5 at once (Shane's message during the first turn: "have the quota be 5").
+
+## 2026-11-15, 04:18 KST: v0.5.3, Part 1 done: the parts' aerodynamics (Claude Code)
+
+### What's built
+
+- **`src/sim/parts-aero.js`** (pure; the sim and the worker import it). `baseShape(base)`: each type's parts as planforms from its geometry: the A321's wing, tailplane and fin from `aircraft.js`'s `wingSec()`, `stabSec()` and `finSec()` (its leading edge at 27.5°, the trailing edge's kink at 6.4 m, the tip at 17.0 m; sharklets left out); the Boeings' from `geometry-*.js`'s `WING`, `TAILPLANE`, `FIN` and `widebody-specs.js`'s planform tables and drawn surfaces. Control spans: the Boeings' are widebody-specs.js's drawn ones (the flaperon works with both the flaps and the ailerons); the A321's are [EST] off Airbus's AC top view (flaps to 76 % of the exposed span, ailerons 76–94 %, slats from 15 %, spoilers 17–70 %). `shapeOf(base, airframe)` changes them (Part 2's field, below). `partsModel()` splits them into strips: per wing side one carry-through strip plus 6 (2 inboard of the kink, 4 outboard), per tailplane side 3 or 4, the fin 2 or 3 (25 to 31 strips).
+- **Each strip** sees its own flow: the body's air-relative velocity plus ω × r at its quarter chord; the tailplane in the wing's downwash, ε = kEps·2·CLw/(π·AR), lagged by the tail's arm (the α-dot term); the fin in a sidewash (dσ/dβ 0.1 [EST]). Simple sweep theory: the strip works in the plane normal to its span (its lift from the velocity there), so sideslip changes each side's effective sweep (the sweep's dihedral effect), and a dihedral strip's α changes with β (the dihedral effect). Lift normal to the local flow (so roll rate tilts it: Cnp), profile, induced (the wing's CL × the strip's cl × K) and wave drag, a quarter-chord moment, a stall per strip (the root stalls first, 1.5° spread [EST]). The sections are the lumped model's own lift curve, its slat and flap increments concentrated on the strips that carry them (the base's area ratios), times the panel's Helmbold slope against the base's (so a longer span steepens it), with Prandtl–Glauert on each side's sweep; a Fowler flap moves its strip's centre aft by a quarter of the chord it adds. Controls deflect their strips: ailerons, elevator, stabiliser, rudder, flaps and slats, roll spoilers, speed brakes, ground spoilers.
+- **The fuselage:** its Munk moments in pitch and yaw (with its volume), its side force (with its side area), its drag (with its length); the wing–body's low-wing sideslip roll; the gear, doors, β drag and spoiler/gear/ground-effect moments as the lumped model's items.
+- **Calibration** (`src/sim/parts-aero-cal.js`, written by `tools/fit-parts-aero.mjs`): one physical factor per row it sets (the sections' slope and zero lift, CLmax clean and high-lift, the flaps' lift, drag and moment, the tailplane's efficiency and incidence, the downwash's strength, the fuselage's Munk pitch and side force, the fin's slope, the antisymmetric loading's slope (lifting line: lower than the symmetric one, kP 0.78 to 0.98), the wing–body roll, the surfaces' effectiveness, the residual drag). The script's header says which row fits which factor.
+- **The design's coefficients** (`partsDeltaInto()`; `sim.js` after `coefficients()` in `step()` and in `trimAirborne()`): `lumped(base) + parts(design) − parts(base)` for CL, CD, CY, Cl, Cm, Cn and clmax. The elevator, ailerons and roll spoilers stay out of the difference (the laws invert them); their powers' differences go to `CmElev` (so `E.elevScale`, the pitch law's inversion, is the design's) and to `clAil`, `clSp` in the sim (the roll law's `rollScale` and the moment after the actuators). For the types `clAil` is `A.CL_ROLL.aileron` itself, so their arithmetic is the same to the bit. Only a design whose airframe isn't its base's carries `data.PARTS_AERO`; the cost is 2.55 µs a step for the two evaluations (node on the M5, `/tmp/flight-sim/bench.mjs`), 0.3 ms per second of flight at 120 Hz.
+- **The `airframe` field** (`src/sim/designs.js`; Part 2's first step, fixed now): `{ wingL: { span, chord, sweep, dihedral }, wingR: { … }, mirror, tail, fin, plugFwd, plugAft }` (below).
+
+### The validation table: parts(base) against lumped(base)
+
+`node tools/fit-parts-aero.mjs --print`. Three trimmed points per type: cruise (A321 M0.78 FL350 70 t; 787 M0.85 FL390 200 t; 777 M0.84 FL350 280 t), clean at 250 kt and 10,000 ft, and approach (A321 CONF 3, Boeings flaps 30, gear down, 1,000 ft; 140, 150, 155 kt). The CG at 25 % MAC. Ratio = parts / lumped.
+
+| Row | A321 cruise · clean · approach | 787-9 cruise · clean · approach | 777-300ER cruise · clean · approach |
+|---|---|---|---|
+| CLα | 1.002 · 1.011 · 0.987 | 0.999 · 1.012 · 0.989 | 1.004 · 1.018 · 0.978 |
+| CL at trim α | 1.000 · 1.005 · 1.000 | 1.000 · 1.014 · 1.000 | 1.000 · 1.009 · 1.000 |
+| CD at that CL | 1.000 · 1.003 · 1.000 | 1.000 · 1.017 · 1.000 | 1.000 · 0.995 · 1.000 |
+| CLmax | 0.989 · 1.000 · 1.000 | 0.982 · 1.000 · 1.000 | 0.986 · 1.000 · 1.000 |
+| Cmα | 1.262 · 1.000 · 1.005 | 1.230 · 1.000 · 1.187 | 1.202 · 1.000 · 1.448 |
+| static margin (−Cmα/CLα) | 22.3 % · 22.5 % · 18.7 % MAC (lumped 17.7 · 22.8 · 18.4) | 20.5 · 21.9 · 20.2 (16.7 · 22.1 · 16.8) | 26.8 · 29.0 · 29.0 (22.4 · 29.5 · 19.6) |
+| Cmq | 1.318 · 1.000 · 0.945 | 1.308 · 1.000 · 0.972 | 1.294 · 1.000 · 0.967 |
+| Cmα̇ | 1.703 · 1.000 · 1.150 | 1.738 · 1.000 · 1.251 | 1.709 · 1.000 · 1.430 |
+| CYβ | 1.137 · 1.000 · 0.848 | 1.153 · 1.000 · 0.911 | 1.159 · 1.000 · 0.987 |
+| Cnβ | 1.475 · 1.000 · 0.740 | 1.447 · 1.000 · 0.880 | 1.518 · 1.000 · 1.019 |
+| Clβ | 1.372 · 1.000 · 2.407 | 1.376 · 1.000 · 1.919 | 1.310 · 1.000 · 2.660 |
+| Clp | 1.287 · 1.000 · 1.204 | 1.324 · 1.000 · 1.149 | 1.311 · 1.000 · 1.302 |
+| Cnr | 1.097 · 0.839 · 0.793 | 0.966 · 0.757 · 0.740 | 1.135 · 0.869 · 0.915 |
+| elevator Cm/rad | 1.324 · 1.000 · 0.931 | 1.311 · 1.000 · 0.950 | 1.299 · 1.000 · 0.952 |
+| ailerons Cl/rad | 1.288 · 1.000 · 0.927 | 1.329 · 1.000 · 1.155 | 1.322 · 1.000 · 0.943 |
+| roll spoilers Cl | 1.002 · 1.002 · 1.001 | 1.001 · 1.001 · 0.999 | 1.000 · 0.999 · 0.998 |
+| rudder Cn/rad | 1.316 · 1.000 · 0.835 | 1.290 · 1.000 · 0.889 | 1.333 · 1.000 · 0.963 |
+| speed brakes ΔCL | 0.996 · 1.009 · 1.004 | 0.996 · 1.007 · 1.004 | 0.995 · 1.004 · 1.005 |
+
+**Explained, not matched** (the lumped model's own numbers are [EST] and it holds them constant where the physics doesn't; the brief: where the parts disagree with a sourced number the parts are wrong, and none of these is sourced):
+- **The moment derivatives and control powers at cruise (×1.2 to 1.7):** the lumped model scales only its lift slope with Mach (Prandtl–Glauert: its CLα is 41 % higher at M0.78 than at 250 kt) and keeps every moment derivative and control power constant. The parts' tail, fin and surfaces get the same Prandtl–Glauert on their own sweep, so their powers rise with Mach too, as a real tail's do. Fitted at the clean low-speed point, where the lumped numbers were estimated.
+- **Approach, flaps out:** the flaps raise the downwash at the tail and add chord aft (Fowler), so the parts' Cmα, Cmα̇ and the tail's powers shift by up to 45 % on the 777, whose lumped slope rises most with the flaps (5.0 to 8.0).
+- **Clβ, Clp, Clr, Cnp follow the lift coefficient:** the sweep's dihedral effect and the lift vector's tilt grow with CL (Clβ −0.10 at CL 0.55, −0.24 at CL 1.66 on the A321; DATCOM's sweep term is about −0.1 per unit CL at 25°). The lumped model's are constants.
+- **Cnr** comes 0.76 to 0.87 of the lumped value at its anchor without a factor of its own (the fin's arm and slope are set by Cnβ; the wing's drag adds the rest).
+- **The stabiliser's power:** the parts' Cm per rad of THS is 0.73 to 0.87 of the lumped `CM.ths` at low speed: the tail volume and efficiency that give the lumped Cmq give that much (the A321's lumped 3.4 and −28 imply lt/c = 4.1; the 787's 3.4 was the A321's, carried over).
+
+`tests/parts-aero.test.mjs` holds each row to its tolerance (`TOL` in `tests/parts-aero-table.mjs`: 3 % on CLα, CL, CLmax, the surfaces; 4 % on CD, Cmα, Cmq, CYβ, Cnβ; 6 % on Clβ, Clp; 10 % on Cmα̇) at the point its factor was fitted (and CL, CD, CLα, CLmax and the spoilers at all three), and within the explained envelope at the others.
+
+### Checks
+
+- `python3 tools/cpu-guard.py -- node --test tests/*.test.mjs`: **764/764** (744 old, unchanged, with the three golden flights and `designs.test.mjs`'s three "a design that is its base flies the golden flight to 1e-9", which now go through a design carrying the default `airframe`; 20 new in `tests/parts-aero.test.mjs`).
+- The new tests: the table, three types; the difference exactly zero (`===`) on the base's airframe and no `PARTS_AERO` on a base-airframe design; per type, a tailplane 30 % bigger: static margin up by more than 3 % MAC, the ±30 % moves of Cmα within 35 % of each other, ω_sp up by more than 5 % and as √(stiffness) within 8 %, ζ over 0.2; a fin 30 % smaller: Cnβ down more than 15 %, less yaw damping, the Dutch roll's decay rate (ζω) down; a span 25 % longer: CLα up more than 15 %, the induced drag down, more roll damping; the CG 5 % MAC behind the parts' neutral point: Cmα about the CG positive; the left wing panel 15 % longer: Cl > 0.005 (rolls right); in the sim, each type with the tailplane at 1.3 flies 30 s hands off at 250 kt as its base (pitch within 2°, V/S within 3 m/s, IAS within 5 m/s) with |q| under 2°/s.
+- `--sweep`: only Spotlight's `mds_stores` (not ours).
+
+### Decisions made in the run (v0.5.3)
+
+- **The coefficients' references stay the base's** (S, b, c, and every lumped number in the design's data): the parts' model's coefficients are on them too, so `lumped(base) + parts(design) − parts(base)` adds like for like, and a bigger wing shows as a bigger CL on the same S. Part 2 puts the design's span, MAC and area into the geometry, the checks and the warehouse, not into the lumped references.
+- **The `airframe` field:** `{ wingL: { span, chord, sweep, dihedral }, wingR: { … }, mirror, tail, fin, plugFwd, plugAft }` on every normalised v2 design (a design without it gets its base's, `defaultAirframe()`). span and chord 0.8 to 1.3 (× the base's exposed span from the fuselage's side, and its chord everywhere), sweep −8 to +8° (added to the quarter chord's, swinging about the root's quarter chord), dihedral −3 to +8° absolute (the base's to the bit by default), tail and fin 0.6 to 1.6 (× area, aspect ratio and sweep kept, about their roots' quarter chords), plugs −4 to +6 m ahead of and behind the wing (the nose forward, the tailplane and fin back; the wing and the reference point stay). Each wing side may differ (`mirror: false`); with `mirror` on, the right side copies the left. Steps: 0.01, 0.1°, 0.05 m. `isBaseAirframe()` decides whether the parts' model runs at all.
+- **The controls inverted by the laws stay out of the difference:** the elevator's power goes to `CmElev`, the ailerons' and roll spoilers' to the roll law's scale; so the A321's normal law and the Boeings' pitch inversion fly a design's real control power without new code.
+- **Fitted where the lumped estimates are low-speed and clean** (250 kt, 10,000 ft) for the moments; CL, CD and CLmax at all three points.
+
+## 2026-11-15, 04:33 KST: v0.5.3, Part 2's data done; Parts 3, 4 and 5 handed out (Claude Code)
+
+### What's built (mine: `src/sim/designs.js`, the new `src/sim/airframe-map.js`, `src/sim/sim.js`)
+
+- **`src/sim/airframe-map.js`:** `airframeMap(base, af)`, the design's airframe as maps from the base's geometry: `wing(side, x, y, z)` (span from the fuselage's side, chord about each station's quarter chord, sweep swung about the root's quarter chord, the dihedral line turned, thickness × chord), `tail()`, `fin()` (scaled about their roots' quarter chords, back with the aft plug), `bodyX()` / `bodyXBase()` (the plugs go in 1 m clear of the wing's root, ahead of it and behind it: `plugCuts()`), `wingStation()`, `wingBase()`, `tipY`, `span`. The same maps place the parts' strips (tested to 1e-9 against `parts-aero.js`'s stations), the model, the mounts and the warehouse's outline.
+- **`designDef()` for a changed airframe:** `geo.AIRFRAME` (the map); the eyes and the nose gear forward with the forward plug, the tail-strike point and the tail strike crash point back with the aft plug, the wingtip crash points with the wing; `geo.DESIGN_SHAPE` (span, length, nose and tail x). The shape constants (`WING`, `NOSE_X`, `SPAN`, `TAILPLANE`, `FIN`…) stay the base's: the models build the base's shapes through the map.
+- **The mounts:** `airframe(base, af)` and `designAirframe(def)` (the mounts' sketch of the design's wing, per side), `mountRange()`, `stationRange()`, `placeEngine()`, `placeTank()` take the airframe: a wing engine is the base's placement at the base's station, carried with the wing where its pylon meets it; over-wing engines and wing tanks sit on the design's surfaces; tail and body ranges follow the plugs. `normalizeDesign()` clamps every part to the design's airframe (a tank at its outermost station on a 787 wing cut to 0.8: 22.5 → 18.5 m).
+- **The structure's mass** (`airframeMasses()`, [EST] fractions of the base's OEW from transport statistics: wing 22 %, tailplane 2.2 %, fin 1.6 %, fuselage with furnishings 30 % spread along its length, the cockpit and nose gear 2 %, the APU and tail-cone systems 0.5 %): each wing side's mass with span^1.15 · chord^0.15 / cos Λ (Raymer's transport wing), the tails' with area^0.75, the plugs per metre; each part's change put at its strips' centroid, the parts ahead of (behind) the plugs carried with them. The CG and the inertias follow (v0.5.2's point masses). Examples: an A321 wing at 1.3 span, 1.3 chord, +8°: +5.8 t, the empty CG 0.71 m aft, Ixx +0.77 × 10⁶ kg·m² (+48 %); a 777 with ±6 m plugs: +8.1 t, Iyy +15.8 × 10⁶ at the per-kg term plus the mass.
+- **The wing's fuel:** each side's volume with span × chord² (the thickness with the chord), added to the capacity; its CG moves with the wing's centroid, its roll and yaw radius with the span.
+- **The tail strike** with the plugs (`PITCH_TAILSTRIKE_DEG` from the moved point: the A321 11.2° → 8.6° with +6/+6 m, 14.3° with −4/−4).
+- **The checks** (`designNumbers(def).airframe`): the static margin from the parts' neutral point (−Cmα/CLα at the clean 250 kt point of the design's lumped + parts coefficients) against the CG at the default load, Cnβ about that CG, the 1 g stall at MLW in landing flaps and the approach speed (1.23 VS1g + 5), the tail strike, the span and its ICAO letter against the stand's. Each with the base's. E.g. the A321: SM 21.8 % (tail 0.6: 10.8 %, 1.6: 37.0 %), Cnβ 0.128 (fin 0.6: 0.053), VS1g 106.4 kt (span 1.3: 93.3 kt, span 45.4 m, code D against the stand's C).
+- **`GAIN_SCALE`** (Part 3's input, `gainScale()`): the design's control power per inertia against the base's, pitch (elevator Cm / Iyy), roll (ailerons and roll spoilers' Cl / Ixx), yaw (rudder Cn / Izz), and the damping, stiffness and lift-slope ratios.
+- **The sim's speeds** (`sim.js`): VLS, the stall-warning speed, α prot and α max and the pitch law's load factor per α use the design's maximum lift against the base's at the same slats, flaps and Mach (`clmaxDelta()`), so a bigger wing's tape shows its lower speeds. The types skip it (`kL === 1` takes the old expression).
+
+### Checks
+
+- `python3 tools/cpu-guard.py -- node --test tests/designs-airframe.test.mjs`: 9/9 (new): no field = the base's exactly (no parts model, the base's eyes and nacelles); clamping, snapping, mirroring, round-trip; the map against the parts' stations to 1e-9 and the identity; engines aft with +8° sweep, up with more dihedral, tanks clamped on a shorter wing, the sketch's tip and chord; the mass, CG, inertias and fuel directions on each type; the moved points; the checks' directions and the code letters; a snapshot of an airframe 787 round-trips and flies on to 1e-9 (positions), the prediction flies it to 1e-6 and not the plain airframe's path; a v0.5.2 save without the field flies exactly as with it.
+- The whole suite: 764/764 before this test file (`/tmp/flight-sim/unit3.txt`).
+
+### Handed out (subagents, each with its own files; I review and integrate)
+
+1. Part 4, the A321's model: `src/aircraft.js` (+ `tests/aircraft-airframe.test.mjs`).
+2. Part 4, the Boeings' models: `src/widebody.js` (+ `tests/widebody-airframe.test.mjs`).
+3. Part 5, the warehouse: `src/ui/warehouse.js` behind `AIRFRAME_ON` (off; `?airframe=1` turns it on for checks), + `tests/warehouse-airframe.test.mjs`.
+4. Part 3, the laws: `src/sim/fbw.js`, `fbw-boeing.js`, `autopilot.js`, `autopilot-boeing.js`, + `tests/designs-airframe-flight.test.mjs`.
+
+### Decisions made in the run (v0.5.3)
+
+- **The shape constants in `def.geo` stay the base's;** the design's changes come through `geo.AIRFRAME`, and only the points that sit on the changed parts move (eyes, nose gear, tail strike, crash points, nacelles). The models already build from `def.geo`'s constants, so this keeps a base-airframe design drawing exactly as its base.
+- **The plugs go in 1 m ahead of the wing's root leading edge and 1 m behind its root trailing edge**, in the cabin's constant section on all three types; the main gear and the wing stay at the reference point, the nose gear moves with the forward plug.
+- **A stand's code letter isn't changed by a wider design:** the warehouse warns when the span's letter passes the stand's (the gates' clearance uses the base's span, as v0.5.2 did).
+
+## 2026-11-15, 04:40 KST: v0.5.3, Part 3 done (subagent, reviewed); the take-off trim and the nose load (Claude Code)
+
+### Part 3: the controls tune themselves (subagent; reviewed and run by me)
+
+- **What needed scaling, measured first:** the A321's normal law and the Boeings' pitch already invert the sim's moments with the design's own elevator power (`E.elevScale` from `CmElev`, which now carries the parts' difference) and its inertia (`E.Iyy`), and roll with `E.rollScale` and `E.Ixx`; the autopilots ask those loops for a path and a bank; auto-trim follows the elevator. So the trim, the 30° turn, the altitude capture and the flare all passed on every design unscaled. What didn't: the **yaw damper and the turn coordination**, written in rudder deflection: with a smaller fin or a longer span the Dutch roll's sideslip 6 to 12 s after a pedal kick grew (A321 fin 0.6: 0.73° against the base's 0.53°).
+- **The change:** `gainFor(ratio)` in `src/sim/fbw.js` (1/ratio within ×0.5 to ×2, exactly 1 without `GAIN_SCALE`): `K_YAW` on the dampers (`kr`) and the 0.8·β coordination in `fbw.js` and `fbw-boeing.js`, and on the Boeing autoland's runway alignment (`autopilot-boeing.js`); `K_PITCH` on the ground modes' direct pitch (stick to elevator and its 4·q damping) in both laws. `autopilot.js` unchanged. Reviewed: every factor multiplies by exactly 1 for the types (`x * 1 === x`; `0.8 * 1 * β` is `0.8 * β`).
+- **`tests/designs-airframe-flight.test.mjs`** (13): the tailplane at 0.7 and 1.5 and the span at 1.25 on each type against its base flown the same way: 40 s hands-off trim, a 30° bank within ±3° (and within 1° of the base's), the altitude captured (overshoot under 300 ft, error under 100 ft), a landing (sink no worse than the base's by 0.6 m/s, pitch inside the score's band, on the runway, stopped); the fin at 0.6: the Dutch roll within 1.15× the base's (it fails without the scaling); a `GAIN_SCALE` of all 1s gives the same `fbwStep` outputs as none over 144 states per law.
+- **Results (Dutch roll, residual sideslip 6–12 s after the kick, unscaled → scaled):** A321 base 0.53°, fin 0.6 0.73 → 0.53°, span 1.25 0.70 → 0.62°; 787-9 base 0.31°, 0.52 → 0.28°, 0.38 → 0.34°; 777-300ER base 0.39°, 0.82 → 0.37°, 0.39 → 0.36°. Turns 29.1–29.2° on every design; captures overshoot under 0.2 ft; landings: sink −0.9 to −1.6 m/s (bases −1.16, −1.55, −1.46), pitch 3.5° to 7.2°.
+
+### The take-off trim and the nose load (mine)
+
+- **Found by Part 3's agent and my browser check:** a bigger tail lifted the nose early on the take-off run, stick neutral (787 tail 1.5: 103 kt against the base's 133), and a stretched A321 struck its tail. Two causes: (1) the take-off stabiliser is the base's CG schedule, and a bigger tail turns the same angle into more nose-up moment; (2) the airframe's own weight (a bigger tail, a swept longer wing) moves the CG aft, and the schedule reads more nose-up trim for an aft CG.
+- **The fix (`sim.js`, `takeoffThs()` for designs only):** the schedule read at the CG the base would have with this load (`BASE_CG_OEW_X`), then the setting that gives the design the base's pitching moment at the ground attitude, on the design's own stabiliser power (`lumped + parts` at α 0, M0.2, the take-off flaps). The types keep `takeoffThs0()`, the old expression. Nose-lift speeds with the stick neutral at full thrust (`/tmp/flight-sim/noselift.mjs`), base · tail 1.5 · tail 0.7: A321 177 · 165 · 185 kt (before: 155 · 194), 787-9 133 · 113 · 144 (103 · 154), 777-300ER 129 · 112 · 138 (103 · 148). The rest is the heavier tail's aft CG and the stiffer pitch; the pilot rotates at VR anyway.
+- **The nose wheel's load** (`designNumbers(def).airframe.noseLoad`, `noseLoadEmpty`, `noseLoadBase`): the share of the weight on the nose gear standing. A 787 with +6/+5 m plugs and a 1.3 × 1.1 wing (its CG pulled aft by the swept wing's weight and the aft body) carries 1.9 % on its nose and sat on its tail at 21 kt under full thrust (its engines below the CG). Red below 2.5 %, amber below 5 % [EST: airliners carry 6 to 12 %]; the bases carry 6.8 %, 7.9 %, 7.4 % at the default load. Passed to the warehouse agent for `readout()`.
+
+### Checks
+
+- `python3 tools/cpu-guard.py -- node --test tests/*.test.mjs`: **794/794** (`/tmp/flight-sim/unit4.txt`).
+- `python3 tools/cpu-guard.py --minutes 8 -- node tests/browser-airframe.mjs flight` (new, Chrome on the M5): ALL PASS (3): each type's stretched (+6/+2 m, span 1.25, tail 1.3, fin 1.2), eight-engine design takes off on Gimpo 14R by a scripted pilot (rotating to 3° short of the design's tail-strike angle) and climbs past 3,000 ft, nothing crashed (tail strikes 10.2°, 8.7°, 9.2° against the bases' 11.2°, 9.6°, 10.0°).
+- `browser-airframe.mjs reload`: ALL PASS (4): a scenario with a 787 airframe design (tail 1.4, +4 m aft, span 1.2, +4° sweep) saved, reloaded in a new page: the same airframe, 0 m apart, the same time and mass, no console errors.
+
+### Decisions made in the run (v0.5.3)
+
+- **Playwright reinstalled:** macOS's nightly `/tmp` cleanup (00:00) had deleted most of `/tmp/flight-sim/pw/node_modules/playwright`; reinstalled 1.56.1 there with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` (the checks drive the installed Chrome). The broken copy is in `/tmp/flight-sim/pw-broken-0436`.
+- **A stretched design must balance on its gear:** the main gear stays at the wing's root (the brief), so a long aft body and a heavy swept wing can sit a design on its tail; the warehouse says so (the nose-load check) rather than the gear moving by itself.
+- **The browser check's stretched design** is +6 m ahead and +2 m behind (balanced: 4.3 to 5.4 % on the nose), not +6/+5.
+
+## 2026-11-15, 04:52 KST: v0.5.3, Part 4 (the A321) and Part 5 (the warehouse) done by subagents, reviewed (Claude Code)
+
+### Part 4, the A321's model (`src/aircraft.js`, `src/livery.js`, `tests/dev-aircraft.html`, `tests/aircraft-airframe.test.mjs`)
+
+- `mapGeometry(geo, f)` maps a part's vertices through the design's map (its normals through the map's Jacobian's inverse transpose, by central differences); the `Builder` applies it after the UVs are taken on the base's coordinates, so textures stay put. The wing and everything on it (slats, flaps, ailerons, spoilers, shroud, flap track fairings, landing lights) through `AF.wing(side)`; the sharklets and nav and strobe lights at the moved tips (reach × span, size × chord, sheared with the dihedral); the tailplane and elevators through `AF.tail`, the fin, rudder and dorsal fillet through `AF.fin`; the nose, cockpit glass, APU and tail lights by `bodyX`; the nose gear at `geo.GEAR.nose`. Every hinge bone's pivot and axis is mapped (the surfaces still move). The fuselage is lofted over the design's stations with the shape at `bodyXBase(x)`; its texture is anchored at the nose, the middle and the tail, and the window zones between are re-laid as whole bays (each within 6 % of the 0.533 m pitch): windows repeated or removed, never stretched. The cockpit is moved forward with the plug when main.js adds it to the model.
+- **Exactly the same without a changed airframe:** a hash of every buffer and bone (`5bfd088276687061`, 29,190 triangles) is identical before and after for the type and a base-airframe design.
+- **Tests:** `tests/aircraft-airframe.test.mjs` (8): the base bit for bit; span, nose and tail at the map's places for big, small and lopsided designs (tips within 5 cm of `tipY`); no NaN; the aileron's hinge on the mapped wing and every surface's bone moving; the fuselage's texture scale on every triangle within 6 % of the base's for six plug combinations; the eye inside the skin; the pylon's top above the wing; the nav lights at the tips. The suite: 837/837 then.
+- **Pictures** (the subagent's, and I looked at `v053-a321-max-above.png`, `v053-a321-min-side.png`, `v053-a321-max-flaps.png` myself: the long swept wing with its sharklets and lights at the tips, the stretched body with even windows, the short body, the flaps and spoilers on the mapped wing): `v053-a321-max-*.png` (span 1.3, chord 0.8, +8°, dihedral 8°, tail 1.6, fin 0.6, plugs +6/+6), `v053-a321-min-*.png` (0.8, 1.3, −8°, −3°, 0.6, 1.6, −4/−4), `v053-a321-asym-*.png` (Mirror off), `v053-a321-shortplug-*.png`, the cockpit inside the moved nose.
+- **Known:** with −8° of sweep and 0.8 chord the inner flap's leading edge comes forward of the main leg (x −1.2), so the leg may show through the flap (the brief keeps the gear where it is).
+
+### Part 5, the warehouse (`src/ui/warehouse.js`, `tests/warehouse-airframe.test.mjs`, `tests/browser-warehouse-airframe.mjs`)
+
+- `AIRFRAME_ON = false` (`?airframe=1` turns it on for the checks). Click the wing (each side), the tailplane, the fin or the fuselage (`pickAirframe()` on the design's own shape; hovering outlines it) for its sliders: span, chord, sweep, dihedral with Mirror (off: the clicked side alone); the tailplane's and the fin's areas; the plugs; "As the base"; Done. A slider's drag is one undo step and draws the new outline as a green ghost over the model (no depth test); the model rebuilds on release (a live rebuild needs a build of 20 ms or less: measured 17 to 24 ms). Esc and right-click let go. No new keys.
+- **The numbers:** with the flag on, the static margin (red below 0, amber below 5 % MAC; v0.5.2's forward-CG limits become the margin's growth over the base's, amber past +10 %, red past +25 %), Cnβ (red at 0 or below, amber under half the base's), the stall and approach speeds at MLW (amber past 1.1 × the base's stall), the tail strike against the base's (amber 1.5° sooner), the nose wheel's load (red under 2.5 %, amber under 5 %), the span's code letter against the gate's (amber past it), replacing v0.5.2's CG and tail-strike rows. `hitAirframe()`, `placement()`, the parts' boxes and `editPart()` follow the design's airframe; `viewKey()` includes it.
+- **Two fixes beyond the brief (apply with the flag off too):** after a full panel re-render the focus comes back to the warehouse (Shift+Z after an undo had gone to the page under it); a lost pointer capture mid-drag waits for the release instead of cancelling (headed Chrome fires `lostpointercapture` when a screenshot is taken mid-drag).
+- **Checks (the subagent's):** `warehouse.test.mjs` + `warehouse-airframe.test.mjs` 26/26; the suite 837/837; `tests/cloud/v052-editor.cjs` with the flag off ALL PASS 23/23 (Chrome via a preload that sets `channel: 'chrome'`, `/tmp/flight-sim/agent-wh/chan.cjs`, `FS_ROOT=http://127.0.0.1:8014/games/`); `browser-warehouse-airframe.mjs` on the A321 and the 787: ALL PASS 21/21 each (each of the four selected by clicking, sliders dragged with the mouse, Z / Shift+Z, Mirror off, the numbers changing, Esc, Save keeping the airframe; 20 draw calls; no page errors). Pictures `v053-wh-<type>-01…11-*.png`; I looked at `v053-wh-a321neo-04-wing-long.png` (span 1.25: 43.8 m, code D amber against gate C, stall 95 kt against 106, margin 28.9 % against 21.8) and `v053-wh-b787-9-09-body-ghost.png` (+6 m aft: the cyan outline at the new length, the nose-load red with what to do, the margin, Cnβ and tail strike amber).
+- **A number checked:** the subagent asked about a 787 with span 1.25 and +8° on one side at 1.7 % on the nose. It's the sweep: swinging the wing 8° back about its root moves its tanks' centre 2 m aft (tan 40° − tan 32° at about 11 m out) and its 28 t of structure with them, so the empty CG goes 0.7 m aft (+8° on both sides: 7.9 % → 2.5 % empty). A real designer moves the wing forward with the sweep; here the nose-load check says so.
+- **Not the warehouse's:** `tests/browser-warehouse.mjs` is stale since v0.5.2 (it clicks v0.5.0's engine-count buttons); its first 4 checks pass.
+
+### Decisions made in the run (v0.5.3)
+
+- **Sweep swings the wing about its root's quarter chord** (the brief's "sweep from the base's"); the wing isn't moved forward to keep the balance, so the warehouse's nose-load and margin checks are how a designer sees it.
+
+## 2026-11-15, 05:10 KST: v0.5.3, the Boeings' models (subagent, reviewed); end to end; AIRFRAME_ON is on; the old checks (Claude Code)
+
+### Part 4, the Boeings' models (`src/widebody.js`, `tests/widebody-airframe.test.mjs`, `tests/browser-widebody-airframe.mjs`)
+
+- `AirframeBuilder` (a `Builder`, only for a changed airframe) maps every vertex added (the UVs taken first, the normals recomputed), with each wing vertex's `bendY` its base span (`AF.wingBase`), so the bend shader's constants hold and each tip rises by the full `uFlex` (two different tips with Mirror off). The wing's sections at the base's stations through `AF.wing` (chord × chord, thickness ratio kept, the normal from the mapped dihedral): the box, slats, gap fillers, flaps (the 777's aft flap too), flaperon, ailerons, spoilers, shrouds, canoes and their bones, lights; the engines' and tanks' pylons reach the design's wing at `NACELLES[i].y`. Tailplane and fin through `AF.tail` / `AF.fin` (the fin's foot kept under the crown; its livery scales with it). The fuselage at the design's stations, one loft between each pair of texture seams (`plugPlan()`): inside a plug the texture repeats whole window pitches read from one clean pitch of the base's cabin, doors not repeated; the belly fairing follows the root's chord (deeper with a longer chord: the 777's root showed through); the inboard flap re-clamped behind the main leg; the nose gear at `GEAR.nose`; the cockpit moved with the plug.
+- **The same without a changed airframe:** every attribute, the index and every bone hashed before and after, identical for the types and a base-airframe design.
+- **Tests:** `tests/widebody-airframe.test.mjs` 35/35 (brief, small, big and lopsided designs on each type: extents against the maps, no light through the wing along vertical lines stowed and with slats and flaps out, the tips' bend, windows a pitch apart and none over a door, gear bones, the eye inside the skin, the cockpit's shift); `browser-widebody.mjs` geometry checks on both types, console clean.
+- **Pictures** (I looked at `v053-777-big.png`: every slider at its top, the long swept wing, the tail, the stretched body with even windows, bent 3 m with flaps 30 and gear down; and `v053-787-asym.png`: the left wing 1.3 / +8° / +8°, the right 0.8 / −8° / −3°, both tips lit): `v053-{787,777}-{brief,big,small,asym}.png`, `-close.png`, `-plugs-windows*.png`.
+- **Known:** with chord 0.8 the inboard flap is a sliver behind the unmoved main leg; a 1.6 tailplane overhangs the tail cone (scaled about its root's quarter chord).
+
+### End to end, and the flag
+
+- **`tests/browser-warehouse-airframe.mjs`, extended by me past Save:** Fly it → New scenario with the design picked → Fly: the sim flies the airframe made in the warehouse (`PARTS_AERO` and `geo.AIRFRAME` set) → exit to the menu (it saves) → reload the page → Load: the same airframe, at the same time and place, its model the design's. **ALL PASS on all three types** (`/tmp/flight-sim/v053-whflow-*.txt`; the A321 and 787 at the first run, the 777 after two fixes below). Pictures `v053-wh-<type>-12-flown.png`, `-13-reloaded.png`.
+- **Fixed from the 777's run:** (1) a warning appearing mid-drag (its span passes 65 m, code F, at ×1.02) pushed the panel down and the slider out from under the pointer: the warnings above the panel now stay as they were while a slider moves and catch up on release (`renderNumbers()`, `sliding`); (2) the test's side view put the 777's fin under the parts palette: the test turns until the fin is clear (not a product fault: a fresh click on the fin selects it, `/tmp/flight-sim/finpick.mjs`).
+- **`AIRFRAME_ON = true`** (`src/ui/warehouse.js`): Parts 1 to 5 work end to end. `tests/warehouse-airframe.test.mjs` updated for it (this run's test).
+- **v0.5.2's two warehouse tests read the `cg` row** ("the three bases pass every check", "heavy ballast far aft moves the CG past the limit"), so with the flag on and their assertions unchanged: on the base's own airframe v0.5.2's "CG against the base's" row stays beside the static margin (one note when both warn); on a changed airframe the margin replaces it, as the brief says.
+- **The suite: 837/837** (`/tmp/flight-sim/unit7.txt`).
+
+### The definition of done's browser checks (Chrome on the M5, own temporary profile, 1440×900, port 8014)
+
+- `browser-airframe.mjs fps`: **ALL PASS (10)**: a stretched (+6/+2 m), long-winged (span 1.25, tail 1.3, fin 1.2) design with **eight engines** on each type flies from the plan; **60 fps in 3rd person**: 777 on Gimpo 14R 60 fps, 0.87 M triangles, 39 draws, CPU 0.5 ms; over Seoul at 3,000 ft: 777 60 fps 0.80 M 31 draws, 787 60 fps 0.80 M 31, A321 60 fps 0.78 M 31; no console errors. Pictures `v053-air-stretched-<type>.png`, `-above.png` (looked at: the 777 over the Han with its long bent wing and eight engines; the A321 from above with eight LEAP-1As).
+- `browser-airframe.mjs reload` ALL PASS (4), `flight` ALL PASS (3) (above).
+- `tests/cloud/v052-editor.cjs` with the flag on: **ALL PASS 23/23** (`FS_ROOT=http://127.0.0.1:8014/games/`, Chrome via `/tmp/flight-sim/agent-wh/chan.cjs`; its screenshot folder moved out of the game folder to `/tmp/flight-sim/v053-v052-editor-shots`).
+- `browser-scenarios.mjs` **23/23**; `browser-e2e.mjs` **12/12** (E2E_URL on 8014: Gimpo 14R, AP, 8×, the jump 0.00 m off the path, skip to final, landed on Jeju 07, taxi-in, callouts); `browser-types.mjs` **all passed** on the 787-9 and the 777-300ER; `browser-picker.mjs` **PASS**, no console errors (its own server on 8121, stopped after); `audio-render.mjs` **45/45** on each type (E2E_ROOT on 8014).
+- `browser-designs.mjs` **13/14**: the miss is "the design round-trips through a reload", which also checks `sim.design.count === 4`: v0.5.0's `count` field, which v0.5.2's parts format dropped (its engines, name, place and mass all round-trip: n 4, "Four-engine 777"). Stale since v0.5.2, not this run's.
+- `browser-warehouse.mjs`: its first 4 checks pass, then it waits for v0.5.0's engine-count buttons, which v0.5.2 removed (`v052-editor.cjs` replaced it). Stale since v0.5.2, as the v0.5.2 entry said.
+- **Pictures at the sliders' limits in the warehouse** (`tests/browser-warehouse-limits.mjs`, ALL PASS, no page errors): `v053-limits-<type>-{max,min}-{quarter,above}.png`, each type with every slider at its top and at its bottom, the numbers in the panel. Looked at: the 777 at max (a long body and swept wing, a big tail; red: the nose wheel at −3 %, its CG behind the main gear; amber: margin +18 % MAC, the tail strike 2.1° sooner, code F+), the A321 at min (a stubby wing, the LEAP-1As red for scraping with −3° dihedral, the margin −4.3 % red, the stall 34 kt faster amber). (A first take opened each design from inside the editor, `openEditor()`, and its view kept the last base's model: a player always opens from the list, which closes the view, so the script goes back to the list first.)
+- `--sweep`: the pre-existing Chrome renderer (about 3,000 CPU-minutes) and the VM, neither ours.
+
+## 2026-11-15, 05:37 KST: v0.5.3, the reviewer's findings and their fixes (Claude Code)
+
+A reviewer subagent (fresh context, given the brief and the changed files, not my conclusions) checked the build against `V053.md`. It found no change for the types: every new path in `sim.js`, `fbw.js`, `fbw-boeing.js`, `autopilot-boeing.js` is gated on `PARTS_AERO` / `GAIN_SCALE` being undefined or is an exact `x * 1` (checked against `git show HEAD`, read-only), and the sign conventions agree with the lumped model's. Its findings, most severe first, and what was done:
+
+1. **The design's take-off trim dropped v0.5.2's parts' CG move** (`sim.js` `takeoffThs()`): it took out `CG_OEW_X − BASE_CG_OEW_X`, which includes ballast, engines and tanks, so a hair of airframe change (tail 1.01) switched an A321 with 6 t of ballast aft from 2.754° to −0.436°. **Fixed:** `designs.js` records only the airframe structure's own CG move (`AIRFRAME_CG_SHIFT`), and the schedule takes that out: now 2.754° → 2.720° (the 787: 2.471° → 2.446°). Test: "the take-off trim keeps ballast's CG move" (`designs-airframe.test.mjs`). The nose-lift speeds of the 1.5 tails are as before (165, 113, 112 kt).
+2. **The validation table's envelopes would pass almost anything** (Clβ up to 2.8×, Cnβ 0.7–1.6) and Cnr and the stabiliser's power weren't held. **Fixed:** `tests/parts-aero.test.mjs` holds every row at every point: tight where fitted, else in a per-point envelope about ±0.1 around what the three types give (cruise, clean, approach; Cnr and Cmths added; a row that's neither fails). The differences themselves stay explained (Part 1's entry): the lumped model's Mach- and flap-independent moment derivatives.
+3. **The nose-load check was static:** a 787 with `plugAft: 6` showed 5.2 % standing at the default load and sat on its tail at 25 kt under full thrust when light. **Fixed:** `noseLoadThrust` (`designs.js`): the nose's share with full take-off thrust (the engines below the CG and the acceleration lift the nose by T × the thrust line's depth / (W × wheelbase)), at the default load and empty with 5 t of fuel. The bases keep 1.3 to 2.2 %; the 787 +3 m aft is −0.0 %, +6 m −2.3 %, the A321 +6 m −5.4 %; balanced stretches (+6/+2) 3.6 to 3.8 %. The warehouse's row is red under 0 with thrust (or 2.5 % standing), amber under 1 % with thrust (or 5 % standing). Test: "the nose wheel's load with full thrust".
+4. **Dihedral at −3° (the slider's bottom) crashes on spawn with "engine strike"** on all three types: the readout marks the engines red, but Save and Fly it only need an engine. **Kept, as v0.5.2 does it:** a nacelle touching the ground standing is red ("will fail or touch"), and v0.5.2's GE90 A321 without longer gear behaves the same; with Indestructible on it scrapes (new test: the −3° designs crash without it, and scrape on the mapped crash points with it, no crash).
+5. **The CPU per step for a design was about 8× a type's**: `clmaxDelta()` ran two more full strip passes a step. **Fixed:** a wing-only maximum-lift pass (`wingClmax()`, equal to `partsInto()`'s sum to the bit: test) and a last-input memo (the sim asks twice a step with the same inputs; a pure function, so determinism holds). A 777 design: 8.27 → 3.82 µs a step (the type 0.98), `/tmp/flight-sim/review/perf.mjs`.
+6. **Minor:** the landing score's pitch band stayed the base's (a 787 +6 m aft strikes at 7.4° but was "fine" to 7.5°). **Fixed:** a design whose tail strikes sooner gets the band's top moved down by as much (`scoreBand()` in `designDef()`: that 787's top 5.3°). The A321's flare cap stays 7.5° (its smallest tail strike at the sliders' limits is 8.6°). Engines clamped on a shorter wing stay clamped when it grows back: as normalising does (the brief's "clamped").
+
+**Definition-of-done items it flagged:** the final entry (below, at the end of the run); `browser-designs.mjs` 13/14 and `browser-warehouse.mjs` (stale since v0.5.2: the 05:10 entry says what each waits for); Indestructible's skids on a changed airframe (now tested).
+
+### Checks after the fixes
+
+- `python3 tools/cpu-guard.py -- node --test tests/*.test.mjs`: **842/842** (`/tmp/flight-sim/unit9.txt`).
+- `browser-airframe.mjs fps`: ALL PASS (10), the same 60 fps numbers.
+- `browser-warehouse-airframe.mjs` on each type: **ALL PASS** (`/tmp/flight-sim/v053-whflow-<type>-final.txt`). Its own checks updated for the CG-row rule (both rows on the base's airframe, the margin alone on a changed one), and its slider drags: a screenshot taken mid-drag in headed Chrome fires `lostpointercapture`, which ends a range input's native drag (the 787's and 777's span stopped at ×1.02). Without the shot the drag runs to the end (`/tmp/flight-sim/dragdbg.mjs`: every input event lands, the slider stays in the page, 1.25 reached), so the test now takes back a drag a shot cut short and drags again (one undo step).
+
+## 2026-11-15, 05:38 KST: v0.5.3, the run's final entry (Claude Code)
+
+The run went from 03:56 to 05:38 KST, well before its 11:30 deadline: every part of `V053.md` is built and verified, so it stopped there rather than start the brief's extras.
+
+### What's done (the definition of done, item by item)
+
+- **Unit tests: 842/842** through the guard (744 v0.5.2 tests with their assertions unchanged, 98 new).
+  - **The types don't change:** the three golden flights to 1e-9 (`golden-a321.test.mjs`, `golden-boeing.test.mjs`), and a design that is its base to 1e-9 (`designs.test.mjs`, now through a design carrying the default `airframe`). The reviewer checked that every new path is skipped or exactly `x * 1` for them.
+  - **The validation table** (Part 1): `tests/parts-aero.test.mjs`, every row at every point held tight where fitted or in its explained envelope; the table is in the 04:18 entry, the explanations under it.
+  - **The physics:** a bigger tailplane more static margin and a quicker short period; a smaller fin less Cnβ and a slower-dying Dutch roll; a longer span a steeper lift curve, less induced drag, more roll damping; the CG behind the neutral point unstable (and red in the warehouse); one wing panel longer rolls towards the short one (`parts-aero.test.mjs`).
+  - **Flying designs** (Part 3): the tail at 0.7 and 1.5 and the span at 1.25 on each type trim, hold a 30° bank, capture an altitude and land within their base's limits (`designs-airframe-flight.test.mjs`).
+  - **The airframe as data** (Part 2): `designs-airframe.test.mjs`; **the models** (Part 4): `aircraft-airframe.test.mjs`, `widebody-airframe.test.mjs`; **the warehouse** (Part 5): `warehouse-airframe.test.mjs`.
+- **In Chrome on the M5** (Playwright, `channel: 'chrome'`, its own temporary profile, 1440×900, my server on 8014):
+  - the warehouse: an airframe changed (the wing, tailplane, fin and fuselage each clicked and dragged), saved, flown from New scenario (Fly it), reloaded, on all three types (`browser-warehouse-airframe.mjs`: ALL PASS each); v0.5.2's editor flows `v052-editor.cjs` ALL PASS 23/23 with `FS_ROOT` on 8014;
+  - 60 fps in 3rd person with a stretched, long-winged design with eight engines, each type (`browser-airframe.mjs fps`: 0.78–0.87 M triangles, 31–39 draws, 0.5–0.6 ms CPU);
+  - nothing old broken: `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` all passed on each Boeing, `browser-picker.mjs` PASS, `audio-render.mjs` 45/45 on each type; `browser-designs.mjs` 13/14 and `browser-warehouse.mjs` 4 checks then stopped, both on what v0.5.2 removed (`design.count`, the engine-count buttons), not on this run's changes.
+- **Pictures, each looked at** (`Claude outputs/flight-sim/`): each type at the airframe sliders' limits in the warehouse (`v053-limits-<type>-{max,min}-{quarter,above}.png`), stretched long-winged designs in the air (`v053-air-stretched-<type>.png`, `-above.png`), the warehouse's new numbers and panels (`v053-wh-<type>-*.png`), the models at their limits on the dev pages (`v053-a321-*.png`, `v053-787-*.png`, `v053-777-*.png`).
+- **A reviewer subagent** checked the build against the brief; its correctness findings are fixed (the previous entry).
+- **CPU:** `cpu-guard.py --status`: no slots in use; `--sweep`: only macOS's virtualisation process (not ours). My servers on 8014 and 8121 stopped (`/tmp/flight-sim/pids`); no browsers left.
+- **`AIRFRAME_ON` is on** (`src/ui/warehouse.js`): Parts 1 to 5 work end to end.
+- **`README.md`:** the airframe in the warehouse (the sliders, the numbers, the checks), what it does in flight, and the code map.
+
+### What isn't done
+
+- **The brief's extras** (another type's wing, canards, winglets): not started.
+- **Known, left as they are:** with −8° sweep and 0.8 chord the A321's inboard flap comes forward of its main leg (the brief keeps the gear where it is), and on the Boeings at 0.8 chord the inboard flap is a sliver behind the leg; a 1.6 tailplane overhangs the tail cone; a design whose nacelles touch the ground standing (−3° dihedral) is red but can still be flown and crashes at once (as v0.5.2's red ground strikes); the 1.5 tails still lift the nose by themselves 10–15 % earlier than their bases on a hands-off take-off run (the heavier tail's aft CG and the stiffer pitch); the gates' clearance uses the base's span (the warehouse warns when the design's code letter passes the stand's).
+- **Not checked:** the editor's feel with Shane's trackpad, and the designs by ear; `tests/cloud/wing-gaps.cjs` and the other cloud checks (the Cowork session runs them); the stale `browser-designs.mjs` / `browser-warehouse.mjs` weren't brought up to date.
+
+### The decisions made in the run (v0.5.3), collected
+
+- The deadline: 11:30 KST, wrap-up from 11:00 (the prompt's 16:00/16:30 lines belong to the brief's old default). At most 5 subagents (Shane's message); four ran at once.
+- The coefficients' references stay the base's S, b, c: a design's changes come through the parts' difference.
+- The controls the laws invert (elevator, ailerons, roll spoilers) stay out of the difference; their powers' differences go to the laws' scales.
+- The moments fitted at the clean 250 kt point; CL, CD and CLmax at all three points.
+- The `airframe` field's shape and ranges (04:18 entry), on every normalised v2 design; sweep swings the wing about its root's quarter chord.
+- The shape constants in `def.geo` stay the base's; `geo.AIRFRAME` maps them; the points on the changed parts move.
+- The plugs go in 1 m clear of the wing's root, fore and aft; the main gear stays.
+- On the base's own airframe v0.5.2's "CG against the base's" row stays beside the static margin (its old tests' assertions hold); on a changed airframe the margin replaces it.
+- A design's take-off trim: the base's schedule at the CG this load would have on the base's airframe, then the base's pitching moment at the ground attitude on the design's own stabiliser power.
+- The nose wheel's load standing and under full thrust are checks; a stretched design isn't rebalanced by itself.
+- The warnings above the warehouse's panel hold still while a slider moves.
+
+### How Shane can check it
+
+1. `sh tools/push.sh v0.5.3` is the Cowork session's after its review (`src/version.js`, `Updates.md`, `ROADMAP.md`, `PLAN.md`, `AGENTS.md`'s State and `HANDOFF.md` are left to it, as the brief says).
+2. In the game, after Cmd+Shift+R: **Warehouse** → New from any type → click the wing, the tailplane, the fin or the fuselage → drag the sliders (the green outline, the numbers changing; Z undoes a drag) → Save → **Fly it** → Fly. A bigger tailplane feels stiffer in pitch, a longer wing rolls slower and lands slower, a long aft body strikes its tail sooner.
+3. Tests: `python3 tools/cpu-guard.py -- node --test tests/*.test.mjs` (842); the validation table: `node tools/fit-parts-aero.mjs --print`; in Chrome with a no-cache server on 8014: `node tests/browser-warehouse-airframe.mjs` (`WH_TYPE=b787-9` etc.), `node tests/browser-airframe.mjs`, `node tests/browser-warehouse-limits.mjs` (each through the guard).
+
+### Addendum, 05:49 KST: the two stale browser checks brought up to date (the final entry's "nothing old broken")
+
+- **`tests/browser-designs.mjs`: 14/14** (was 13/14). Its reload check read `sim.design.count`, v0.5.0's field that v0.5.2's parts format dropped; it now counts the design's engine parts (4).
+- **`tests/browser-warehouse.mjs`: all passed, 35 checks** (was 4, then stopped). It clicked v0.5.0's controls that v0.5.2 removed (the engine-count buttons, the station sliders, the engine segment, the thrust slider): the four-engine 777 at 1.2 thrust and the GE90 A321 now open through the page's `openEditor()` from the list, as v0.5.0's fields make them, and the stored-design checks read the parts. Every flow and check it had is kept (made, saved, reloaded, duplicated, renamed, deleted; the view orbited and zoomed; nothing running after Back; the picker's cards; the plan carrying the design; the GE90 A321 taking off).
+- **Found by it:** the nose-under-thrust check (the reviewer's finding 3) made the GE90 A321 with 1.5 m gear red, where v0.5.2 rates it amber ("take off with a third of the lever"; this test flies it off at 0.3 lever). Red is now a nose too light standing (under 2.5 %: it sits on its tail with any thrust); full thrust lifting the nose when light is amber, with that advice. The reviewer's 787 +6 m aft stays red (0.3 % empty).
+- **After it:** the suite **842/842** (`/tmp/flight-sim/unit10.txt`); `browser-warehouse-airframe.mjs` on the 787 ALL PASS; `v052-editor.cjs` ALL PASS 23/23 (screenshots to `/tmp/flight-sim/v053-v052-editor-shots2`).
+- **So every old check in the definition of done passes:** `browser-designs.mjs` 14/14, `browser-warehouse.mjs` all passed, `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` on each Boeing, `browser-picker.mjs`, `audio-render.mjs` 45/45 on each type, `v052-editor.cjs` 23/23.
+- **CPU at the end:** `cpu-guard.py --status`: no slots in use; `--sweep`: only macOS's virtualisation process (not ours). My server on 8014 stopped again (`/tmp/flight-sim/pids`); no browsers left.
+
+### Addendum, 06:05 KST: the reviewer's finding 4 fixed (a design that crashes the instant it starts can't be flown); the cloud checks
+
+- **The finding:** at −3° dihedral (the slider's bottom) every type's engines touch the ground standing, and Fly flew it into an "engine strike" at t = 0 (so did v0.5.2's red ground strikes, e.g. a GE90 A321 on short gear). **Fixed:** `designNumbers(def).touchesGround` (`designs.js`: a non-tail nacelle or a wing tank at or under the ground standing). The warehouse's **Fly it** is off with the reason in its tooltip (`readout().canFly`; Save stays on, the design can still be edited), and **New scenario's Fly** is off with "Its engines or tanks touch the ground standing: lengthen the gear or move them up in the warehouse." (`src/ui/setup.js`). Indestructible's skids for such a design are tested too (they scrape, no crash).
+- **Tests:** "a design whose engines touch the ground standing can be saved but not flown" (`designs-airframe.test.mjs`: the −3° designs of all three types, the GE90 A321 touching and cleared by 1.5 m of gear, `readout()`'s `canSave`/`canFly`). The suite: **843/843** (`/tmp/flight-sim/unit12.txt`). In Chrome, `browser-warehouse-limits.mjs`: ALL PASS, with Save on and Fly it off (and why) for each type's −3° design, and New scenario's Fly off with the reason for the saved −3° 777 (`v053-limits-setup-fly-refused.png`, looked at: Fly dimmed, the red line under the load).
+- **`tests/cloud/v052-editor.cjs` updated for it:** it saved an A321 with a GE90 pair under the wing (touching the ground standing) and flew it with Fly it (under v0.5.2 it crashed at once; the check only read the design's name and engine count). Before its Save it now lets go of the part and lengthens the gear 1.5 m, as the refusal says, and checks Fly it is on; the Fly it flow after it is unchanged. **ALL PASS, 24 checks.**
+- **The cloud checks the Cowork session runs afterwards** (`V053.md`), run here against no-cache servers on 8014 (`FS_ROOT`) and 8765 (the scripts' own default), in Chrome via `/tmp/flight-sim/agent-wh/chan.cjs`: `v052-editor.cjs` ALL PASS (24), `v052-designs.cjs` ALL PASS, `v051-hangar.cjs` ALL PASS, `wing-gaps.cjs` all passed, `route-views.cjs` ALL PASS, `weight-copy.cjs` ALL PASS, `athr-lever.cjs` all pass, `weather-final.cjs` ALL PASS, `v044-hud.cjs` all ok. Their screenshots went to `/tmp/flight-sim/v053-cloud-*`, outside the game folder.
+- **Rerun after the fix:** `browser-warehouse.mjs` all passed (35), `browser-warehouse-airframe.mjs` on the 787 ALL PASS.
+- **So every correctness finding of the reviewer is fixed:** 1 (the take-off trim), 3 (the nose under thrust), 4 (the spawn crash), 5 (the CPU), 6 (the score band); 2 (the table's envelopes) tightened to catch regressions, its differences explained.
+- **CPU at the end:** `--status`: no slots in use; `--sweep`: only macOS's virtualisation process (not ours); my servers on 8014 and 8765 stopped (`/tmp/flight-sim/pids`); no browsers left.
+
+### Addendum, 06:40 KST: the final pass, every check on the final code
+
+After the last code changes (the Fly gate in `designs.js`, `warehouse.js`, `setup.js`), one pass over everything in the definition of done (`/tmp/flight-sim/final/run-all.sh`, each through the guard; results in `/tmp/flight-sim/final/<check>.txt`), Chrome on the M5 with its own temporary profiles, 1440×900, no-cache servers on 8014, 8121 (the picker's) and 8765 (the cloud scripts' default), stopped after:
+
+- **Unit tests: 843/843** (`/tmp/flight-sim/final/unit.txt`).
+- **The airframe:** `browser-airframe.mjs` ALL PASS (17): 60 fps in 3rd person with a stretched, long-winged eight-engine design on every type (777 on Gimpo 14R 60 fps 0.87 M triangles 39 draws; over Seoul 777 60 fps 0.80 M 31, 787 60 fps 0.80 M 31, A321 60 fps 0.78 M 31; CPU 0.4–0.6 ms), the reload, each type's take-off; `browser-warehouse-airframe.mjs` (made, saved, Fly it, flown, reloaded) ALL PASS on the A321, the 787 and the 777; `browser-warehouse-limits.mjs` ALL PASS (the pictures at the sliders' limits, Fly refused for the −3° designs in the warehouse and New scenario).
+- **Nothing old broken:** `browser-designs.mjs` 14/14, `browser-warehouse.mjs` all passed, `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` all passed on the 787-9 and the 777-300ER, `browser-picker.mjs` PASS (no console errors), `audio-render.mjs` 45/45 on the 787-9 and the 777-300ER.
+- **`audio-render.mjs` on the A321:** 43/45 in the pass (the reverser door's clunk, a spool-up step), then 45/45, then 43/45 (the clunk, a click under weather). This is the A321's known flakiness (`HANDOFF.md`: "on the A321 its reverser door clunk can still fail now and then"; it passed 45/45 at 04:39 in this run too), and nothing under `src/audio/` changed in this run (`find src/audio -newer V053.md`: none).
+- **The cloud checks the Cowork session runs:** `v052-editor.cjs` ALL PASS, `v052-designs.cjs` ALL PASS, `v051-hangar.cjs` ALL PASS, `wing-gaps.cjs` all passed, `route-views.cjs` ALL PASS, `weight-copy.cjs` ALL PASS, `athr-lever.cjs` all pass, `weather-final.cjs` ALL PASS, `v044-hud.cjs` all ok.
+- **CPU at the end:** `cpu-guard.py --status`: no slots in use; `--sweep`: only macOS's virtualisation process (not ours); every server I started stopped (`/tmp/flight-sim/pids`), no browsers left.
+
+v0.5.3 is done and verified as `V053.md` defines it.
+
+### Addendum, 06:42 KST: `audio-render.mjs` on the A321, passing and why it sometimes doesn't
+
+- **On the final code it passes:** 45/45 in three of six runs (`/tmp/flight-sim/final/audio-a321neo-re1.txt`, `-re4.txt`, `-re5.txt`), as at 04:39 in this run. The other three: 43/45 (the reverser door's clunk, a spool-up step), 43/45 (the clunk, a click under weather), 44/45 (the clunk, −18.0 → −16.1 dB against its +3 dB bar).
+- **Why it varies, and why it isn't this run's:** for the A321 the page (`tests/dev-audio-render.html`) renders `src/audio/synth.js` alone (with `src/sim/lightning.js` for the weather): `def` stays null without `--engines`/`--count`, so it never reaches `designs.js` or anything else this run changed, and nothing under `src/audio/` or `lightning.js` changed (`find src/audio -newer V053.md`: none). `synth.js` draws `Math.random()` for its noise buffers, the wander loops' start points and the crackle's timing (lines 194, 212, 279, 315, 523), so the same code renders differently each run, and the clunk sits near its bar. `HANDOFF.md` (v0.3.0) has it: "on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is)". The 787-9 and 777-300ER pass 45/45.
+- Servers stopped (`/tmp/flight-sim/pids`); `--status`: no slots in use.
+
+### Addendum, 06:44 KST: the A321's audio check, tried seeded
+
+- **To make it pass or fail the same every time**, I seeded `Math.random()` in the check's page (`tests/dev-audio-render.html`, mulberry32, seed 1, chosen before any run): three runs, identical, **44/45**: the clunk passed, but one rain crackle in heavy rain heard from outside peaks at a click ratio of 9.2 against the check's 8 (`/tmp/flight-sim/final/audio-a321neo-seeded1.txt`). The unseeded runs hit the same kind of spike now and then (8.8 at 12.3 s in one). Seeding turns a sometimes-failure into an always-failure, and picking seeds until one passes would hide it, so **the seed is reverted**: the page's text is as before (its file time is newer only from the edit and its revert; `src/audio` and `lightning.js` are untouched: `find src/audio src/sim/lightning.js -newer V053.md`: none).
+- **What stands:** the A321's render is `synth.js` and `lightning.js` only, unchanged since v0.5.2, so its pass rate is v0.5.2's by construction; on the final code it passed 45/45 in three of six unseeded runs (the A321's sound "stays as it is": its random clunk level and rain crackles are left for a session that may change the sound or the check's bars). The 787-9 and 777-300ER pass 45/45.
+
+### Addendum, 11:30 KST: deadline reached
+
+- `date`: Sun Nov 15 11:30:31 KST 2026. Nothing changed since the 06:44 addendum; the wrap-up above stands as the final state of v0.5.3's run.
+- `cpu-guard.py --status`: no slots in use. `--sweep`: only macOS's Virtualization VM (pid 75247, not ours). No servers or browsers of this run are running.
+
+## 2026-11-15, 11:35–11:55 KST: extra time (Shane: "you can work again until 2:30pm"), the A321's audio check measured, a design's stands
+
+Shane gave the run until 14:30 KST (wrap-up from 14:00), with no questions.
+
+### The A321's audio check, measured (no change to the sound or the check)
+
+Over many renders of `tests/dev-audio-render.html` (scratch scripts in `/tmp/flight-sim/trials/`, my server on 8014):
+
+- **The reverser door clunk** (needs +3 dB over the 80 ms before): at the A321's level the rise is under 3 dB in 6 of 30 renders (min 1.73, median 3.74), and 11 of 40 in a second batch. Measuring the background over longer windows (1.30–1.50 s, 1.22–1.50 s) changes nothing (11/40 under 3 for each), because the clunk's own window varies as much: 20 ms levels of the rollout's noise swing ±2–3 dB, and the 50 ms knock peaks only about 6 dB over them. At ×1.4 (+3 dB) it's 1 of 30, at ×1.8 (the Boeings' +5 dB) 2 of 30. So the knock is too quiet for the check about a quarter of the time. It isn't the check's windows. Making it louder is a change to the A321's sound, which rests on Shane's ears (v0.2.2) and "stays as it is" (v0.3.0). **Not changed**; Shane's call: e.g. `LEAP_1A.gain.clunk = 1.4` in `src/audio/synth.js`.
+- **Clicks under weather:** rain heavy outside 0 of 16 at or over 8 (max 6.8); thunder near 0 of 16 (max 7.4); thunder near and cold 1 of 16 (8.7); spool-up 0 of 16. The seeded run's 9.2 was a rare draw.
+
+### A design's stands (the known issue "the gates' clearance uses the base's span")
+
+- **`src/ground/taxi.js`:** `standGeo(geo)` (new) gives the nose, length and span that stands see: `geo.DESIGN_SHAPE`'s for a design with its own airframe, the geo itself otherwise (the same object, so the types are untouched). `standsFor()`: such a design is sized by its own span (at least a code C stand's 36 m, then D 52, E 65, F 80, or its span past that) and length, whatever its base's letter. The base types and a design on its base's airframe take the old path exactly.
+- **`src/ground/gate-flow.js`:** `geoNow()` goes through `standGeo()`, so a stretched design parks with its own nose on the stop mark, and its pushback line is behind its own tail.
+- **`src/main.js`:** `standClear()` gives the parked traffic the design's own span and length.
+- **`src/ui/warehouse.js`:** the span row's amber text now says only the stands that fit are offered.
+- **Evidence:** `tests/stands-airframe.test.mjs` (new, 3): the types and a base-airframe design get the same stands as before at RKSS, RKPC and RKSI; a ×1.3 wing gets only stands its base could use (the code D A321: 62 of 149 at RKSS, 66 of 103 at RKPC, 197 of 360 at RKSI; the 787 and 777 lose a few at Gimpo and Jeju); a +6/+6 design of each type parks nose on the mark with a taxi line behind its tail. **Units: 846/846.** In Chrome (`tests/browser-stands-airframe.mjs`, new): a ×1.3, +6/+2 design of each type starts at Gimpo's first offered stand, its nose on the mark (0.000, 0.034, 0.044 m), is pushed back onto the taxi lines (23 s at 4×), no page errors: ALL PASS. Pictures, looked at: `v053-gate-<type>-parked.png`, `-pushed.png` (wings clear of the parked aircraft and the bridges).
+
+## 2026-11-15, 12:25 KST: extra time, one of V053.md's extras: the A321's sharklets can come off
+
+- **Why this one:** the brief's extras are another type's wing, canards and winglets. A switch for the A321's sharklets is the winglet extra at a size that fits the two hours left: it reaches the model, the aero, the mass, the span, the warehouse and the stands, and can be verified end to end. Canards and another type's wing would each need a new planform in the parts' model, the models and the fit.
+- **The field:** `airframe.sharklets` (`src/sim/designs.js`: `HAS_SHARKLETS()`, in `defaultAirframe()`/`fixAirframe()` for the A321 only, on by default; old saved v0.5.3 designs without it keep them; `isBaseAirframe()` is false with them off). The Boeings' raked tips are their wing's planform, so they have no such switch.
+- **What it does with them off:**
+  - **aero** (`src/sim/parts-aero.js`): the parts' wing never had them (its tip is at 17.0 m), so they're an effective aspect ratio, `SHARKLET_AR` 1.08 [EST] (Airbus quotes up to 4 % less fuel on long sectors, about a tenth of the induced drag). With them off the design's aspect ratio is ÷1.08, which goes into the induced drag, the downwash and the 3D lift slope;
+  - **span** (`src/sim/airframe-map.js`): the tip is the parts' own, 34.0 m tip to tip (35.8 with them), so the code letter, the stands and the gate checks see it;
+  - **mass:** 2 × 200 kg [EST] off the wingtips (`airframeMasses()`);
+  - **crash:** the wingtip-strike points move from the sharklet's foot to the wing's tip;
+  - **model** (`src/aircraft.js`): the wing ends in a closed tip, with no sharklet;
+  - **warehouse** (`src/ui/warehouse.js`): a **Sharklets** box in the wing's panel, with a tooltip on what it does. It's one undo step (`editAirframe(d, 'sharklets', on)`), and **As the base** on the wing puts them back. Also fixed: the span slider's label used the parts' span (34.0 m) even with the sharklets on; it's now the tip-to-tip span from the map, 35.8 m on the base.
+- **Evidence:**
+  - `tests/sharklets.test.mjs` (new, 4): the field and old designs; the switch, undo and reset; the span 34.0 m, code C, the aspect ratio ÷1.08 to 1e-9, about 400 kg off, the stall within 3 kt; holding 250 kt at 10,000 ft on the A/THR needs lever 0.1939 against 0.1877 with them, and with them on it's the base airframe to the bit.
+  - **Units: 850/850**, the golden flights included.
+  - In Chrome, `tests/browser-sharklets.mjs` (new): the switch is there and on, clicking it takes them off (the span row 34.0 m · code C), Z puts them back, Shift+Z takes them off, Save keeps them off, and the saved design takes off from Gimpo 14R and climbs (491 m AGL, 200 kt, nothing crashed), with no page errors: ALL PASS.
+  - Pictures, looked at: `v053-sharklets-front-on.png` and `-front-off.png` (head on: the left tip with its upright navy sharklet, then with the nav light alone; GW 75,100 → 74,700 kg), `v053-sharklets-on.png`, `-off.png` (the warehouse panel: span 35.8 → 34.0 m, OEW 50,500 → 50,100 kg) and `v053-sharklets-flying.png`.
+- **Nothing old broken:** `browser-warehouse-airframe.mjs` ALL PASS on each type, `browser-warehouse-limits.mjs` ALL PASS, `v052-editor.cjs` and `v052-designs.cjs` ALL PASS (on 8014, in Chrome); before the patch, `browser-gate.mjs` 5/5, `browser-ground.mjs` PASS and `browser-scenarios.mjs` 23/23 on the stands change.
+
+## 2026-11-15, 12:42 KST: the extra time's final entry (Claude Code)
+
+Shane gave the run until 14:30 KST. The extra work finished and was verified by 12:41, so the run stops here.
+
+### Done in the extra time
+
+1. **The A321's audio check, measured** (the 11:35 entry): the reverser clunk misses the check's +3 dB about a quarter of the time at the A321's level, whatever window the check uses. That's the sound's level, so it's Shane's call (e.g. `LEAP_1A.gain.clunk = 1.4`: 1 miss in 30). The weather clicks are rare (1 in 16 for near, cold thunder). Neither the sound nor the check changed.
+2. **A design's stands** (the known issue "the gates' clearance uses the base's span"): a design with its own airframe gets the stands that fit its own span and length, parks with its own nose on the stop mark, and the parked traffic clears its own wings (`taxi.js` `standGeo()`, `gate-flow.js`, `main.js` `standClear()`).
+3. **One extra from V053.md: the A321's sharklets can come off** (the 12:25 entry). This changes the warehouse switch, the model, the aero (effective aspect ratio ÷1.08), the span (34.0 m), the mass (−400 kg), the crash points and the stands. Also fixed: the span slider's label now gives the tip-to-tip span.
+
+### Checks on the final code (Chrome on the M5, own temporary profiles, my server on 8014)
+
+- **Units: 850/850** (843 at the morning's end, plus `stands-airframe.test.mjs` 3 and `sharklets.test.mjs` 4). The three golden flights and a base-airframe design are unchanged to 1e-9.
+- **New:** `browser-stands-airframe.mjs` ALL PASS (12) and `browser-sharklets.mjs` ALL PASS (8).
+- **The definition of done's checks, again:**
+  - `browser-airframe.mjs` ALL PASS (17): 60 fps with an eight-engine stretched design on each type, the reload, the flights;
+  - `browser-warehouse-airframe.mjs` ALL PASS on each type; `browser-warehouse-limits.mjs` ALL PASS; `browser-widebody-airframe.mjs` console clean;
+  - `browser-e2e.mjs` 12/12; `browser-scenarios.mjs` 23/23 (run before the sharklets; it touches neither); `browser-gate.mjs` 5/5; `browser-ground.mjs` PASS; `browser-picker.mjs` PASS; `browser-types.mjs` all passed on each Boeing;
+  - `v052-editor.cjs` and `v052-designs.cjs` ALL PASS;
+  - `audio-render.mjs`: the 777-300ER 45/45, the 787-9 44/45 once (idle outside −40.3 dB against −40, the synth's randomness), then 45/45 in five reruns in a row. `src/audio` is untouched since V053.md (`find src/audio -newer V053.md`: none).
+- **Pictures, looked at:** `v053-gate-<type>-{parked,pushed}.png`, `v053-sharklets-{front-on,front-off,on,off,flying}.png` in `Claude outputs/flight-sim/`.
+
+### Decisions made in the extra time (v0.5.3)
+
+- The A321's sound stays as Shane tuned it. Its clunk's miss rate is measured and left to him, rather than making it louder or relaxing the check.
+- A design with its own airframe is sized for stands by its own span: at least code C's 36 m, then D, E and F, or its span past 80 m. A design on its base's airframe takes the old path to the bit.
+- The winglet extra is the A321's sharklets as a switch (the Boeings' raked tips are their planform). The sharklets are worth 8 % effective aspect ratio [EST] and 200 kg each [EST].
+
+### Still not done
+
+- Canards and another type's wing (V053.md's other extras).
+- The known issues in the 05:38 entry, except the stands: the A321's inboard flap ahead of its leg at −8° sweep and 0.8 chord; a 1.6 tailplane overhanging the tail cone; the 1.5 tails' earlier hands-off nose lift.
+- Listening to anything; the editor with Shane's trackpad.
+
+### Running
+
+Nothing: my server on 8014 is stopped (`/tmp/flight-sim/pids`), `cpu-guard.py --status` shows no slots in use, `--sweep` shows only macOS's virtualisation process (not ours), and no browsers are left. Scratch is in `/tmp/flight-sim/` (`trials/`, `extra-shots/`, `fin-*.txt`).
+
+## 2026-11-15, evening: v0.5.3 reviewed and written up (Cowork session)
+
+Shane: "The agent finished some time ago. Run the necessary checks and it can go in the real game." (He had set the run's deadline to 11:30 KST in the starting prompt, `V053.md` lines 163 and 174, and gave it until 14:30 for extras.)
+
+### The run against `V053.md`'s definition of done
+
+- **Unit tests: 850/850** here (node 22.23.4, 101 s) and on the Mac's VM through the guard (24 s). The 79 test files v0.5.2 had are byte for byte v0.5.2's (compared with the repository's `31c1fb3`, cloned read-only into the cloud container, not here): so the 744 old tests' assertions are unchanged, the three golden flights among them. Of the old browser scripts only `browser-designs.mjs` and `browser-warehouse.mjs` changed (stale since v0.5.2, brought up to date: the run's 05:49 addendum), and `tests/cloud/v052-editor.cjs` now lengthens the GE90 A321's gear before Fly it (the Fly gate, 06:05 addendum).
+- **The types don't change:** the new paths in `sim.js`, `fbw.js`, `fbw-boeing.js` and `autopilot-boeing.js` read here: each is skipped without `PARTS_AERO` / `GAIN_SCALE`, or multiplies by exactly 1, as the run's reviewer found.
+- **The validation table** (04:18 entry) and its explanations read; `tests/parts-aero.test.mjs` holds it. `parts-aero.js` read: the difference is like for like on the base's S, b and c; the laws' inverted controls stay out of it; the speeds' maximum lift scales with the wing's area.
+- **Chrome on the M5, the reviewer subagent, the CPU:** the run's evidence (05:10 to 12:42 entries).
+- **Pictures looked at here:** `v053-wh-b777-300er-04-wing-long.png` (the wing panel and the new numbers), `v053-limits-b777-300er-max-quarter.png` and `v053-limits-a321neo-min-quarter.png` (every slider at its limit, the red and amber rows), `v053-air-stretched-b777-300er.png` (over the Han, the long wing), `v053-wh-a321neo-09-body-ghost.png` (the fuselage's outline while its slider moves), `v053-787-asym.png` (the two wings different, both tips lit, bent 3 m), `v053-gate-b787-9-parked.png` (the long-winged 787 at its stand), `v053-sharklets-front-off.png`.
+- **Public repository:** 361 files outside `reference/` (v0.5.2's 342 and 19 new: code, tests and the fit's script); no absolute paths with the Mac's user name, no third-party files.
+
+### Checks here
+
+- **The cloud checks** (SwiftShader, `tests/cloud/serve.py` on 8765): `v052-editor.cjs` ALL PASS (24), `v052-designs.cjs` ALL PASS (the over-wing A321, the mixed 777, the eight-engine 787), `v051-hangar.cjs` ALL PASS (7), `wing-gaps.cjs` all passed (9), `athr-lever.cjs` all pass (9), `weight-copy.cjs` ALL PASS (40), `v044-hud.cjs` all ok (36), `weather-final.cjs` ALL PASS (20), `route-views.cjs` ALL PASS (16; the landing B 88). Their output in the cloud container's `/tmp/v053/cloud-*.txt`.
+- **The coffin corner** (Shane, 2026-11-15, after v0.5.2: a six-engine 777 at FL450 had the low red over the high), by the sim's own tape speeds in node (`/tmp/cc/corner53.mjs` in the cloud container): at 265 t on the 777's wing (30 t payload, 20.5 t fuel) the stick shaker reaches MMO (243 kt) at M0.89, so nothing is clear; with span 1.15 and chord 1.10 (OEW 221.5 t with the bigger wing's weight, 272 t) the shaker at MMO is 219 kt and the amber bar's top 237 kt, clear of both from M0.85; with 1.3 and 1.3 (229.4 t), clear from M0.70. Sweep doesn't move the bands (ROADMAP, "Found while building v0.5.3").
+
+### Decisions
+
+- The run's code is kept as it is: nothing found here needed changing.
+- The A321's reverser clunk stays as Shane set it (the run measured its miss rate; it's his call).
+
+### Written up
+
+`src/version.js` (`Flight Sim v0.5.3 · CL#261115`), `Updates.md`, `PLAN.md` ("The airframe from parts (v0.5.3)"), `ROADMAP.md` (row 1, the plan's v0.5.3 row done, "Found while building v0.5.3"), `AGENTS.md` (State, Next), `HANDOFF.md` (where the next session starts, the versions table with v0.5.2 pushed, "v0.5.3: the airframe from parts"); `README.md` is the run's. The Games project doc too.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.5.3` from `games/flight-sim`, then Cmd+Shift+R in the app; v0.6.0 (East Asia) is `HANDOFF.md`'s first section.

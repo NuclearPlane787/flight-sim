@@ -1,0 +1,10 @@
+// v0.5.3: the parts' model's calibration per type (src/sim/parts-aero.js), written by tools/fit-parts-aero.mjs
+// (don't edit by hand: change the model or the fit, and run it again). Each number is a physical factor of the parts'
+// model, fitted so that parts(base) matches the type's lumped model (src/sim/flightmodel.js) at the validation table's
+// cruise and approach points (tests/parts-aero-table.mjs): the fit script says which row sets which, and STATUS.md
+// (v0.5.3) has the table.
+export const CAL = {
+  'a321neo': { kA: 0.853919, dcl0: -0.0256187, kClmaxHL: 1.2317, kFlapCL: 0.998557, kFlapCD: 1.00503, kClmax: 0.862817, stallSpread: 0.026, cd0w: 0.008, cmw: 0, kEps: 0.865359, aT: 3.5, etaT: 0.551014, tailStall: 0.26, iT: 0.0178558, tauE: 0.609767, cd0t: 0.008, aF: 1.29918, finEndplate: 1.5, finStall: 0.3, sidewash: 0.1, tauR: 0.669755, kY: 0.542517, kF: 0.75513, kN: 0.08, cd0b: 0.007, kP: 0.817822, kCmFlap: -1.83986, cd0x: 0.00321877, kWB: 0.0904549, cm0b: 0, tauA: 0.393046, kSpR: 0.881091, kSB: 0.113654, kGSP: 1.5 },
+  'b787-9': { kA: 0.763127, dcl0: -0.0318022, kClmaxHL: 0.93719, kFlapCL: 0.862891, kFlapCD: 1.32176, kClmax: 0.766606, stallSpread: 0.026, cd0w: 0.008, cmw: 0, kEps: 1.09056, aT: 3.5, etaT: 0.546216, tailStall: 0.26, iT: 0.00227552, tauE: 0.718914, cd0t: 0.008, aF: 2.41178, finEndplate: 1.5, finStall: 0.3, sidewash: 0.1, tauR: 0.609003, kY: 0.448146, kF: 0.904742, kN: 0.08, cd0b: 0.007, kP: 0.779199, kCmFlap: -0.105874, cd0x: 0.000841064, kWB: 0.0951118, cm0b: 0, tauA: 0.183018, kSpR: 1.09137, kSB: 0.112211, kGSP: 1.5 },
+  'b777-300er': { kA: 0.829143, dcl0: -0.0207133, kClmaxHL: 0.974326, kFlapCL: 0.937083, kFlapCD: 1.47208, kClmax: 0.832305, stallSpread: 0.026, cd0w: 0.008, cmw: 0, kEps: 0.99795, aT: 3.5, etaT: 0.584767, tailStall: 0.26, iT: 0.00632723, tauE: 0.764488, cd0t: 0.008, aF: 2.36646, finEndplate: 1.5, finStall: 0.3, sidewash: 0.1, tauR: 0.621667, kY: 0.502154, kF: 0.658823, kN: 0.08, cd0b: 0.007, kP: 0.982623, kCmFlap: -3.22653, cd0x: 0.00269999, kWB: 0.12966, cm0b: 0, tauA: 0.456389, kSpR: 1.21632, kSB: 0.122241, kGSP: 1.5 },
+};

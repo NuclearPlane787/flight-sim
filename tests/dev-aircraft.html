@@ -32,6 +32,7 @@ const DESIGN = designParam ? (() => { const d = JSON.parse(designParam); return 
 const DEF = DESIGN ? designDef(DESIGN) : null;
 const GROUND_Z = DEF ? DEF.geo.GROUND_Z : GROUND_Z0;
 const NENG = DEF ? DEF.geo.NACELLES.length : 2;
+const EYE = DEF ? DEF.geo.EYES : EYES;   // v0.5.3: a design's eye points move with its forward plug
 
 const DEG = Math.PI / 180;
 // Same renderer settings as main.js.
@@ -152,10 +153,10 @@ const VIEWS = {
   engine: { yaw: 20, pitch: 3, dist: 11, fov: 40, target: [4, -1.75, 5.75] },
   nose: { yaw: 50, pitch: 8, dist: 16, fov: 40, target: [18, 0, 0] },
   rearEngine: { yaw: 130, pitch: 8, dist: 16, fov: 40, target: [1.5, -1.75, 5.75] },
-  captain: { seat: EYES.captain, yaw: 0, pitch: -8, fov: 62 },
-  captainLeft: { seat: EYES.captain, yaw: 80, pitch: -5, fov: 62 },
-  fo: { seat: EYES.fo, yaw: 0, pitch: -8, fov: 62 },
-  pedestal: { seat: EYES.captain, yaw: -35, pitch: -42, fov: 70 },
+  captain: { seat: EYE.captain, yaw: 0, pitch: -8, fov: 62 },
+  captainLeft: { seat: EYE.captain, yaw: 80, pitch: -5, fov: 62 },
+  fo: { seat: EYE.fo, yaw: 0, pitch: -8, fov: 62 },
+  pedestal: { seat: EYE.captain, yaw: -35, pitch: -42, fov: 70 },
 };
 function setView(name) {
   const v = VIEWS[name];

@@ -153,6 +153,12 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} $
   await page.waitForTimeout(200);
   const two = await page.evaluate(() => window.__wh.design.parts.filter((p) => p.kind === 'engine').length);
   check('the panel’s Mirror adds the twin', two === 2, two);
+  // (v0.5.3) GE90s under an A321's wing touch the ground standing: since v0.5.3 such a design is saved but not flown
+  // (it crashed the instant it started). Lengthen the gear 1.5 m, as the refusal says, so the Fly it flow below flies it.
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  await page.$eval('.fsw [data-p="gearExtendM"]', (e) => { e.value = '1.5'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  await idle();
+  check('with 1.5 m of gear it can fly (Fly it on)', await page.evaluate(() => !document.querySelector('.fsw [data-a="fly"]').disabled));
   await page.click('.fsw [data-a="save"]'); await page.waitForTimeout(300);
   const msg = await page.evaluate(() => document.querySelector('.fsw [data-o="msg"]').textContent);
   check('Save works', /Saved/.test(msg), msg);

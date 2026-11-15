@@ -97,7 +97,7 @@ async function reload() {
   const back = await page.evaluate((id) => {
     const f = window.__fs; f.loadScenario(id); f.setPaused(true, true);
     const s = f.sim.state;
-    return { n: s.engines.length, design: f.sim.design?.name, count: f.sim.design?.count, x: s.pos.x, y: s.pos.y, z: s.pos.z, t: s.t, mass: s.mass, panelN: s.engines.length };
+    return { n: s.engines.length, design: f.sim.design?.name, count: f.sim.design?.parts?.filter((p) => p.kind === 'engine').length, x: s.pos.x, y: s.pos.y, z: s.pos.z, t: s.t, mass: s.mass, panelN: s.engines.length };
   }, made.id);
   const miss = Math.hypot(back.x - made.x, back.y - made.y, back.z - made.z);
   check('the design round-trips through a reload', back.n === 4 && back.design === made.design && back.count === 4, JSON.stringify(back));

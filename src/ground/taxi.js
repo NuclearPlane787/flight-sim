@@ -528,6 +528,9 @@ export function freeStand(airport, occupied = [], nearXY = null) {
 // The eAIP (AIP AMDT 11/26, AD 2) adds what the map can't say, in AIP_STANDS.
 
 const CLASS_SPAN = { E: 65 };   // m, ICAO's wingspan limit for each code letter handled here
+// v0.5.3 (the run's extra time): a design with its own airframe (geo.DESIGN_SHAPE) is sized by its own span and
+// length, whatever its base's letter: at least a code C stand (36 m), and up to F (80 m) or its span past that.
+const DESIGN_CLASS = [[36, 36], [52, 52], [65, 65], [80, 80]];
 const MAX_FREED = 4;
 const MIN_APRON = 0.85;         // share of the sample points on an apron
 const FUSELAGE_MARGIN = 1.5;    // m, to a wall (a stop mark is close to the terminal on purpose)
@@ -561,6 +564,13 @@ const AIP_STANDS = {
 // How far behind the reference point the taxi line must be: past the tail, as it stands parked,
 // so the aircraft isn't pushed round onto a line that runs beneath its own stand. 30 m is the
 // A321neo's, whose tail is shorter than that.
+// The shape the stands see (v0.5.3): a design with its own airframe has its nose, length and span in
+// geo.DESIGN_SHAPE (its fuselage plugs move the nose, the wing sets the span); anything else is its geo as given.
+export function standGeo(geo) {
+  const D = geo?.DESIGN_SHAPE;
+  return D ? { ...geo, NOSE_X: D.noseX, LENGTH: D.lengthM, SPAN: D.spanM } : geo;
+}
+
 export function pushMinBack(geo) {
   return Math.max(30, geo.LENGTH - geo.NOSE_X + 5);
 }
@@ -689,9 +699,10 @@ function standFits(airport, c, s, size, geo) {
 //   typeDef = { icaoCode, geo: { SPAN, LENGTH, NOSE_X, ... } }
 export function standsFor(airport, typeDef) {
   const all = airport?.stands || [];
-  const classSpan = CLASS_SPAN[typeDef?.icaoCode];
-  if (!classSpan || !typeDef.geo || !all.length) return all;
-  const geo = typeDef.geo;
+  const design = !!typeDef?.geo?.DESIGN_SHAPE;
+  const geo = standGeo(typeDef?.geo);
+  const classSpan = design ? (DESIGN_CLASS.find(([m]) => geo.SPAN <= m) || [0, geo.SPAN])[1] : CLASS_SPAN[typeDef?.icaoCode];
+  if (!classSpan || !geo || !all.length) return all;
   const c = fitContext(airport);
   const size = { span: Math.max(classSpan, geo.SPAN), length: geo.LENGTH };
   const key = `${size.span}|${size.length}|${geo.NOSE_X}`;

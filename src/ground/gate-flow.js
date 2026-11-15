@@ -16,7 +16,7 @@
 // The phases: 'none' → 'parked' → 'pushback' → 'taxi' → 'departed' (lined up or airborne);
 // after landing 'taxi-in' → 'arrived'.
 
-import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, lineBehind, pushMinBack, planPushback } from './taxi.js';
+import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, standGeo, lineBehind, pushMinBack, planPushback } from './taxi.js';
 import { createPushback, pushbackPoses } from './pushback.js';
 import { createTaxiRoute } from '../world/taxiroute.js';
 import * as A321_GEO from '../geometry.js';
@@ -49,7 +49,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
 
   // The aircraft: what setType gave, else the sim's own, else (a mock sim in a test) the A321neo.
   const typeNow = () => forcedType || sim?.type || null;
-  const geoNow = () => typeNow()?.geo || A321_GEO;
+  const geoNow = () => standGeo(typeNow()?.geo || A321_GEO);   // v0.5.3: a design's own nose and length
   const usable = (ap) => standsFor(ap, typeNow());
   // The stand that goes by this ref. Some of Incheon's refs name two positions: take one that fits.
   const standByRef = (ap, ref) => usable(ap).find((s) => s.ref === ref) || (ap.stands || []).find((s) => s.ref === ref);

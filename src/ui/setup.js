@@ -339,6 +339,8 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     if (zfw > L.MZFW) problems.push(`Zero-fuel weight is over the ${L.MZFW.toLocaleString()} kg limit.`);
     if (tow > L.MTOW) problems.push(`Take-off weight is over MTOW (${L.MTOW.toLocaleString()} kg).`);
     if (plan.fuelKg < 600) problems.push('Load some fuel.');
+    // v0.5.3: a design whose engines or tanks touch the ground standing would end the flight as it starts
+    if (type.design && designNumbers(type).touchesGround) problems.push('Its engines or tanks touch the ground standing: lengthen the gear or move them up in the warehouse.');
     if (!problems.length && plan.fuelKg < est.total) warn = 'Less fuel than the trip + reserve estimate.';
     if (!problems.length && lw > L.MLW) warn = 'Landing weight will be over MLW: burn fuel first or expect a heavy landing.';
     const row = (t, v, lim, cls = '') => `${t} <b class="${cls}">${Math.round(v).toLocaleString()}</b> kg${lim ? ` / ${lim.toLocaleString()}` : ''}`;

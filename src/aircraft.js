@@ -8,7 +8,9 @@
 //
 //   createAircraft(opts?) → { object, update(state, dt), setCockpitView(bool), mesh, triangles,
 //     (opts.def: a design's type entry, src/sim/designs.js designDef(): its engines (one per geo.NACELLES, each
-//     its own engine type, src/engine-model.js), its gear (GEAR, GEAR_EXTEND_M) and its registration; v0.5.0)
+//     its own engine type, src/engine-model.js), its gear (GEAR, GEAR_EXTEND_M) and its registration; v0.5.0;
+//     v0.5.3: its airframe, geo.AIRFRAME (src/sim/airframe-map.js): the wing, tailplane, fin and fuselage plugs; the
+//     base's parts are built as always and put through its maps, each hinge bone with its surface)
 //     setLights({ nav, beacon, strobe, landing, taxi, logo }), setNight(0..1),
 //     lampPose() → { pos, dir } }
 // lampPose() is in the model frame of `object` (X = −body y, i.e. right; Y up; Z = −body x, aft):
@@ -16,7 +18,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { TAIL_X, NOSE_X, GEAR, NACELLES, NACELLE_DIAMETER, NACELLE_LENGTH, WING, GROUND_Z } from './geometry.js';
-import { createLiveryTextures, UV, FIN_BOX } from './livery.js';
+import { createLiveryTextures, UV, FIN_BOX, WINDOW } from './livery.js';
 import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
@@ -377,8 +379,40 @@ function finSec(z) {
 
 // --- The builder: one skinned geometry ---------------------------------------------------
 
+// v0.5.3: a point map (x, y, z) → [x, y, z] in the body frame (a design's airframe, src/sim/airframe-map.js) applied
+// to a geometry in place: each vertex through the map, each normal through its Jacobian's inverse transpose (central
+// differences, 1 mm), so a scaled, swept or turned surface keeps its smooth shading.
+export function mapGeometry(geo, f, h = 1e-3) {
+  const p = geo.attributes.position, nr = geo.attributes.normal;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), t = new THREE.Vector3(), N = new THREE.Vector3();
+  const diff = (out, x, y, z, i) => {
+    const d = [0, 0, 0]; d[i] = h;
+    const q1 = f(x + d[0], y + d[1], z + d[2]), q0 = f(x - d[0], y - d[1], z - d[2]);
+    return out.set((q1[0] - q0[0]) / (2 * h), (q1[1] - q0[1]) / (2 * h), (q1[2] - q0[2]) / (2 * h));
+  };
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    if (nr) {
+      diff(a, x, y, z, 0); diff(b, x, y, z, 1); diff(c, x, y, z, 2);
+      const det = a.dot(t.crossVectors(b, c));
+      N.set(0, 0, 0)
+        .addScaledVector(t.crossVectors(b, c), nr.getX(i))
+        .addScaledVector(t.crossVectors(c, a), nr.getY(i))
+        .addScaledVector(t.crossVectors(a, b), nr.getZ(i))
+        .multiplyScalar(Math.sign(det) || 1).normalize();
+      nr.setXYZ(i, N.x, N.y, N.z);
+    }
+    const q = f(x, y, z);
+    p.setXYZ(i, q[0], q[1], q[2]);
+  }
+  p.needsUpdate = true;
+  return geo;
+}
+
 export class Builder {
-  constructor() { this.pos = []; this.nrm = []; this.uv = []; this.col = []; this.bone = []; this.idx = []; this.bend = []; this.anyBend = false; }
+  // map (v0.5.3): while set, every part added goes through it (mapGeometry()); its uv function still sees the
+  // unmapped (the base's) coordinates, so a mapped part keeps its texture.
+  constructor() { this.pos = []; this.nrm = []; this.uv = []; this.col = []; this.bone = []; this.idx = []; this.bend = []; this.anyBend = false; this.map = null; }
   // geo in body coordinates. uv: 'keep' (use the geometry's), a function (x, y, z) → [u, v],
   // or null (the plain white texel, coloured by `color`). bendY (v0.4.3): the span (m) whose wing bend a
   // part rides on, for a rigid part hung off the wing (an engine and its pylon); null bends each vertex by
@@ -394,6 +428,7 @@ export class Builder {
       else if (typeof uv === 'function') uvs.push(...uv(p.getX(i), p.getY(i), p.getZ(i)));
       else uvs.push(UV.plain.u, UV.plain.v);
     }
+    if (this.map) mapGeometry(geo, this.map);
     geo.applyMatrix4(BODY_TO_MODEL);
     const n = geo.attributes.normal;
     const base = this.pos.length / 3;
@@ -444,10 +479,50 @@ export function createAircraft(opts = {}) {
   const engines = [];
   const b = new Builder();
   const bones = [], B = {};
+  // v0.5.3: a design's airframe (geo.AIRFRAME, src/sim/airframe-map.js): the base's shapes are built as always and
+  // passed through its maps (b.map while each part is added). Without one (the type, or a design on the base's
+  // airframe) nothing below changes: AF is null, every offset 0 and every factor 1.
+  const AF = GEO?.AIRFRAME && !GEO.AIRFRAME.identity ? GEO.AIRFRAME : null;
+  const fwd = AF ? AF.plugFwd : 0, aft = AF ? AF.plugAft : 0;
+  const bx = AF ? AF.bodyX : (x) => x;
+  const wingOf = (side) => (side > 0 ? AF.af.wingL : AF.af.wingR);
+  const chordK = { L: AF ? AF.af.wingL.chord : 1, R: AF ? AF.af.wingR.chord : 1 };
+  const MAP = AF ? {
+    body: (x, y, z) => [bx(x), y, z],
+    wing: (side) => (x, y, z) => AF.wing(side, x, y, z),
+    tail: AF.tail, fin: AF.fin,
+    // The sharklet rides the new tip: moved with the tip's leading edge, its reach outboard × the span (so its tip is
+    // the map's tipY), its chord and height × the tip's chord, and its bend sheared up by the dihedral's change as
+    // the wing map shears the wing (so it leaves the new wing plane smoothly), its blade upright as the base's.
+    shark: (side) => {
+      const T = wingSec(TIP_Y, side).le, Tn = V(...AF.wing(side, T.x, T.y, T.z)), k = wingOf(side).chord, ks = wingOf(side).span;
+      const dt = Math.tan(wingOf(side).dihedral * DEG) - Math.tan(WING.dihedralDeg * DEG);
+      return (x, y, z) => {
+        const dy = (y - T.y) * ks;
+        return [Tn.x + (x - T.x) * k, Tn.y + dy, Tn.z + (z - T.z) * k + clamp(side * dy, 0, 0.55 * ks) * dt];
+      };
+    },
+  } : null;
+  const mapP = (f, v) => (f ? V(...f(v.x, v.y, v.z)) : v.clone());
+  // Adds parts through a map (none: as they are).
+  const mapped = (f, fn) => { const was = b.map; b.map = f; try { fn(); } finally { b.map = was; } };
+  // The design's wing section at its own span y (the engines' and tanks' pylons reach the wing it draws).
+  const wingSecAt = AF ? (y, side) => {
+    const s = wingSec(AF.wingBase(side, y), side), w = wingOf(side), d = w.dihedral * DEG;
+    return { ...s, le: mapP(MAP.wing(side), s.le), chord: s.chord * w.chord, n: V(0, -side * Math.sin(d), Math.cos(d)) };
+  } : wingSec;
+  const finLeX = AF ? (z) => { const zb = z <= 1.9 ? z : 1.9 + (z - 1.9) / AF.finScale; return AF.fin(finSec(zb).le.x, 0, zb)[0]; } : (z) => finSec(z).le.x;
 
   // Bones are created at their pivots (body coordinates) with identity rest rotation.
   // axis: hinge axis in body coordinates.
-  function bone(name, parent, pivot, axis = V(1, 0, 0)) {
+  // v0.5.3: while b.map is set, the pivot goes through it, and the axis too (from the pivot to `axisTo`, a point on
+  // the hinge line, if given; else one metre along `axis`).
+  function bone(name, parent, pivot, axis = V(1, 0, 0), axisTo = null) {
+    if (b.map) {
+      const f = b.map, p0 = mapP(f, pivot), p1 = mapP(f, axisTo || pivot.clone().add(axis));
+      axis = p1.sub(p0).multiplyScalar(axisTo && axis.dot(axisTo.clone().sub(pivot)) < 0 ? -1 : 1).normalize();
+      pivot = p0;
+    }
     const bn = new THREE.Bone();
     bn.name = name;
     const p = toModel(pivot.x, pivot.y, pivot.z);
@@ -461,7 +536,7 @@ export function createAircraft(opts = {}) {
   }
 
   const ROOT = bone('root', null, V(0, 0, 0));
-  const NOSE = bone('nose', 'root', V(18.6, 0, 0.2));
+  const NOSE = bone('nose', 'root', V(bx(18.6), 0, 0.2));
 
   // Fuselage: two lofts that meet at x = 16.6 (the nose part is hidden in the seat views).
   const NA = 56;
@@ -483,12 +558,56 @@ export function createAircraft(opts = {}) {
   for (let i = 0; i <= 30; i++) tailSt.push(TAIL_X + (-11 - TAIL_X) * (1 - Math.cos((i / 30) * Math.PI / 2)));
   for (let i = 1; i <= 26; i++) midSt.push(-11 + ((SPLIT + 11) * i) / 26);
   for (let i = 0; i <= 32; i++) noseSt.push(SPLIT + (NOSE_X - SPLIT) * Math.sin((i / 32) * Math.PI / 2));
-  b.add(fuseLoft([...tailSt, ...midSt]), ROOT, '#ffffff', 'keep');
-  b.add(fuseLoft(noseSt), NOSE, '#ffffff', 'keep');
+  if (!AF) {
+    b.add(fuseLoft([...tailSt, ...midSt]), ROOT, '#ffffff', 'keep');
+    b.add(fuseLoft(noseSt), NOSE, '#ffffff', 'keep');
+  } else designFuselage();
+  // v0.5.3: a design's fuselage, its plugs in. Each piece is a loft over design stations xd, its shape the base's
+  // section at bodyXBase(xd) (a constant section in the plugs) and its texture the base's at xt(xd). The texture is
+  // anchored in three places: the tail (moved back by the aft plug), the middle (door 3 and the wing, as it was)
+  // and the front (moved forward by the forward plug). Between them, around each cut, a zone of whole window bays
+  // (window gap to window gap), as long as it now is, laid as n bays each with one window: a long zone's bays
+  // a little longer or shorter than the 0.533 m pitch (6 % at most), a short zone's at the pitch with the rest as
+  // wider gaps at its ends. So the windows are repeated or taken out, never stretched.
+  function designFuselage() {
+    const P = WINDOW.pitch, gap = (k) => WINDOW.x0 - (k + 0.5) * P;   // the gap behind window k
+    const R0 = gap(44), M0 = gap(36), M1 = gap(33), F1 = gap(15);    // −8.12, −3.85 | −2.26, 7.34
+    const loft = (xds, xt, bn) => {
+      const rows = [], uvs = [];
+      for (const xd of xds) {
+        const xs = AF.bodyXBase(xd), row = [], urow = [];
+        for (let i = 0; i <= NA; i++) {
+          const th = -90 + (360 * i) / NA;
+          const q = fusePoint(xs, th); q.x = xd;
+          row.push(q); urow.push(fuseUV(xt(xd), th));
+        }
+        rows.push(row); uvs.push(urow);
+      }
+      b.add(grid(rows, { uvs, expect: (c) => V(0, c.y, c.z - fuseMid(AF.bodyXBase(c.x))) }), bn, '#ffffff', 'keep');
+    };
+    const zone = (d0, d1, src) => {   // design [d0, d1]; src: the base's bay [src, src + P], a window in its middle
+      const L = d1 - d0;
+      if (L < 1e-6) return;
+      let n = Math.round(L / P), l = n ? L / n : P, e = 0;
+      if (Math.abs(l / P - 1) > 0.06) { n = Math.floor(L / P); l = P; e = (L - n * P) / 2; }
+      if (e > 1e-6) { loft([d0, d0 + e], () => src, ROOT); loft([d1 - e, d1], () => src, ROOT); }   // plain gaps
+      for (let i = 0; i < n; i++) { const a = d0 + e + i * l; loft([a, a + l], (xd) => src + ((xd - a) / l) * P, ROOT); }
+    };
+    const inside = (xs, a, b2) => xs.filter((x) => x > a + 1e-6 && x < b2 - 1e-6);
+    const baseSt = [...tailSt, ...midSt];
+    loft([...inside(baseSt, TAIL_X - 1, R0), R0].map((x) => x - aft), (xd) => xd + aft, ROOT);
+    zone(R0 - aft, M0, gap(37));
+    loft([M0, ...inside(baseSt, M0, M1), M1], (xd) => xd, ROOT);
+    zone(M1, F1 + fwd, M1);
+    loft([F1, ...inside(baseSt, F1, SPLIT + 1), ].map((x) => x + fwd), (xd) => xd - fwd, ROOT);
+    loft(noseSt.map((x) => x + fwd), (xd) => xd - fwd, NOSE);
+  }
   // Cockpit glass, on the nose (so it's hidden with it in the seat views).
-  for (const w of windowOutlines()) for (const mirror of [false, true]) b.add(windowGlass(w, mirror), NOSE, C.glass);
-  // APU exhaust
-  b.add(lathe([{ x: 0, r: 0.1 }, { x: 0, r: 0.0 }], 10, TAIL_X + 0.03, 0, 0.85), ROOT, C.plug);
+  mapped(MAP?.body, () => {
+    for (const w of windowOutlines()) for (const mirror of [false, true]) b.add(windowGlass(w, mirror), NOSE, C.glass);
+    // APU exhaust
+    b.add(lathe([{ x: 0, r: 0.1 }, { x: 0, r: 0.0 }], 10, TAIL_X + 0.03, 0, 0.85), ROOT, C.plug);
+  });
 
   // Belly fairing (navy), a wide shallow body under the wing box.
   {
@@ -522,6 +641,8 @@ export function createAircraft(opts = {}) {
     const fFlapLE = (y) => (y >= FIN_Y[0] - 1e-6 && y <= FIN_Y[1] + 1e-6 ? fAt(y, X_FIN_LE) : 0.75);
     // Fixed structure: its leading edge behind the slats is a round nose about the slats' hinge line,
     // so a slat that droops about that line stays sealed against it (v0.4.1, below).
+    // v0.5.3: the wing's every part (and its hinges) through the design's wing map; the sharklet through its own.
+    b.map = MAP?.wing(side) || null;
     const fixYs = [0.6, Y_SIDE, FIN_Y[0], 4, FIN_Y[1], KINK_Y, 9, 12, 14.5, 16.6];
     b.add(foilPiece(secs(fixYs), 0.13, fixYs.map((y) => (y < FIN_Y[0] - 1e-6 ? 0.75 : fFlapLE(y))), { caps: [false, false], nose: 1 }), ROOT, C.wing);
     // The fixed leading edge where there's no slat (the root, the pylon), and the fixed trailing edge
@@ -531,10 +652,12 @@ export function createAircraft(opts = {}) {
     b.add(foilPiece(secs([5.18, 6.32]), 0, 0.13), ROOT, C.wingDark);
     b.add(foilPiece(secs([0.6, FIN_Y[0]]), 0.75, 1, { caps: [false, true] }), ROOT, C.wing);
     for (const [y0, y1] of [[FIN_Y[1], 6.42], [12.38, 12.42], [16.58, 16.6]]) b.add(foilPiece(secs([y0, y1]), 0.75, 1), ROOT, C.wing);
-    b.add(foilPiece(secs([16.6, TIP_Y]), 0, 1, { caps: [true, false] }), ROOT, C.wing);
+    // v0.5.3 (extra time): a design with its sharklets off ends in a closed tip
+    const noShark = AF?.af?.sharklets === false;
+    b.add(foilPiece(secs([16.6, TIP_Y]), 0, 1, { caps: [true, noShark] }), ROOT, C.wing);
 
     // Sharklet: a bend, then a swept blade up to the tip of the 35.8 m span.
-    {
+    if (!noShark) {
       const t0 = ws(TIP_Y), sk = [];
       const R = 0.55;
       for (let k = 0; k <= 5; k++) {
@@ -555,7 +678,7 @@ export function createAircraft(opts = {}) {
           n: V(0, -side, 0.19 * 0), camber: 0.01,
         });
       }
-      b.add(foilPiece(sk, 0, 1, { caps: [false, true] }), ROOT, C.navy);
+      mapped(MAP?.shark(side), () => b.add(foilPiece(sk, 0, 1, { caps: [false, true] }), ROOT, C.navy));
     }
 
     // Slats: one bone per wing, hinged along the line through the fixed nose's centre at the first and
@@ -564,7 +687,7 @@ export function createAircraft(opts = {}) {
     // lines between the outer four are slightly sunken fillers on the same bone, not open slots.
     const slatA = foilPoint(ws(2.62), 0.13, 0), slatB = foilPoint(ws(16.6), 0.13, 0);
     const slatAxis = slatB.clone().sub(slatA).multiplyScalar(side).normalize();
-    const SL = bone('slats' + S, 'root', slatA, slatAxis);
+    const SL = bone('slats' + S, 'root', slatA, slatAxis, slatB);
     const slatSegs = [[2.62, 5.18]], SW = (16.6 - 6.32) / 4;
     for (let i = 0; i < 4; i++) slatSegs.push([6.32 + i * SW, 6.32 + (i + 1) * SW - (i < 3 ? 0.04 : 0)]);
     for (const [y0, y1] of slatSegs) b.add(foilPiece(secs([y0, y1]), 0, 0.13), SL, C.metal);
@@ -578,7 +701,7 @@ export function createAircraft(opts = {}) {
       const pa = opts2.plate ? plateOffset(ws(y0), F0(y0), -1) : foilPoint(ws(y0), F0(y0), 0);
       const pb = opts2.plate ? plateOffset(ws(y1), F0(y1), -1) : foilPoint(ws(y1), F0(y1), 0);
       const axis = pb.clone().sub(pa).multiplyScalar(side).normalize(); // +y component
-      const idx = bone(name + S, opts2.parent || 'root', pa, axis);
+      const idx = bone(name + S, opts2.parent || 'root', pa, axis, pb);
       b.add(foilPiece(secs(ys), ys.map(F0), ys.map(F1), { plate: opts2.plate, nf: opts2.plate ? 3 : 6, nose: opts2.nose || 0 }), idx, color);
       return idx;
     };
@@ -610,11 +733,12 @@ export function createAircraft(opts = {}) {
       b.add(foilPiece(secs(ys), ys.map((y) => fFlapLE(y) - 0.03), ys.map(spAft), { plate: true, nf: 3, lift: SHROUD_LIFT }), ROOT, C.wingDark);
     }
     parts[S] = true;
+    b.map = null;
 
     // Engines (v0.5.0: src/engine-model.js, one per nacelle on this wing; the A321's two as they always were).
-    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: false, bodyHalf: (GEO?.FUSELAGE_WIDTH ?? 3.95) / 2 }));
+    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec: wingSecAt, bend: false, bodyHalf: (GEO?.FUSELAGE_WIDTH ?? 3.95) / 2 }));
     // v0.5.2: a design's external tanks under this wing.
-    (GEO?.PODS || []).forEach((t, k) => { if ((t.y >= 0) === (side > 0)) addPod(b, bone, t, { wingSec, bend: false }, k); });
+    (GEO?.PODS || []).forEach((t, k) => { if ((t.y >= 0) === (side > 0)) addPod(b, bone, t, { wingSec: wingSecAt, bend: false }, k); });
 
     // Main gear: retracts inward into the belly. Wheels sit at z = −GROUND_Z at static compression.
     const gm = side > 0 ? GEAR_.left : GEAR_.right;
@@ -644,15 +768,16 @@ export function createAircraft(opts = {}) {
     b.add(boxAt(gm.x, side * 0.85, -2.37, 1.7, 1.15, 0.03), DR, C.navy);
 
     // Lights: navigation (red left, green right) and strobe at the sharklet root.
-    b.add(sphereAt(V(NAV_X, side * 17.3, 0.42), 0.08), ROOT, side > 0 ? C.red : C.green);
+    b.add(sphereAt(mapP(MAP?.shark(side), V(NAV_X, side * 17.3, 0.42)), 0.08), ROOT, side > 0 ? C.red : C.green);
     // Retractable landing light, under the inner wing between the fuselage and the engine.
-    b.add(sphereAt(foilPoint(wingSec(LAND_Y, side), LAND_F, -1).add(V(0, 0, 0.02)), 0.11), ROOT, C.lamp);
+    b.add(sphereAt(mapP(MAP?.wing(side), foilPoint(wingSec(LAND_Y, side), LAND_F, -1)).add(V(0, 0, 0.02)), 0.11), ROOT, C.lamp);
   }
 
   // The tail engine (a design's third), on the centreline through the fin's root.
-  for (const n of NACS) if (n.tail) engines.push(addEngine(b, bone, n, { wingSec, bend: false, finLeX: (z) => finSec(z).le.x }));
+  for (const n of NACS) if (n.tail) engines.push(addEngine(b, bone, n, { wingSec: wingSecAt, bend: false, finLeX }));
 
   // Horizontal stabiliser (trimmable) with elevators.
+  b.map = MAP?.tail || null;
   const STAB = bone('stab', 'root', V(-19.4, 0, 0.35), V(0, 1, 0));
   for (const side of [1, -1]) {
     const S = side > 0 ? 'L' : 'R';
@@ -661,11 +786,12 @@ export function createAircraft(opts = {}) {
     b.add(foilPiece(ss([0.4, 1.3]), 0.72, 1, { caps: [false, true] }), STAB, C.stab);
     b.add(foilPiece(ss([6.1, 6.22]), 0, 1, { caps: [true, true] }), STAB, C.stab);
     const pa = foilPoint(stabSec(1.32, side), 0.72, 0), pb = foilPoint(stabSec(6.08, side), 0.72, 0);
-    const EL = bone('elev' + S, 'stab', pa, pb.clone().sub(pa).multiplyScalar(side).normalize());
+    const EL = bone('elev' + S, 'stab', pa, pb.clone().sub(pa).multiplyScalar(side).normalize(), pb);
     b.add(foilPiece(ss([1.32, 3.7, 6.08]), 0.72, 1), EL, C.stab);
   }
 
-  // Fin and rudder, with the livery's fin projection.
+  // Fin and rudder, with the livery's fin projection (and the dorsal fillet, which the fin's map carries with it).
+  b.map = MAP?.fin || null;
   const finUV = (x, y, z) => [
     UV.fin.u0 + ((x - FIN_BOX.x0) / (FIN_BOX.x1 - FIN_BOX.x0)) * (UV.fin.u1 - UV.fin.u0),
     UV.fin.v0 + ((z - FIN_BOX.z0) / (FIN_BOX.z1 - FIN_BOX.z0)) * (UV.fin.v1 - UV.fin.v0),
@@ -676,7 +802,7 @@ export function createAircraft(opts = {}) {
   b.add(foilPiece(fz([7.6, FIN_TIP_Z]), 0, 1, { caps: [true, true], nf: 6 }), ROOT, '#ffffff', finUV);
   {
     const pa = foilPoint(finSec(2.02), 0.68, 0), pb = foilPoint(finSec(7.58), 0.68, 0);
-    const RUD = bone('rudder', 'root', pa, pb.clone().sub(pa).normalize());
+    const RUD = bone('rudder', 'root', pa, pb.clone().sub(pa).normalize(), pb);
     b.add(foilPiece(fz([2.02, 4.8, 7.58]), 0.68, 1), RUD, '#ffffff', finUV);
   }
   // Dorsal fillet ahead of the fin.
@@ -692,14 +818,15 @@ export function createAircraft(opts = {}) {
     }
     b.add(grid(rows, { expect: (c) => V(0, c.y, 0.5) }), ROOT, '#ffffff', finUV);
   }
+  b.map = null;
 
   // Nose gear: retracts forward. Nosewheel steering about the leg axis.
   const NG = GEAR_.nose, NTYRE = WHEEL_R_NOSE;
-  const nAxle = V(NG.x, 0, NG.z + NTYRE), nPivot = V(16.1, 0, -1.3);
+  const nAxle = V(NG.x, 0, NG.z + NTYRE), nPivot = V(16.1 + fwd, 0, -1.3);   // NG: geo.GEAR.nose, moved with the plug
   const nAxis = nPivot.clone().sub(nAxle).normalize();
   const NLEG = bone('noseLeg', 'root', nPivot, V(0, 1, 0));
   b.add(cylBetween(nPivot, nPivot.clone().lerp(nAxle, 0.6), 0.11, 0.1, 12), NLEG, C.gear);
-  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.35), V(17.3, 0, -1.4), 0.05, 0.05, 6), NLEG, C.gear);
+  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.35), V(17.3 + fwd, 0, -1.4), 0.05, 0.05, 6), NLEG, C.gear);
   b.add(sphereAt(nPivot.clone().lerp(nAxle, 0.5).add(V(0.12, 0, 0)), 0.08), NLEG, C.lamp); // taxi light
   const NSTEER = bone('noseSteer', 'noseLeg', nAxle, nAxis);
   const NPIS = bone('nosePiston', 'noseSteer', nAxle, nAxis);
@@ -714,12 +841,12 @@ export function createAircraft(opts = {}) {
     b.add(boxAt(c.x, c.y + Math.sign(dy) * 0.118, c.z + 0.12, 0.06, 0.01, 0.08), NWH, C.tyre);
   }
   for (const side of [1, -1]) {
-    const D = bone('noseDoor' + (side > 0 ? 'L' : 'R'), 'root', V(17.1, side * 0.36, -2.0), V(1, 0, 0));
-    b.add(boxAt(17.1, side * 0.18, -2.0, 2.5, 0.36, 0.03), D, C.white);
+    const D = bone('noseDoor' + (side > 0 ? 'L' : 'R'), 'root', V(17.1 + fwd, side * 0.36, -2.0), V(1, 0, 0));
+    b.add(boxAt(17.1 + fwd, side * 0.18, -2.0, 2.5, 0.36, 0.03), D, C.white);
   }
 
   // Tail light, beacons.
-  b.add(sphereAt(V(TAIL_X - 0.02, 0, 0.85), 0.07), ROOT, C.lamp);
+  b.add(sphereAt(V(TAIL_X - 0.02 - aft, 0, 0.85), 0.07), ROOT, C.lamp);
   b.add(sphereAt(V(-1.5, 0, fuseTop(-1.5) + 0.03), 0.09), ROOT, C.red);
   b.add(sphereAt(V(1.5, 0, -2.38), 0.09), ROOT, C.red);
 
@@ -736,7 +863,7 @@ export function createAircraft(opts = {}) {
   mesh.add(bones[ROOT]);
   mesh.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(bones));
-  mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 26);
+  mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), AF ? Math.max(26, 2 + Math.max(NOSE_X + fwd, aft - TAIL_X, ...AF.tipY)) : 26);
 
   // The logo lights (on the stabiliser, aimed up at the fin): the fin and fillet take a pool
   // of light, brightest at the root. The mask uses the bind-pose (model frame) position.
@@ -755,7 +882,7 @@ export function createAircraft(opts = {}) {
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         totalEmissiveRadiance += diffuseColor.rgb * uFill;
         if (uLogo > 0.001) {
-          float fin = (1.0 - smoothstep(0.6, 0.9, abs(vBindPos.x))) * smoothstep(${(14.6).toFixed(1)}, 15.6, vBindPos.z)
+          float fin = (1.0 - smoothstep(0.6, 0.9, abs(vBindPos.x))) * smoothstep(${(14.6 + aft).toFixed(2)}, ${(15.6 + aft).toFixed(2)}, vBindPos.z)
             * smoothstep(1.55, 2.0, vBindPos.y);
           float fall = exp(-max(vBindPos.y - 1.9, 0.0) / 3.2);
           totalEmissiveRadiance += uLogo * fin * fall * (diffuseColor.rgb + 0.04) * vec3(1.0, 0.95, 0.86) * 2.2;
@@ -765,19 +892,19 @@ export function createAircraft(opts = {}) {
   // Light glows (src/aircraft-lights.js): one Points draw. Positions in the model frame.
   const M = (v) => toModel(v.x, v.y, v.z).toArray();
   const Md = (x, y, z) => toModel(x, y, z).normalize().toArray();
-  const landP = [1, -1].map((side) => foilPoint(wingSec(LAND_Y, side), LAND_F, -1).add(V(0, 0, -0.08)));
+  const landP = [1, -1].map((side) => mapP(MAP?.wing(side), foilPoint(wingSec(LAND_Y, side), LAND_F, -1)).add(V(0, 0, -0.08)));
   const landDirBody = [Math.cos(8 * DEG), 0, -Math.sin(8 * DEG)];   // aimed 8° down: the ground ahead on final
   const taxiP = nPivot.clone().lerp(nAxle, 0.5).add(V(0.22, 0, 0));
   const taxiDirBody = [Math.cos(9 * DEG), 0, -Math.sin(9 * DEG)];
   const LAMPS = [
-    { key: 'navL', pos: M(V(NAV_X, 17.35, 0.42)), color: C.red, size: 3.0, px: [2.5, 9] },
-    { key: 'navR', pos: M(V(NAV_X, -17.35, 0.42)), color: C.green, size: 3.0, px: [2.5, 9] },
-    { key: 'tail', pos: M(V(TAIL_X - 0.1, 0, 0.85)), color: '#ffffff', size: 2.4, px: [2, 7] },
+    { key: 'navL', pos: M(mapP(MAP?.shark(1), V(NAV_X, 17.35, 0.42))), color: C.red, size: 3.0, px: [2.5, 9] },
+    { key: 'navR', pos: M(mapP(MAP?.shark(-1), V(NAV_X, -17.35, 0.42))), color: C.green, size: 3.0, px: [2.5, 9] },
+    { key: 'tail', pos: M(V(TAIL_X - 0.1 - aft, 0, 0.85)), color: '#ffffff', size: 2.4, px: [2, 7] },
     { key: 'beaconTop', pos: M(V(-1.5, 0, fuseTop(-1.5) + 0.12)), color: C.red, size: 5.0, px: [4, 14] },
     { key: 'beaconBottom', pos: M(V(1.5, 0, -2.47)), color: C.red, size: 5.0, px: [4, 14] },
-    { key: 'strobe', pos: M(V(NAV_X - 0.2, 17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
-    { key: 'strobe', pos: M(V(NAV_X - 0.2, -17.4, 0.42)), color: '#ffffff', size: 9.0, px: [8, 26] },
-    { key: 'strobe', pos: M(V(TAIL_X - 0.15, 0, 0.75)), color: '#ffffff', size: 7.0, px: [6, 20] },
+    { key: 'strobe', pos: M(mapP(MAP?.shark(1), V(NAV_X - 0.2, 17.4, 0.42))), color: '#ffffff', size: 9.0, px: [8, 26] },
+    { key: 'strobe', pos: M(mapP(MAP?.shark(-1), V(NAV_X - 0.2, -17.4, 0.42))), color: '#ffffff', size: 9.0, px: [8, 26] },
+    { key: 'strobe', pos: M(V(TAIL_X - 0.15 - aft, 0, 0.75)), color: '#ffffff', size: 7.0, px: [6, 20] },
     ...landP.map((p) => ({ key: 'landing', pos: M(p), color: '#fff4e0', size: 7.0, px: [4, 22], dir: Md(...landDirBody) })),
     { key: 'taxi', pos: M(taxiP), color: '#fff4e0', size: 4.5, px: [3, 16], dir: Md(...taxiDirBody) },
   ];
@@ -792,6 +919,9 @@ export function createAircraft(opts = {}) {
   const object = new THREE.Group();
   object.name = 'aircraft';
   object.add(mesh, glows.object);
+  // v0.5.3: the cockpit (cockpit.js, built at the base's nose; main.js adds it to this object) moves forward with the
+  // design's forward plug, as the nose and the eye points (geo.EYES) do.
+  if (fwd) object.addEventListener('childadded', (e) => { if (e.child?.name === 'cockpit') e.child.position.set(0, 0, -fwd); });
 
   // --- Animation ---
   const qa = new THREE.Quaternion();
@@ -823,9 +953,10 @@ export function createAircraft(opts = {}) {
       // Fowler flaps: mostly aft travel first, then rotation.
       const fd = state.flapDeg || 0, tr = clamp(fd / 20, 0, 1);
       rot('flapIn' + S, -fd * DEG);
-      move('flapIn' + S, -FLAP_TRAVEL.in * tr, 0, -0.1 * tr);
+      const kc = chordK[S];   // v0.5.3: the travel with the design's chord
+      move('flapIn' + S, -FLAP_TRAVEL.in * tr * kc, 0, -0.1 * tr * kc);
       rot('flapOut' + S, -fd * DEG);
-      move('flapOut' + S, -FLAP_TRAVEL.out * tr, 0, -0.08 * tr);
+      move('flapOut' + S, -FLAP_TRAVEL.out * tr * kc, 0, -0.08 * tr * kc);
       // the flap track fairings' aft parts follow the flaps down
       for (let i = 0; i < CANOE_Y.length; i++) rot('canoe' + i + S, -fd * DEG * 0.55);
     }

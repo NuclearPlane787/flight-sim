@@ -26,6 +26,7 @@ import { boeingWindowOutlines } from './cockpit-windows-boeing.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
 import { addEngine, addPod, engineAnimator } from './engine-model.js';
 import { engineOfType } from './sim/engine-types.js';
+import { baseShape as partsShapeOf } from './sim/parts-aero.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -67,16 +68,126 @@ export function inboardFlapLE(spec) {
   return { y0, y1, x0, x1, xAt: (y) => x0 + ((x1 - x0) * (y - y0)) / (y1 - y0) };
 }
 
+// v0.5.3: a design's airframe (def.geo.AIRFRAME, src/sim/airframe-map.js). The builder for it: `vmap` maps every
+// vertex of what's added (the tailplane, the fin: built as the base's, then moved and scaled), with the uvs taken
+// before (so the fin's livery scales with it) and the normals recomputed; `bendFn` gives each vertex its bendY (the
+// wing's: the base's span of the station it came from, so the shader's base constants bend the design's wing tip to
+// tip); `bendNum` turns a part's own bendY (an engine's design span) into the base's; `bendOverride` sets one.
+class AirframeBuilder extends Builder {
+  constructor() { super(); this.vmap = null; this.bendFn = null; this.bendNum = null; this.bendOverride = undefined; }
+  add(geo, bone, color = '#ffffff', uv = null, bendY = null) {
+    if (Array.isArray(geo)) { geo.forEach((g) => this.add(g, bone, color, uv, bendY)); return; }
+    const p = geo.attributes.position;
+    if (this.vmap) {
+      const t = geo.attributes.uv, uvs = new Float32Array(p.count * 2);
+      for (let i = 0; i < p.count; i++) {
+        const q = uv === 'keep' && t ? [t.getX(i), t.getY(i)] : typeof uv === 'function' ? uv(p.getX(i), p.getY(i), p.getZ(i)) : [UV.plain.u, UV.plain.v];
+        uvs[i * 2] = q[0]; uvs[i * 2 + 1] = q[1];
+      }
+      for (let i = 0; i < p.count; i++) { const m = this.vmap(p.getX(i), p.getY(i), p.getZ(i)); p.setXYZ(i, m[0], m[1], m[2]); }
+      geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      geo.computeVertexNormals();
+      uv = 'keep';
+    }
+    if (this.bendOverride !== undefined) bendY = this.bendOverride;
+    else if (typeof bendY === 'number' && this.bendNum) bendY = this.bendNum(bendY);
+    let vals = null;
+    if (bendY === null && this.bendFn) {
+      vals = new Float32Array(p.count);
+      for (let i = 0; i < p.count; i++) vals[i] = this.bendFn(p.getX(i), p.getY(i), p.getZ(i));
+    }
+    const start = this.bend.length;
+    super.add(geo, bone, color, uv, vals ? 0 : bendY);
+    if (vals) for (let i = 0; i < vals.length; i++) this.bend[start + i] = vals[i];
+  }
+}
+
+// v0.5.3: the fuselage's plugs, drawn. M = airframeMap(): the shape at a design station is the base's at
+// M.bodyXBase(x) (constant through the plugs). The livery's atlas is the base's, so each design station also has a
+// texture station: the base's own outside the plugs' regions; inside a region R (each plug, widened to the window
+// lattice's gaps on both sides) whole window pitches, each mapped onto one clean pitch of the base's cabin (a window
+// in its middle), with plain fillers at the ends: the windows repeat at the type's pitch, never stretch. Pure.
+//   plugPlan(spec, M) → { regions: [{ lo, hi, n, fill }], texX(x), seams: [x], windows: [x], band: B0 }
+export function plugPlan(spec, M) {
+  const N = spec.geo.NOSE_X, CAB = spec.cabin, win = CAB.window, p = win.pitch;
+  const { cuts, plugFwd: fwd, plugAft: aft } = M;
+  const Df = cuts.fwd + fwd, Da = cuts.aft - aft;
+  const g0 = N - win.first - p / 2;     // a gap's centre in the base's window lattice
+  const gapBelow = (x, o) => g0 + o + Math.floor((x - g0 - o) / p + 1e-9) * p;
+  const gapAbove = (x, o) => g0 + o + Math.ceil((x - g0 - o) / p - 1e-9) * p;
+  let R = [];
+  // a plug's region: from the cut to the plug's end (a negative plug: just round the seam where the base's cabin
+  // is taken out), widened to a gap of each side's lattice
+  if (aft) R.push({ lo: gapBelow(Da, -aft), hi: gapAbove(aft > 0 ? cuts.aft : Da, 0) });
+  if (fwd) R.push({ lo: gapBelow(fwd > 0 ? cuts.fwd : Df, 0), hi: gapAbove(Df, fwd) });
+  if (R.length === 2 && R[0].hi > R[1].lo - p) R = [{ lo: R[0].lo, hi: R[1].hi }];
+  const doorClear = (d, m) => CAB.doors.every((dd) => Math.abs(d - dd) > CAB.doorW / 2 + m);
+  // The band: a clean pitch of the base's cabin between the cuts, a window in its middle.
+  let B0 = gapBelow(cuts.fwd - p, 0);
+  while (B0 > cuts.aft && !doorClear(N - (B0 + p / 2), win.w + p)) B0 -= p;
+  for (const r of R) { r.n = Math.floor((r.hi - r.lo) / p + 1e-6); r.fill = (r.hi - r.lo - r.n * p) / 2; }
+  const texX = (x) => {
+    for (const r of R) {
+      if (x <= r.lo || x >= r.hi) continue;
+      const s = x - r.lo - r.fill;
+      if (s <= 0) return B0;
+      if (s >= r.n * p) return B0 + p;
+      return B0 + (s - Math.floor(s / p) * p);
+    }
+    // outside the regions: the base's, shifted with the nose or the tail
+    if (R.length && x >= R[R.length - 1].hi && x > Df) return x - fwd;
+    if (R.length && x <= R[0].lo && x < Da) return x + aft;
+    return x;
+  };
+  const seams = [];
+  for (const r of R) {
+    seams.push(r.lo, r.hi);
+    // every break in the texture stations, continuous or not, gets a row (the loft interpolates uvs linearly)
+    if (r.fill > 1e-6) seams.push(r.lo + r.fill, r.lo + r.fill + r.n * p);
+    for (let j = 1; j < r.n; j++) seams.push(r.lo + r.fill + j * p);
+  }
+  seams.sort((a, b) => a - b);
+  for (let i = seams.length - 1; i > 0; i--) if (seams[i] - seams[i - 1] < 1e-6) seams.splice(i, 1);
+  // The windows: the base's that still show where they were drawn, and one in each of the regions' whole pitches.
+  const windows = [];
+  const inR = (x) => R.some((r) => x > r.lo && x < r.hi);
+  for (let d = win.first; d < win.last; d += win.pitch) {
+    if (!doorClear(d, win.w)) continue;
+    const x0 = N - d, xD = M.bodyX(x0);
+    if (!inR(xD) && Math.abs(texX(xD) - x0) < 1e-6) windows.push(xD);
+  }
+  for (const r of R) for (let j = 0; j < r.n; j++) windows.push(r.lo + r.fill + (j + 0.5) * p);
+  windows.sort((a, b) => b - a);
+  return { regions: R, texX, seams, windows, band: B0 };
+}
+
+// v0.5.3: the fuselage's curves at design stations (the base's at bodyXBase(x)), with fuselageShape()'s interface.
+function designShape(B, M) {
+  const xb = M.bodyXBase;
+  return {
+    fuseTop: (x) => B.fuseTop(xb(x)), fuseBot: (x) => B.fuseBot(xb(x)), fuseHW: (x) => B.fuseHW(xb(x)), fuseMid: (x) => B.fuseMid(xb(x)),
+    fuseSection: (x) => B.fuseSection(xb(x)),
+    fusePoint: (x, th, off = 0, out = { x: 0, y: 0, z: 0 }) => { B.fusePoint(xb(x), th, off, out); out.x = x; return out; },
+    noseX: M.bodyX(B.noseX), tailX: M.bodyX(B.tailX), tailEndX: M.bodyX(B.tailEndX), curve: B.curve,
+  };
+}
+
 export function createWidebody(spec, opts = {}) {
   const def = opts.def || null;
   const G = def ? def.geo : spec.geo, N = G.NOSE_X;
+  // v0.5.3: a design's airframe, or null (the types and designs on their base's airframe: the model as it was).
+  const AF = G.AIRFRAME && !G.AIRFRAME.identity ? G.AIRFRAME : null;
+  const bx = AF ? AF.bodyX : (x) => x, ND = bx(N);
   // v0.5.0: the engines, one per nacelle (a design's, or the type's own two), and the gear's extension.
   const EXT = G.GEAR_EXTEND_M || 0;
   const NACS = def ? G.NACELLES : G.NACELLES.map((n, i) => ({ ...n, D: G.NACELLE_DIAMETER, L: G.NACELLE_LENGTH, engine: engineOfType(spec.id).id, i }));
   const engines = [];
-  const shape = fuselageShape(spec);
+  const baseShape = fuselageShape(spec);
+  // v0.5.3: with the plugs in, the model is built at the design's stations (the livery's atlas stays the base's).
+  const shape = AF ? designShape(baseShape, AF) : baseShape;
+  const plan = AF ? plugPlan(spec, AF) : null;
   const { fuseTop, fuseBot, fuseMid, fuseHW, fusePoint } = shape;
-  const windows = boeingWindowOutlines(spec, shape);   // one design, for the glass, the livery and the cockpit's shell
+  const windows = boeingWindowOutlines(spec, baseShape);   // one design, for the glass, the livery and the cockpit's shell
   const A = spec.data || {};
   const staticComp = {
     nose: A.GEAR_DATA?.nose?.staticComp ?? 0.2, main: A.GEAR_DATA?.main?.staticComp ?? 0.28,
@@ -85,7 +196,7 @@ export function createWidebody(spec, opts = {}) {
   const WS = spec.wing, TP = spec.tailplane, BG = G.BOGIE, GS = spec.gear, LS = spec.lights || {};
   const R_MAIN = BG.wheelRadiusMain, R_NOSE = BG.wheelRadiusNose, NAXLES = BG.axles || 2;
   const AFT_STEER = NAXLES > 2 ? GS.aftSteer || null : null;   // { maxDeg, fromDeg, atDeg } of the aft axle, against the nosewheel's
-  const b = new Builder();
+  const b = AF ? new AirframeBuilder() : new Builder();
   const bones = [], B = {};
 
   function bone(name, parent, pivot, axis = V(1, 0, 0)) {
@@ -119,13 +230,14 @@ export function createWidebody(spec, opts = {}) {
 
   // --- Fuselage: two lofts, the forward one hidden in the seat views ---
   const NA = 64, fuseUV = fuseUVFor(spec), tailEnd = shape.tailEndX;
-  function fuseLoft(stations) {
+  // tex: a design station's texture station (the plugs' repeated pitches; v0.5.3), or none.
+  function fuseLoft(stations, tex = null) {
     const rows = [], uvs = [];
     for (const x of stations) {
       const row = [], urow = [];
       for (let i = 0; i <= NA; i++) {
         const th = -90 + (360 * i) / NA;
-        row.push(fusePoint(x, th, 0, new THREE.Vector3())); urow.push(fuseUV(x, th));
+        row.push(fusePoint(x, th, 0, new THREE.Vector3())); urow.push(fuseUV(tex ? tex(x) : x, th));
       }
       rows.push(row); uvs.push(urow);
     }
@@ -135,7 +247,7 @@ export function createWidebody(spec, opts = {}) {
     stations.forEach((x, k) => {
       for (let i = 0; i <= NA; i++) {
         const j = k * (NA + 1) + i, th = -90 + (360 * i) / NA;
-        if (x > N - 0.02) { nrm.setXYZ(j, 1, 0, 0); continue; }
+        if (x > ND - 0.02) { nrm.setXYZ(j, 1, 0, 0); continue; }
         const n = surfN(x, th, 0, P, Px, Pt, Q);
         nrm.setXYZ(j, n.x, n.y, n.z);
       }
@@ -144,14 +256,36 @@ export function createWidebody(spec, opts = {}) {
   }
   const xTailStart = N - (spec.fuselage.tailConeD ?? spec.fuselage.top.find((p) => p[0] > 40)?.[0] ?? 44) - 2;   // where the cone begins
   const tailSt = [], midSt = [], noseSt = [];
-  for (let i = 0; i <= 34; i++) tailSt.push(tailEnd + (xTailStart - tailEnd) * (i / 34) ** 1.15);
+  const tailEndB = baseShape.tailEndX;
+  for (let i = 0; i <= 34; i++) tailSt.push(tailEndB + (xTailStart - tailEndB) * (i / 34) ** 1.15);
   // The even rows are too coarse where the nose's shoulder still curves behind the split: a chord across
   // it lies under the true curve that the windows' glass follows. spec.fuselage.midD places them instead.
   if (spec.fuselage.midD) { for (const d of spec.fuselage.midD) midSt.push(N - d); midSt.push(SPLIT); }
   else for (let i = 1; i <= 8; i++) midSt.push(xTailStart + ((SPLIT - xTailStart) * i) / 8);
-  for (let i = 0; i <= 38; i++) noseSt.push(SPLIT + (N - SPLIT) * Math.sin((i / 38) * Math.PI / 2) ** 0.9);
-  b.add(fuseLoft([...tailSt, ...midSt]), ROOT, '#ffffff', 'keep');
-  b.add(fuseLoft(noseSt), NOSE, '#ffffff', 'keep');
+  for (let i = 0; i <= 38; i++) noseSt.push(SPLIT + (ND - SPLIT) * Math.sin((i / 38) * Math.PI / 2) ** 0.9);
+  if (!AF) b.add(fuseLoft([...tailSt, ...midSt]), ROOT, '#ffffff', 'keep');
+  else {
+    // v0.5.3: the base's stations moved with the nose or the tail (the eye, so SPLIT, is the design's already), the
+    // plugs' regions and every seam in the livery's texture stations; one loft between each two seams.
+    const SPLITb = spec.geo.EYES.captain.x - spec.splitBehindEye;
+    const midB = [];
+    if (spec.fuselage.midD) { for (const d of spec.fuselage.midD) midB.push(N - d); }
+    else for (let i = 1; i <= 8; i++) midB.push(xTailStart + ((SPLITb - xTailStart) * i) / 8);
+    const xS = SPLIT;
+    let st = [...tailSt.map((x) => bx(x)), ...midB.map((x) => bx(x)), ...plan.seams, xS];
+    for (const r of plan.regions) for (let x = r.lo; x < r.hi; x += 1.5) st.push(x);
+    st = st.filter((x) => x >= shape.tailEndX - 1e-9 && x <= xS + 1e-9).sort((p, q) => p - q);
+    st = st.filter((x, i) => i === 0 || x - st[i - 1] > 0.005);
+    const cutsAt = [shape.tailEndX, ...plan.seams.filter((x) => x > shape.tailEndX && x < xS), xS];
+    for (let k = 0; k + 1 < cutsAt.length; k++) {
+      const a = cutsAt[k], c = cutsAt[k + 1], mid = (a + c) / 2;
+      const seg = st.filter((x) => x > a + 0.004 && x < c - 0.004);
+      // each segment's texture from inside it, so the rows at a seam take that side's
+      const tex = (x) => plan.texX(x + (mid - x) * 1e-6);
+      b.add(fuseLoft([a, ...seg, c], tex), ROOT, '#ffffff', 'keep');
+    }
+  }
+  b.add(fuseLoft(noseSt, AF ? plan.texX : null), NOSE, '#ffffff', 'keep');
   // The tail cone's end, with the APU's exhaust in it.
   {
     const zc = fuseMid(tailEnd), h = (fuseTop(tailEnd) - fuseBot(tailEnd)) / 2;
@@ -162,7 +296,7 @@ export function createWidebody(spec, opts = {}) {
   // --- Glass: the cockpit windows and the cabin's ---
   function glassFrom(outline, mirror, off, kTheta, maxEdge) {
     const th = (t) => (mirror ? 180 - t : t);
-    const ring = outline.map(([x, t]) => new THREE.Vector2(x, th(t) * kTheta));
+    const ring = outline.map(([x, t]) => new THREE.Vector2(bx(x), th(t) * kTheta));
     let tris = THREE.ShapeUtils.triangulateShape(ring, []).map((f) => f.map((k) => [ring[k].x, ring[k].y]));
     for (let pass = 0; pass < 10; pass++) {
       const next = []; let split = false;
@@ -199,9 +333,12 @@ export function createWidebody(spec, opts = {}) {
     const CAB = spec.cabin, win = CAB.window;
     const doorClear = (d) => CAB.doors.every((dd) => Math.abs(d - dd) > CAB.doorW / 2 + win.w);
     const pos = [], nrm = [], P = V(0, 0, 0), Px = V(0, 0, 0), Pt = V(0, 0, 0), Q = V(0, 0, 0);
-    for (let d = win.first; d < win.last; d += win.pitch) {
-      if (!doorClear(d)) continue;
-      const x0 = N - d, s = shape.fuseSection(x0);
+    // v0.5.3: a design's are plugPlan()'s (the base's moved, and the plugs' repeated).
+    const winXs = [];
+    if (AF) winXs.push(...plan.windows);
+    else for (let d = win.first; d < win.last; d += win.pitch) if (doorClear(d)) winXs.push(N - d);
+    for (const x0 of winXs) {
+      const s = shape.fuseSection(x0);
       for (const side of [1, -1]) {
         const ring = [];
         // An upright rounded rectangle, 10 points.
@@ -237,10 +374,28 @@ export function createWidebody(spec, opts = {}) {
   // --- Belly fairing ---
   const FR = spec.fairing;
   const dT = (t) => t.map(([d, v]) => [N - d, v]).reverse();
-  const fairHW = curve(dT(FR.hw)), fairBot = curve(dT(FR.bot));
-  const fairPoint = (x, th, off = 0) => V(x, (fairHW(x) + off) * Math.cos(th), FR.zc + (Math.sin(th) > 0 ? FR.up : FR.zc - fairBot(x) + off) * Math.sin(th));
+  // v0.5.3: a design's fairing stays round the wing's root: its front moves with the root's leading edge, its back
+  // with the trailing edge (the chord's scale), linearly between them.
+  const fairMap = (() => {
+    if (!AF) return null;
+    const yr = G.FUSELAGE_WIDTH / 2, le0 = curve(spec.wing.le)(yr), te0 = curve(spec.wing.te)(yr);
+    const sF = Math.max(...[1, -1].map((sd) => AF.wing(sd, le0, sd * yr, 0)[0] - le0));
+    const sB = Math.min(...[1, -1].map((sd) => AF.wing(sd, te0, sd * yr, 0)[0] - te0));
+    const out = (x) => (x >= le0 ? x + sF : x <= te0 ? x + sB : x + sB + ((sF - sB) * (x - te0)) / (le0 - te0));
+    const inv = (x) => (x >= le0 + sF ? x - sF : x <= te0 + sB ? x - sB : te0 + ((x - te0 - sB) * (le0 - te0)) / (le0 + sF - te0 - sB));
+    // and deeper by what a longer root chord adds to the wing's depth under it (the root's thickness × chord), so
+    // the root's underside stays inside it
+    const zr = WS.zTable ? curve(WS.zTable)(yr) : WS.z0, zLow = zr - 0.5 * curve(WS.t)(yr) * (le0 - te0);
+    const kD = Math.max(1, ...[1, -1].map((sd) => (FR.zc - AF.wing(sd, le0, sd * yr, zLow)[2]) / (FR.zc - zLow)));
+    return { out, inv, kD };
+  })();
+  const kD = fairMap ? fairMap.kD : 1;
+  const fairHW0 = curve(dT(FR.hw)), fairBot0 = curve(dT(FR.bot));
+  const fairHW = fairMap ? (x) => fairHW0(fairMap.inv(x)) : fairHW0, fairBot = fairMap ? (x) => fairBot0(fairMap.inv(x)) : fairBot0;
+  const fairPoint = (x, th, off = 0) => V(x, (fairHW(x) + off) * Math.cos(th), FR.zc + (Math.sin(th) > 0 ? FR.up : (FR.zc - fairBot(x)) * kD + off) * Math.sin(th));
   {
-    const x1 = N - FR.hw[0][0], x0 = N - FR.hw[FR.hw.length - 1][0], rows = [];
+    const fx = fairMap ? fairMap.out : (x) => x;
+    const x1 = fx(N - FR.hw[0][0]), x0 = fx(N - FR.hw[FR.hw.length - 1][0]), rows = [];
     for (let i = 0; i <= 26; i++) {
       const x = x0 + ((x1 - x0) * i) / 26, row = [];
       for (let j = 0; j <= 40; j++) row.push(fairPoint(x, -Math.PI / 2 + (2 * Math.PI * j) / 40));
@@ -261,13 +416,27 @@ export function createWidebody(spec, opts = {}) {
     const s = clamp((y - ys) / (tipY - ys), 0, 1);
     return WS.z0 + (y - ys) * DIH + bendTip * s ** (WS.bendExp ?? 3.2);     // the static bend: upward towards the tip
   };
-  function wingSec(y, side) {
+  function wingSecBase(y, side) {
     const xle = leOf(y), slope = (wingZ(y + 0.05) - wingZ(y - 0.05)) / 0.1, phi = Math.atan(slope);
     return {
       le: V(xle, side * y, wingZ(y)), chord: Math.max(0.05, xle - teOf(y)), t: tOf(y),
       c: V(-1, 0, 0), n: V(0, -side * Math.sin(phi), Math.cos(phi)), camber: 0.012,
     };
   }
+  // v0.5.3: a design's wing: the base's section at base station y, through AF.wing (span, chord about the quarter
+  // chord, sweep, dihedral): its leading edge and chord mapped, its thickness ratio kept, its normal from the mapped
+  // dihedral line. Everything built from sections (the box, slats, flaps, spoilers, canoes, their bones, the lights)
+  // follows, at the same base stations, so pieces that met still meet.
+  const wingP = (side, x, y, z) => V(...AF.wing(side, x, side * y, z));
+  const wingSec = !AF ? wingSecBase : (y, side) => {
+    const s = wingSecBase(y, side);
+    const le = wingP(side, s.le.x, y, s.le.z), te = wingP(side, s.le.x - s.chord, y, s.le.z);
+    const a = wingP(side, leOf(y - 0.05), y - 0.05, wingZ(y - 0.05)), c = wingP(side, leOf(y + 0.05), y + 0.05, wingZ(y + 0.05));
+    const phi = Math.atan((c.z - a.z) / Math.max(1e-6, Math.abs(c.y) - Math.abs(a.y)));
+    return { le, chord: Math.max(0.05, le.x - te.x), t: s.t, c: V(-1, 0, 0), n: V(0, -side * Math.sin(phi), Math.cos(phi)), camber: s.camber };
+  };
+  // The engines' and tanks' host takes the design's span (their nacelles are placed on the design's wing).
+  const hostWingSec = AF ? (y, side) => wingSec(AF.wingBase(side, y), side) : wingSec;
   const stationsBetween = (y0, y1) => [y0, ...WS.stations.filter((y) => y > y0 + 0.02 && y < y1 - 0.02), y1];
   const HF = WS.hingeF, LF = WS.leF;
   const lightY = WS.landingLightY, lightF = WS.landingLightF;
@@ -276,6 +445,13 @@ export function createWidebody(spec, opts = {}) {
     const S = side > 0 ? 'L' : 'R';
     const ws = (y) => wingSec(y, side);
     const secs = (ys2) => ys2.map(ws);
+    // v0.5.3: a design's wing side: each vertex bends at the base's span it came from (the shader's constants are the
+    // base's); the engines' design spans turned into the base's; the flaps' travel with the chord.
+    const sideAF = AF ? (side > 0 ? AF.af.wingL : AF.af.wingR) : null, kC = sideAF ? sideAF.chord : 1;
+    if (AF) {
+      b.bendFn = (x, y) => AF.wingBase(side, Math.abs(y));
+      b.bendNum = (v) => AF.wingBase(side, Math.abs(v));
+    }
     const LAST = WS.aileron[1];
     // The inboard flap's leading edge (v0.3.1). At hingeF of the chord it ran through the main gear's
     // leg, so with the flaps out the leg hung from the empty flap cove. It now runs straight from
@@ -285,7 +461,15 @@ export function createWidebody(spec, opts = {}) {
     const xAt = (y, f) => { const w = ws(y); return w.le.x - f * w.chord; };
     const FL = inboardFlapLE(spec), [FI0, FI1] = WS.flapIn;
     const inFin = (y) => y >= FI0 - 1e-6 && y <= FI1 + 1e-6;
-    const fFlapLE = (y) => (inFin(y) ? fAt(y, FL.xAt(y)) : HF);
+    let fFlapLE = (y) => (inFin(y) ? fAt(y, FL.xAt(y)) : HF);
+    if (AF) {
+      // the same rule on the design's wing: behind the (unmoved) leg at the inboard end, at hingeF outboard, straight
+      // across the design's span; never past 0.85 of a short chord.
+      const yd0 = AF.wingStation(side, FI0), yd1 = AF.wingStation(side, FI1);
+      const xd1 = xAt(FI1, HF), xd0 = Math.min(xAt(FI0, HF), Math.max(G.GEAR.left.x - 0.45, xAt(FI0, 0.85)));
+      const xL = (y) => xd0 + ((xd1 - xd0) * (AF.wingStation(side, y) - yd0)) / (yd1 - yd0);
+      fFlapLE = (y) => (inFin(y) ? clamp(fAt(y, xL(y)), HF - 0.2, 0.85) : HF);
+    }
     // Fixed structure, then the fixed parts of the leading and trailing edges. The fixed leading edge
     // behind the slats is a round nose about the slats' hinge line, so a slat that droops about that
     // line stays sealed against it (v0.4.1, below).
@@ -355,7 +539,7 @@ export function createWidebody(spec, opts = {}) {
     // flaps travel (less a slot), as the real ones do, so a flap that's out leaves a slot under them,
     // not an open gap. Each keeps its drawn width, moved aft by the overhang. Under them a fixed shroud
     // runs each flap's whole span, so there's no light between spoilers, nor a gap where there's none.
-    const SPF = WS.spoilerF ?? 0.56, OV = { in: WS.flapTravel.in - 0.15, out: WS.flapTravel.out - 0.15 };
+    const SPF = WS.spoilerF ?? 0.56, OV = { in: WS.flapTravel.in * kC - 0.15, out: WS.flapTravel.out * kC - 0.15 };
     const overhang = (y) => Math.min(inFin(y) ? OV.in : OV.out, 0.6 * ws(y).chord * (1 - fFlapLE(y)));
     const spAft = (y) => fAt(y, xAt(y, fFlapLE(y)) - overhang(y));
     const spFront = (y) => spAft(y) - (HF - SPF);
@@ -372,21 +556,24 @@ export function createWidebody(spec, opts = {}) {
       const w = ws(yc), L = 0.62 * w.chord + 1.2, xs2 = w.le.x - 0.52 * w.chord, zc = w.le.z - 0.055 * w.chord - 0.05;
       const r = 0.2 + 0.016 * w.chord;
       const prof = [[0, 0.0], [0.07, 0.55], [0.22, 0.9], [0.42, 1], [0.7, 0.72], [0.9, 0.32], [1, 0.02]].map(([t, k]) => ({ x: -t * L, r: k * r }));
-      b.add(lathe(prof.slice(0, 4), 14, xs2, side * yc, zc), ROOT, C.wingDark);
-      const CB = bone('canoe' + i + S, 'root', V(xs2 - 0.42 * L, side * yc, zc + r), V(0, 1, 0));
-      b.add(lathe(prof.slice(3), 14, xs2, side * yc, zc), CB, C.wingDark);
+      b.add(lathe(prof.slice(0, 4), 14, xs2, w.le.y, zc), ROOT, C.wingDark);
+      const CB = bone('canoe' + i + S, 'root', V(xs2 - 0.42 * L, w.le.y, zc + r), V(0, 1, 0));
+      b.add(lathe(prof.slice(3), 14, xs2, w.le.y, zc), CB, C.wingDark);
     });
 
     // --- Engines (v0.5.0: src/engine-model.js, one per nacelle on this wing; the type's two as they always were) ---
     // v0.4.3: every part of an engine rides the wing's bend at its pylon's span, as one piece (bend: true).
-    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec, bend: true, bodyHalf: G.FUSELAGE_WIDTH / 2 }));
+    for (const n of NACS) if (!n.tail && (n.y >= 0) === (side > 0)) engines.push(addEngine(b, bone, n, { wingSec: hostWingSec, bend: true, bodyHalf: G.FUSELAGE_WIDTH / 2 }));
     // v0.5.2: a design's external tanks under this wing.
-    ((def && G.PODS) || []).forEach((t, k) => { if ((t.y >= 0) === (side > 0)) addPod(b, bone, t, { wingSec, bend: true }, k); });
+    ((def && G.PODS) || []).forEach((t, k) => { if ((t.y >= 0) === (side > 0)) addPod(b, bone, t, { wingSec: hostWingSec, bend: true }, k); });
 
     // --- Main gear: a four- or six-wheel bogie on a leg that folds inward into the belly ---
     const gm = side > 0 ? G.GEAR.left : G.GEAR.right;
     const axleZ = gm.z + R_MAIN;
-    const pivot = V(gm.x, gm.y, spec.gear.mainPivotZ);
+    // v0.5.3: on a design's wing the pivot stays as deep in the wing as it was (the wing's height at the leg moves
+    // with the dihedral); the wheels stay where the sim has them.
+    const pivotDz = AF ? hostWingSec(Math.abs(gm.y), side).le.z - wingSecBase(Math.abs(gm.y), side).le.z : 0;
+    const pivot = V(gm.x, gm.y, spec.gear.mainPivotZ + pivotDz);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
     const zLow = axleZ + 0.72;
     b.add(cylBetween(pivot, V(gm.x, gm.y, zLow), 0.2, 0.19, 14), LEG, C.gear);
@@ -424,7 +611,7 @@ export function createWidebody(spec, opts = {}) {
     }
     // The belly door, hinged towards the centre line, curved to the fairing.
     {
-      const L = GS.mainDoorLen, DI = GS.mainDoorIn ?? 0.35, DW = GS.mainDoorW ?? 2.75, DR = bone('mainDoor' + S, 'root', V(gm.x, side * DI, FR.bot[3][1] + 0.05), V(1, 0, 0));
+      const L = GS.mainDoorLen, DI = GS.mainDoorIn ?? 0.35, DW = GS.mainDoorW ?? 2.75, DR = bone('mainDoor' + S, 'root', V(gm.x, side * DI, FR.zc - (FR.zc - FR.bot[3][1]) * kD + 0.05), V(1, 0, 0));
       const rows = [];
       for (let i = 0; i <= 2; i++) {
         const x = gm.x - L / 2 + (L * i) / 2, row = [];
@@ -447,9 +634,25 @@ export function createWidebody(spec, opts = {}) {
     b.add(sphereAt(tipS.le.clone().add(V(-0.1, side * 0.04, 0)), 0.08), ROOT, side > 0 ? C.red : C.green);
     b.add(sphereAt(foilPoint(wingSec(lightY, side), lightF, -1).add(V(0, 0, 0.02)), 0.14), ROOT, C.lamp);
   }
+  if (AF) { b.bendFn = null; b.bendNum = null; }
+
+  // v0.5.3: a design's fin (and its fillet) through AF.fin (scaled about its root's quarter chord, moved back with the
+  // aft plug); its foot keeps its depth under the crown wherever the scale puts it, fading out 1.5 m above the root.
+  const finRootZ = AF ? partsShapeOf(spec.id).fin.stations[0].z : 0;
+  const finMap = AF ? (x, y, z) => {
+    const [x1, y1, z1] = AF.fin(x, y, z), w = clamp(1 - (z - finRootZ) / 1.5, 0, 1);
+    return [x1, y1, z1 + (w ? w * (fuseTop(x1) - baseShape.fuseTop(x)) : 0)];
+  } : null;
+  const finLeTable = curve(spec.fin.leTable);
+  const finLeX = !AF ? finLeTable : (z) => {
+    const zb = z <= finRootZ ? z : finRootZ + (z - finRootZ) / AF.finScale;
+    return finMap(finLeTable(zb), 0, zb)[0];
+  };
+  const finP = (p) => (AF ? V(...finMap(p.x, p.y, p.z)) : p), tailP = (p) => (AF ? V(...AF.tail(p.x, p.y, p.z)) : p);
 
   // The tail engine (a design's third), on the centreline through the fin's root.
-  for (const n of NACS) if (n.tail) engines.push(addEngine(b, bone, n, { wingSec, bend: true, finLeX: curve(spec.fin.leTable) }));
+  for (const n of NACS) if (n.tail) engines.push(addEngine(b, bone, n, { wingSec: hostWingSec, bend: true, finLeX }));
+  if (AF) { b.vmap = AF.tail; b.bendOverride = 0; }   // the tailplane: no wing bend
 
   // --- Horizontal stabiliser (trimmable) with elevators ---
   const TPG = G.TAILPLANE, stY = TPG.span / 2, tanLe = Math.tan(TP.leSweepDeg * DEG), tanSD = Math.tan(TP.dihedralDeg * DEG);
@@ -461,7 +664,7 @@ export function createWidebody(spec, opts = {}) {
       c: V(-1, 0, 0), n: V(0, -side * Math.sin(TP.dihedralDeg * DEG), Math.cos(TP.dihedralDeg * DEG)), camber: 0,
     };
   };
-  const STAB = bone('stab', 'root', V(N - TP.pivotD, 0, TPG.z), V(0, 1, 0));
+  const STAB = bone('stab', 'root', tailP(V(N - TP.pivotD, 0, TPG.z)), V(0, 1, 0));
   const stStations = TP.stations ?? [0.2, 1.4, 3.03, 5.5, 8, 9.0, 9.56, stY];
   for (const side of [1, -1]) {
     const S = side > 0 ? 'L' : 'R';
@@ -470,11 +673,12 @@ export function createWidebody(spec, opts = {}) {
     b.add(foilPiece(ss(stStations.filter((y) => y <= e1).concat([e1])), 0, TP.hingeF, { caps: [false, false], nf: 8 }), STAB, C.stab);
     b.add(foilPiece(ss([0.2, 1.4, e0]), TP.hingeF, 1, { caps: [false, true], nf: 4 }), STAB, C.stab);
     b.add(foilPiece(ss([e1, ...stStations.filter((y) => y > e1)]), 0, 1, { caps: [true, true], nf: 6 }), STAB, C.stab);
-    const pa = foilPoint(stabSec(e0, side), TP.hingeF, 0), pb = foilPoint(stabSec(e1, side), TP.hingeF, 0);
+    const pa = tailP(foilPoint(stabSec(e0, side), TP.hingeF, 0)), pb = tailP(foilPoint(stabSec(e1, side), TP.hingeF, 0));
     const EL = bone('elev' + S, 'stab', pa, pb.clone().sub(pa).multiplyScalar(side).normalize());
     b.add(foilPiece(ss([e0, ...stStations.filter((y) => y > e0 && y < e1), e1]), TP.hingeF, 1, { nf: 4 }), EL, C.stab);
   }
 
+  if (AF) { b.vmap = finMap; b.bendOverride = undefined; }
   // --- Fin, rudder, dorsal fillet, with the livery's projection ---
   const FN = spec.fin, FG = G.FIN, finBox = finBoxFor(spec);
   const finUV = (x, y, z) => [
@@ -491,7 +695,7 @@ export function createWidebody(spec, opts = {}) {
   b.add(foilPiece(fz(zSt.filter((z) => z < r0).concat([r0])), FH, 1, { caps: [false, true], nf: 4 }), ROOT, '#ffffff', finUV);
   b.add(foilPiece(fz([r1, ...zSt.filter((z) => z > r1)]), 0, 1, { caps: [true, true], nf: 6 }), ROOT, '#ffffff', finUV);
   {
-    const pa = foilPoint(finSec(r0), FH, 0), pb = foilPoint(finSec(r1), FH, 0);
+    const pa = finP(foilPoint(finSec(r0), FH, 0)), pb = finP(foilPoint(finSec(r1), FH, 0));
     const RUD = bone('rudder', 'root', pa, pb.clone().sub(pa).normalize());
     b.add(foilPiece(fz([r0, ...zSt.filter((z) => z > r0 && z < r1), r1]), FH, 1, { nf: 4 }), RUD, '#ffffff', finUV);
   }
@@ -501,6 +705,7 @@ export function createWidebody(spec, opts = {}) {
     const sec = (z) => ({ le: V(fle(z), 0, z), chord: Math.max(1, fle(z) - finLe(z) + (FN.filletOver ?? 1.8)), t: 0.1, c: V(-1, 0, 0), n: V(0, 1, 0), camber: 0 });
     b.add(foilPiece(rowsZ.map(sec), 0, 1, { caps: [false, false], nf: 6 }), ROOT, '#ffffff', finUV);
   }
+  if (AF) b.vmap = null;
 
   // --- Nose gear: retracts forward into the bay under the flight deck; steers about the leg ---
   const NG = G.GEAR.nose;
@@ -528,13 +733,13 @@ export function createWidebody(spec, opts = {}) {
   }
   // Nose doors: patches of the skin, hinged along the bay's sides.
   for (const side of [1, -1]) {
-    const [d0, d1] = spec.gear.noseDoor, xa = N - d1, xb = N - d0, rows = [], uvs = [];
+    const [d0, d1] = spec.gear.noseDoor, xa = bx(N - d1), xb = bx(N - d0), rows = [], uvs = [];
     for (let i = 0; i <= 3; i++) {
       const x = xa + ((xb - xa) * i) / 3, row = [], urow = [];
       for (let j = 0; j <= 3; j++) {
         const th = -90 + side * (1.5 + (16 * j) / 3);    // θ on the left side's belly goes −90 → −74
         row.push(fusePoint(x, th, 0.02, new THREE.Vector3()));
-        urow.push(fuseUV(x, th < -90 ? th + 360 : th));   // the skin's own paint, so a closed door doesn't show
+        urow.push(fuseUV(AF ? plan.texX(x) : x, th < -90 ? th + 360 : th));   // the skin's own paint, so a closed door doesn't show
       }
       rows.push(row); uvs.push(urow);
     }
@@ -549,13 +754,13 @@ export function createWidebody(spec, opts = {}) {
   // Tail light, beacons.
   const tailZ = fuseMid(tailEnd);
   b.add(sphereAt(V(tailEnd - 0.04, 0, tailZ), 0.08), ROOT, C.lamp);
-  const BCN_T = LS.beaconTopX ?? -1.5, BCN_B = LS.beaconBottomX ?? 9.0;
+  const BCN_T = bx(LS.beaconTopX ?? -1.5), BCN_B = bx(LS.beaconBottomX ?? 9.0);
   b.add(sphereAt(V(BCN_T, 0, fuseTop(BCN_T) + 0.03), 0.11), ROOT, C.red);
   b.add(sphereAt(V(BCN_B, 0, fuseBot(BCN_B) - 0.02), 0.11), ROOT, C.red);
 
   // --- Mesh, material, skeleton ---
   const geometry = b.build();
-  const { map, emissiveMap } = createWidebodyLivery(spec, shape, windows, opts.registration || def?.registration || spec.registration);
+  const { map, emissiveMap } = createWidebodyLivery(spec, baseShape, windows, opts.registration || def?.registration || spec.registration);
   const material = new THREE.MeshStandardMaterial({
     map, emissiveMap, emissive: 0xffffff, emissiveIntensity: 0.6, vertexColors: true, roughness: 0.42, metalness: 0.08,
   });
@@ -565,17 +770,20 @@ export function createWidebody(spec, opts = {}) {
   mesh.add(bones[ROOT]);
   mesh.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(bones));
-  const midX = (N + G.TAIL_X) / 2;
-  mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, -midX), Math.hypot((N - G.TAIL_X) / 2, tipY) + 4);
+  const midX = (ND + bx(G.TAIL_X)) / 2;
+  mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, -midX), Math.hypot((ND - bx(G.TAIL_X)) / 2, AF ? Math.max(...AF.tipY) : tipY) + (AF ? 10 : 4));
 
   // The logo lights, the night fill: as aircraft.js. The mask uses the bind-pose (model frame) position.
   const logoU = { value: 0 }, fillU = { value: 0 }, flexU = { value: 0 };
   // The fuselage's crown under the fin, as a straight line in the model frame, so the pool of light
   // stays on the fin and doesn't burn out the white crown ahead of it.
-  const xa = FN.filletLe[1][1], xb = G.FIN.rootTeX;
+  const xa = AF ? finMap(FN.filletLe[1][1], 0, FN.filletLe[1][0])[0] : FN.filletLe[1][1];
+  const xb = AF ? finMap(G.FIN.rootTeX, 0, FN.teRootZ)[0] : G.FIN.rootTeX;
   const topA = fuseTop(xa), topSlope = (fuseTop(xb) - topA) / (-xb + xa);   // per metre of model Z
   const finY0 = fuseTop((xa + xb) / 2);
-  const flexLimitZ = -(G.WING.tipTeX - 3);  // model Z behind which nothing is wing (keeps the tail out of the bend)
+  // model Z behind which nothing is wing (keeps the tail out of the bend). A design's tailplane has bendY 0 instead (its
+  // tail may move forward and its tips back past this line).
+  const flexLimitZ = AF ? 1e4 : -(G.WING.tipTeX - 3);
   material.onBeforeCompile = (sh) => {
     sh.uniforms.uLogo = logoU;
     sh.uniforms.uFill = fillU;
@@ -634,6 +842,12 @@ export function createWidebody(spec, opts = {}) {
   const object = new THREE.Group();
   object.name = 'aircraft';
   object.add(mesh, glows.object);
+  // v0.5.3: the cockpit (src/cockpit-boeing.js, built on the base's nose) rides forward with the forward plug, as the
+  // eye does (def.geo.EYES): main.js adds it to this object.
+  if (AF && AF.plugFwd) {
+    const add0 = object.add.bind(object), shift = toModel(AF.plugFwd, 0, 0);
+    object.add = (...objs) => { for (const o of objs) if (o && o.name === 'cockpit') o.position.copy(shift); return add0(...objs); };
+  }
 
   // --- Animation (no allocation per frame) ---
   const tmp = new THREE.Vector3();
@@ -650,7 +864,7 @@ export function createWidebody(spec, opts = {}) {
   const WHEEL_NAMES = [];
   for (let i = 0; i < NAXLES; i++) WHEEL_NAMES.push('mainWheelL' + i, 'mainWheelR' + i);
   const EMPTY_LIST = [];
-  const FT = WS.flapTravel;
+  const FT = WS.flapTravel, KC = AF ? [AF.af.wingL.chord, AF.af.wingR.chord] : [1, 1];
   const FLAP_OUT_DEG = WS.flapOutDeg ?? 20, FLPRN = WS.flaperonDroop ?? [0.8, 30], AFT_F = WS.flapInAft;
   const steerMax = (spec.data?.STEER_TILLER ?? 70 * DEG);
 
@@ -674,7 +888,7 @@ export function createWidebody(spec, opts = {}) {
       rot(k ? 'slatsR' : 'slatsL', (state.slatDeg || 0) * DEG * 0.85);
       const fi = k ? 'flapInR' : 'flapInL', fo = k ? 'flapOutR' : 'flapOutL';
       rot(fi, -fd * DEG);
-      move(fi, -FT.in * tr, 0, -0.18 * tr);
+      move(fi, -FT.in * KC[k] * tr, 0, -0.18 * tr);
       if (WS.flapInAftF) {
         // The aft flap: past the small settings it opens on top of the main flap, with its own slot.
         const fa = k ? 'flapInAftR' : 'flapInAftL', open = clamp((fd - AFT_F.fromDeg) / (AFT_F.toDeg - AFT_F.fromDeg), 0, 1);
@@ -682,7 +896,7 @@ export function createWidebody(spec, opts = {}) {
         move(fa, -AFT_F.slide * open, 0, -0.03 * open);
       }
       rot(fo, -fd * DEG);
-      move(fo, -FT.out * tr, 0, -0.14 * tr);
+      move(fo, -FT.out * KC[k] * tr, 0, -0.14 * tr);
       for (let i = 0; i < WS.canoes.length; i++) rot('canoe' + i + S, -fd * DEG * 0.55);
     }
 
@@ -769,7 +983,7 @@ export function createWidebody(spec, opts = {}) {
     flexU.value = m;
     LAMPS.forEach((L, i) => {
       if (L.pos[2] >= flexLimitZ || Math.abs(L.pos[0]) <= ys) return;
-      const k = (Math.abs(L.pos[0]) - ys) / (tipY - ys);
+      const k = ((AF ? AF.wingBase(L.pos[0] < 0 ? 1 : -1, Math.abs(L.pos[0])) : Math.abs(L.pos[0])) - ys) / (tipY - ys);
       lampAttr.setY(i, lampY[i] + m * k * k);
     });
     lampAttr.needsUpdate = true;
