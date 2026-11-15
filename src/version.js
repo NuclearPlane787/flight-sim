@@ -1,4 +1,4 @@
 // The version the game shows (the pause menu and the loading screen). With every update, bump it
 // (number, build = the date as YYMMDD, label) and add the update to Updates.md. The commit's title
 // is the version number alone (AGENTS.md → Versions).
-export const VERSION = { number: '0.5.3', build: 261115, label: 'Flight Sim v0.5.3 · CL#261115' };
+export const VERSION = { number: '0.5.4', build: 261116, label: 'Flight Sim v0.5.4 · CL#261116' };

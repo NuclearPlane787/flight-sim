@@ -430,7 +430,7 @@ async function boot() {
     if (dest) distNm = Math.hypot(dest.end.x - s.pos.x, dest.end.y - s.pos.y) / NM;
     return {
       route: `${plan.origin}–${plan.dest}`,
-      ...(sim.design ? { design: sim.design.name } : {}),   // v0.5.0: the Load list names the design
+      ...(sim.design ? { design: sim.design.name, designId: sim.design.id } : {}),   // v0.5.0: the Load list names the design; v0.5.4: and its id, for a rename
       where: whereText({ onGround: s.onGround, altFt: s.pos.z * FT, distNm, destIcao: plan.dest, phase: gate.phase,
         icao: a ? a.icao : plan.origin, stand: gate.phase === 'arrived' ? (gate.route?.stand ?? gate.stand?.ref) : (gate.phase === 'parked' ? (gate.stand?.ref ?? plan.stand) : null), crashed: !!crashed }),
     };
@@ -700,8 +700,12 @@ async function boot() {
     ui.pause.hidden = !v || quiet || crashed;
     if (v && !ui.pause.hidden) { const ps = $('pause-scenario'); if (ps) ps.textContent = current ? current.name : ''; }
     input.dropAll();
+    syncPauseBtn();
     if (!v) { last = performance.now(); requestFrame(); }
   }
+  // v0.5.4: the HUD's Pause button reads Resume whenever the game is paused (however it was), and is off
+  // after a crash and in the menus (the HUD is hidden there anyway).
+  function syncPauseBtn() { hud.setPause?.(paused, !!plan && !inMenu && !crashed && !sim.state.crashed); }
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && !paused) setPaused(true);
     else if (document.hidden && !inMenu) saveNow('hidden');
@@ -716,7 +720,9 @@ async function boot() {
     if (a === 'pause') {
       if (map.isOpen) { map.close(); return; }
       if (crashed) return;
-      setPaused(!paused);
+      // v0.5.4: paused quietly (the Pause button, or the menu's Weight and fuel or Time of day), Esc opens
+      // the pause menu; from the menu it resumes, as before.
+      setPaused(paused && ui.pause.hidden ? true : !paused);
       return;
     }
     if (a === 'rewind') { if (paused || crashed) rewindNow(); return; }
@@ -772,7 +778,7 @@ async function boot() {
     onPerf: (on) => setPerf(on),
     ...(skyWinMod?.createSkyWindow ? { onSky: () => {
       if (inMenu || !plan) { toast('The Sky window opens in flight: start or load a scenario'); return; }
-      setPaused(false); openSky();
+      setPaused(true, true); openSky();   // v0.5.4: still paused, quietly (the menu closes; the HUD's button resumes)
     } } : {}),
   });
   const controlsPage = createControlsPage($('pages-root'), { sky: !!skyWinMod?.createSkyWindow });
@@ -789,7 +795,7 @@ async function boot() {
         else if (saveNow('save')) toast(`Saved “${current.name}”`, 1500);
       }
       else if (act === 'copy') saveCopy();
-      else if (act === 'weight') { setPaused(false); showLTab('load'); }
+      else if (act === 'weight') { setPaused(true, true); showLTab('load'); }   // v0.5.4: still paused, quietly
       else if (act === 'rewind') rewindNow();
       // v0.4.2: the crash screen's way to practise on: Indestructible on, then the rewind.
       else if (act === 'rewind-ind') { setFlightOpt('indestructible', true); rewindNow(); toast('Indestructible is on: no crash ends the flight (Settings turns it off)', 3500); }
@@ -798,7 +804,7 @@ async function boot() {
       else if (act === 'logbook') openLogbook(true);
       else if (act === 'settings') settingsPage.open();
       else if (act === 'controls') controlsPage.open();
-      else if (act === 'sky') { setPaused(false); openSky(); }
+      else if (act === 'sky') { setPaused(true, true); openSky(); }   // v0.5.4: still paused, quietly
       else if (act === 'menu') exitToMenu();
     });
   }
@@ -847,6 +853,11 @@ async function boot() {
 
   hud.onlaw = (law) => { sim.controls.law = law; };
   hud.onview = (which) => selectView(which);
+  // v0.5.4: the Pause button beside Hide panels: a quiet pause (no pause menu), and Resume from any pause.
+  hud.onpause = () => {
+    if (!plan || inMenu || setup.isOpen || crashed || sim.state.crashed) return;
+    setPaused(!paused, true);
+  };
   map.onjump = (sample) => jumpTo(sample);
   map.onskipfinal = () => { map.close(); skipToFinal(); };
   map.onroute = (icao, ident) => changeRoute(icao, ident);
@@ -879,6 +890,7 @@ async function boot() {
         ui.crashReason.textContent = e.reason || sim.state.crashed || 'The aircraft was destroyed.';
         ui.crash.hidden = false;
         ui.pause.hidden = true;
+        syncPauseBtn();   // v0.5.4
         setTimeScale(1);
         callouts.reset();
       }
@@ -1108,6 +1120,7 @@ async function boot() {
     view.timeScale = timeScale;
     view.timeScaleActual = timeScale > 1 ? Math.round(achievedScale * 10) / 10 : 1;
     view.paused = paused;
+    syncPauseBtn();   // v0.5.4: cheap, the HUD only touches the button when this changes
     // The map's waypoints, which it edits in flight (v0.2.1: this was plan.waypoints, the
     // setup's, so a waypoint dragged on the map never showed or counted).
     view.waypoints = map.waypoints;
@@ -1193,7 +1206,7 @@ async function boot() {
     skyWin.onchange = () => { if (paused) renderOnce(); else requestFrame(); };
   } else for (const b of document.querySelectorAll('[data-sky]')) b.hidden = true;
   // After the Sky window, so it's the first .fssw in the page (tests/browser-sky-window.mjs reads it so).
-  loadWin = createLoadWindow($('skywin-root'), { get: loadNow, onapply: applyLoad });
+  loadWin = createLoadWindow($('skywin-root'), { get: loadNow, onapply: applyLoad, ondrop: dropWingTanks });
   loadWin.onclose = () => requestFrame();
   loadWin.ontab = (t) => showLTab(t);
   if (!skyWin) loadWin.el.querySelector('[data-tab="sky"]')?.remove();
@@ -1246,9 +1259,24 @@ async function boot() {
   // the weight it flies at.
   function loadNow() {
     const s = sim.state, L = sim.type.limits, A = sim.type.data;
-    return { limits: { ...L, OEW: A.OEW ?? L.OEW, FUEL_MAX: Math.min(L.FUEL_MAX, A.FUEL_MAX ?? L.FUEL_MAX) },
+    // v0.5.4: a design's wing tanks (Drop wing tanks); once dropped, the tanks hold what's left without them.
+    const pods = (sim.type?.geo?.PODS || []).length > 0 && typeof sim.dropTanks === 'function';
+    const gone = s.tanksDropped && A.DROP_TANKS ? A.DROP_TANKS.kg : 0;
+    return { limits: { ...L, OEW: A.OEW ?? L.OEW, FUEL_MAX: Math.min(L.FUEL_MAX, (A.FUEL_MAX ?? L.FUEL_MAX) - gone) },
       pax: s.paxN ?? plan?.pax ?? 0, cargoKg: s.cargoKg ?? plan?.cargoKg ?? 0,
-      fuelKg: s.fuelKg, gross: s.mass, cgMac: s.cgMac, crashed: !!(crashed || s.crashed) };
+      fuelKg: s.fuelKg, gross: s.mass, cgMac: s.cgMac, crashed: !!(crashed || s.crashed),
+      ...(pods ? { tanks: { airborne: !s.onGround, dropped: !!s.tanksDropped } } : {}) };
+  }
+  // v0.5.4: the Weight tab's Drop wing tanks: in the air, once (the sim's dropTanks(): their mass, the fuel still
+  // in them and their drag go). Saved at once, as a load change is.
+  function dropWingTanks() {
+    if (!plan || crashed || sim.state.crashed || typeof sim.dropTanks !== 'function') return { ok: false, text: '' };
+    if (!sim.dropTanks()) return { ok: false, text: sim.state.onGround ? 'The wing tanks drop in the air only.' : 'The wing tanks could not be dropped.' };
+    apKey = '';                 // the predicted path depends on the weight
+    saveNow('drop tanks');
+    if (paused) renderOnce(); else requestFrame();
+    const s = sim.state;
+    return { ok: true, text: `Wing tanks dropped: ${Math.round(s.mass).toLocaleString('en-US')} kg, CG ${(s.cgMac * 100).toFixed(1)} % MAC.` };
   }
   // Its Apply. The plan stays as it was set up (Restart the flight and New flight start from it);
   // the flight, a save, a rewind and a copy carry the new load (it's in the sim's core).

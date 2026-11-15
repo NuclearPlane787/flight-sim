@@ -2766,3 +2766,45 @@ Shane: "The agent finished some time ago. Run the necessary checks and it can go
 `src/version.js` (`Flight Sim v0.5.3 · CL#261115`), `Updates.md`, `PLAN.md` ("The airframe from parts (v0.5.3)"), `ROADMAP.md` (row 1, the plan's v0.5.3 row done, "Found while building v0.5.3"), `AGENTS.md` (State, Next), `HANDOFF.md` (where the next session starts, the versions table with v0.5.2 pushed, "v0.5.3: the airframe from parts"); `README.md` is the run's. The Games project doc too.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.5.3` from `games/flight-sim`, then Cmd+Shift+R in the app; v0.6.0 (East Asia) is `HANDOFF.md`'s first section.
+
+## 2026-11-16, 02:05 KST: v0.5.4, Shane's list after v0.5.3 (Cowork session)
+
+**Shane** (after v0.5.3): "1. Instead of pausing when in the little popup thing, let's have the pause function be a button next to 'hide panel'. This way 'time of day' and 'weight and fuel' can be opened while paused. 2. When you rename a plane in the warehouse, it doesn't update it in the load scenario boxes. 3. Change how landings are rated again. Instead of a strict subtraction system, we have something like 9/10 or 3/10 for a category. Otherwise it is too easy to get a 0. Also, the bars for them are weird." Then, with the session's list added: "Do 1 through 8 I would say, but do so in about 60 minutes, preferrably 45 minutes. Though, for 8, there is nothing outside the hangar so maybe just have it closed always or add something in the background that looks somewhat real."
+
+Built from 02:05 to about 02:45 KST by five subagents, each owning its files (the UI: 1, 2 and the drop button; the score: 3; the physics: 4, 5 and the tails; the warehouse's keys: 6; the models: the A321's flap, the pods and the doors), then reviewed and joined here.
+
+### What changed
+
+1. **A Pause button** beside Hide panels: a quiet pause (no menu), Resume after it; hidden after a crash. L and its window work while paused (L had its own key listener all along). The pause menu's Weight and fuel and Time of day (and Settings → Sky) close the menu and keep the game paused quietly; Esc from a quiet pause opens the menu, and Esc from the menu resumes as before.
+2. **A renamed design** (the list's Rename, or the editor's name then Save) is renamed in every scenario that flies it: the Load list's name and the saved state's copies of the design (only the name; the parts stay as saved). Matched by `summary.designId` (new in saves) or, for older saves, the saved state's `design.id`. The logbook keeps its names.
+3. **Landings out of 10 per part.** Each part scores round(10 × e^(−cost/k)) with its own k, and the total is the weighted average × 10 (vertical speed, the aiming point, the centreline and the grass weigh 3; the approach path 2; peak g, bounces and the sink rate's swings 1.5; bank and pitch 1). 100 takes 10/10 everywhere. Caps: a taxiway or a would-be crash 10, the grass 49 (an F), and the worst part 50 + 10 × its score. The card's bars fill to score/10 (green at 9–10 down to red at 0–3), with "6/10" beside them; old logbook entries keep their "−7" text and their bars are read back from it. Anchors (`tests/score.test.mjs`): Shane's v0.1.3 reference landing 80 (B), the same after a steady approach 91 (A), 250 ft/min with the rest perfect 98, several middling flaws 59 (D), firm and long (740 ft/min) 37 (F), everything bad at once 10; one bad part alone: 900 ft/min 50, 1,000 m long 50, 20 m off 50, 2.6 g 60, 9.5° pitch 60, 7° bank 80.
+4. **Sweep moves the coffin corner's top.** Each wing side's strips lose CLmax with M × cos(Λ_base + ΔΛ_side) / cos Λ_base (by the quarter chord: exactly 1 on the base's wing, so the stock types and unswept designs are bit-exact), and `D.MMO` is the base's × cos Λ_base / cos Λ_mean, within 0.70–0.95, set only when the sweep changes. The 777: M0.95 at +8° (0.984 before the clamp), M0.827 at −8°. Six GE90s at FL450 and 265 t: no window on the stock wing (the shaker reaches MMO 0.89); at +8° clear of the shaker from M0.785 and of the amber band from M0.91, to 0.95; at −8° no window.
+5. **Drop wing tanks** (the Weight tab, in the air, once): their empty masses go from where they hung, with the fuel still in them (the centre tank's fuel above the airframe's own centre tank, up to what they held), their drag and their strike points; the airframe stays put and the CG moves inside it; the fuel goes out of `fuelAddedKg`, so the logbook's fuel used stays the burn. In the core, so a save, a rewind and the prediction carry it. The models hide the pods and pylons while `tanksDropped`.
+6. **Keys for the selected part in the warehouse:** ↑ ↓ forward and aft (an engine's or wing tank's dx by 0.1 m; a body engine's, hold tank's or ballast's station by 0.25 m), ← → out and in along the span (0.25 m), Shift+↑ ↓ an engine up and down (0.05 m), Q E yaw −1° / +1°. Through `editPart()`, so the twin follows and the limits hold; one undo step per press, a held key's repeats share one; a focused slider keeps its arrows. A turned engine is picked by its own turned box, and its outline turns.
+7. **Looks:** the tailplane and fin scale about their roots' trailing edges (`shapeOf()`, `tail()`, `fin()`; a factor of 1 is the base's exactly), so a 1.6 tail no longer hangs past the cone; the A321's inboard flap is re-clamped behind its main leg on a changed airframe (at −8° and 0.8 chord the wing's trailing edge is only about 0.3 m behind the leg, so the flap there is a strip a few centimetres deep: ROADMAP).
+8. **The hangar's doors are shut:** the leaves meet under a cover strip and overlap, with no gap; the apron and the airport outside are gone (13 draw calls to 12).
+
+### Decisions
+
+- **The worst part caps the total** (this session, on review): the subagent's weighted average let one bad part be averaged away (900 ft/min with the rest right scored 79, a B; 1,000 m long 79). `WORST_CAP` (50 + 10 × the worst score) makes those a D and leaves a part at 5/10 or better capping nothing. Shane's reference landing stays at 80.
+- **The grass is an F** (capped at 49): averaged in, a touchdown on the grass came out about 65 (C).
+- **The doors shut**, not a painted outside (Shane offered either).
+- **MMO in the warehouse:** a "Maximum Mach (MMO)" row when the sweep moves it.
+- **Normal Mach by the quarter chord**, not the half chord the wave drag uses (`sideMach`): the half chord's gives 8.83° for 8° of sweep and isn't 1 for a span-only change.
+
+### Checked
+
+- 885 unit tests in the container (35 new), the golden flights among them, and on the Mac through the guard.
+- In the cloud container (SwiftShader): `weight-copy.cjs` 50 checks with the new pause ones (the menu's Weight and fuel keeps the game paused, the button reads Resume, Pause, L while paused, Esc from a quiet pause opens the menu); `v051-hangar.cjs` all pass with the doors shut (19 draw calls a type); `v052-editor.cjs` all pass (24), once its Fly click waits longer: starting the flight held the page about 34 s in SwiftShader, past the click's 30 s, twice (the check now waits up to 120 s); `v044-hud.cjs`'s layout checks pass for the A321 at 1440, 1280 and 1024 and the 777 at 1440 (23) before its 15 minutes ran out with four browsers on two cores, and the pictures show the Pause button beside Hide panels, under the FCU at 1024.
+
+### Not checked
+
+- On the Mac's GPU and screen: none of it (the Pause button's look beside the FCU at narrow widths was seen in SwiftShader only).
+- `route-views.cjs`, `athr-lever.cjs`, `weather-final.cjs`, `wing-gaps.cjs` not run (the stock types are bit-exact by the golden flights; the A321's model digest is unchanged).
+- Flown by hand: none.
+
+### Written up
+
+`src/version.js` (`Flight Sim v0.5.4 · CL#261116`), `Updates.md`, `README.md` (the Pause button, the Weight tab, the keys, the score), `ROADMAP.md` (the v0.5.4 row, "Found while building v0.5.4", v0.5.3's and v0.5.2's items struck), `AGENTS.md`'s State, `HANDOFF.md` (where you start, the versions table, the code map), this entry.
+
+**Next:** Shane pushes v0.5.3 first if he hasn't, then `sh tools/push.sh v0.5.4` from `games/flight-sim`, then Cmd+Shift+R in the app.

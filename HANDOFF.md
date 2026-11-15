@@ -18,7 +18,8 @@ Your last job is to rewrite this section for the session after you (v0.7.0 in th
 
 ### Where you start
 
-- **v0.5.2 is pushed** (`31c1fb3`), and **v0.5.3 was written up and ready to push** when this was last updated (2026-11-15: the airframe from parts). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **v0.5.3 and v0.5.4** were written up and ready to push when this was last updated (2026-11-16: v0.5.4 is Shane's list after v0.5.3; v0.5.2 is pushed, `31c1fb3`). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **Passing at v0.5.4:** 885 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `weight-copy.cjs` (with the Pause button's checks), `v051-hangar.cjs`, `v052-editor.cjs` (its Fly click now waits up to 120 s: SwiftShader takes about 34 s to start the flight) and `v044-hud.cjs` for the A321 at three widths and the 777 at 1440 (it ran out of time after that) (`STATUS.md`'s v0.5.4 entry). Not on the Mac's GPU.
 - **Passing at v0.5.3:**
   - 850 unit tests (`node --test tests/*.test.mjs`, about 24 s on the Mac through the guard), the three golden flights among them;
   - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weight-copy.cjs`, `athr-lever.cjs`, `route-views.cjs`, `weather-final.cjs` and `v044-hud.cjs`, `v051-hangar.cjs`, and `v052-editor.cjs` and `v052-designs.cjs` (`STATUS.md`'s v0.5.3 review entry has the results);
@@ -110,6 +111,7 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | v0.5.1 | The warehouse is a hangar: steel frames and roof trusses, skylights and lamps, offices, racks, benches and a spare engine along the walls, sliding doors part open onto the apron, a painted floor with the stand's lead-in and a stop bar per type, people walking; the camera stays inside | yes |
 | v0.5.2 | Parts anywhere, KSP's way: engines under or over the wing, on the rear fuselage or in the tail (up to 8, mixed types, nudged and turned), wing tanks, hold tanks and ballast, each with its mass, drag and thrust line; the editor's palette, ghost, mirror, select, drag, undo and redo, the CoM and CoT, new checks, Fly it | yes (`31c1fb3`) |
 | v0.5.3 | The airframe from parts: each wing side's span, chord, sweep and dihedral, the tailplane's and fin's size and the fuselage's plugs in the warehouse, the handling from the parts (strips with their own airflow, one rigid body), the model following, the structure's weight, new checks (static margin, Cnβ, stall speed, nose-wheel load, code letter), self-tuning yaw gains, stands that fit, the A321's sharklets as a switch | not yet when this was written: `sh tools/push.sh v0.5.3` |
+| v0.5.4 | Shane's list after v0.5.3: a Pause button beside Hide panels (the L window works while paused), a renamed design renamed in its scenarios, landings out of 10 per part (a weighted average, the worst part capping it), sweep moving the coffin corner's top and MMO, Drop wing tanks, keys for the selected part in the warehouse, the tails' overhang and the A321's inner flap fixed, the hangar's doors shut | not yet when this was written: `sh tools/push.sh v0.5.4` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
@@ -121,6 +123,7 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 - **v0.5.1's** is in its `STATUS.md` entry ("2026-11-13, 10:55 KST"): 722 unit tests, `tests/cloud/v051-hangar.cjs` and the pictures `v051-hangar-*.jpg`.
 - **v0.5.2's** is in its `STATUS.md` entry ("2026-11-14"): 744 unit tests, `tests/cloud/v052-editor.cjs` and `v052-designs.cjs`, and the pictures `v052-*.jpg`.
 - **v0.5.3's** is in its `STATUS.md` entries: the run's (from "2026-11-15, 04:04 KST" to "12:42 KST", with the validation table at 04:18) and the review's ("2026-11-15, evening"): 850 unit tests, the run's Chrome checks on the Mac, the cloud checks, and the pictures `v053-*.png`.
+- **v0.5.4's** is in its `STATUS.md` entry ("2026-11-16, 02:05 KST"): 885 unit tests, the cloud checks, and the anchors of the new landing score (`tests/score.test.mjs`).
 - **v0.4.4's** is in its `STATUS.md` entry ("2026-11-13, 03:15 KST").
 - **v0.4.3's** is in its `STATUS.md` entry ("2026-11-13, 01:35 KST"): 674 unit tests, the cloud checks, before/after pictures of the bent wings, the engines and the fan, the aurora, and the pitch measurements (`tests/boeing-pitch-settle.test.mjs`).
 - **v0.4.2's** is in its `STATUS.md` entry ("2026-11-12, 23:05 KST"): 668 unit tests, the cloud checks, and pictures of the runway signs, the snow over the paint, both PFDs' windshear warning, the wiper, the spray and the crash screen (`tests/cloud/v042-shots.cjs`). It also says why broken cloud far off and the 777's yaw were left as they were.
@@ -270,6 +273,21 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | `src/world/spray.js` | `createSpray(GEAR, uniforms)`, `sprayAmount()`: instanced sprites per leg in the model's frame, a function of a clock (no per-frame state). |
 | `tests/cloud/v042-shots.cjs` | v0.4.2's pictures, some against v0.4.1 served beside it as `games/flight-sim-041/`. |
 | New tests | `boeing-autotrim-787`, `yaw-approach`, `windshear-ahead`, `spray`; `boeing-autotrim`, `indestructible`, `taxisigns`, `weather-autoland` (tightened) and `weather-precip` grew. |
+
+### v0.5.4: Shane's list after v0.5.3
+
+No brief: Shane's list (2026-11-16) built by the Cowork session with five subagents, each owning its files. `STATUS.md`'s 2026-11-16 entry has the checks.
+
+| File | What's there |
+|---|---|
+| `src/ui/hud.js`, `src/ui/ui.css`, `src/main.js` | The Pause button (`.fsui-pause-btn` in `panelsBox`; `hud.setPause(paused, available)`, `hud.onpause`); `syncPauseBtn()`; Esc from a quiet pause opens the menu (`setPaused(paused && ui.pause.hidden ? true : !paused)`); the menu's Weight and fuel and Time of day keep the game paused quietly; `dropWingTanks()` and the Weight tab's `tanks`; `summary.designId` in saves. |
+| `src/scenarios.js`, `src/designs-store.js`, `src/ui/menu.js` | `renameDesign(id, name)`, `renamedState()`, `stateDesignId()`; `onDesignRename()` (a saved design's name changed, by Rename or the editor's Save) → `scenarios.renameDesign()`. |
+| `src/score.js`, `src/ui/score-panel.js`, `src/ui/logbook.css` | `RATE` ([k, weight] per part), `scoreFor()`, `CAP` (taxiway, would-be crash 10; grass 49), `WORST_CAP` (50 + 10 × the worst part's score); `sharePoints(parts, points, by)`; the card's bars filled to score/10 (old entries' from their penalties); the verdict by the lowest score. |
+| `src/sim/parts-aero.js`, `src/sim/airframe-map.js` | `normalMach` (each side's cos Λ against the base's, by the quarter chord) in the strips' CLmax with Mach (`clmaxMachOf()`); the tails scaled about their roots' trailing edges in `shapeOf()`, `tail()` and `fin()` (a factor of 1 exactly the base's). |
+| `src/sim/designs.js`, `src/sim/sim.js` | `D.DROP_TANKS` (the pods' fuel, the centre tank's own, the centre fuel's CG without them, their empty masses), the pods' drag `pod: true`, `D.MMO` by Korn from the mean sweep (0.70–0.95), `designNumbers().mmo`; `sim.dropTanks()`, `X.tanksDropped` (saved, rewound, predicted), `fuelMax()`. |
+| `src/ui/warehouse.js` | `nudgeOf()`, `nudgePart()`, `nudgeHelp()`, `NUDGE_KEYS`; `engineAxes()` (a turned engine's pick box and outline); the MMO row when the sweep moves it. |
+| `src/aircraft.js`, `src/engine-model.js`, `src/ui/hangar.js` | The A321's inner flap re-clamped behind its leg on a changed airframe; `podDropper()` (the pods and pylons hidden while `tanksDropped`); the hangar's doors shut, the apron gone. |
+| New tests | `scenarios-rename`, `sweep-mach`, `drop-tanks`, `tail-pivot`, `warehouse-keys`, `v054-models` (node); `tests/cloud/weight-copy.cjs` checks the Pause button. |
 
 ### v0.5.3: the airframe from parts
 

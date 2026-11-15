@@ -76,6 +76,8 @@ function newCore(A, boeing, n) {
     eN1: filled(n, A.N1_IDLE), eN1t: filled(n, A.N1_IDLE), eRev: filled(n, 0), eThr: filled(n, 0), eFf: filled(n, 0),
     // v0.5.0: the engines torn off their pylons (bit i: engine i), and the mass they took with them.
     eOff: 0,
+    // v0.5.4: a design's wing tanks dropped (dropTanks()): their mass, fuel, drag and strike points gone
+    tanksDropped: false,
     fuelL: 3000, fuelR: 3000, fuelC: 0,
     slat: 0, flap: 0, cfg: '0', lever1F: false, prevLever: 0,
     gearPos: 1, gearDoors: 0,
@@ -144,6 +146,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     altInd: 0, baroAlert: false, sat: 15, airP: 0, airA: 0, airSigma: 0, wind: { x: 0, y: 0, z: 0, meanX: 0, meanY: 0, sfcX: 0, sfcY: 0, gustKt: 0 }, drift: 0,
     onGround: true, wow: { nose: false, left: false, right: false },
     mass: 0, fuelKg: 0, fuel: { left: 0, right: 0, center: 0 }, cgMac: 0.25, cgX: 0,
+    tanksDropped: false,   // v0.5.4 (the core's)
     payloadKg: 0, paxN: null, cargoKg: null, fuelAddedKg: 0,   // v0.3.2 (the core's)
     engines: [],   // one per engine (mkEngines)
     thrustLever: 0, detent: 'IDLE',
@@ -282,8 +285,20 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
         dIzz -= m * (rx * rx + n.y * n.y - A.IZZ_ZFW_PER_KG);
       }
     }
+    // v0.5.4: the wing tanks dropped: their empty masses gone from where they hung (as an engine's above), and the
+    // centre fuel's CG without them
+    const DK = A.DROP_TANKS, dropped = X.tanksDropped && DK !== undefined;
+    if (dropped) {
+      for (let i = 0; i < DK.pm.length; i++) {
+        const t = DK.pm[i], m = t.m, rx = t.x - A.CG_OEW_X;
+        oew -= m; mx -= m * t.x;
+        dIxx -= m * (t.y * t.y + t.z * t.z - A.IXX_ZFW_PER_KG);
+        dIyy -= m * (rx * rx + t.z * t.z - A.IYY_PER_KG);
+        dIzz -= m * (rx * rx + t.y * t.y - A.IZZ_ZFW_PER_KG);
+      }
+    }
     mass = oew + X.payload + fuel;
-    cgX = (mx + X.payload * A.CG_PAYLOAD_X + wing * A.CG_WING_FUEL_X + X.fuelC * A.CG_CENTER_FUEL_X) / mass;
+    cgX = (mx + X.payload * A.CG_PAYLOAD_X + wing * A.CG_WING_FUEL_X + X.fuelC * (dropped ? DK.cgCentreX : A.CG_CENTER_FUEL_X)) / mass;
     const zfw = oew + X.payload + X.fuelC;
     Ixx = A.IXX_ZFW_PER_KG * zfw + A.IXX_WING_FUEL_R2 * wing + dIxx;
     Iyy = A.IYY_PER_KG * mass + dIyy;
@@ -563,7 +578,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const DP = A.DRAG_PARTS;
     if (DP !== undefined && V > 2) {
       for (let i = 0; i < DP.length; i++) {
-        const p = DP[i], dq = qbar * p.cda * iv;
+        const p = DP[i];
+        if (p.pod && X.tanksDropped) continue;   // v0.5.4: a wing tank that's gone
+        const dq = qbar * p.cda * iv;
         const fx = -dq * u, fy = -dq * v, fz = -dq * w;
         const rx = p.x - cgX, ry = -p.y, rz = -p.z;
         F[0] += fx; F[1] += fy; F[2] += fz;
@@ -625,6 +642,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       for (let i = 0; i < SKID_POINTS.length; i++) {
         const c = SKID_POINTS[i];
         if (c.engine !== undefined && X.eOff & (1 << c.engine)) continue;   // v0.5.0: an engine that's gone
+        if (X.tanksDropped && c.why === 'tank strike') continue;            // v0.5.4: a wing tank that's gone
         const rx = c.x - cgX, ry = -c.y, rz = -c.z;
         const dn = R[0] * rx + R[1] * ry + R[2] * rz, de = R[3] * rx + R[4] * ry + R[5] * rz, dd = R[6] * rx + R[7] * ry + R[8] * rz;
         const pen = groundFn(X.px + de, X.py + dn).h - (X.pz - dd);
@@ -794,6 +812,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       for (let i = 0; i < CRASH_POINTS.length; i++) {
         const c = CRASH_POINTS[i];
         if (c.engine !== undefined && X.eOff & (1 << c.engine)) continue;   // v0.5.0: an engine that's gone
+        if (X.tanksDropped && c.why === 'tank strike') continue;            // v0.5.4: a wing tank that's gone
         const rx = c.x - cgX, ry = -c.y, rz = -c.z;
         const dd = R[6] * rx + R[7] * ry + R[8] * rz;
         if (X.pz - dd < gh) {
@@ -1009,6 +1028,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (kit.boeing) kit.boeing.updateState(S, X, lc, atm);
     W.master = W.stall || W.overspeed || W.apDisc || W.sinkRate || W.pullUp || W.tooLowGear;
     S.crashed = X.crashed;
+    S.tanksDropped = !!X.tanksDropped;   // v0.5.4
     S.scraping = X.scrapes !== 0;
     S.cl = co.CL; S.cd = co.CD;
     S.protAlpha = X.protAlpha; S.protSpeed = X.protSpeed; S.alphaFloor = X.alphaFloorLock; S.flare = X.flare;
@@ -1210,7 +1230,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
-      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0,
+      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0, tanksDropped: false,
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
     migrateEngines(snap.core);
     Object.assign(controls, snap.controls);
@@ -1258,7 +1278,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const cg0 = cgX, fuel0 = X.fuelL + X.fuelR + X.fuelC;
     if (Number.isFinite(payloadKg)) X.payload = clamp(payloadKg, 0, A.MAX_PAYLOAD);
     if (Number.isFinite(fuelKg) && Math.abs(fuelKg - fuel0) >= 0.5) {
-      const fuel = clamp(fuelKg, 0, A.FUEL_MAX);
+      const fuel = clamp(fuelKg, 0, fuelMax());
       fillTanks(fuel);
       X.fuelAddedKg = (X.fuelAddedKg || 0) + fuel - fuel0;
     }
@@ -1273,6 +1293,38 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     S.mass = mass; S.fuelKg = X.fuelL + X.fuelR + X.fuelC;
     S.fuel.left = X.fuelL; S.fuel.right = X.fuelR; S.fuel.center = X.fuelC;
     S.cgX = cgX; S.cgMac = 0.25 - cgX / A.MAC;
+    massState(S);
+    return true;
+  }
+
+  // v0.5.4: the tanks' room left: a design's wing tanks dropped take theirs with them.
+  function fuelMax() {
+    return X.tanksDropped && A.DROP_TANKS !== undefined ? A.FUEL_MAX - A.DROP_TANKS.kg : A.FUEL_MAX;
+  }
+  // v0.5.4: drop a design's wing tanks (not its hold tanks), in the air only, once. Their empty masses go from where
+  // they hung, and the fuel still in them: what the centre tank holds above the airframe's own centre tank, up to
+  // what they hold (their fuel feeds through the centre, burned first). Their drag and their strike points go too. In
+  // the core (X.tanksDropped), so a save, a rewind and the prediction carry it. As setLoad(), the airframe stays put:
+  // the CG moves inside it. The fuel goes out of fuelAddedKg (taken off), so the logbook's fuel used stays the burn.
+  // → true if they went; false on the ground, crashed, already dropped or with none.
+  function dropTanks() {
+    const DK = A.DROP_TANKS;
+    if (DK === undefined || X.tanksDropped || X.crashed || wowN || wowL || wowR) return false;
+    massProps(); computeR();
+    const cg0 = cgX;
+    const off = Math.min(Math.max(0, X.fuelC - DK.centreOwnKg), DK.kg);
+    X.fuelC -= off;
+    X.fuelAddedKg = (X.fuelAddedKg || 0) - off;
+    X.tanksDropped = true;
+    massProps();
+    const d = cgX - cg0;
+    X.px += d * R[3]; X.py += d * R[0]; X.pz -= d * R[6];
+    X.thsTakeoff = takeoffThs();
+    const S = state;
+    S.mass = mass; S.fuelKg = X.fuelL + X.fuelR + X.fuelC;
+    S.fuel.left = X.fuelL; S.fuel.right = X.fuelR; S.fuel.center = X.fuelC;
+    S.cgX = cgX; S.cgMac = 0.25 - cgX / A.MAC;
+    S.tanksDropped = true;
     massState(S);
     return true;
   }
@@ -1317,7 +1369,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     updateState(atm, ias, V / atm.a, X.prevAlpha, state.beta, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
   }
 
-  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad,
+  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad, dropTanks,
     setIndestructible: (on) => setOption('indestructible', on), setAutoTrim: (on) => setOption('autoTrim', on),
     setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, get weather() { return wxS; }, get baro() { return { hpa: X.baroHpa, std: X.baroStd }; },
     get type() { return typeDef; }, get design() { return typeDef.design || null; },

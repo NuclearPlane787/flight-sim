@@ -1,7 +1,8 @@
 // v0.5.1: the warehouse's hangar, the room the design stands in (it was a flat grey world). A maintenance hangar big
 // enough for the 777-300ER with room to walk round it: steel portal frames and roof trusses, a corrugated roof with
 // skylights and high-bay lamps, offices along the back, racks, benches and a spare engine along the sides, and the
-// way in at the front: sliding door leaves on floor tracks, part open onto a sunlit apron. The floor is painted
+// way in at the front: sliding door leaves on floor tracks (v0.5.4: drawn shut, meeting in the middle, as there's
+// nothing outside to show; the apron that was out there is gone, and with it a draw call). The floor is painted
 // epoxy with the stand's lead-in line and a stop bar for each type's nose wheel, the parking area, walkways and
 // keep-clear hatching. People walk the walkways.
 //
@@ -20,7 +21,8 @@ import { TYPES } from '../sim/types.js';
 export const HANGAR = Object.freeze({
   halfX: 75, back: -70, door: 70,       // the side walls at x = ±75, the back wall, the door line
   eave: 28, ridge: 34, chordTop: 30,     // the trusses' bottom chord, the roof's top chord at the middle and at the walls
-  doorHalf: 60, doorH: 24.8, open: 35,   // the doorway (x within ±60), the leaves' height, the gap left open (±35)
+  doorHalf: 60, doorH: 24.8, open: 35,   // the doorway (x within ±60), the leaves' height, the gap they leave when open
+                                         // (±35; v0.5.4: they're kept shut, so it's what a type must pass through)
   walkX: 70, walkBack: -57, walkFront: 62,
 });
 
@@ -118,7 +120,7 @@ export function createHangar(THREE, { maxAnisotropy = 4 } = {}) {
   const hatchUv = (x, y, z, nx, ny, nz) => (Math.abs(ny) > 0.5 ? [(x + z) / HATCH_TILE, (x - z) / HATCH_TILE] : [(x + y) / HATCH_TILE, (y - x) / HATCH_TILE]);
   const A = {
     struct: new Acc(), clad: new Acc(wallUv), floor: new Acc(floorUv), mark: new Acc(), hatch: new Acc(hatchUv),
-    decal: new Acc(), glow: new Acc(), out: new Acc(),
+    decal: new Acc(), glow: new Acc(),
   };
   function box(acc, x, y, z, sx, sy, sz, color, ry = 0, rx = 0, rz = 0) {
     E.set(rx, ry, rz); Q.setFromEuler(E); M.compose(V.set(x, y, z), Q, ONE);
@@ -315,20 +317,28 @@ export function createHangar(THREE, { maxAnisotropy = 4 } = {}) {
   box(A.clad, 0, (H.eave + H.chordTop) / 2, H.door + 3.4, 2 * H.halfX, H.chordTop - H.eave, 0.3, cladC0);
   for (const x of [-45, -15, 15, 45]) { box(A.glow, x, H.doorH - 0.15, H.door - 0.15, 0.5, 0.35, 0.3, col('#ffb21c')); box(A.struct, x, H.doorH + 0.05, H.door - 0.1, 0.7, 0.12, 0.4, header); }
 
-  // The door leaves: four a side on their own tracks, slid back to leave the middle open.
-  const leafW = 15, leafC = col('#c7cdd2'), ribC = col('#9aa3ab'), edgeC = col('#6b7680');
+  // The door leaves: four a side on their own tracks. v0.5.4: drawn shut across the doorway, the innermost pair meeting
+  // in the middle under a cover strip; each further leaf (on the track outside the one before) laps 1.2 m behind its
+  // neighbour, with a seal across the gap between their tracks, and the last runs 0.6 m into the jamb, so no slit of
+  // the empty outside shows from any angle. The vision panels still glow with the daylight beyond.
+  const leafC = col('#c7cdd2'), ribC = col('#9aa3ab'), edgeC = col('#6b7680'), LAP = 1.2, STEP = H.doorHalf / 4;
   for (const sx of [-1, 1]) {
     for (let k = 0; k < 4; k++) {
-      const cx = sx * (H.open + leafW / 2 + k * (H.halfX - H.open - leafW) / 3), z = tracks[k];
+      const x0 = k ? k * STEP - LAP : 0, x1 = k < 3 ? (k + 1) * STEP : H.doorHalf + 0.6, leafW = x1 - x0;
+      const cx = sx * (x0 + x1) / 2, z = tracks[k];
       box(A.struct, cx, 0.2 + H.doorH / 2, z, leafW, H.doorH, 0.5, leafC);
       for (let y = 1.6; y < H.doorH; y += 1.55) box(A.struct, cx, 0.2 + y, z - 0.29, leafW - 0.5, 0.1, 0.1, ribC);
       for (const ex of [-1, 1]) box(A.struct, cx + ex * (leafW / 2 - 0.15), 0.2 + H.doorH / 2, z - 0.28, 0.3, H.doorH, 0.12, edgeC);
       box(A.glow, cx, 12.75, z - 0.27, leafW - 0.8, 1.4, 0.05, col('#e9f2f8'));   // the daylight through its vision panels
       box(A.struct, cx, 0.12, z, leafW, 0.24, 0.6, col('#2b2f33'));                   // the bottom rollers' housing
-      if (k === 0) A.hatch.quad(v3(cx - sx * (leafW / 2 - 0.4), 0.2 + H.doorH / 2, z - 0.36), RNX, UP, 0.8, H.doorH - 0.2, col('#ffffff'));
+      if (k === 0) A.hatch.quad(v3(sx * 0.62, 0.2 + H.doorH / 2, z - 0.36), RNX, UP, 0.8, H.doorH - 0.2, col('#ffffff'));
       if (k === 1) box(A.struct, cx + sx * 3, 1.35, z - 0.3, 1.2, 2.3, 0.08, col('#39424b'));   // a wicket door
+      // the seal between this leaf and the next one out, in their lap
+      if (k < 3) box(A.struct, sx * ((k + 1) * STEP - LAP / 2), 0.2 + H.doorH / 2, (z + tracks[k + 1]) / 2, 0.12, H.doorH, tracks[k + 1] - z, edgeC);
     }
   }
+  // where the two innermost leaves meet
+  box(A.struct, 0, 0.2 + H.doorH / 2, tracks[0] - 0.33, 0.36, H.doorH, 0.1, edgeC);
 
   // ---- the frames: columns along the walls, knee braces, the roof trusses ----
   const top = (x) => H.chordTop + (H.ridge - H.chordTop) * (1 - Math.abs(x) / H.halfX);
@@ -504,15 +514,7 @@ export function createHangar(THREE, { maxAnisotropy = 4 } = {}) {
   for (const z of [-20, 20]) for (const sx of [-1, 1]) A.decal.quad(v3(sx * (H.halfX - 0.25), 4.2, z), sx > 0 ? RZ : RNZ, UP, 1.6, 0.45, col('#ffffff'), R.ears);
   for (const sx of [-1, 1]) A.decal.quad(v3(sx * (H.doorHalf + 7.5), 4.2, H.door + 3.18), RNX, UP, 1.8, 0.9, col('#ffffff'), R.speed);
 
-  // ---- outside: the apron in the sun, the airport beyond ----
-  const sunlit = col('#d6d3c9');
-  A.out.quad(v3(0, -0.03, 440), RX, RNZ, 1800, 740, sunlit);
-  A.out.quad(v3(0, 0.0, 74 + 60), RX, RNZ, 0.3, 120, col('#f0c43a'));
-  for (let i = 0; i < 26; i++) {
-    const x = -700 + i * 56 + rand() * 30, w = 30 + rand() * 60, h = 6 + rand() * 26, z = 380 + rand() * 120;
-    box(A.out, x, h / 2, z, w, h, 20 + rand() * 30, col(rand() < 0.5 ? '#a9b7c4' : '#b6c2cc'));
-  }
-  box(A.out, 180, 22, 420, 5, 44, 5, col('#a2b0bd')); box(A.out, 180, 46, 420, 10, 5, 10, col('#8797a6'));
+  // v0.5.4: nothing outside: the doors are shut, so the sunlit apron and the airport beyond (a draw call) are gone.
 
   // ---- the materials and meshes ----
   const cladTex = texOf(cladC, true), floorTex = texOf(floorC, true), hatchTex = texOf(hatchC, true), atlasTex = texOf(atlasC, false);
@@ -524,7 +526,6 @@ export function createHangar(THREE, { maxAnisotropy = 4 } = {}) {
     hatch: new THREE.MeshStandardMaterial({ map: hatchTex, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     decal: new THREE.MeshStandardMaterial({ map: atlasTex, transparent: true, alphaTest: 0.04, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
-    out: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
   };
   const group = new THREE.Group();
   group.name = 'hangar';

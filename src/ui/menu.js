@@ -16,6 +16,7 @@
 // menu: it's plain DOM over a still.
 
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
+import { onDesignRename } from '../designs-store.js';
 
 // v0.5.0: the Warehouse button, off until a design flies end to end. `?warehouse=1` in the page's URL shows it
 // anyway (the tests and the dev checks).
@@ -267,6 +268,10 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
 
   // ---- The Warehouse (v0.5.0): a page of its own over the menu, loaded the first time ----
   let warehouse = null, warehouseLoad = null;
+  // v0.5.4 (Shane: "When you rename a plane in the warehouse, it doesn't update it in the load scenario boxes"): a
+  // design renamed there (its list's Rename, or the editor's name then Save) is renamed in the scenarios that fly
+  // it, their Load scenario rows and their saved copies of it (scenarios.js's renameDesign); the logbook keeps its.
+  onDesignRename((id, name) => { if (scenarios?.renameDesign?.(id, name) && !el.hidden && page === 'load') renderLoad(null); });
   function openWarehouse() {
     if (!warehouseLoad) {
       warehouseLoad = import('./warehouse.js').then((m) => {

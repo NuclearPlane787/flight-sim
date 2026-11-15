@@ -155,6 +155,7 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.5.1 | **The warehouse is a hangar** (Shane, 2026-11-13): the editor's view inside a maintenance hangar, with its doors, offices, racking, a painted floor and people walking. | **done** (2026-11-13) |
 | v0.5.2 | **Parts anywhere, KSP's way** (row 1; Shane, 2026-11-14): engines under or over the wing, on the rear fuselage or in the tail, wing tanks, hold tanks and ballast, each with its mass, drag and thrust line; the editor's palette, ghost, mirror, select, drag, undo and redo, the CoM and CoT; checks for lopsided thrust and the CG; Fly it. | **done** (2026-11-14) |
 | v0.5.3 | **The airframe from parts** (row 1; Shane, 2026-11-14: "Handling from parts"): each wing, tail and fuselage part makes its own lift and drag at its place, as one rigid body (no flex, no breaking); the wing's span, chord, sweep and dihedral, the tails' areas and the fuselage's plugs change in the warehouse, the model follows, and the flight controls tune themselves. The three types fly as now. A Claude Code run, `V053.md`. | **done** (2026-11-15) |
+| v0.5.4 | **Shane's list after v0.5.3** (2026-11-16): a Pause button beside Hide panels (the L window works while paused); a renamed design renamed in the scenarios that fly it; landings scored out of 10 per part, the total a weighted average; sweep moving the coffin corner's top (the maximum lift's Mach and MMO); dropping the wing tanks in flight; keys for the selected part in the warehouse; the tails' overhang and the A321's inner flap; the hangar's doors shut. | **done** (2026-11-16) |
 | v0.6.0 | **East Asia: Korea's region grows** (row 13): Shanghai Pudong, Tokyo Haneda and Narita, in Korea's own map frame. The terrain moves to tiles at several resolutions, read from the game's folder as you fly, which every later region needs. | |
 | v0.7.0 | **The regions, and Europe** (row 13): the region picker and everything per region (above); Heathrow, Charles de Gaulle, Frankfurt, Madrid and Zurich. | v0.6.0 |
 | v0.8.0 | **Failures** (row 9): a failure panel, on command or at random within a set time: engine fire and failure, gear that won't extend or collapses, hydraulic loss (degraded control laws), unreliable airspeed, jammed or split flaps, depressurisation, bird strikes, burst tyres; the warnings and their checklists; the belly sliding along the ground in a gear-up landing (v0.4.1's Indestructible already slides on seven skids). | v0.5.0 |
@@ -170,11 +171,19 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 | v0.18.0 | **The cabin** (row 2): walking while the autopilot flies, in a cabin that moves with the aircraft (turbulence makes you stagger); passengers as many as the Weight tab says, and crew; one type first (the 777-300ER). | |
 | any time | **Replays and the flight recorder** (row 14), and **challenges** (row 15): a first set after v0.4.0, more with failures. | v0.4.0 for the challenges |
 
+## Found while building v0.5.4 (left for later)
+
+- **Sweep makes the wing bigger:** each strip's area is its chord times its length along the swept span (`parts-aero.js`, from v0.5.3), so sweeping the wing back grows its area (the 777 at +8°: 492 to 534 m², and the low-speed maximum lift about 8.5 % up). Part of the +8° design's window at FL450 comes from that, not from the sweep's Mach: the strip's area should be its chord times its width across the span.
+- **One bad part and the average:** a weighted average lets the rest make up for one bad part, so the worst part caps the total (50 + 10 × its score, `WORST_CAP` in `score.js`): 900 ft/min with everything else right scores 50 (D), not 79 (B). Shane may want it harder or softer; it's one line.
+- **The A321's inner flap at −8° and 0.8 chord** is kept behind the main leg, but the wing's own trailing edge there is only about 0.3 m behind the leg, so the flap is a strip a few centimetres deep. The leg should move with the wing (v0.5.3's found item below).
+- **Dropping the tanks pushes no event** (no callout, no sound), and the pods drop out of sight at once rather than falling away.
+- **Nothing outside the hangar:** its doors are drawn shut (v0.5.1's apron and airport are gone); a design rolled out for a look in daylight is still for later.
+
 ## Found while building v0.5.3 (left for later)
 
-- **Sweep doesn't move the speed bands:** the wing's maximum lift falls with Mach as the base's does (`CLMAX_MACH_SLOPE`) and MMO is the base's, so a more swept wing only gets the lower wave drag. Shane, 2026-11-15, on the coffin corner of a six-engine 777 at FL450: the wing's area opens it from below (span 1.15 and chord 1.10 give a window of about M0.85 to 0.89 at FL450 at about 272 t), but nothing opens it from above. A buffet boundary and an MMO from the wing's own sweep and thickness would come next.
+- ~~**Sweep doesn't move the speed bands:**~~ (v0.5.4: each side's maximum lift falls with the Mach normal to its sweep, and MMO follows the sweep.) the wing's maximum lift falls with Mach as the base's does (`CLMAX_MACH_SLOPE`) and MMO is the base's, so a more swept wing only gets the lower wave drag. Shane, 2026-11-15, on the coffin corner of a six-engine 777 at FL450: the wing's area opens it from below (span 1.15 and chord 1.10 give a window of about M0.85 to 0.89 at FL450 at about 272 t), but nothing opens it from above. A buffet boundary and an MMO from the wing's own sweep and thickness would come next.
 - **The gear stays at the wing's root:** with −8° of sweep and 0.8 chord the A321's inboard flap comes forward of its main leg, and on the Boeings at 0.8 chord the inboard flap is a sliver behind the leg; a long aft body or a heavy swept wing can sit a design on its tail (the nose wheel's check says so; nothing rebalances it by itself).
-- **A 1.6 tailplane overhangs the tail cone** (scaled about its root's quarter chord).
+- ~~**A 1.6 tailplane overhangs the tail cone**~~ (v0.5.4: the tails scale about their roots' trailing edges).
 - **The 1.5 tails lift the nose by themselves 10 to 15 % earlier** than their bases on a hands-off take-off run (the heavier tail's CG and the stiffer pitch).
 - **The brief's other extras:** canards, and another type's wing.
 - **The A321's audio check:** its reverser door's clunk is under the check's +3 dB about a quarter of the time (its level, which Shane set by ear; `LEAP_1A.gain.clunk = 1.4` would make it 1 miss in 30).
@@ -183,17 +192,17 @@ Shane: "Slot the new planes and airports into the updates and we can add it to r
 ## Found while building v0.5.2 (left for later)
 
 - **The editor's airframe is a sketch of the model's:** a straight-tapered wing tied to the base's nacelle and an elliptic fuselage (`airframe()` in `designs.js`, `hitAirframe()` in `ui/warehouse.js`). The ghost and the over-wing and body pylons follow it, so at the ends of a range a pylon can stand a little off or into the real skin. v0.5.3's airframe parts replace it.
-- **Picking uses axis-aligned boxes:** a turned engine's box doesn't turn with it.
+- ~~**Picking uses axis-aligned boxes:**~~ (v0.5.4: a turned engine's box turns with it.)
 - **No drag from the palette** (a click picks a part up, a click attaches it), and no keys to nudge or turn a part in hand (KSP's): its sliders do that once it's on.
 - **Lopsided thrust is judged at full thrust standing,** against the base's engine-out yaw; the rudder's power at speed isn't in it.
 - **Full thrust when light lifts the nose of an overpowered design into a tail strike** (a five-engine 777 at 220 t on the brakes does it): that's the physics, and the warehouse warns past 0.8; nothing limits the levers.
 - **Mixed engines share the airframe's lever law and autothrust** (one lever for all, as before); each runs its own numbers under it.
-- **Wing tanks can't be dropped,** and their fuel joins the centre tank's.
+- ~~**Wing tanks can't be dropped,**~~ (v0.5.4: the Weight tab's Drop wing tanks.) Their fuel still joins the centre tank's.
 - **Seen only in SwiftShader** in the cloud when it was written up, not on the Mac's GPU.
 
 ## Found while building v0.5.1 (left for later)
 
-- **The doors don't move:** they're drawn part open. A switch to open and close them, and a design rolled out onto the apron for a look in daylight, would come next.
+- **The doors don't move:** they're drawn part open (v0.5.4: drawn shut, the apron gone, as Shane asked). A switch to open and close them, and a design rolled out onto the apron for a look in daylight, would come next.
 - **The people walk a fixed loop** round the walkways and pass through each other at the corners; they don't react to anything.
 - **One hangar for every type:** sized for the 777-300ER with room round it, so the A321 looks small in it.
 - **No sound** in the warehouse (the lamps' hum, distant work).

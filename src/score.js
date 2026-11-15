@@ -1,17 +1,22 @@
 // The landing score: worked out at the first touchdown, finished after the rollout.
 //
-// Since v0.1.3 it's 100 × e^(−C), where C adds up a cost for each part of the landing:
-// vertical speed and peak g, the touchdown point against the aiming point, distance from
-// the centreline, bank, pitch, bounces, and the approach (how far off the glide path and
-// localizer it was from 1,000 ft down, and how much the sink rate swung). Every cost is 0
-// only at its ideal and grows smoothly away from it, with no free band, so 100 takes a
-// landing that's perfect in every part, and 0 takes several things going badly wrong at once.
+// v0.5.4: each part of the landing gets a whole score out of 10 from its cost: vertical speed
+// and peak g, the touchdown point against the aiming point, distance from the centreline, bank,
+// pitch, bounces, the approach (how far off the glide path and localizer it was from 1,000 ft
+// down, and how much the sink rate swung), and the grass when the wheels landed on it. A part
+// scores round(10 × e^(−cost / k)), with its own k (RATE), so good values give 9–10 and bad
+// ones 0–3. The total is the parts' weighted average × 10, out of 100: vertical speed, the
+// touchdown point and the centreline weigh most. 100 takes 10/10 in every part; several
+// middling flaws make a C or a D, not 0. (v0.1.3 to v0.5.3 took 100 × e^(−total cost), where
+// one bad part took nearly everything: Shane, 2026-11-15, "it is too easy to get a 0".)
 //
 // Shane's yardstick (2026-10-31): his landing at 190 ft/min, 2 m left of the centreline and
 // 150 m past the aiming point, after a final flown low (about 150 ft 1 km out) with a bob to
-// get back up, scored 100 under v0.1.2 and should score 80 (tests/score.test.mjs rebuilds it).
+// get back up, scored 100 under v0.1.2 and should score 80; the same touchdown after a steady
+// approach about 90 (tests/score.test.mjs rebuilds both).
 //
-// A touchdown that isn't on a runway costs 2.3 (×0.1) more, and says so.
+// A touchdown that isn't on a runway, or one Indestructible kept from being a crash, scores
+// 10 at most (CAP), and says so; one on the grass 49 at most, an F.
 
 import { GROUND_Z } from './geometry.js';
 import { gridToMag } from './world/frame.js';
@@ -106,8 +111,8 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 // About (x/s)²/2 near 0 and |x|/s far out: small misses cost little, big ones don't explode.
 const soft = (x, s) => Math.sqrt(1 + sq(x / s)) - 1;
 
-// What each part costs, 0 at its ideal. The score is 100 × e^(−total cost), so a cost of
-// 0.01 takes about 1% off, 0.05 about 5%, 0.22 a fifth, 0.69 half.
+// What each part costs, 0 at its ideal. (Until v0.5.4 the score was 100 × e^(−total cost);
+// v0.5.4: each cost makes its part's score out of 10, RATE below.)
 const PITCH_A321 = { best: 5.5, low: 2.5, high: 8 };
 export const COST = {
   // ft/min, ideal 130: 190 → 0.009, 250 → 0.03, 360 → 0.13, 450 → 0.24, 600 → 0.52, 750 → 0.91.
@@ -142,7 +147,23 @@ export const COST = {
   swing: (fpm) => sq(fpm / 900),
 };
 
-export const pointsFor = (cost) => Math.round(100 * Math.exp(-cost));
+// v0.5.4: what makes each part's score out of 10 and how much it weighs: [k, weight]. A part
+// scores round(10 × e^(−cost / k)) (scoreFor). Vertical speed: 190 ft/min 10, 300 8, 400 6,
+// 600 3, 900 0. Peak g: 1.3 9, 1.5 7, 2.0 3. Aiming point: ±50 m 10, +150 m 7, +300 m 3,
+// +500 m 1. Centreline: 1 m 10, 2 m 8, 5 m 4, 10 m 1. Bank: 2° 9, 5° 5, 7° 3. Pitch: 3–8° 9–10,
+// 1° 3, 9.5° 1. Bounces: one 5, two 3. Approach path: 0.25 dots 9, 0.5 7, 1 3, 2 0. Sink rate
+// swings: ±100 ft/min 9, ±200 6, ±300 3. The grass, the taxiway and the would-be crash score 0;
+// the last two weigh nothing and cap the total instead (CAP).
+export const RATE = {
+  vs: [0.4, 3], g: [0.07, 1.5], aim: [0.14, 3], centreline: [0.16, 3], bank: [0.25, 1], pitch: [0.25, 1],
+  bounces: [0.3, 1.5], path: [0.095, 2], swing: [0.1, 1.5], grass: [0.1, 3], offRunway: [0.1, 0], crash: [0.1, 0],
+};
+export const scoreFor = (cost, k) => Math.round(10 * Math.exp(-cost / k));
+// v0.5.4: the most a landing can score: off a runway or a would-be crash 10 (as v0.1.3's
+// taxiway rule did), on the grass 49 (an F).
+export const CAP = { offRunway: 10, crash: 10, grass: 49 };
+// v0.5.4: and the worst part's score caps it at 50 + 10 × that score (0/10: 50, 3/10: 80, 5/10 or better: none).
+export const WORST_CAP = (score) => 50 + 10 * score;
 // v0.4.1: the sim's crash reasons, short enough for the card's value column.
 export const DAMAGE_SHORT = { 'hard landing: gear collapsed': 'gear collapsed', 'nose gear collapsed': 'nose gear', 'ran off the runway': 'off the runway' };
 
@@ -186,13 +207,15 @@ export function approachStats(track, rf, elev = 0, groundZ = GROUND_Z) {
   return { pathDots: Math.sqrt(sum2 / n), gsMeanDots: gsMean, locMeanDots: locMean, swingFpm, seconds: n * A.sampleS, note };
 }
 
-// Points lost per part: the total loss shared out in proportion to the parts' costs, as whole
-// points that add up to it (largest remainders first).
-export function sharePoints(parts, points) {
-  const total = parts.reduce((a, p) => a + p.cost, 0);
+// Points lost per part: the total loss shared out in proportion to by(part, i) (the costs
+// until v0.5.4; v0.5.4: what each part's score takes off the average), as whole points that
+// add up to it (largest remainders first).
+export function sharePoints(parts, points, by = (p) => p.cost) {
+  const w = parts.map(by);
+  const total = w.reduce((a, b) => a + b, 0);
   const loss = 100 - points;
   if (!(total > 0) || loss <= 0) { for (const p of parts) p.penalty = 0; return parts; }
-  const raw = parts.map((p) => (loss * p.cost) / total);
+  const raw = w.map((x) => (loss * x) / total);
   const pen = raw.map(Math.floor);
   const order = raw.map((r, i) => [r - pen[i], i]).sort((a, b) => b[0] - a[0]);
   for (let k = 0, left = loss - pen.reduce((a, b) => a + b, 0); k < left; k++) pen[order[k][1]]++;
@@ -367,32 +390,47 @@ export function createScorer() {
 
       const aim = rf ? aimingPoint(rf.lda) : 400;
       const parts = [];
-      const add = (name, value, unit, cost, extra) => parts.push({ name, value, unit, cost: +cost.toFixed(4), penalty: 0, ...extra });
+      // v0.5.4: each part keeps its cost and gets its score out of 10 and its weight (RATE[key]).
+      const add = (key, name, value, unit, cost, extra) => parts.push({ name, value, unit, cost: +cost.toFixed(4),
+        score: scoreFor(cost, RATE[key][0]), weight: RATE[key][1], penalty: 0, ...extra });
       const vs = Math.abs(td.vsFpm);
-      add('Vertical speed', Math.round(vs), 'ft/min', COST.vs(vs));
+      add('vs', 'Vertical speed', Math.round(vs), 'ft/min', COST.vs(vs));
       // The touchdown g as an accelerometer reads it (the sim's 0.1 s filter), the worst of
       // the first arrival and any bounce; the rollout's bumps and braking don't count.
-      add('Peak g', +peakG.toFixed(2), 'g', COST.g(peakG));
+      add('g', 'Peak g', +peakG.toFixed(2), 'g', COST.g(peakG));
       if (td.onRunway) {
-        add('Touchdown vs aiming point', Math.round(td.along - aim), 'm', COST.aim(td.along, aim));
-        add('From centreline', +Math.abs(td.cross).toFixed(1), 'm', COST.centreline(td.cross));
-        if (td.surface === 'ground') add('On the grass', 'yes', '', COST.grass);
+        add('aim', 'Touchdown vs aiming point', Math.round(td.along - aim), 'm', COST.aim(td.along, aim));
+        add('centreline', 'From centreline', +Math.abs(td.cross).toFixed(1), 'm', COST.centreline(td.cross));
+        if (td.surface === 'ground') add('grass', 'On the grass', 'yes', '', COST.grass);
       }
-      add('Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
-      add('Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch, pitchBand));
-      add('Bounces', bounces, '', COST.bounces(bounces));
+      add('bank', 'Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
+      add('pitch', 'Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch, pitchBand));
+      add('bounces', 'Bounces', bounces, '', COST.bounces(bounces));
       const ap = td.approach;
       if (ap) {
-        add('Approach path', +ap.pathDots.toFixed(1), 'dots', COST.path(ap.pathDots), ap.note ? { note: ap.note } : {});
-        add('Sink rate swings', Math.round(ap.swingFpm), 'ft/min', COST.swing(ap.swingFpm));
+        add('path', 'Approach path', +ap.pathDots.toFixed(1), 'dots', COST.path(ap.pathDots), ap.note ? { note: ap.note } : {});
+        add('swing', 'Sink rate swings', Math.round(ap.swingFpm), 'ft/min', COST.swing(ap.swingFpm));
       }
-      if (!td.onRunway) add('On a runway', 'no', '', COST.offRunway);
+      if (!td.onRunway) add('offRunway', 'On a runway', 'no', '', COST.offRunway);
       // v0.4.1: Indestructible held it together, from 10 s before the touchdown on.
       const dmg = damage.filter((d) => d.t >= td.t - 10).map((d) => d.reason);
-      if (dmg.length) add('Would have crashed', DAMAGE_SHORT[dmg[0]] || dmg[0], '', COST.crash);
+      if (dmg.length) add('crash', 'Would have crashed', DAMAGE_SHORT[dmg[0]] || dmg[0], '', COST.crash);
       const cost = parts.reduce((a, p) => a + p.cost, 0);
-      const points = pointsFor(cost);
-      sharePoints(parts, points);
+      // v0.5.4: the weighted average of the scores out of 10, × 10; 100 only with every part at
+      // 10/10. The taxiway, the would-be crash and the grass cap it (CAP), and the cap's own part
+      // takes the points it takes.
+      const sw = parts.reduce((a, p) => a + p.weight, 0);
+      const avg = (10 * parts.reduce((a, p) => a + p.weight * p.score, 0)) / sw;
+      let capper = dmg.length ? ['Would have crashed', CAP.crash] : !td.onRunway ? ['On a runway', CAP.offRunway]
+        : td.surface === 'ground' ? ['On the grass', CAP.grass] : null;
+      // v0.5.4 (review): the worst part holds the total down too, to 50 + 10 × its score (WORST_CAP), so one part
+      // gone badly isn't averaged away: 900 ft/min with the rest right scores 50, a D, not a B; 600 ft/min 80 at
+      // most. A part at 5/10 or better caps nothing.
+      const worst = parts.filter((p) => p.weight > 0).reduce((a, p) => (!a || p.score < a.score ? p : a), null);
+      if (worst && WORST_CAP(worst.score) < (capper ? capper[1] : 100)) capper = [worst.name, WORST_CAP(worst.score)];
+      const cap = capper ? capper[1] : 100;
+      const points = Math.min(cap, parts.every((p) => p.score === 10) ? 100 : Math.min(99, Math.round(avg)));
+      sharePoints(parts, points, (p) => (10 * p.weight * (10 - p.score)) / sw + (capper && p.name === capper[0] ? Math.max(0, avg - cap) : 0));
       result = { points, grade: grade(points), parts, cost: +cost.toFixed(4), touchdown: td, offRunway: !td.onRunway,
         runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim, approach: ap,
         ...(td.indestructible ? { indestructible: true } : {}), ...(dmg.length ? { damage: [...new Set(dmg)] } : {}) };

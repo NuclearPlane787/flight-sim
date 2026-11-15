@@ -24,13 +24,14 @@
 .fssc-td { font-size: 12px; color: #c9ced2; margin: 0 0 8px; }
 .fssc-ind { color: #ffa515; }
 .fssc-parts { display: flex; flex-direction: column; gap: 3px; }
-.fssc-part { display: grid; grid-template-columns: 1fr 96px 62px 30px; gap: 8px; align-items: center; font-size: 12.5px; }
+/* v0.5.4: the last column holds "10/10" */
+.fssc-part { display: grid; grid-template-columns: 1fr 96px 62px 38px; gap: 8px; align-items: center; font-size: 12.5px; }
 .fssc-part .n { color: #c9ced2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fssc-part .v { text-align: right; font-variant-numeric: tabular-nums; color: #f2f2f2; }
 .fssc-part .bar { height: 6px; background: #1e252b; border-radius: 3px; overflow: hidden; }
 .fssc-part .bar i { display: block; height: 100%; border-radius: 3px; }
-.fssc-part .p { text-align: right; color: #ffa515; font-variant-numeric: tabular-nums; }
-.fssc-part .p.ok { color: #5d6c78; }
+/* v0.5.4: the score's colour is its bar's (set inline) */
+.fssc-part .p { text-align: right; color: #c9ced2; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fssc-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 /* ---- Logbook ---- */

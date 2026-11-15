@@ -111,6 +111,13 @@ Numbered as in the planning questions, in his words where it matters.
 - **The editor** (`AIRFRAME_ON` in `ui/warehouse.js`): click the wing, the tailplane, the fin or the fuselage (`pickAirframe()`); its sliders in the side panel, Mirror for the two wing panels, a green outline while a slider moves, the model rebuilt on release, one undo step a drag.
 - **The controls** (`gainFor()` in `fbw.js`): what works in surface deflection (the yaw damper, the turn coordination, the ground mode's direct pitch, the Boeing autoland's alignment) scales by the inverse of the design's control power per inertia against the base's, within ×0.5 to ×2; the pitch and roll loops already invert the design's own powers.
 
+**Shane's list after v0.5.3 (v0.5.4).** Shane, 2026-11-16; built by the Cowork session with five subagents.
+
+- **The landing score out of 10** (`score.js`): Shane, "Instead of a strict subtraction system, we have something like 9/10 or 3/10 for a category. Otherwise it is too easy to get a 0." Each part keeps v0.1.3's cost (0 at its ideal, smooth away from it) and scores round(10 × e^(−cost/k)) with its own k (`RATE`), so good values give 9–10 and bad ones 0–3; the total is the weighted average × 10. A weighted average lets the other parts make up for one bad one, so the worst part caps the total at 50 + 10 × its score (`WORST_CAP`), and a taxiway or a would-be crash caps it at 10, the grass at 49 (`CAP`). Shane's v0.1.3 reference landing stays the anchor at 80.
+- **Sweep and Mach:** the strips' maximum lift falls with the Mach number normal to their side's quarter chord (M × cos Λ_side / cos Λ_base, exactly M on the base's wing), and a design's MMO is the base's × cos Λ_base / cos Λ_mean (Korn's 1/cos Λ for the drag rise), within 0.70–0.95. Both are 1 to the bit on an unswept change, so the three types and v0.5.3's designs without sweep fly as before.
+- **Drop tanks:** the core's `tanksDropped` (saved, rewound, predicted) takes the pods' empty mass, their drag and strike points, and the fuel above the airframe's own centre tank up to what they held; the airframe stays put and the CG moves inside it.
+- **The pause:** one pause, two ways in: the pause menu (Esc) and a quiet pause (the HUD's button, or the menu's Weight and fuel and Time of day), in which the L window works and nothing steps.
+
 ## The aircraft: A321neo
 
 ### Published numbers (Airbus's A321neo page)

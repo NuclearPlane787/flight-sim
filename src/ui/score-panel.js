@@ -1,5 +1,5 @@
 // The landing-score card, shown after the rollout: the grade in big letters, the points,
-// each part of the score with its value and penalty bar, a one-line verdict, and the
+// each part of the score with its value and its score out of 10 (v0.5.4), a one-line verdict, and the
 // touchdown point on a small runway diagram (against the aiming point and centreline).
 //
 //   const card = createScorePanel(root, { onclose, onnewflight });
@@ -8,13 +8,13 @@
 //
 // extras (all optional): { route, runway, vsFpm, g, touchdown: { along, cross },
 //   runwayLengthM, runwayWidthM, aimM }. Missing ones fall back to the result.
-// The pure helpers (verdict, gradeColor, penaltyFrac, partsHtml, runwaySvg) are exported
+// The pure helpers (verdict, gradeColor, partScore, scoreColor, penaltyFrac, partsHtml, runwaySvg) are exported
 // for the logbook and the node tests. Nothing here touches the DOM until a function runs.
 
 export const GRADE_COLORS = { A: '#3cff4e', B: '#a6e22e', C: '#ffe838', D: '#ffa515', F: '#ff3b3b' };
 export const gradeColor = (g) => GRADE_COLORS[g] || '#8a9097';
 
-const PEN_FULL = 30; // a penalty this big fills its bar
+const PEN_FULL = 30; // before v0.5.4: a penalty this big filled its bar (now: one this big reads as 0/10)
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,10 +22,16 @@ export function esc(s) {
 
 const part = (parts, name) => (parts || []).find((p) => p.name === name);
 
-// The part that cost the most, as advice, when it cost at least 3 points.
+// The weakest part, as advice. v0.5.4: the lowest score out of 10, when it's 7 or less (the
+// first in the card's order on a tie); a logbook entry from before v0.5.4 has penalties and no
+// scores, and there it's the biggest penalty, when it cost at least 3 points.
 function worstFlaw(parts) {
   let w = null;
-  for (const p of parts) if ((Number(p.penalty) || 0) >= 3 && (!w || p.penalty > w.penalty)) w = p;
+  if (parts.some((p) => Number.isFinite(p.score))) {
+    for (const p of parts) if (Number.isFinite(p.score) && p.score <= 7 && (!w || p.score < w.score)) w = p;
+  } else {
+    for (const p of parts) if ((Number(p.penalty) || 0) >= 3 && (!w || p.penalty > w.penalty)) w = p;
+  }
   if (!w) return null;
   switch (w.name) {
     case 'Approach path': return `Off the path on final${w.note ? ` (${w.note})` : ''}. Get on it early and stay there.`;
@@ -56,8 +62,10 @@ export function verdict(result) {
   if (Number.isFinite(along) && along < 0) return 'Short of the threshold. Far too close.';
   if (part(parts, 'On the grass')) return 'Off the side, onto the grass.';
   if (bounces >= 2) return 'Kangaroo. Hold the flare and let it settle.';
-  if (points >= 95) return 'Butter.';
-  if (points >= 90) return 'Smooth. The cabin barely noticed.';
+  // v0.5.4: a part at 4/10 or less is named even at 90 and up (one bad part no longer takes the points with it).
+  const bad = parts.some((p) => Number.isFinite(p.score) && p.score <= 4);
+  if (points >= 95 && !bad) return 'Butter.';
+  if (points >= 90 && !bad) return 'Smooth. The cabin barely noticed.';
   if (bounces === 1 && points < 78) return 'One bounce. Keep the pitch on touchdown.';
   const flaw = worstFlaw(parts);
   if (flaw) return flaw;
@@ -67,9 +75,13 @@ export function verdict(result) {
   return 'That one will need an inspection.';
 }
 
-// Bar length 0..1 for a penalty.
+// Bar length 0..1 for a penalty (a logbook entry from before v0.5.4).
 export const penaltyFrac = (pen) => Math.max(0, Math.min(1, (pen || 0) / PEN_FULL));
-const penColor = (pen) => (pen <= 0 ? '#3cff4e' : pen < 8 ? '#ffe838' : pen < 20 ? '#ffa515' : '#ff3b3b');
+// v0.5.4: a part's score out of 10; a part saved before v0.5.4 has only its penalty, read
+// back as 10/10 for none down to 0/10 for PEN_FULL or more.
+export const partScore = (p) => (Number.isFinite(p?.score) ? p.score : Math.round(10 * (1 - penaltyFrac(Number(p?.penalty) || 0))));
+// v0.5.4: green at 9–10, through amber, to red at 0–3 (the grades' colours).
+export const scoreColor = (s) => (s >= 9 ? GRADE_COLORS.A : s >= 7 ? GRADE_COLORS.B : s >= 6 ? GRADE_COLORS.C : s >= 4 ? GRADE_COLORS.D : GRADE_COLORS.F);
 
 const fmtValue = (p) => {
   if (p.name === 'Touchdown vs aiming point') return `${p.value > 0 ? '+' : p.value < 0 ? '−' : ''}${Math.abs(p.value)} m`;
@@ -78,14 +90,17 @@ const fmtValue = (p) => {
   return `${p.value}${p.unit ? (p.unit === '°' ? '°' : ' ' + p.unit) : ''}`;
 };
 
-// The parts as rows: name, value, a penalty bar, and the penalty.
+// The parts as rows: name, value, a bar, and the score. v0.5.4: the bar is filled to the score
+// out of 10 (6/10 fills 60%, 10/10 all of it, in full green), and the score reads "6/10"; a
+// part from before v0.5.4 keeps its penalty ("−7") beside the bar its penalty reads as.
 export function partsHtml(parts) {
   return `<div class="fssc-parts">${(parts || []).map((p) => {
-    const f = penaltyFrac((Number(p.penalty) || 0));
+    const s = partScore(p), col = scoreColor(s), pen = Number(p.penalty) || 0;
+    const txt = Number.isFinite(p.score) ? `${s}/10` : pen ? '−' + pen : '0';
     return `<div class="fssc-part"><span class="n">${esc(p.name === 'Touchdown vs aiming point' ? 'From aiming point' : p.name)}</span>`
       + `<span class="v">${esc(fmtValue(p))}</span>`
-      + `<span class="bar"><i style="width:${(Number(p.penalty) || 0) > 0 ? Math.max(4, f * 100).toFixed(0) : 100}%;background:${penColor((Number(p.penalty) || 0))}${(Number(p.penalty) || 0) > 0 ? '' : ';opacity:.35'}"></i></span>`
-      + `<span class="p${(Number(p.penalty) || 0) ? '' : ' ok'}">${(Number(p.penalty) || 0) ? '−' + (Number(p.penalty) || 0) : '0'}</span></div>`;
+      + `<span class="bar"><i style="width:${Math.max(2, s * 10)}%;background:${col}"></i></span>`
+      + `<span class="p" style="color:${col}">${txt}</span></div>`;
   }).join('')}</div>`;
 }
 

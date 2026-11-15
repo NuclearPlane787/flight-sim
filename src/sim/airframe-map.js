@@ -11,8 +11,9 @@
 //                                       // line turned, its thickness × chord
 //     wingStation(side, yBase) → y      // where a base station goes (|y|)
 //     wingBase(side, y) → yBase         // the inverse
-//     tail(x, y, z), fin(x, y, z)       // the tailplane and the fin: scaled about their roots' quarter chords (area ×
-//                                       // tail or fin, aspect ratio and sweep kept), and moved back with the aft plug
+//     tail(x, y, z), fin(x, y, z)       // the tailplane and the fin: scaled about their roots' trailing edges (v0.5.4;
+//                                       // area × tail or fin, aspect ratio and sweep kept), and moved back with the aft
+//                                       // plug; a factor of 1 leaves them exactly as they were
 //     bodyX(x) → x                      // the fuselage's stations: ahead of FWD_CUT moved forward by plugFwd, behind
 //                                       // AFT_CUT moved back by plugAft, between them as they were
 //     bodyXBase(x) → x                  // the inverse (a station in the plugs gives the cut's own: a constant section)
@@ -84,15 +85,18 @@ export function airframeMap(base, af) {
   const WL = wingSideMap(1), WR = wingSideMap(-1);
   const fwd = af ? af.plugFwd : 0, aft = af ? af.plugAft : 0;
   const cuts = plugCuts(id);
-  // tailplane and fin: about their roots' quarter chords (the parts' stations[0])
-  const t0 = S.tail.stations[0], tq = t0.xle - t0.c / 4, kt = Math.sqrt(af ? af.tail : 1);
-  const f0 = S.fin.stations[0], fq = f0.xle - f0.c / 4, kf = Math.sqrt(af ? af.fin : 1);
-  const tail = (x, y, z) => {
+  // tailplane and fin: about their roots' trailing edges (the parts' stations[0]). v0.5.4: was the root's quarter
+  // chord, which grew a bigger tail forward over the elevator's and rudder's hinge line and the fuselage's tail cone; a
+  // real stretch grows the surface forward from where it ends. With a factor of 1 the surface stays exactly the base's.
+  const t0 = S.tail.stations[0], tq = t0.xle - t0.c, kt = Math.sqrt(af ? af.tail : 1);
+  const f0 = S.fin.stations[0], fq = f0.xle - f0.c, kf = Math.sqrt(af ? af.fin : 1);
+  const tail = kt === 1 ? (x, y, z) => [x - aft, y, z] : (x, y, z) => {
     const ay = Math.abs(y), s = Math.sign(y);
     const yn = ay <= t0.y ? ay : t0.y + (ay - t0.y) * kt;
     return [tq + (x - tq) * kt - aft, s * yn, t0.z + (z - t0.z) * kt];
   };
-  const fin = (x, y, z) => [fq + (x - fq) * kf - aft, y * kf, z <= f0.z ? z : f0.z + (z - f0.z) * kf];
+  const fin = kf === 1 ? (x, y, z) => [x - aft, y, z]
+    : (x, y, z) => [fq + (x - fq) * kf - aft, y * kf, z <= f0.z ? z : f0.z + (z - f0.z) * kf];
   const bodyX = (x) => (x > cuts.fwd ? x + fwd : x < cuts.aft ? x - aft : x);
   const bodyXBase = (x) => (x > cuts.fwd + fwd ? x - fwd : x >= cuts.fwd ? cuts.fwd : x < cuts.aft - aft ? x + aft : x <= cuts.aft ? cuts.aft : x);
   const sL = sideOf(1), sR = sideOf(-1);

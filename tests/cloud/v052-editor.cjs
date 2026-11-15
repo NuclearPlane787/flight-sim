@@ -177,7 +177,8 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} $
   const picked = await page.evaluate(() => { const c = document.querySelector('.fsui-setup [data-design][aria-pressed="true"]'); return c ? c.textContent.trim().slice(0, 60) : null; });
   check('Fly it opens New scenario with the design picked', !!picked && picked.includes(savedName), picked);
   check('the warehouse closed (no 3D view left)', await page.evaluate(() => !window.__fsw && document.querySelector('.fsw').hidden));
-  await page.click('.fsui-setup [data-a="fly"]');
+  // v0.5.4: starting the flight holds the page about 34 s in SwiftShader (the click's own 30 s ran out), so it waits longer.
+  await page.click('.fsui-setup [data-a="fly"]', { timeout: 120000 });
   await page.waitForFunction((n) => window.__fs && window.__fs.sim && window.__fs.sim.design && window.__fs.sim.design.name === n, savedName, { timeout: 120000 });
   const flying = await page.evaluate(() => ({ name: window.__fs.sim.design.name, engines: window.__fs.sim.state.engines.length }));
   check('Fly flies it', flying.name === savedName && flying.engines === 2, JSON.stringify(flying));

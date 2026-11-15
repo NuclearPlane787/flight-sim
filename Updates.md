@@ -4,6 +4,17 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.5.4 · 2026-11-16 · A pause button, landings out of 10, and more for the warehouse
+
+- **A Pause button** beside Hide panels pauses without the menu. While paused, L opens its window and everything in it works: the time of day, the weight and fuel, the weather. The pause menu's Weight and fuel and Time of day keep the game paused too.
+- **Landings scored out of 10 per category.** Each part of the landing (vertical speed, peak g, the touchdown point, the centreline, bank, pitch, bounces, the approach path, the sink rate's swings) gets a score out of 10, and its bar fills to it: 6/10 fills it six tenths, coloured green down to red. The total is their weighted average out of 100 (vertical speed, the touchdown point and the centreline weigh most), held down by the worst part (50 + 10 × its score), so a slam can't hide behind a good approach, and several middling flaws make a C or a D, not 0. Your reference landing (190 ft/min, 2 m left, 150 m long, low at 1 km and a bob) still scores 80, a B. 100 takes 10/10 in every part; the grass is an F; a taxiway or a would-be crash 10 at most. Older logbook entries show as they were.
+- **Renaming a design** in the warehouse renames it in Load scenario and in the saved flights that fly it (only the name: a saved flight keeps the parts it was saved with).
+- **Sweep raises the top of the coffin corner.** Each side of the wing loses its maximum lift with the Mach number across its sweep, so a more swept wing holds its lift to a higher Mach, and a design's MMO follows its sweep (the 777's M0.89 is M0.95 at +8° and M0.83 at −8°; the warehouse shows it when it moves). A six-engine 777 at FL450 and 265 t has no window on its own wing; at +8° it's clear of the stick shaker from M0.79 and of the amber band from M0.91, up to M0.95. The three aircraft fly exactly as before.
+- **Drop tanks:** the Weight tab's Drop wing tanks lets them go in flight, with the fuel still in them, their weight and their drag.
+- **Keys for the part you've selected in the warehouse:** ↑ ↓ forward and aft, ← → out and in along the span, Shift+↑ ↓ an engine up and down, Q E turn an engine a degree. Each press is one undo step (a held key's repeats share one), the twin follows, the limits hold, and the help line under the view lists the keys the part takes. A turned engine is picked by its own turned box, and its outline turns with it.
+- **The hangar's doors are shut.**
+- **Fixed:** a bigger tailplane or fin no longer hangs past the end of the tail (they grow forward from their trailing edge), and the A321's inner flap stays behind its main leg on a short, forward-swept wing.
+
 ## v0.5.3 · 2026-11-15 · The airframe from parts
 
 - **Reshape the airframe.** In the warehouse, click the wing, the tailplane, the fin or the fuselage, and its sliders take over the side panel: the wing's span and chord (0.8 to 1.3 times the base's), its sweep (±8°) and its dihedral (−3° to +8°), each side on its own if Mirror is off; the tailplane's and the fin's size (0.6 to 1.6 times); plugs in the fuselage ahead of and behind the wing (−4 to +6 m each). A green outline shows the new shape while a slider moves, the model follows when you let go, and Z undoes it. The A321's sharklets can come off.

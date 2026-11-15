@@ -22,7 +22,7 @@ import { createLiveryTextures, UV, FIN_BOX, WINDOW } from './livery.js';
 import { cockpitWindows } from './cockpit-windows.js';
 import { GEAR_DATA, WHEEL_R_MAIN, WHEEL_R_NOSE } from './sim/a321neo.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
-import { addEngine, addPod, engineAnimator } from './engine-model.js';
+import { addEngine, addPod, engineAnimator, podDropper } from './engine-model.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -512,6 +512,36 @@ export function createAircraft(opts = {}) {
     return { ...s, le: mapP(MAP.wing(side), s.le), chord: s.chord * w.chord, n: V(0, -side * Math.sin(d), Math.cos(d)) };
   } : wingSec;
   const finLeX = AF ? (z) => { const zb = z <= 1.9 ? z : 1.9 + (z - 1.9) / AF.finScale; return AF.fin(finSec(zb).le.x, 0, zb)[0]; } : (z) => finSec(z).le.x;
+  // v0.5.4: the inner flap's leading edge on a design's airframe. The map carries it with the wing, but the main gear's
+  // leg stays where it is, so with less sweep or a shorter chord the edge came forward of the leg (−8° and 0.8: half a
+  // metre ahead of it) and the leg showed through the flap. Re-clamped after the map, as the Boeings' is: each end where
+  // the map puts it but no nearer the leg than the base's edge is (FLAP_IN_LE_X, 0.38 m behind its axis), and straight
+  // across the design's span between them, so the fixed structure's edge and the flap's (drawn at different stations)
+  // still meet. Never past 0.985 of the chord: where the trailing edge itself comes up to the leg (−8° and 0.8 bring it
+  // within 0.3 m of its axis) that leaves the flap a strip a few centimetres deep just behind the leg. Gives the chord
+  // fraction at a base station, as fFlapLE does.
+  const FLAP_F_MAX = 0.985;
+  function flapInAfterMap(side, fBase, inFin) {
+    const M = MAP.wing(side), T = (side > 0 ? GEAR_.left : GEAR_.right).x - (GEAR.left.x - FLAP_IN_LE_X);
+    const at = (y, f) => { const p = foilPoint(wingSec(y, side), f, 0); return M(p.x, p.y, p.z); };
+    const end = (y) => { const q = at(y, fBase(y)); return [Math.max(Math.min(q[0], T), at(y, FLAP_F_MAX)[0]), Math.abs(q[1])]; };
+    let [x0, y0] = end(FIN_Y[0]), [x1, y1] = end(FIN_Y[1]);
+    // and at the leg's own span no nearer it than that either (with the ends capped, a short span or chord could bring
+    // the line between them forward there): the line moved aft as a whole if need be
+    const yLeg = Math.abs((side > 0 ? GEAR_.left : GEAR_.right).y), yb = AF.wingBase(side, yLeg);
+    if (yb > FIN_Y[0] && yb < FIN_Y[1]) {
+      const want = Math.max(T, at(yb, FLAP_F_MAX)[0]), d = x0 + ((x1 - x0) * (yLeg - y0)) / (y1 - y0) - want;
+      if (d > 0) { x0 -= d; x1 -= d; }
+    }
+    const off = (y, f) => { const q = at(y, f); return q[0] - (x0 + ((x1 - x0) * (Math.abs(q[1]) - y0)) / (y1 - y0)); };
+    return (y) => {
+      if (!inFin(y)) return fBase(y);
+      // the fraction whose mapped point is on that line (x is linear in it; a secant step or two)
+      let fa = fBase(y), ga = off(y, fa), fb = fa + 0.02, gb = off(y, fb);
+      for (let i = 0; i < 5 && Math.abs(gb) > 1e-9 && gb !== ga; i++) { const fc = fb - (gb * (fb - fa)) / (gb - ga); fa = fb; ga = gb; fb = fc; gb = off(y, fb); }
+      return clamp(fb, fBase(y), FLAP_F_MAX);
+    };
+  }
 
   // Bones are created at their pivots (body coordinates) with identity rest rotation.
   // axis: hinge axis in body coordinates.
@@ -638,7 +668,9 @@ export function createAircraft(opts = {}) {
     // the leg, as on the real one.
     const fAt = (y, x) => { const w = ws(y); return (w.le.x - x) / w.chord; };
     const X_FIN_LE = FLAP_IN_LE_X;
-    const fFlapLE = (y) => (y >= FIN_Y[0] - 1e-6 && y <= FIN_Y[1] + 1e-6 ? fAt(y, X_FIN_LE) : 0.75);
+    const inFin = (y) => y >= FIN_Y[0] - 1e-6 && y <= FIN_Y[1] + 1e-6;
+    let fFlapLE = (y) => (inFin(y) ? fAt(y, X_FIN_LE) : 0.75);
+    if (AF) fFlapLE = flapInAfterMap(side, fFlapLE, inFin);   // v0.5.4: behind the leg after the design's map
     // Fixed structure: its leading edge behind the slats is a round nose about the slats' hinge line,
     // so a slat that droops about that line stays sealed against it (v0.4.1, below).
     // v0.5.3: the wing's every part (and its hinges) through the design's wing map; the sharklet through its own.
@@ -933,10 +965,12 @@ export function createAircraft(opts = {}) {
   void qa;
   let wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
   const animateEngines = engineAnimator(engines, B, toModel);
+  const dropPods = podDropper(B);   // v0.5.4: the wing tanks, once dropped
   const NO_ENGINES = [];
 
   function update(state = {}, dt = 0) {
     clock += dt;
+    dropPods(state.tanksDropped);   // v0.5.4: dropped tanks (and their pylons) leave the wing
     const s = state.surfaces || {};
     // Trailing edge up is a positive rotation about the (+y-pointing) hinge axes.
     rot('stab', SIGNS.stab * (s.stab || 0));

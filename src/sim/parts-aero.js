@@ -119,8 +119,9 @@ export function baseShape(base) {
 //   (absolute); tail, fin: × the base's areas (aspect ratio and sweep kept); plugFwd, plugAft: metres of fuselage added
 //   ahead of and behind the wing.
 // The wing swings about its root's quarter chord, its chord grows about each station's quarter chord, its span from the
-// fuselage's side; the tails grow about their roots' quarter chords; the forward plug moves the nose forward and the
-// aft plug the tail (tailplane and fin) back. The reference point (the base's 25 % MAC) stays where it is.
+// fuselage's side; the tails grow about their roots' trailing edges (v0.5.4: were the quarter chords); the forward
+// plug moves the nose forward and the aft plug the tail (tailplane and fin) back. The reference point (the base's 25 %
+// MAC) stays where it is.
 export function wingSide(base, ws, side) {
   const b = baseShape(base).wing, s0 = b.stations[0];
   const qc0 = s0.xle - s0.c / 4, ys = s0.y;
@@ -144,14 +145,18 @@ export function shapeOf(base, af) {
   const b = baseShape(base);
   if (!af) return { ...b, wingL: wingSide(base, defaultSide(base), 1), wingR: wingSide(base, defaultSide(base), -1) };
   const kt = Math.sqrt(af.tail), kf = Math.sqrt(af.fin), fwd = af.plugFwd || 0, aft = af.plugAft || 0;
-  const t0 = b.tail.stations[0], tq = t0.xle - t0.c / 4;
+  // v0.5.4: the tails scale about their roots' trailing edges (airframe-map.js's tail() and fin() agree); a factor
+  // of 1 keeps the base's stations exactly (moved back with the aft plug only)
+  const t0 = b.tail.stations[0], tq = t0.xle - t0.c;
   const tail = { ...b.tail, stations: b.tail.stations.map((s, i) => {
+    if (kt === 1) return { ...s, xle: s.xle - aft };
     const qc = s.xle - s.c / 4, y = i === 0 ? s.y : t0.y + (s.y - t0.y) * kt, c = s.c * kt;
     const x = tq + (qc - tq) * kt - aft;
     return { y, xle: x + c / 4, c, z: t0.z + (s.z - t0.z) * kt };
   }) };
-  const f0 = b.fin.stations[0], fq = f0.xle - f0.c / 4;
+  const f0 = b.fin.stations[0], fq = f0.xle - f0.c;
   const fin = { ...b.fin, stations: b.fin.stations.map((s, i) => {
+    if (kf === 1) return { ...s, xle: s.xle - aft };
     const qc = s.xle - s.c / 4, z = i === 0 ? s.z : f0.z + (s.z - f0.z) * kf, c = s.c * kf;
     const x = fq + (qc - fq) * kf - aft;
     return { z, xle: x + c / 4, c };
@@ -273,6 +278,10 @@ function prepare(base, shape) {
   const sweepOf = (w) => { const a = w.stations[0], b = w.stations[w.stations.length - 1];
     return Math.atan(((a.xle - a.c / 2) - (b.xle - b.c / 2)) / (b.y - a.y)); };
   const swL = sweepOf(shape.wingL), swR = sweepOf(shape.wingR);
+  // v0.5.4: and each side's quarter chord's, root to tip (what the airframe's sweep turns), for the Mach normal to it
+  const qSweepOf = (w) => { const a = w.stations[0], b = w.stations[w.stations.length - 1];
+    return Math.atan(((a.xle - a.c / 4) - (b.xle - b.c / 4)) / (b.y - a.y)); };
+  const sqL = qSweepOf(shape.wingL), sqR = qSweepOf(shape.wingR);
   const St = areaOf(tail), spanT = 2 * shape.tail.stations[shape.tail.stations.length - 1].y, ARt = spanT * spanT / St;
   const ta = shape.tail.stations[0], tb = shape.tail.stations[shape.tail.stations.length - 1];
   const swT = Math.atan(((ta.xle - ta.c / 2) - (tb.xle - tb.c / 2)) / (tb.y - ta.y));
@@ -286,7 +295,7 @@ function prepare(base, shape) {
   // The base's numbers, for the ratios that a design's strips scale by (the sections are the base's).
   const B = shape === BASE_FULL.get(T.id) ? null : baseNumbers(T.id);
   const hw = helmbold(ARw, (swL + swR) / 2), ht = helmbold(ARt, swT), hf = helmbold(C.finEndplate * ARf, swF);
-  const nums = { Sw, spanW, ARw, swL, swR, St, spanT, ARt, swT, Sf, hF, ARf, swF, xw, xt, xf, lt: xw - xt, lf: xw - xf, macW, hw, ht, hf,
+  const nums = { Sw, spanW, ARw, swL, swR, sqL, sqR, St, spanT, ARt, swT, Sf, hF, ARf, swF, xw, xt, xf, lt: xw - xt, lf: xw - xf, macW, hw, ht, hf,
     Sflap: areaOf(wing.filter((p) => p.flap)), Sslat: areaOf(wing.filter((p) => p.slat)), Sspoil: areaOf(wing.filter((p) => p.spoiler)),
     ScFlap: wing.filter((p) => p.flap).reduce((s, p) => s + p.S * p.c, 0),
     body: shape.body, Vbody: shape.body.width * shape.body.height * shape.body.length };
@@ -301,6 +310,9 @@ function prepare(base, shape) {
     fm: fmOf(T.id), lc: [{}, {}, {}].map(() => ({ clmax: 0, a: 0, cl0: 0, alphaMax: 0 })),
     sideMach: [Math.cos(A.SWEEP) / Math.cos(A.SWEEP + (swL - R.swL)), Math.cos(A.SWEEP) / Math.cos(A.SWEEP + (swR - R.swR))],
     sweepMach: [A.SWEEP + (swL - R.swL), A.SWEEP + (swR - R.swR)],
+    // v0.5.4: each side's Mach normal to its quarter chord against the base's, cos Λ_side / cos Λ_base with Λ_side the
+    // type's sweep plus the side's turn: the maximum lift's loss with Mach goes by it (exactly 1 on the base's wing)
+    normalMach: [Math.cos(A.SWEEP + (sqL - R.sqL)) / Math.cos(A.SWEEP), Math.cos(A.SWEEP + (sqR - R.sqR)) / Math.cos(A.SWEEP)],
     tSweepMach: swT, fSweepMach: swF,
     bodyRatio: { L: nums.body.length / R.body.length, V: nums.Vbody / R.Vbody, side: (nums.body.length * nums.body.height) / (R.body.length * R.body.height) },
     tailRatio: St / R.St, finRatio: Sf / R.Sf,
@@ -387,7 +399,9 @@ export function partsInto(P, s, o) {
   // The lumped curves: clean, slats only, slats and flaps.
   const fm = P.fm, L0 = P.lc[0], L1 = P.lc[1], L2 = P.lc[2];
   fm.liftCurve(0, 0, L0); fm.liftCurve(s.slat, 0, L1); fm.liftCurve(s.slat, s.flap, L2);
-  const clmaxMach = Math.max(0.55, 1 - A.CLMAX_MACH_SLOPE * Math.max(0, M - 0.35));
+  // v0.5.4: the section's maximum lift falls with the Mach normal to its side's sweep (M × cos Λ_side / cos Λ_base:
+  // more sweep raises the top of the coffin corner); exactly M on the base's sweep (P.normalMach is 1 there)
+  const clmaxMachL = clmaxMachOf(A, M * P.normalMach[0]), clmaxMachR = clmaxMachOf(A, M * P.normalMach[1]);
   const ge = groundEffect(s.hWing, N.spanW), geLift = 1 + 0.10 * (1 - ge);
   const e = A.OSWALD - (A.OSWALD - A.OSWALD_FLAPS) * Math.min(1, s.flap / A.FLAP_REF_DEG);
   const K = 1 / (Math.PI * e * N.ARw);
@@ -418,7 +432,7 @@ export function partsInto(P, s, o) {
     // aerodynamic centre moves aft by a quarter of what the chord grows.
     st._dx = st.flap ? -(st.c / 4) * (fF * (L2.a - L1.a) / L0.a) : 0;
     a *= C.kA * P.kWing * PG(M, P.sweepMach[si]);
-    const clmax = cm0 * clmaxMach;
+    const clmax = cm0 * (si === 0 ? clmaxMachL : clmaxMachR);
     const aMax = (clmax - cl0) / a + knee / 2 + st.dAlphaMax;
     const clmaxS = cl0 + a * (aMax - knee / 2);
     // in the normal plane
@@ -579,10 +593,12 @@ export function partsDeltaInto(PA, s, o) {
 // warning, α prot): the wing's strips' clmax, the design's less the base's. Only the wing's sections (no flow, no tails),
 // as partsInto() sums them (tests/parts-aero.test.mjs holds the two equal), and the last answer kept: the sim asks twice
 // a step with the same inputs. A pure function of its inputs, so the memo changes nothing but the cost.
+// v0.5.4: the lumped model's maximum-lift loss with Mach (flightmodel.js's), at a side's normal Mach
+function clmaxMachOf(A, Mn) { return Math.max(0.55, 1 - A.CLMAX_MACH_SLOPE * Math.max(0, Mn - 0.35)); }
 function wingClmax(P, slat, flap, M) {
   const A = P.A, C = P.C, fm = P.fm, L0 = P.lc[0], L1 = P.lc[1], L2 = P.lc[2];
   fm.liftCurve(0, 0, L0); fm.liftCurve(slat, 0, L1); fm.liftCurve(slat, flap, L2);
-  const clmaxMach = Math.max(0.55, 1 - A.CLMAX_MACH_SLOPE * Math.max(0, M - 0.35));
+  const clmaxMachL = clmaxMachOf(A, M * P.normalMach[0]), clmaxMachR = clmaxMachOf(A, M * P.normalMach[1]);   // v0.5.4: as partsInto()
   const knee = A.KNEE, W = P.wing;
   let sum = 0;
   for (let i = 0; i < W.length; i++) {
@@ -592,7 +608,7 @@ function wingClmax(P, slat, flap, M) {
     const cl0 = L0.cl0 + C.kFlapCL * (fS * (L1.cl0 - L0.cl0) + fF * (L2.cl0 - L1.cl0)) + C.dcl0;
     const cm0 = L0.clmax * C.kClmax + C.kClmaxHL * (fS * (L1.clmax - L0.clmax) + fF * (L2.clmax - L1.clmax));
     a *= C.kA * P.kWing * PG(M, P.sweepMach[si]);
-    const clmax = cm0 * clmaxMach;
+    const clmax = cm0 * (si === 0 ? clmaxMachL : clmaxMachR);
     const aMax = (clmax - cl0) / a + knee / 2 + st.dAlphaMax;
     sum += st.S * (cl0 + a * (aMax - knee / 2));
   }

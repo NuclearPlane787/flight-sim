@@ -1,9 +1,11 @@
 // The Weight window (v0.3.2): the flight's passengers, cargo and fuel, changed during the flight,
 // in the air or on the ground. It's the Sky window's second tab: the same frame at the bottom-left,
 // under the PFD, with the tabs (Sky · Weight) in the title bar; L opens whichever was last.
-//   createLoadWindow(root, { get, onapply })
-//     get() → { limits, pax, cargoKg, fuelKg, gross, cgMac, crashed }   (the type's limits as the setup's)
+//   createLoadWindow(root, { get, onapply, ondrop? })
+//     get() → { limits, pax, cargoKg, fuelKg, gross, cgMac, crashed, tanks? }   (the type's limits as the setup's)
 //     onapply({ pax, cargoKg, fuelKg }) → { ok, text }   (fuelKg undefined: the fuel wasn't edited)
+//     v0.5.4: tanks: { airborne, dropped } for a design with wing tanks (else none), and ondrop() → { ok, text }
+//     drops them: the Drop wing tanks button, in the air only, once ("Wing tanks dropped" after).
 //   -> { open(), close(), toggle(), isOpen, update(), onclose, ontab }
 // The checks are the setup's: the seats, the hold, the tanks, MZFW and MTOW stop it; over MLW and
 // low fuel only warn. Apply (or Enter in a field) sets the load; until the fuel field is edited it
@@ -54,7 +56,7 @@ function linkCss() {
   document.head.appendChild(l);
 }
 
-export function createLoadWindow(root, { get, onapply } = {}) {
+export function createLoadWindow(root, { get, onapply, ondrop } = {}) {
   linkCss();
   const el = document.createElement('div');
   el.className = 'fssw fslw';
@@ -81,6 +83,10 @@ export function createLoadWindow(root, { get, onapply } = {}) {
       <div class="fssw-row fslw-act">
         <button class="fssw-b" data-a="revert" title="Back to the load the aircraft has">Undo edits</button>
         <button class="fssw-b fslw-apply" data-a="apply">Apply</button>
+      </div>
+      <div class="fssw-row fslw-tanks" data-o="tanks" hidden>
+        <span class="fslw-unit" data-o="tanksNote"></span>
+        <button class="fssw-b" data-a="drop" title="Let the wing tanks go, with the fuel still in them (in the air, once)">Drop wing tanks</button>
       </div>
     </div>
     <div class="fssw-foot"><span class="fssw-key">Enter</span> Apply · <span class="fssw-key">L</span><span class="fssw-key">Esc</span> Close</div>`;
@@ -128,6 +134,16 @@ export function createLoadWindow(root, { get, onapply } = {}) {
     m.className = 'fslw-msg' + (cls ? ' ' + cls : '');
     btn('apply').disabled = !!n.crashed || !edited || c.problems.length > 0;
     btn('revert').disabled = !edited;
+    // v0.5.4: a design's wing tanks: Drop wing tanks in the air, once; then "Wing tanks dropped", off.
+    const T = n.tanks;
+    if (o('tanks').hidden !== !T) o('tanks').hidden = !T;
+    if (T) {
+      const label = T.dropped ? 'Wing tanks dropped' : 'Drop wing tanks';
+      if (btn('drop').textContent !== label) btn('drop').textContent = label;
+      btn('drop').disabled = !!n.crashed || !!T.dropped || !T.airborne;
+      const note = T.dropped || n.crashed ? '' : T.airborne ? '' : 'In the air only';
+      if (o('tanksNote').textContent !== note) o('tanksNote').textContent = note;
+    }
     for (const k of FIELDS) f(k).classList.toggle('edited', !!dirty[k]);
   }
 
@@ -177,6 +193,13 @@ export function createLoadWindow(root, { get, onapply } = {}) {
     switch (t.dataset.a) {
       case 'close': win.close(); break;
       case 'apply': apply(); break;
+      case 'drop': {   // v0.5.4
+        const r = ondrop?.() || { ok: false, text: '' };
+        if (r.ok) fill(false);   // the fuel that went with them (a field being edited keeps its number)
+        setMsg(r.text || '', r.ok ? 'ok' : 'bad');
+        render();
+        break;
+      }
       case 'revert': dirty = {}; setMsg(''); fill(true); render(); break;
       case 'max': {
         const n = now();

@@ -604,6 +604,19 @@ function buildData(T, d, engines, tanks, ballast, geo) {
   D.FUEL_CENTER = centre + added;
   D.FUEL_MAX = cap + added;
   if (added > 0) D.CG_CENTER_FUEL_X = (centre * A.CG_CENTER_FUEL_X + tanks.reduce((s, t) => s + t.part.kg * t.place.x, 0)) / (centre + added);
+  // v0.5.4: the wing tanks can be dropped in flight (sim.js dropTanks()): the fuel they hold, the airframe's own centre
+  // tank (what's above it is theirs first), the centre fuel's CG without them (the hold tanks' kept), and their empty
+  // masses where they hang. The hold tanks stay.
+  const pods = tanks.filter((t) => !t.place.hold);
+  if (pods.length) {
+    const holds = tanks.filter((t) => t.place.hold), holdKg = holds.reduce((s, t) => s + t.part.kg, 0);
+    D.DROP_TANKS = Object.freeze({
+      kg: pods.reduce((s, t) => s + t.part.kg, 0),
+      centreOwnKg: centre,
+      cgCentreX: holdKg > 0 ? (centre * A.CG_CENTER_FUEL_X + holds.reduce((s, t) => s + t.part.kg * t.place.x, 0)) / (centre + holdKg) : A.CG_CENTER_FUEL_X,
+      pm: Object.freeze(pods.map((t) => Object.freeze({ m: t.part.kg * TANK_EMPTY, x: t.place.x, y: t.place.y, z: t.place.z }))),
+    });
+  }
   // The gear: the wing is that much higher over the ground (ground effect), and the tail-strike angle follows.
   const ext = d.gearExtendM;
   if (ext) D.WING_HEIGHT = A.WING_HEIGHT + ext;
@@ -616,7 +629,8 @@ function buildData(T, d, engines, tanks, ballast, geo) {
     geo.NACELLES.forEach((n) => drag.push({ x: n.x, y: n.y, z: n.z, cda: CD_NACELLE * Math.PI * n.D * n.D / 4 }));
     for (const n of G0.NACELLES) drag.push({ x: n.x, y: n.y, z: n.z, cda: -CD_NACELLE * Math.PI * G0.NACELLE_DIAMETER * G0.NACELLE_DIAMETER / 4 });
   }
-  for (const t of geo.PODS) drag.push({ x: t.x, y: t.y, z: t.z, cda: CD_TANK * Math.PI * t.D * t.D / 4 });
+  // v0.5.4: an external tank's marked pod, so sim.js drops its drag with it (dropTanks())
+  for (const t of geo.PODS) drag.push({ x: t.x, y: t.y, z: t.z, cda: CD_TANK * Math.PI * t.D * t.D / 4, pod: true });
   D.DRAG_PARTS = drag.length ? Object.freeze(drag.map((p) => Object.freeze(p))) : undefined;
   D.DRAG_ADDED_M2 = drag.reduce((s, p) => s + p.cda, 0);
   // The pylons' limits, engine by engine: 1.5 × the engine type's rated take-off thrust (CS-25's ultimate factor) is
@@ -630,6 +644,10 @@ function buildData(T, d, engines, tanks, ballast, geo) {
   D.PYLON_LIMITS_N = engines.map((e, i) => pylonLimitN(e.E) * (1 + 0.10 * scatter(partsKey, i)));
   D.ENGINE_MASSES = engines.map((e) => e.E.installedKg);
   D.ENGINE_MASS_KG = first ? first.E.installedKg : 0;
+  // v0.5.4: the wing's sweep moves MMO (Korn: the drag rise's Mach goes as 1/cos Λ): the base's × cos Λ_base / cos Λ_mean,
+  // Λ_mean the mean of the two sides' quarter-chord sweeps, within 0.70–0.95. An unchanged sweep keeps the base's exactly.
+  const dSw = d.airframe ? (d.airframe.wingL.sweep + d.airframe.wingR.sweep) / 2 : 0;
+  if (dSw !== 0) D.MMO = clamp(A.MMO * Math.cos(A.SWEEP) / Math.cos(A.SWEEP + dSw * DEG), 0.70, 0.95);
   D.DESIGN = true;
   return D;
 }
@@ -941,5 +959,6 @@ export function designNumbers(def) {
     oewKg: A.OEW, mtowKg: L.MTOW, fuelCapacityKg: A.FUEL_MAX, thrustToWeight: tw, rangeNm, payloadKg: payload,
     payloadMaxKg: Math.max(0, L.MZFW - A.OEW), tailStrikeDeg: ta / DEG, engines, pods,
     engineCount: n, thrustOffsetM: total > 0 ? ty / total : 0, cgShiftMac, dragAddedM2: A.DRAG_ADDED_M2 || 0, cgX,
+    mmo: A.MMO,   // v0.5.4: the sweep moves it
   };
 }

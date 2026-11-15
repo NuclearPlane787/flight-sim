@@ -3,8 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtDuration, fmtDate, fmtKg, totals, newestFirst, scenarioOf, filterByScenario, removeScenario, scenarioOptions, UNTAGGED } from '../src/ui/logbook.js';
 import { typeName } from '../src/scenarios.js';
-import { verdict, penaltyFrac, touchdownText, gradeColor, esc, runwaySvg } from '../src/ui/score-panel.js';
+import { verdict, penaltyFrac, partScore, scoreColor, partsHtml, touchdownText, gradeColor, esc, runwaySvg } from '../src/ui/score-panel.js';
 
+// Parts as saved before v0.5.4: penalties, no scores.
 const parts = (vs, g, bounces = 0) => [
   { name: 'Vertical speed', value: vs, unit: 'ft/min', penalty: 0 },
   { name: 'Peak g', value: g, unit: 'g', penalty: 0 },
@@ -79,7 +80,48 @@ test('verdict thresholds', () => {
   assert.match(verdict({ points: 70, parts: parts(200, 1.2, 1) }), /bounce/);
 });
 
-test('penalty bars, touchdown text, colours, escaping', () => {
+// v0.5.4: parts with scores out of 10. The verdict names the weakest (7/10 or less, the first on a tie),
+// and a part at 4/10 or less is named even at 90 and up.
+test('verdict: the weakest part, by its score out of 10', () => {
+  const scored = (over = {}) => [['Vertical speed', 190, 10], ['Peak g', 1.3, 9], ['Touchdown vs aiming point', 150, 7],
+    ['From centreline', 2, 8], ['Bank', 0.5, 10], ['Approach path', 0.8, 4], ['Sink rate swings', 200, 5]]
+    .map(([name, value, score]) => ({ name, value, unit: '', score: over[name] ?? score, penalty: 0, ...(name === 'Approach path' ? { note: 'low' } : {}) }));
+  assert.equal(verdict({ points: 80, parts: scored() }), 'Off the path on final (low). Get on it early and stay there.');
+  assert.equal(verdict({ points: 80, parts: scored({ 'Sink rate swings': 3 }) }), 'Bobbing on final. Hold a steady descent.');
+  assert.equal(verdict({ points: 84, parts: scored({ 'Approach path': 8, 'Sink rate swings': 8 }) }), 'Long. Put it down at the aiming point.');
+  assert.equal(verdict({ points: 86, parts: scored({ 'Approach path': 9, 'Sink rate swings': 9, 'Touchdown vs aiming point': 8 }) }), 'Fine, with a few things to tidy.');
+  assert.equal(verdict({ points: 91, parts: scored({ 'Approach path': 10, 'Sink rate swings': 10 }) }), 'Smooth. The cabin barely noticed.');
+  assert.equal(verdict({ points: 95, parts: scored({ 'Approach path': 10, 'Sink rate swings': 10, Bank: 3 }) }), 'Wings level for the touchdown.');
+});
+
+test('bars: filled to the score out of 10; parts from before v0.5.4 read back from their penalty', () => {
+  assert.equal(partScore({ score: 6 }), 6);
+  assert.equal(partScore({ penalty: 0 }), 10);
+  assert.equal(partScore({ penalty: 15 }), 5);
+  assert.equal(partScore({ penalty: 99 }), 0);
+  assert.equal(partScore({}), 10);
+  assert.equal(scoreColor(10), '#3cff4e');
+  assert.equal(scoreColor(9), '#3cff4e');
+  assert.equal(scoreColor(5), '#ffa515');
+  assert.equal(scoreColor(3), '#ff3b3b');
+  assert.equal(scoreColor(0), '#ff3b3b');
+  const row = (p) => partsHtml([p]);
+  const six = row({ name: 'Approach path', value: 0.6, unit: 'dots', score: 6, penalty: 3 });
+  assert.match(six, /width:60%/);
+  assert.match(six, />6\/10</);
+  const ten = row({ name: 'Bank', value: 0.4, unit: '°', score: 10, penalty: 0 });
+  assert.match(ten, /width:100%;background:#3cff4e"/);   // full and green, not pale
+  assert.doesNotMatch(ten, /opacity/);
+  assert.match(ten, />10\/10</);
+  assert.match(row({ name: 'Bounces', value: 3, unit: '', score: 0, penalty: 20 }), /width:2%;background:#ff3b3b/);
+  // A logbook entry from before v0.5.4: its penalty, beside the bar it reads as.
+  const old = row({ name: 'Touchdown vs aiming point', value: 140, unit: 'm', penalty: 15 });
+  assert.match(old, /width:50%/);
+  assert.match(old, />−15</);
+  assert.match(row({ name: 'Bank', value: 0.4, unit: '°', penalty: 0 }), /width:100%[\s\S]*>0</);
+});
+
+test('penalty bars (before v0.5.4), touchdown text, colours, escaping', () => {
   assert.equal(penaltyFrac(0), 0);
   assert.equal(penaltyFrac(15), 0.5);
   assert.equal(penaltyFrac(99), 1);

@@ -112,6 +112,20 @@ function bodyPylon(b, n, host, EB, BY) {
   b.add(g, EB, C.pylon, null, BY);
 }
 
+// v0.5.4: the wing tanks dropped (the sim's state.tanksDropped). For a model's update(): scales its addPod() bones
+// ('pod<k>', each a tank with its pylon, which hang from nothing else) to nothing while it's true, and back to 1 when
+// it's false or missing. Does nothing on a model without tanks, and only touches the bones when the state changes.
+export function podDropper(B) {
+  const pods = Object.keys(B).filter((n) => /^pod\d+$/.test(n)).map((n) => B[n]);
+  let gone = false;
+  return (dropped) => {
+    const g = dropped === true;
+    if (g === gone || !pods.length) return;
+    gone = g;
+    for (const bn of pods) bn.scale.setScalar(g ? 0 : 1);
+  };
+}
+
 // v0.5.2: an external fuel tank (designs.js placeTank()): a teardrop on a short pylon up into the wing's underside.
 // Its bone 'pod<k>' at its centre; it rides the bent wing at its span.
 export function addPod(b, bone, t, host, k) {

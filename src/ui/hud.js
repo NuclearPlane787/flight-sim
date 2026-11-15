@@ -45,7 +45,7 @@ export function createHud(root, { airports, coast } = {}) {
   ndEl.title = 'Scroll or click to change the range';
   const pfdCv = hidpiCanvas(pfdEl), ndCv = hidpiCanvas(ndEl), engCv = hidpiCanvas(engEl);
   const builtCoast = coast ? buildCoast(coast) : null;
-  const hud = { update, resize, setCoast, setTopInset, setType, onlaw: null, onview: null, poke, el };
+  const hud = { update, resize, setCoast, setTopInset, setType, setPause, onlaw: null, onview: null, onpause: null, poke, el };
   const airbus = {
     pfd: createPfd(pfdCv),
     nd: createNd(ndCv, { airports, coast: builtCoast }),
@@ -70,10 +70,14 @@ export function createHud(root, { airports, coast } = {}) {
   // FCU (MCP) or the view switch; kept in the settings, so a reload keeps the wide view.
   const panelsBox = document.createElement('div');
   panelsBox.className = 'fsui-panels-box fsui-panel';
-  panelsBox.innerHTML = '<button class="fsui-panels-btn" tabindex="-1"></button>';
+  // v0.5.4 (Shane: "have the pause function be a button next to 'hide panel'"): Pause, beside it and the same look,
+  // pauses quietly (no pause menu), so the L window's tabs can be used while the flight stands still. It reads
+  // Resume whenever the game is paused (by it, by Esc's menu or by the page being hidden), and it's hidden after
+  // a crash. Clicks go to main.js (hud.onpause), which says how things stand with hud.setPause(paused, available).
+  panelsBox.innerHTML = '<button class="fsui-panels-btn" tabindex="-1"></button><button class="fsui-pause-btn" tabindex="-1" title="Pause the flight without the pause menu (Esc opens the menu)">Pause</button>';
   el.appendChild(panelsBox);
   shield(panelsBox);
-  const panelsBtn = panelsBox.firstChild;
+  const panelsBtn = panelsBox.querySelector('.fsui-panels-btn'), pauseBtn = panelsBox.querySelector('.fsui-pause-btn');
   let panelsHidden = !!(store.load('settings', {}) || {}).hidePanels;
   function showPanels() {
     for (const p of [pfdEl, ndEl, engEl]) p.style.visibility = panelsHidden ? 'hidden' : '';
@@ -90,6 +94,17 @@ export function createHud(root, { airports, coast } = {}) {
     poke();
   });
   showPanels();
+  pauseBtn.addEventListener('click', () => hud.onpause?.());
+  let pauseShown = 'r1';   // as made: Pause, shown
+  function setPause(paused, available = true) {
+    const k = (paused ? 'p' : 'r') + (available ? '1' : '0');
+    if (k === pauseShown) return;
+    pauseShown = k;
+    pauseBtn.hidden = !available;
+    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+    pauseBtn.title = paused ? 'Go on flying' : 'Pause the flight without the pause menu (Esc opens the menu)';
+    placeViews();   // the box's width changed: it may fit beside the FCU again, or not
+  }
 
   let shownView = '';
   function showView(id) {

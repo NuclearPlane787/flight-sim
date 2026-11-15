@@ -135,8 +135,28 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   ok(pauseBtns.includes('Save a copy') && pauseBtns.includes('Weight and fuel'), `the pause menu: ${pauseBtns.join(', ')}`);
   await shotMenu('v032-pause-menu');
   await page.click('#pause [data-act="weight"]'); await page.waitForTimeout(200);
-  w = await wins(); ok(w.load && !w.paused, 'Weight and fuel: the Weight tab, the game running');
+  // v0.5.4: the menu closes and the game stays paused (quietly) with the Weight tab open.
+  w = await wins(); ok(w.load && w.paused, `Weight and fuel: the Weight tab, the game still paused: ${JSON.stringify(w)}`);
+  ok(await page.$eval('#pause', (e) => e.hidden), 'and no pause menu over it');
+  ok((await page.$eval('.fsui-pause-btn', (b) => b.textContent.trim())) === 'Resume', 'the HUD\'s button reads Resume');
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  w = await wins(); ok(!w.load && w.paused && await page.$eval('#pause', (e) => e.hidden), `Esc closes the window, still paused: ${JSON.stringify(w)}`);
+
+  // v0.5.4: the Pause button beside Hide panels: a quiet pause, the L window works, Resume goes on.
+  await page.click('.fsui-pause-btn'); await page.waitForTimeout(150);
+  w = await wins(); ok(!w.paused && (await page.$eval('.fsui-pause-btn', (b) => b.textContent.trim())) === 'Pause', `Resume: flying again, the button reads Pause: ${JSON.stringify(w)}`);
+  await page.click('.fsui-pause-btn'); await page.waitForTimeout(150);
+  w = await wins(); ok(w.paused && await page.$eval('#pause', (e) => e.hidden), `Pause: paused, no pause menu: ${JSON.stringify(w)}`);
+  const zp = (await st()).z;
+  await page.keyboard.press('l'); await page.waitForTimeout(200);
+  w = await wins(); ok((w.sky || w.load) && w.paused, `L while paused: the window opens, still paused: ${JSON.stringify(w)}`);
+  await page.waitForTimeout(600);
+  ok(Math.abs((await st()).z - zp) < 1e-9, 'and nothing moves');
+  await page.keyboard.press('l'); await page.waitForTimeout(150);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  ok(!(await page.$eval('#pause', (e) => e.hidden)), 'Esc from the quiet pause: the pause menu');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  w = await wins(); ok(!w.paused, `Esc again: flying: ${JSON.stringify(w)}`);
 
   // ---- Duplicate ----
   // This flight as a scenario, as New scenario makes one, then loaded.

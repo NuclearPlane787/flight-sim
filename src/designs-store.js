@@ -13,12 +13,26 @@
 //   store.duplicate(id)          → { ok, design } named "Name (copy)" (scenarios.js's copyName) | { ok: false, error: 'missing' | 'quota' }
 //   store.rename(id, name)       → { ok, design } | { ok: false, error: 'name' | 'missing' | 'quota' }
 //   store.remove(id)             → true if it was there and the list was rewritten without it
+//   onDesignRename(fn)           → off()   v0.5.4: fn(id, name, store) after a saved design's name changes (rename(), or
+//                                          a save() of it under a new name: the editor's name then Save)
 
 import { normalizeDesign, newDesign, isDesign } from './sim/designs.js';
 import { TYPES } from './sim/types.js';
 import { cleanName, nameOk, copyName, newId } from './scenarios.js';
 
 export const DESIGNS_KEY = 'gamedump:flight-sim:designs';
+
+// v0.5.4: told when a saved design is renamed, whichever store did it (the warehouse makes its own); menu.js
+// passes it on to the scenarios that fly it (scenarios.js's renameDesign). A listener that throws is skipped.
+const renameListeners = new Set();
+export function onDesignRename(fn) {
+  if (typeof fn !== 'function') return () => {};
+  renameListeners.add(fn);
+  return () => { renameListeners.delete(fn); };
+}
+function told(id, name, store) {
+  for (const fn of [...renameListeners]) { try { fn(id, name, store); } catch (err) { console.error(err); } }
+}
 
 export class DesignStore {
   constructor(storage) { this.s = storage || null; }
@@ -44,8 +58,11 @@ export class DesignStore {
   save(design) {
     const d = normalizeDesign(design);
     const list = this.list(), i = list.findIndex((e) => e.id === d.id);
+    const was = i >= 0 ? list[i].name : null;   // v0.5.4: a new name for a saved design is a rename
     if (i >= 0) list[i] = d; else list.unshift(d);
-    return this.put(list) ? { ok: true, design: d } : { ok: false, error: 'quota' };
+    if (!this.put(list)) return { ok: false, error: 'quota' };
+    if (was != null && was !== d.name) told(d.id, d.name, this);
+    return { ok: true, design: d };
   }
 
   freeId() {

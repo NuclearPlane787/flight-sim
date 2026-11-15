@@ -24,7 +24,7 @@ import { createWidebodyLivery, finBoxFor, fuseUVFor } from './livery-widebody.js
 import { fuselageShape, curve } from './widebody-shape.js';
 import { boeingWindowOutlines } from './cockpit-windows-boeing.js';
 import { createLampGlows, flashAt } from './aircraft-lights.js';
-import { addEngine, addPod, engineAnimator } from './engine-model.js';
+import { addEngine, addPod, engineAnimator, podDropper } from './engine-model.js';
 import { engineOfType } from './sim/engine-types.js';
 import { baseShape as partsShapeOf } from './sim/parts-aero.js';
 
@@ -856,6 +856,7 @@ export function createWidebody(spec, opts = {}) {
   const slide = (name, d) => { const bn = B[name]; bn.position.copy(bn.userData.rest).addScaledVector(bn.userData.axis, d); };
   let wheelMain = 0, wheelNose = 0, clock = 0, cockpitView = false;
   const animateEngines = engineAnimator(engines, B, toModel);
+  const dropPods = podDropper(B);   // v0.5.4: the wing tanks, once dropped
   const TILT = spec.gear.tiltDeg * DEG, SPOILERS = WS.spoilers;
   const SP_NAMES = { L: SPOILERS.map((_, i) => `spoiler${i + 1}L`), R: SPOILERS.map((_, i) => `spoiler${i + 1}R`) };
   // How far the bogie hangs: fully when the strut's unloaded, flat once it takes weight.
@@ -870,6 +871,7 @@ export function createWidebody(spec, opts = {}) {
 
   function update(state = EMPTY, dt = 0) {
     clock += dt;
+    dropPods(state.tanksDropped);   // v0.5.4: dropped tanks (and their pylons) leave the wing
     const s = state.surfaces || EMPTY;
     rot('stab', SIGNS.stab * (s.stab || 0));
     rot('elevL', SIGNS.elevator * (s.elevator || 0));

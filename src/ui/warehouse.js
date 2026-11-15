@@ -128,6 +128,10 @@ export function readout(design, { airframe: afOn = airframeEnabled() } = {}) {
   if (!afOn) add('tail', 'Tail-strike angle', `${n.tailStrikeDeg.toFixed(1)}°`);
   add('drag', 'Drag the parts add', `${sgn(n.dragAddedM2, 2, ' m²')} (${pct(n.dragAddedM2 / (A.CD0 * A.S), 1)} of the airframe’s)`);
   if (afOn) airframeRows(n, add);
+  // v0.5.4: a swept wing's MMO (designs.js: Korn, within 0.70–0.95), shown only when the sweep moves it.
+  if (afOn && Number.isFinite(n.mmo) && Number.isFinite(B.n?.mmo) && Math.abs(n.mmo - B.n.mmo) > 5e-4) {
+    add('mmo', 'Maximum Mach (MMO)', `M${n.mmo.toFixed(2)} (the base’s M${B.n.mmo.toFixed(2)})`);
+  }
   const cg = n.cgShiftMac, cgA = Math.abs(cg), fwd = cg > 0;
   // v0.5.3 (the run): on the base's own airframe the CG against the base's still means what it did, so v0.5.2's row
   // stays (beside the static margin); on a changed airframe the static margin replaces it.
@@ -225,6 +229,43 @@ export function editPart(design, id, key, value) {
   return updatePart(d, id, { [key]: Number(value) });
 }
 
+// v0.5.4: the selected part's keys, KSP-style. ↑ ↓ forward and aft (an engine's or wing tank's dx by 0.1 m; a body
+// engine's, hold tank's or ballast's station x by 0.25 m); ← → out and in along the span (a wing or over-wing part's s
+// by 0.25 m); Shift+↑ ↓ an engine up and down (dz by 0.05 m); Q E turn an engine (yaw −1° / +1°, toe-in positive).
+// → { key: the field, by: the step } for this part, or null where the key does nothing to it.
+export function nudgeOf(p, key, shift = false) {
+  if (!p) return null;
+  const eng = p.kind === 'engine', span = (eng && (p.mount === 'wing' || p.mount === 'overwing')) || (p.kind === 'tank' && p.mount === 'wing');
+  const k = key.length === 1 ? key.toLowerCase() : key;
+  if (k === 'q' || k === 'e') return eng ? { key: 'yaw', by: k === 'e' ? 1 : -1 } : null;
+  if (k === 'ArrowUp' || k === 'ArrowDown') {
+    const sg = k === 'ArrowUp' ? 1 : -1;
+    if (shift) return eng ? { key: 'dz', by: 0.05 * sg } : null;
+    const station = (eng && p.mount === 'body') || (p.kind === 'tank' && p.mount === 'hold') || p.kind === 'ballast';
+    if (station) return { key: 'x', by: 0.25 * sg };
+    return eng || p.kind === 'tank' ? { key: 'dx', by: 0.1 * sg } : null;
+  }
+  if (k === 'ArrowLeft' || k === 'ArrowRight') return span && !shift ? { key: 's', by: k === 'ArrowLeft' ? 0.25 : -0.25 } : null;
+  return null;
+}
+export const NUDGE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'q', 'Q', 'e', 'E']);
+// v0.5.4: one key press on a part, through editPart() (its mirror twin follows, the limits hold). → the design (the
+// same values where the key does nothing to the part or it is at its limit).
+export function nudgePart(design, id, key, shift = false) {
+  const d = normalizeDesign(design), p = d.parts.find((q) => q.id === id), n = nudgeOf(p, key, shift);
+  if (!n) return d;
+  return editPart(d, id, n.key, Math.round(((p[n.key] || 0) + n.by) * 100) / 100);
+}
+// v0.5.4: the keys a part takes, for the help line under the view.
+export function nudgeHelp(p) {
+  const has = (k, s) => !!nudgeOf(p, k, s), out = [];
+  if (has('ArrowUp')) out.push('↑ ↓ forward and aft');
+  if (has('ArrowLeft')) out.push('← → out and in');
+  if (has('ArrowUp', true)) out.push('Shift+↑ ↓ up and down');
+  if (has('e')) out.push('Q E turn');
+  return out.join(' · ');
+}
+
 // Where a part dropped on the airframe goes. `hit`: the surface under the pointer (hitAirframe()); `what`: the part in
 // hand ({ kind, engine, over (an engine on the wing goes over it), mount (a tank's: wing or hold), kg }). The station is
 // snapped (0.25 m) and kept to the mount's range. → a part for addPart() (or its place, for updatePart()), or null where
@@ -309,7 +350,12 @@ function hitShape(x) {
 // A part's box (geometry frame: its centre and half-sizes) and shape, where it is: a nacelle, a teardrop tank, a box in
 // the hold. Hold tanks are sized by their fuel.
 export function partBox(base, p, af = null) {
-  if (p.kind === 'engine') { const { nacelle: n } = placeEngine(base, p, af); return { shape: 'cyl', x: n.x, y: n.y, z: n.z, hx: n.L / 2, hy: n.D / 2, hz: n.D / 2 }; }
+  if (p.kind === 'engine') {
+    const { nacelle: n, dir } = placeEngine(base, p, af), b = { shape: 'cyl', x: n.x, y: n.y, z: n.z, hx: n.L / 2, hy: n.D / 2, hz: n.D / 2 };
+    // v0.5.4: a turned engine's box turns with it (its axes: along the thrust line, across it, up)
+    if (dir) b.axes = engineAxes(p);
+    return b;
+  }
   if (p.kind === 'tank') {
     const t = placeTank(base, p, af);
     if (!t.hold) return { shape: 'pod', x: t.x, y: t.y, z: t.z, hx: t.L / 2, hy: t.D / 2, hz: t.D / 2 };
@@ -320,10 +366,23 @@ export function partBox(base, p, af = null) {
   return { shape: 'box', x: b.x, y: 0, z: b.z, hx: 0.5, hy: 0.5, hz: 0.35 };
 }
 export const partBoxes = (d) => d.parts.map((p) => ({ id: p.id, kind: p.kind, mount: p.mount, ...partBox(d.base, p, d.airframe) }));
-// Where a ray meets an axis-aligned box first (the distance along it), or null.
+// v0.5.4: an engine's own axes in the geometry frame, turned as placeEngine()'s dir is (yaw toe-in for its side, then
+// pitch): [the thrust line, across it (left), up]; they are orthonormal and right-handed.
+export function engineAxes(p) {
+  const yw = (p.yaw || 0) * DEG * (p.side || 1), pt = (p.pitch || 0) * DEG;
+  const cy = Math.cos(yw), sy = Math.sin(yw), cp = Math.cos(pt), sp = Math.sin(pt);
+  return [[cp * cy, -cp * sy, sp], [sy, cy, 0], [-cy * sp, sy * sp, cp]];
+}
+// Where a ray meets a box first (the distance along it), or null. v0.5.4: a box with axes (a turned engine's) is met in
+// its own frame: the ray turned into it, about the box's centre.
 export function rayBox(o, u, b) {
   let t0 = 0, t1 = Infinity;
-  const c = [b.x, b.y, b.z], h = [b.hx, b.hy, b.hz];
+  let c = [b.x, b.y, b.z];
+  const h = [b.hx, b.hy, b.hz];
+  if (b.axes) {
+    const r = [o[0] - c[0], o[1] - c[1], o[2] - c[2]], dot = (a, v) => a[0] * v[0] + a[1] * v[1] + a[2] * v[2], u0 = u;
+    o = b.axes.map((a) => dot(a, r)); u = b.axes.map((a) => dot(a, u0)); c = [0, 0, 0];
+  }
   for (let k = 0; k < 3; k++) {
     if (Math.abs(u[k]) < 1e-12) { if (Math.abs(o[k] - c[k]) > h[k]) return null; continue; }
     let ta = (c[k] - h[k] - o[k]) / u[k], tb = (c[k] + h[k] - o[k]) / u[k];
@@ -618,7 +677,13 @@ async function createView(host, onStatus) {
   })();
   MAT.com = new THREE.MeshBasicMaterial({ map: comTex, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, toneMapped: false });
   // geometry frame (x forward, y left, z up) → the model's (−y, z, −x)
-  const put = (o, b) => { o.position.set(-b.y, b.z, -b.x); o.scale.set(2 * b.hy, 2 * b.hz, 2 * b.hx); o.renderOrder = 10; fx.add(o); return o; };
+  // v0.5.4: a turned engine's box turns with it: its axes [along, across, up] as the model's columns (−across, up, −along).
+  const toM = (v) => new THREE.Vector3(-v[1], v[2], -v[0]), neg = (v) => v.map((q) => -q);
+  const put = (o, b) => {
+    o.position.set(-b.y, b.z, -b.x); o.scale.set(2 * b.hy, 2 * b.hz, 2 * b.hx);
+    if (b.axes) o.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(toM(neg(b.axes[1])), toM(b.axes[2]), toM(neg(b.axes[0]))));
+    o.renderOrder = 10; fx.add(o); return o;
+  };
   let overlay = null, polyGeo = [];
   function drawOverlay() {
     for (const c of fx.children.slice()) fx.remove(c);
@@ -1252,6 +1317,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     if (hadKeys && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
     renderNumbers();
     setMsg('', '');
+    help();   // v0.5.4: the keys line follows the part (a new mount takes other keys)
     // v0.5.3: while an airframe slider moves, the ghost outline shows the shape; the model follows on release, or live
     // when its rebuild is quick enough to keep 30 frames a second.
     if (!afDrag || (view && view.buildMs <= LIVE_BUILD_MS)) view?.setDesign(cur);
@@ -1265,6 +1331,16 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     cur = next;
     changed(full);
     return true;
+  }
+  // v0.5.4: a key press on the selected part is one undo step; a held key's repeats (the same key, the same part) share it.
+  let nudging = null;
+  function nudgeSel(key, shift, repeat) {
+    const next = nudgePart(cur, sel, key, shift), run = `${sel}|${key.toLowerCase()}|${shift}`;
+    if (repeat && nudging === run) {
+      if (JSON.stringify(next) !== JSON.stringify(cur)) { cur = next; changed(true); }
+      return;
+    }
+    nudging = commit(next) ? run : null;
   }
   function undo() { step(hist.undo(cur)); }
   function redo() { step(hist.redo(cur)); }
@@ -1363,7 +1439,11 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     }
     help();
   }
-  function help() { $('viewHelp').textContent = tool ? HELP.place : sel ? HELP.sel : selAf ? HELP.af : afOn ? HELP.idleAf : HELP.idle; }
+  // v0.5.4: a selected part's line ends with the keys it takes (nudgeHelp()).
+  function help() {
+    const keys = sel ? nudgeHelp(selPart()) : '';
+    $('viewHelp').textContent = tool ? HELP.place : sel ? (keys ? `${HELP.sel} · ${keys}` : HELP.sel) : selAf ? HELP.af : afOn ? HELP.idleAf : HELP.idle;
+  }
   function pickTool(key) {
     if (!key || key === toolKey) { tool = null; toolKey = null; }
     else { const e = PALETTE.find((p) => p.key === key); tool = e ? e.what : null; toolKey = e ? key : null; }
@@ -1597,7 +1677,11 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     if (page === 'editor' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); removeSel(); return; }
+      // v0.5.4: the selected part's keys (nudgePart()); a focused slider keeps its own arrows.
+      const arrows = e.key.startsWith('Arrow') && !!e.target.matches?.('input[type="range"]');
+      if (sel && NUDGE_KEYS.has(e.key) && !arrows) { e.preventDefault(); nudgeSel(e.key, e.shiftKey, e.repeat); return; }
     }
+    nudging = null;
     if (e.key !== 'Escape') return;
     e.preventDefault();
     back();
@@ -1611,7 +1695,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     } else if (confirming) { const id = confirming; confirming = null; renderList(id); }
     else api.close();
   }
-  el.addEventListener('keyup', (e) => e.stopPropagation());
+  el.addEventListener('keyup', (e) => { e.stopPropagation(); nudging = null; });
   for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu']) el.addEventListener(t, (e) => e.stopPropagation());
   el.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
   // A click on nothing keeps the keys here (else they'd go to the page under it).
