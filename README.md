@@ -9,7 +9,7 @@ Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), fl
 - parked aircraft and ground vehicles at the airports;
 - synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), muffled but clearly there in the cockpit, warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
-`Updates.md` lists what each version added; the game shows its version in the pause menu.
+`Updates.md` lists what each version added; the game shows its version in the Esc menu.
 
 ## Running it
 
@@ -25,9 +25,9 @@ It also runs from the hub's player (`play.html?game=flight-sim`). There's no bui
 
 The game opens on the main menu, over a still rendered from the game: Continue (the newest scenario), New scenario, Load scenario, Logbook, Settings, Controls, and Exit to Game Dump.
 
-**Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the pause menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename, duplicate and delete: a copy is the same moment, aircraft and load, so you can fly on from one point again and again (the pause menu's Save a copy makes one of the present moment, and you fly on in the original). v0.1.x's last flight becomes "Scenario 1", with its logbook.
+**Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the Esc menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename, duplicate and delete: a copy is the same moment, aircraft and load, so you can fly on from one point again and again (the Esc menu's Save a copy makes one of the present moment, and you fly on in the original). v0.1.x's last flight becomes "Scenario 1", with its logbook.
 
-New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the pause menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the pause menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
+New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the Esc menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the Esc menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
 
 **Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. On every clear night (v0.4.3) an aurora hangs low in the northern sky: green curtains with red tops and drifting rays, far off, behind any cloud; since v0.4.4 its folds open and close in slow waves and its shapes change as they go. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
@@ -39,7 +39,7 @@ From a gate:
 2. Release the parking brake (B).
 3. Follow the green-yellow line to the holding point.
 
-After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and logged with its scenario: the pause menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. Each part (vertical speed, peak g, the touchdown point, the centreline, bank, pitch, bounces, the approach path, the sink rate's swings) scores out of 10 and the total is their weighted average out of 100, held down by the worst part (v0.5.4): 100 still takes 10/10 in every part, but several middling flaws make a C or a D, not 0. The grass is an F, and a taxiway or a would-be crash 10 at most.
+After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and logged with its scenario: the Esc menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. Each part (vertical speed, peak g, the touchdown point, the centreline, bank, pitch, bounces, the approach path, the sink rate's swings) scores out of its share of the 100 (v0.5.5: vertical speed, the touchdown point and the centreline the largest shares, bank and pitch the smallest), so the rows add up to the total; what comes off after that is a row of its own: the worst part holds the total to 50 + 10 × its score out of 10, the grass to 49, and a taxiway or a would-be crash halves it. 100 still takes a perfect landing in every part, but several middling flaws make a C or a D, not 0. Bounces are counted from the main wheels leaving the ground (v0.5.5).
 
 Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout, and (v0.4.1) two for practice: **Indestructible**, so no crash ends a flight (the landing card says what would have crashed; v0.4.2: the crash screen can turn it on as it rewinds), and **Boeing auto-trim**, so the 787 and 777 hold their flight path hands off and flare as the A321 does (v0.4.2); on final the nose stops within about a degree of where you let go, and pitches at 2.2°/s at most outside the flare and a go-around (v0.4.3).
 
@@ -67,13 +67,13 @@ Sound starts with the first click or key, because browsers don't play audio befo
 | M | map (predicted path, jumps, waypoints, Change route, skip to final) |
 | 1 / 2 / 3 | cockpit (the captain's seat; 1 again swaps to the first officer's and back), nose, 3rd person view, as the switch at the top right does |
 | Hide panels (top left, v0.4.4) | hides the PFD, the ND and the engine panel for a wide view (the FCU or MCP and the view switch stay); Show panels brings them back, and the choice is kept |
-| Pause (beside it, v0.5.4) | pauses without the pause menu, so the L window's tabs (the time of day, the weight and fuel, the weather) work while the flight stands still; Resume goes on. Esc from it opens the pause menu |
+| Pause (beside it, v0.5.4) | the only pause (v0.5.5): Pause stops the flight and Resume goes on. While paused the views and the camera move, and the thrust levers (R and F; the engine panel's command ring follows), flaps, gear, speedbrake, the autopilot and the FCU or MCP take their settings, which act on Resume. A hidden page pauses too |
 | V | next view (Nose, 3rd person, Captain, First Officer) |
 | P | pushback start / stop |
-| Esc | pause menu (Resume, Save, Save a copy, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Weight and fuel, Exit to menu) |
-| L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory); its Weight tab: the passengers, cargo and fuel, and (v0.5.4) Drop wing tanks for a design with wing tanks, in the air, once: they go with the fuel still in them. L opens the tab last shown; the pause menu's Weight and fuel and Time of day open it with the game still paused |
-| F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the pause menu) |
-| T | rewind 30 s (from the pause menu or after a crash) |
+| Esc | the menu (v0.5.5: it doesn't pause; the flight goes on under it and its keys wait): Close, Save, Save a copy, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Weight and fuel, Exit to menu |
+| L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory); its Weight tab: the passengers, cargo and fuel, and (v0.5.4) Drop wing tanks for a design with wing tanks, in the air, once: they go with the fuel still in them. L opens the tab last shown; the menu's Weight and fuel and Time of day open it, the pause as it was |
+| F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the Esc menu) |
+| T | rewind 30 s (paused, with the menu open, or after a crash) |
 | drag on the view (one finger) / pinch / double-click | look around, or orbit in 3rd person / zoom / recentre; a two-finger swipe also looks or orbits |
 
 The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min). Esc, a click elsewhere or a flying key closes it unchanged. The strip also has the AP1 and A/THR buttons and the Normal/Alternate law switch.
@@ -197,7 +197,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/ui/load-window.js` | the Weight window, the Sky window's second tab (v0.3.2) |
 | `src/world/sky.js` | the sky by day, twilight and night (stars, Milky Way, Moon, the aurora), and the light, haze and fog following the sun |
 | `src/world/citylights.js`, `src/world/taxilights.js`, `src/aircraft-lights.js` | the city lights, the taxiway lights and stop bars, the A321's lights by phase |
-| `src/score.js`, `src/store.js` | the landing score (v0.5.4: each part round(10 × e^(−cost/k)) out of 10, the weighted average × 10, capped by the worst part, the grass, a taxiway or a would-be crash; the approach included); localStorage under `gamedump:flight-sim:` |
+| `src/score.js`, `src/store.js` | the landing score (v0.5.4: each part round(10 × e^(−cost/k)) out of 10; v0.5.5: its points out of its share of the 100 (`shareOut()`, `rowPoints()`), the total their sum, then the penalty rows: the worst part's cap, the grass, a taxiway or a would-be crash halving it; bounces from the wheels, `bounceTracker()`; the approach included); localStorage under `gamedump:flight-sim:` |
 | `src/ground/` | the taxi graph and routing, pushback, the gate flow (gate starts, routes out and in) |
 | `src/world/apron*.js`, `src/world/traffic*.js`, `src/world/liveries-other.js` | taxiways, aprons, stands, jet bridges and terminals; parked aircraft (made-up airlines) and ground vehicles |
 | `src/world/taxisigns.js` | where the taxiway and runway signs stand and what they say, from the taxi graph and the runways (v0.4.1; exit and distance remaining signs, v0.4.2; `apron.js` draws them) |
@@ -208,7 +208,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `tests/*.test.mjs` | unit tests: `node --test games/flight-sim/tests/*.test.mjs` |
 | `tests/browser-*.mjs` | Chrome checks with Playwright. `browser-e2e.mjs` is the Gimpo-to-Jeju flight: take-off, AP, time compression, a jump, skip to final, a landing, the score and the taxi-in route. `browser-gate.mjs` is a gate start, pushback and taxi to the holding point. Also: `browser-cpu.mjs` (nothing runs while paused or hidden), `browser-boot.mjs` (setup, keys, the hub player), `browser-rewind.mjs`, `browser-shots.mjs` (screenshots with fps, triangles and draw calls) and `audio-render.mjs` (the synth rendered offline and measured) |
 | `tests/e2e-controller.js` | the test-only take-off and landing controller the end-to-end flight uses |
-| `tests/cloud/` | headless checks for a cloud container without a GPU (SwiftShader): stills of the 3D view, landings with the score's parts, the HUD and the pause menu (`HANDOFF.md` says how) |
+| `tests/cloud/` | headless checks for a cloud container without a GPU (SwiftShader): stills of the 3D view, landings with the score's parts, the HUD and the Esc menu (`HANDOFF.md` says how) |
 
 Every heavy dev command runs through the guard, for example:
 

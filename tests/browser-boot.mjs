@@ -65,7 +65,8 @@ try {
   await page.waitForTimeout(300);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
-  check('Esc opens the pause menu', await page.evaluate(() => window.__fs.paused && !document.getElementById('pause').hidden));
+  // v0.5.5: Esc opens the menu without pausing (only the HUD's Pause button pauses).
+  check('Esc opens the menu, not a pause', await page.evaluate(() => !window.__fs.paused && !document.getElementById('pause').hidden));
   await page.screenshot({ path: path.join(OUT, 'boot-2-pause.png') });
   await page.keyboard.press('Escape');
   check('no console errors (game)', errors.length === 0, errors.slice(0, 4).join(' || '));

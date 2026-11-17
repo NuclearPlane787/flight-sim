@@ -121,6 +121,28 @@ test('bars: filled to the score out of 10; parts from before v0.5.4 read back fr
   assert.match(row({ name: 'Bank', value: 0.4, unit: '°', penalty: 0 }), /width:100%[\s\S]*>0</);
 });
 
+// v0.5.5: a part's points out of its share of the 100, the bar filled to them; what came off after the parts is a row of
+// its own, its rule where the bar would be and what it took.
+test('bars (v0.5.5): points out of the share; the rows of what came off', () => {
+  const row = (p) => partsHtml([p]);
+  const vs = row({ name: 'Vertical speed', value: 587, unit: 'ft/min', score: 3, weight: 3, share: 22, points: 7, penalty: 15 });
+  assert.match(vs, />7\/22</);
+  assert.match(vs, /width:31\.8%;background:#ff3b3b/);   // 7/22, coloured by its 3/10
+  assert.match(row({ name: 'Bank', value: 0.4, unit: '°', score: 10, weight: 1, share: 7, points: 7, penalty: 0 }), /width:100%;background:#3cff4e[\s\S]*>7\/7</);
+  const crash = row({ kind: 'penalty', name: 'Would have crashed', value: 'nose gear', unit: '', rule: 'half', minus: 16, penalty: 16 });
+  assert.match(crash, /class="fssc-part pen"/);
+  assert.match(crash, />nose gear</);
+  assert.match(crash, /class="rule">half</);
+  assert.match(crash, /color:#ff3b3b">−16</);
+  assert.doesNotMatch(crash, /class="bar"/);
+  assert.match(row({ kind: 'penalty', name: 'On the grass', value: 'yes', unit: '', rule: '49 at most', minus: 0, penalty: 0 }), /class="rule">49 at most<[\s\S]*>0</);
+  // the verdict reads the rows of what came off by their names, as before
+  assert.match(verdict({ points: 15, grade: 'F', parts: [{ name: 'Vertical speed', value: 587, score: 3, share: 22, points: 7 },
+    { kind: 'penalty', name: 'Would have crashed', value: 'nose gear', rule: 'half', minus: 16, penalty: 16 }] }), /that was a crash \(nose gear\)/);
+  assert.equal(verdict({ points: 40, grade: 'F', parts: [{ name: 'Vertical speed', value: 200, score: 10, share: 30, points: 30 },
+    { kind: 'penalty', name: 'On a runway', value: 'no', rule: 'half', minus: 40, penalty: 40 }] }), "That wasn't a runway.");
+});
+
 test('penalty bars (before v0.5.4), touchdown text, colours, escaping', () => {
   assert.equal(penaltyFrac(0), 0);
   assert.equal(penaltyFrac(15), 0.5);

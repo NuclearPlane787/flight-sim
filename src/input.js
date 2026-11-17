@@ -93,7 +93,16 @@ export function createInput(target = window) {
     // v0.3.0: the Boeings' pitch trim, held: Y nose down, H nose up (the sim ignores it on the A321).
     controls.trim = pair('KeyY', 'KeyH');
 
-    // The thrust lever moves while R or F is held and pauses at each detent it crosses.
+    leverStep(dt, controls, onGround, athrDriving);
+
+    const brake = down.has('Space') ? 1 : 0;
+    controls.brakeL = brake;
+    controls.brakeR = brake;
+  }
+
+  // The thrust lever moves while R or F is held and pauses at each detent it crosses. v0.5.5: on its own too, while
+  // the game is paused (main.js: the lever moves, the sim doesn't).
+  function leverStep(dt, controls, onGround, athrDriving = false) {
     const dir = pair('KeyF', 'KeyR');
     if (dir === 0) press = 0;
     else if (press === 0) press = athrDriving ? 2 : 1;
@@ -127,14 +136,12 @@ export function createInput(target = window) {
     }
     if (!onGround && lever < 0) lever = 0;
     controls.thrust = lever;
-
-    const brake = down.has('Space') ? 1 : 0;
-    controls.brakeL = brake;
-    controls.brakeR = brake;
   }
 
   return {
     update,
+    updateLever: leverStep,   // v0.5.5: the thrust lever alone (while paused)
+    leverHeld: () => down.has('KeyR') || down.has('KeyF'),
     axes,
     onAction(fn) { listeners.push(fn); },
     setDetents(list) { detents = list || DETENTS; },

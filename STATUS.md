@@ -2808,3 +2808,39 @@ Built from 02:05 to about 02:45 KST by five subagents, each owning its files (th
 `src/version.js` (`Flight Sim v0.5.4 · CL#261116`), `Updates.md`, `README.md` (the Pause button, the Weight tab, the keys, the score), `ROADMAP.md` (the v0.5.4 row, "Found while building v0.5.4", v0.5.3's and v0.5.2's items struck), `AGENTS.md`'s State, `HANDOFF.md` (where you start, the versions table, the code map), this entry.
 
 **Next:** Shane pushes v0.5.3 first if he hasn't, then `sh tools/push.sh v0.5.4` from `games/flight-sim`, then Cmd+Shift+R in the app.
+
+## 2026-11-18, 00:40 KST: v0.5.5, Shane's list after v0.5.4 (Cowork session)
+
+**Shane** (after pushing v0.5.4, `c466026`), with a landing card of a 777 that would have crashed (nose gear: 587 ft/min, 2.33 g, +982 m, 8.4 m, F 10): "1. I think the menu that opens when I press esc should not be called paused at all. That is, pausing/resuming is completely separate from that menu. So rename the blue 'resume' to something else. Pause/resume is only controlled by that top left button. Esc also pauses at the time, so only have it open the menu and not pause. 2. Allow the camera, and some settings to move while changes. Allow me to change between the three camera modes, as well as moving them freely. Also allow things like the 'predicted' engine thrust setting to change (the little dot around the meter that the thrust setting tries to match), of course the real thrust only changes once I unpause. Same with flaps, gear, and the top panel settings, so that they immediately respond the moment I unpause. 3. I did a bad landing, and I see that the categories only sum to 80 points? Where are the other twenty? That landing scores 29/100 summing the numbers, but the real score being 10/100 seems a little harsh. Maybe just subtract points, say 15, or cut the score in half when a crash would have happened. 4. I did bounce once very clearly in that landing but the report showed 0 bounces. Maybe how the game detects bounces should be changed a little?" And, for later: v0.5.6, key bindings per aircraft and the flaps on − and = (ROADMAP).
+
+Built from 00:42 to 01:05 KST by two subagents (the menu and the pause; the score and the bounces), then reviewed and joined here.
+
+### What changed
+
+1. **The Esc menu doesn't pause.** `setMenu()` opens and closes it; only the HUD's button (and a hidden page, quietly, and the setup and main menu's own flows) pause. It's titled Menu and its blue button reads Close (the element and its `data-act` values kept for the checks). The flight runs under it with its keys off (modal; the sticks centre); opening it saves. Time of day, Weight and fuel and Settings → Sky close it and leave the pause as it was; Rewind (its button or T) works paused, crashed or from it, and keeps the pause; New flight cancelled goes back to the pause and menu as they were.
+2. **While paused:** every flight action works (views, gear, flaps, speedbrake, the autopilot and A/THR, the FCU and MCP), the camera drags and zooms, and a frame is drawn after any input (`pausedKick()`). Holding R or F moves the thrust lever at its rate (`input.updateLever()` in a paused-only frame loop), and `sim.previewControls()` puts the lever's detent and N1 target (the engine panel's ring), the flap configuration, the parking brake and the law into the state without stepping. Gear, flaps and N1 move only after Resume (the check: N1 66.9 → 100, flaps 5° → 0° after Resume). Gear, flaps and speedbrake set while paused say so in a toast.
+3. **The card adds up.** Each category's points are out of its share of 100 by weight (whole shares summing to 100 over the categories flown: about 22 for vertical speed, 21 for the aiming point and the centreline, 11 for peak g and bounces, 7 for bank and pitch, without an approach), points = round(share × score/10), never the full share below 10/10. The total is their sum; then the penalty rows, each with what it took off: held down by the worst category (50 + 10 × its score), the grass (49 at most), off a runway (half) and a would-be crash (half; it was 10 at most). Shane's card: the rows sum to 31, halved to 15 (F). His v0.1.3 reference landing 81 (B); after a steady approach 91; middling 60 (D); firm and long 36; 900 ft/min alone 50; everything bad 10; short onto the grass 49. v0.5.4's cards (out of 10) and older ones (penalties) render as they were.
+4. **Bounces from the wheels** (`bounceTracker()` in `score.js`, the sim untouched): any hop after the first main-wheel contact that rises 0.15 m, or 0.03 m for 0.2 s, starting within 8 s of the last arrival, counts once, even with the nose wheel still on; a nose wheel first while still descending, the rollout's bumps and a go-around don't. The sim's own 'bounce' event (it needed 0.5 s with no wheel on the ground) is no longer counted. Shane's flat landing couldn't be reproduced with the real sim quickly, so a synthetic stream covers it; a real 777 bounce counts once, as the sim's event did.
+
+### Decisions
+
+- **The menu's keys are off while it shows** (it's modal), and the flight goes on under it.
+- **A would-be crash halves** (Shane offered 15 off or half): a near-perfect landing that would have crashed is still an F, and only a landing perfect in every category would reach 50.
+- **The categories' shares follow the categories flown**, so they always add up to 100 (without the approach, its 19 or so go to the others).
+- **Not done:** Shane's v0.5.6 list (planned in ROADMAP, with Claude's additions marked as unconfirmed).
+
+### Checked
+
+- 890 unit tests in the container (the golden flights exact) and on the Mac through the guard.
+- `tests/cloud/weight-copy.cjs` updated and passing (60 checks): Esc opens the menu with the game running, Close, the Pause button, L, view 2, gear and flap keys and a held thrust key while paused (the controls change, the positions and N1 wait), Resume.
+- The new card rendered: Shane's landing (31, half off, F 15) and a 600 ft/min one (C 77).
+
+### Not checked
+
+- On the Mac's GPU or by hand. `browser-boot.mjs` and `browser-cpu.mjs` (Mac-only) were updated for the menu that doesn't pause but not run; `browser-scenarios.mjs` uses Esc only to open the menu and should pass as it is.
+
+### Written up
+
+`src/version.js` (`Flight Sim v0.5.5 · CL#261118`), `Updates.md`, `README.md` (the menu, the pause, T, the score), `ROADMAP.md` (the v0.5.5 row, v0.5.6 planned), `AGENTS.md`'s State, `HANDOFF.md` (where you start, the versions table, the code map), this entry.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.5.5` from `games/flight-sim`, then Cmd+Shift+R in the app; then v0.5.6 (keys) from ROADMAP.

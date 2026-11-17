@@ -384,6 +384,7 @@ async function boot() {
     callouts.reset();
     ui.crash.hidden = true; ui.score.hidden = true;
     setTimeScale(1);
+    setMenu(false);   // v0.5.5
     setPaused(false);
   }
 
@@ -391,6 +392,8 @@ async function boot() {
   // replaces the scenario's flight. Parked at a stand after arriving, it starts from there.
   async function newFlight() {
     closeLWindow();
+    const was = { paused, menu: menuOpen };   // v0.5.5: a cancel goes back to these
+    setMenu(false);
     setPaused(true, true);
     input.setEnabled(false);
     const last = plan || store.load('lastflight', null);
@@ -404,7 +407,7 @@ async function boot() {
       input.setEnabled(true);
       // Cancelled after a crash: back to the crash panel (the flight can't go on).
       if (crashed || sim.state.crashed) { crashed = true; ui.crash.hidden = false; return; }
-      if (plan) setPaused(true);
+      if (plan) { setPaused(was.paused); if (was.menu) setMenu(true); }   // v0.5.5
       return;
     }
     input.setEnabled(true);
@@ -533,8 +536,9 @@ async function boot() {
   }
   function exitToMenu() {
     saveNow('exit to menu');
+    setMenu(false);
     setPaused(true, true);
-    ui.pause.hidden = true; ui.crash.hidden = true; ui.score.hidden = true;
+    ui.crash.hidden = true; ui.score.hidden = true;
     if (map.isOpen) map.close();
     showMenu();
   }
@@ -688,26 +692,69 @@ async function boot() {
     setTimeScale(1);
     scorer.reset(true); // the approach flown before the rewound-to moment still counts
     if (dest) scorer.setRunway(dest.end, dest.other);
-    setPaused(false);
+    // v0.5.5: the menu closes on the rewound flight; the pause stays as it was (only the HUD's button changes it).
+    setMenu(false);
+    const keep = paused;
+    setPaused(keep);
+    if (keep) { sim.previewControls?.(); renderOnce(); }
   }
 
   // ---- Pause ----
-  function setPaused(v, quiet = false) {
+  // v0.5.5 (Shane: "pausing/resuming is completely separate from that menu ... Pause/resume is only controlled by
+  // that top left button"): the pause stops the sim and nothing else. It's set by the HUD's Pause button, the page
+  // going hidden, and the flows that need it (the setup, the main menu). It never shows the menu (setMenu() does);
+  // `quiet` is kept for the callers and the checks, and means nothing now.
+  function setPaused(v, quiet = false) {   // eslint-disable-line no-unused-vars
     if (v && !paused && !inMenu) saveNow('pause');
     paused = v;
     // Paused, the audio thread stops too (the CPU rules); it resumes only if sound had started.
     if (synth && audioStarted) { if (v) synth.stop(); else synth.start(); }
-    ui.pause.hidden = !v || quiet || crashed;
-    if (v && !ui.pause.hidden) { const ps = $('pause-scenario'); if (ps) ps.textContent = current ? current.name : ''; }
     input.dropAll();
     syncPauseBtn();
     if (!v) { last = performance.now(); requestFrame(); }
   }
+  // v0.5.5: the menu Esc opens (it was the pause menu): the flight goes on under it (unless the HUD's button paused
+  // it), with the flight's keys off while it shows (Esc closes it). Opening it saves, as the pause did.
+  let menuOpen = false;
+  function setMenu(v) {
+    v = !!v && !crashed && !inMenu;
+    if (v === menuOpen) { ui.pause.hidden = !v; return; }
+    menuOpen = v;
+    ui.pause.hidden = !v;
+    if (v) {
+      saveNow('menu');
+      const ps = $('pause-scenario'); if (ps) ps.textContent = current ? current.name : '';
+    }
+    input.dropAll();
+  }
+  // v0.5.5 (Shane: "Allow the camera, and some settings to move while [paused] ... so that they immediately respond
+  // the moment I unpause"): while paused nothing steps, but what you do shows at once: a frame is drawn after any
+  // click, drag, wheel or key (the views, the camera, the FCU's or MCP's knobs, the levers), and while R or F is held
+  // the thrust lever moves at its rate (the engine panel's ring follows; the engines wait for Resume).
+  let pausedRaf = 0, pausedLast = 0;
+  function pausedKick() {
+    if (!paused || inMenu || !plan || pausedRaf) return;
+    pausedLast = performance.now();
+    pausedRaf = requestAnimationFrame(pausedFrame);
+  }
+  function pausedFrame(now) {
+    pausedRaf = 0;
+    if (!paused || inMenu || !plan) return;
+    const dt = Math.min(0.1, Math.max(0, (now - pausedLast) / 1000));
+    pausedLast = now;
+    const held = !menuOpen && !crashed && input.leverHeld();
+    if (held) input.updateLever(dt, sim.controls, sim.state.onGround, sim.state.athrActive);
+    sim.previewControls?.();
+    renderOnce();
+    if (held) pausedRaf = requestAnimationFrame(pausedFrame);
+  }
+  for (const t of ['pointerdown', 'pointerup', 'click', 'dblclick', 'wheel', 'keydown', 'keyup']) document.addEventListener(t, pausedKick, true);
+  document.addEventListener('pointermove', (e) => { if (e.buttons) pausedKick(); }, true);
   // v0.5.4: the HUD's Pause button reads Resume whenever the game is paused (however it was), and is off
   // after a crash and in the menus (the HUD is hidden there anyway).
   function syncPauseBtn() { hud.setPause?.(paused, !!plan && !inMenu && !crashed && !sim.state.crashed); }
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && !paused) setPaused(true);
+    if (document.hidden && !paused) setPaused(true);   // v0.5.5: no menu: the HUD's button reads Resume
     else if (document.hidden && !inMenu) saveNow('hidden');
   });
   // Closing or leaving the page saves (localStorage is synchronous, so this completes).
@@ -720,17 +767,16 @@ async function boot() {
     if (a === 'pause') {
       if (map.isOpen) { map.close(); return; }
       if (crashed) return;
-      // v0.5.4: paused quietly (the Pause button, or the menu's Weight and fuel or Time of day), Esc opens
-      // the pause menu; from the menu it resumes, as before.
-      setPaused(paused && ui.pause.hidden ? true : !paused);
+      setMenu(!menuOpen);   // v0.5.5: Esc opens and closes the menu; it doesn't pause
       return;
     }
-    if (a === 'rewind') { if (paused || crashed) rewindNow(); return; }
-    if (paused && a !== 'perf') return;
+    if (a === 'rewind') { if (paused || crashed || menuOpen) rewindNow(); return; }
+    // v0.5.5: the menu is modal (the flight's keys wait); paused, the keys work and show at once (pausedKick()).
+    if (menuOpen && a !== 'perf') return;
     switch (a) {
       case 'parkingBrake': c.parkingBrake = !c.parkingBrake; toast(c.parkingBrake ? 'Parking brake set' : 'Parking brake released', 1200); break;
-      case 'gear': c.gearDown = !c.gearDown; break;
-      case 'speedbrake': c.speedbrake = c.speedbrake > 0 ? 0 : 1; break;
+      case 'gear': c.gearDown = !c.gearDown; if (paused) toast(c.gearDown ? 'Gear down (it moves when you resume)' : 'Gear up (it moves when you resume)', 1500); break;
+      case 'speedbrake': c.speedbrake = c.speedbrake > 0 ? 0 : 1; if (paused) toast(c.speedbrake > 0 ? 'Speed brakes out' : 'Speed brakes in', 1200); break;
       case 'spoilersArm': c.spoilersArmed = !c.spoilersArmed; toast(c.spoilersArmed ? 'Ground spoilers armed' : 'Ground spoilers disarmed', 1200); break;
       case 'ap': if (ap.ap) ap.disconnectAp('pilot'); else ap.engageAp(); break;
       case 'toga': ap.toga?.(); break;
@@ -754,8 +800,12 @@ async function boot() {
           const n = sim.type.data.FLAP_LEVER.length;
           c.flapLever = Math.max(0, Math.min(n - 1, (c.flapLever | 0) + (a === 'flapDown' ? 1 : -1)));
           toast('Flaps ' + sim.type.data.FLAP_LEVER[c.flapLever], 900);
-        } else if (a.startsWith('flap')) c.flapLever = sim.type.data.FLAP_KEYS[Number(a.slice(4))];
+        } else if (a.startsWith('flap')) {
+          c.flapLever = sim.type.data.FLAP_KEYS[Number(a.slice(4))];
+          if (paused) toast('Flaps ' + sim.type.data.FLAP_LEVER[c.flapLever], 900);
+        }
     }
+    if (paused) { sim.previewControls?.(); pausedKick(); }   // v0.5.5
   });
 
   const scoreCard = createScorePanel(ui.score, { onnewflight: () => { ui.crash.hidden = true; crashed = false; newFlight(); } });
@@ -778,16 +828,16 @@ async function boot() {
     onPerf: (on) => setPerf(on),
     ...(skyWinMod?.createSkyWindow ? { onSky: () => {
       if (inMenu || !plan) { toast('The Sky window opens in flight: start or load a scenario'); return; }
-      setPaused(true, true); openSky();   // v0.5.4: still paused, quietly (the menu closes; the HUD's button resumes)
+      setMenu(false); openSky();   // v0.5.5: the pause as it was
     } } : {}),
   });
   const controlsPage = createControlsPage($('pages-root'), { sky: !!skyWinMod?.createSkyWindow });
-  for (const pg of [settingsPage, controlsPage]) pg.onclose = () => { if (!inMenu && !paused) input.setEnabled(true); };
+  for (const pg of [settingsPage, controlsPage]) pg.onclose = () => { if (!inMenu) input.setEnabled(true); };
 
   for (const btn of document.querySelectorAll('[data-act]')) {
     btn.addEventListener('click', () => {
       const act = btn.dataset.act;
-      if (act === 'resume') setPaused(false);
+      if (act === 'resume') setMenu(false);   // v0.5.5: "Close": the menu only (the pause is the HUD's button)
       else if (act === 'save') {
         if (!scenarios) toast('Browser storage is off: flying without saving');
         else if (!current) toast('This flight isn’t a scenario (a test start): nothing to save to');
@@ -795,7 +845,7 @@ async function boot() {
         else if (saveNow('save')) toast(`Saved “${current.name}”`, 1500);
       }
       else if (act === 'copy') saveCopy();
-      else if (act === 'weight') { setPaused(true, true); showLTab('load'); }   // v0.5.4: still paused, quietly
+      else if (act === 'weight') { setMenu(false); showLTab('load'); }   // v0.5.5: the pause as it was
       else if (act === 'rewind') rewindNow();
       // v0.4.2: the crash screen's way to practise on: Indestructible on, then the rewind.
       else if (act === 'rewind-ind') { setFlightOpt('indestructible', true); rewindNow(); toast('Indestructible is on: no crash ends the flight (Settings turns it off)', 3500); }
@@ -804,7 +854,7 @@ async function boot() {
       else if (act === 'logbook') openLogbook(true);
       else if (act === 'settings') settingsPage.open();
       else if (act === 'controls') controlsPage.open();
-      else if (act === 'sky') { setPaused(true, true); openSky(); }   // v0.5.4: still paused, quietly
+      else if (act === 'sky') { setMenu(false); openSky(); }   // v0.5.5: the pause as it was
       else if (act === 'menu') exitToMenu();
     });
   }
@@ -889,7 +939,7 @@ async function boot() {
         crashed = true;
         ui.crashReason.textContent = e.reason || sim.state.crashed || 'The aircraft was destroyed.';
         ui.crash.hidden = false;
-        ui.pause.hidden = true;
+        setMenu(false);   // v0.5.5
         syncPauseBtn();   // v0.5.4
         setTimeScale(1);
         callouts.reset();
@@ -987,6 +1037,7 @@ async function boot() {
     last = now;
 
     const s = sim.state;
+    if (menuOpen) input.dropAll();   // v0.5.5: under the menu the flight goes on, without the keys (sticks centre)
     input.update(dt, sim.controls, s.onGround, s.athrActive);   // the A/THR moves the lever (v0.2.2)
     if (window.__fsController) window.__fsController(sim, dt); // test-only landing controller
     if (crashed) { render(dt); cancelAnimationFrame(raf); raf = 0; return; } // the crash panel waits; rewind/restart restart the loop
@@ -1305,6 +1356,7 @@ async function boot() {
     get timeScale() { return timeScale; },
     get achievedScale() { return achievedScale; },
     get paused() { return paused; },
+    get menuOpen() { return menuOpen; }, setMenu,   // v0.5.5
     get crashed() { return crashed; },
     get dest() { return dest; },
     startFlight, skipToFinal, jumpTo, changeRoute, selectView, scenarios, clock, captureState, applyState, saveNow, loadScenario, exitToMenu, newScenario,

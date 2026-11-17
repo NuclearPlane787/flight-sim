@@ -71,10 +71,10 @@ export function createHud(root, { airports, coast } = {}) {
   const panelsBox = document.createElement('div');
   panelsBox.className = 'fsui-panels-box fsui-panel';
   // v0.5.4 (Shane: "have the pause function be a button next to 'hide panel'"): Pause, beside it and the same look,
-  // pauses quietly (no pause menu), so the L window's tabs can be used while the flight stands still. It reads
-  // Resume whenever the game is paused (by it, by Esc's menu or by the page being hidden), and it's hidden after
-  // a crash. Clicks go to main.js (hud.onpause), which says how things stand with hud.setPause(paused, available).
-  panelsBox.innerHTML = '<button class="fsui-panels-btn" tabindex="-1"></button><button class="fsui-pause-btn" tabindex="-1" title="Pause the flight without the pause menu (Esc opens the menu)">Pause</button>';
+  // so the L window's tabs can be used while the flight stands still. v0.5.5: it's the only pause (Esc's menu doesn't
+  // pause any more). It reads Resume whenever the game is paused (by it or by the page being hidden), and it's hidden
+  // after a crash. Clicks go to main.js (hud.onpause), which says how things stand with hud.setPause(paused, available).
+  panelsBox.innerHTML = '<button class="fsui-panels-btn" tabindex="-1"></button><button class="fsui-pause-btn" tabindex="-1" title="Pause the flight (the views, the camera, the levers and the panel still work; Esc opens the menu, which doesn’t pause)">Pause</button>';
   el.appendChild(panelsBox);
   shield(panelsBox);
   const panelsBtn = panelsBox.querySelector('.fsui-panels-btn'), pauseBtn = panelsBox.querySelector('.fsui-pause-btn');
@@ -102,7 +102,7 @@ export function createHud(root, { airports, coast } = {}) {
     pauseShown = k;
     pauseBtn.hidden = !available;
     pauseBtn.textContent = paused ? 'Resume' : 'Pause';
-    pauseBtn.title = paused ? 'Go on flying' : 'Pause the flight without the pause menu (Esc opens the menu)';
+    pauseBtn.title = paused ? 'Go on flying' : 'Pause the flight (the views, the camera, the levers and the panel still work; Esc opens the menu, which doesn\u2019t pause)';
     placeViews();   // the box's width changed: it may fit beside the FCU again, or not
   }
 

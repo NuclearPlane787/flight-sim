@@ -18,7 +18,8 @@ Your last job is to rewrite this section for the session after you (v0.7.0 in th
 
 ### Where you start
 
-- **v0.5.3 and v0.5.4** were written up and ready to push when this was last updated (2026-11-16: v0.5.4 is Shane's list after v0.5.3; v0.5.2 is pushed, `31c1fb3`). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **v0.5.4 is pushed** (`c466026`), and **v0.5.5 was written up and ready to push** when this was last updated (2026-11-18: Shane's list after v0.5.4). v0.5.6 (keys) is planned in ROADMAP. Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
+- **Passing at v0.5.5:** 890 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `weight-copy.cjs` (60 checks, with the menu's and the pause's new behaviour). Not on the Mac's GPU; `browser-boot.mjs` and `browser-cpu.mjs` were updated for the menu that doesn't pause but not run.
 - **Passing at v0.5.4:** 885 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `weight-copy.cjs` (with the Pause button's checks), `v051-hangar.cjs`, `v052-editor.cjs` (its Fly click now waits up to 120 s: SwiftShader takes about 34 s to start the flight) and `v044-hud.cjs` for the A321 at three widths and the 777 at 1440 (it ran out of time after that) (`STATUS.md`'s v0.5.4 entry). Not on the Mac's GPU.
 - **Passing at v0.5.3:**
   - 850 unit tests (`node --test tests/*.test.mjs`, about 24 s on the Mac through the guard), the three golden flights among them;
@@ -111,7 +112,8 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | v0.5.1 | The warehouse is a hangar: steel frames and roof trusses, skylights and lamps, offices, racks, benches and a spare engine along the walls, sliding doors part open onto the apron, a painted floor with the stand's lead-in and a stop bar per type, people walking; the camera stays inside | yes |
 | v0.5.2 | Parts anywhere, KSP's way: engines under or over the wing, on the rear fuselage or in the tail (up to 8, mixed types, nudged and turned), wing tanks, hold tanks and ballast, each with its mass, drag and thrust line; the editor's palette, ghost, mirror, select, drag, undo and redo, the CoM and CoT, new checks, Fly it | yes (`31c1fb3`) |
 | v0.5.3 | The airframe from parts: each wing side's span, chord, sweep and dihedral, the tailplane's and fin's size and the fuselage's plugs in the warehouse, the handling from the parts (strips with their own airflow, one rigid body), the model following, the structure's weight, new checks (static margin, Cnβ, stall speed, nose-wheel load, code letter), self-tuning yaw gains, stands that fit, the A321's sharklets as a switch | not yet when this was written: `sh tools/push.sh v0.5.3` |
-| v0.5.4 | Shane's list after v0.5.3: a Pause button beside Hide panels (the L window works while paused), a renamed design renamed in its scenarios, landings out of 10 per part (a weighted average, the worst part capping it), sweep moving the coffin corner's top and MMO, Drop wing tanks, keys for the selected part in the warehouse, the tails' overhang and the A321's inner flap fixed, the hangar's doors shut | not yet when this was written: `sh tools/push.sh v0.5.4` |
+| v0.5.4 | Shane's list after v0.5.3: a Pause button beside Hide panels (the L window works while paused), a renamed design renamed in its scenarios, landings out of 10 per part (a weighted average, the worst part capping it), sweep moving the coffin corner's top and MMO, Drop wing tanks, keys for the selected part in the warehouse, the tails' overhang and the A321's inner flap fixed, the hangar's doors shut | yes (`c466026`) |
+| v0.5.5 | Shane's list after v0.5.4: the Esc menu doesn't pause (only the HUD's button does), the views, camera and controls work while paused and act on Resume, the landing card's rows as shares of 100 that add up with penalty rows after them (a would-be crash halves), bounces counted from the wheels | not yet when this was written: `sh tools/push.sh v0.5.5` |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
@@ -123,6 +125,7 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 - **v0.5.1's** is in its `STATUS.md` entry ("2026-11-13, 10:55 KST"): 722 unit tests, `tests/cloud/v051-hangar.cjs` and the pictures `v051-hangar-*.jpg`.
 - **v0.5.2's** is in its `STATUS.md` entry ("2026-11-14"): 744 unit tests, `tests/cloud/v052-editor.cjs` and `v052-designs.cjs`, and the pictures `v052-*.jpg`.
 - **v0.5.3's** is in its `STATUS.md` entries: the run's (from "2026-11-15, 04:04 KST" to "12:42 KST", with the validation table at 04:18) and the review's ("2026-11-15, evening"): 850 unit tests, the run's Chrome checks on the Mac, the cloud checks, and the pictures `v053-*.png`.
+- **v0.5.5's** is in its `STATUS.md` entry ("2026-11-18, 00:40 KST"): 890 unit tests and `weight-copy.cjs`.
 - **v0.5.4's** is in its `STATUS.md` entry ("2026-11-16, 02:05 KST"): 885 unit tests, the cloud checks, and the anchors of the new landing score (`tests/score.test.mjs`).
 - **v0.4.4's** is in its `STATUS.md` entry ("2026-11-13, 03:15 KST").
 - **v0.4.3's** is in its `STATUS.md` entry ("2026-11-13, 01:35 KST"): 674 unit tests, the cloud checks, before/after pictures of the bent wings, the engines and the fan, the aurora, and the pitch measurements (`tests/boeing-pitch-settle.test.mjs`).
@@ -273,6 +276,14 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | `src/world/spray.js` | `createSpray(GEAR, uniforms)`, `sprayAmount()`: instanced sprites per leg in the model's frame, a function of a clock (no per-frame state). |
 | `tests/cloud/v042-shots.cjs` | v0.4.2's pictures, some against v0.4.1 served beside it as `games/flight-sim-041/`. |
 | New tests | `boeing-autotrim-787`, `yaw-approach`, `windshear-ahead`, `spray`; `boeing-autotrim`, `indestructible`, `taxisigns`, `weather-autoland` (tightened) and `weather-precip` grew. |
+
+### v0.5.5: Shane's list after v0.5.4
+
+| File | What's there |
+|---|---|
+| `src/main.js`, `index.html`, `src/input.js`, `src/ui/hud.js`, `src/ui/menu.js` | `setMenu()`/`menuOpen` (the Esc menu, modal for the keys, the flight running under it; saves on opening); `setPaused()` (the HUD's button, a hidden page, the setup and menus); `pausedKick()`/`pausedFrame()` (a frame after any input while paused; the levers while R or F is held: `input.leverHeld()`, `input.updateLever()`); toasts for gear, flaps and speedbrake set while paused. |
+| `src/sim/sim.js` | `previewControls()`: the lever's detent and N1 target, the flap lever's configuration, the parking brake and law into the state, nothing integrated; `step()` never calls it. |
+| `src/score.js`, `src/ui/score-panel.js`, `src/ui/logbook.css` | `shareOut()`, `rowPoints()` (points out of shares of 100), the penalty rows (`kind: 'penalty'`, `minus`), `bounceTracker()` (a hop of 0.15 m, or 0.03 m for 0.2 s, within 8 s of an arrival); the card's three formats (penalties before v0.5.4, scores out of 10 in v0.5.4, shares from v0.5.5). |
 
 ### v0.5.4: Shane's list after v0.5.3
 

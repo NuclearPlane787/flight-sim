@@ -5,7 +5,8 @@
 // flying on from the same point with the same load). Pictures go to outDir as v032-*.png.
 //   node weight-copy.cjs [outDir]          (a few minutes with SwiftShader; FS_BASE as in stills.cjs)
 // The frame clock is faked (each frame is 0.1 s of sim) and nothing is drawn except for the
-// pictures, taken with the game paused quietly, as in route-views.cjs.
+// pictures, taken with the game paused, as in route-views.cjs. v0.5.5: Esc's menu doesn't pause; the HUD's Pause button
+// does, and while paused the views, the levers and the panel still work (checked here).
 const { chromium } = require('playwright');
 const snap = require('./snap.cjs');
 const BASE = process.env.FS_BASE || 'http://127.0.0.1:8765/games/flight-sim/';
@@ -27,21 +28,25 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   });
   await page.goto(`${BASE}?test&origin=RKSS&dep=14R&dest=RKPC&arr=07&start=final&type=b777-300er`);
   await page.waitForFunction(() => window.__fs && window.__fs.sim && window.__fs.dest, null, { timeout: 180000 });
-  await page.evaluate(() => { const fs = window.__fs; window.__realRender = fs.renderer.render.bind(fs.renderer); fs.renderer.render = () => {}; });
+  // The 3D view isn't drawn (SwiftShader's too slow for this check), but the draws are counted (v0.5.5: a frame drawn
+  // while paused shows as one more).
+  await page.evaluate(() => { const fs = window.__fs; window.__realRender = fs.renderer.render.bind(fs.renderer); window.__draws = 0; window.__noRender = () => { window.__draws++; }; fs.renderer.render = window.__noRender; });
   await page.waitForTimeout(600);
   const shot = async (name, vp = viewport) => {
     await page.evaluate(() => { window.__fs.setPaused(true, true); window.__fs.renderer.render = window.__realRender; });
     await page.waitForTimeout(300);
-    await snap(page, browser, `${out}/${name}.png`, BASE, vp);
-    await page.evaluate(() => { window.__fs.renderer.render = () => {}; window.__fs.setPaused(false); });
+    // A picture isn't a check: SwiftShader on a busy machine sometimes can't take one (v0.5.5).
+    try { await snap(page, browser, `${out}/${name}.png`, BASE, vp); } catch (e) { console.log('no picture:', String(e).split('\n')[0]); }
+    await page.evaluate(() => { window.__fs.renderer.render = window.__noRender; window.__fs.setPaused(false); });
     await page.waitForTimeout(300);
     console.log('shot', name);
   };
-  // The pause menu as it shows: the game is paused already (nothing steps), so no quiet pause.
+  // The menu as it shows. v0.5.5: it doesn't pause, so the picture pauses the game for itself (and puts the pause
+  // back as it was).
   const shotMenu = async (name, vp = viewport) => {
-    await page.evaluate(() => { window.__fs.renderer.render = window.__realRender; });
-    await snap(page, browser, `${out}/${name}.png`, BASE, vp);
-    await page.evaluate(() => { window.__fs.renderer.render = () => {}; });
+    await page.evaluate(() => { const fs = window.__fs; window.__wasPaused = fs.paused; fs.setPaused(true); fs.renderer.render = window.__realRender; fs.renderOnce(); });
+    try { await snap(page, browser, `${out}/${name}.png`, BASE, vp); } catch (e) { console.log('no picture:', String(e).split('\n')[0]); }
+    await page.evaluate(() => { const fs = window.__fs; fs.renderer.render = window.__noRender; fs.setPaused(window.__wasPaused); });
     console.log('shot', name);
   };
   const st = () => page.evaluate(() => { const s = window.__fs.sim.state; return { mass: s.mass, fuel: s.fuelKg, pax: s.paxN, cargo: s.cargoKg, payload: s.payloadKg, added: s.fuelAddedKg, x: s.pos.x, y: s.pos.y, z: s.pos.z, crashed: !!s.crashed }; });
@@ -49,7 +54,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   const W = '.fslw', S = '.fssw:not(.fslw):not(.fswx)';
   const val = (k) => page.$eval(`${W} [data-f="${k}"]`, (e) => e.value);
   const msg = () => page.$eval(`${W} [data-o="msg"]`, (e) => e.textContent);
-  const wins = () => page.evaluate(() => ({ sky: !!window.__fs.skyWin?.isOpen, load: !!window.__fs.loadWin?.isOpen, paused: window.__fs.paused }));
+  const wins = () => page.evaluate(() => ({ sky: !!window.__fs.skyWin?.isOpen, load: !!window.__fs.loadWin?.isOpen, paused: window.__fs.paused, menu: !!window.__fs.menuOpen && !document.querySelector('#pause').hidden }));
 
   // ---- The L window's tabs ----
   await page.keyboard.press('l');
@@ -123,47 +128,91 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   ok((await val('pax')) === '300', 'with the new load in the fields');
   await page.click(`${W} [data-f="pax"]`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-  w = await wins(); ok(!w.load && !w.paused, `Esc in a field closes it, and no pause menu: ${JSON.stringify(w)}`);
+  w = await wins(); ok(!w.load && !w.paused && !w.menu, `Esc in a field closes it, and no menu: ${JSON.stringify(w)}`);
 
   // A skip to final keeps the load; the pause menu's Weight and fuel opens the tab.
   await page.evaluate(() => window.__fs.skipToFinal());
   await page.waitForTimeout(1500);
   const s2 = await st();
   ok(s2.pax === 300 && s2.cargo === 5000 && Math.abs(s2.payload - s1.payload) < 1e-6 && Math.abs(s2.added - s1.added) < 1e-6, `skip to final keeps it: ${s2.pax} pax, ${s2.payload} kg, ${s2.added.toFixed(0)} added`);
+  // v0.5.5 (Shane: "pausing/resuming is completely separate from that menu"): Esc opens the menu and the game runs on.
+  const t0 = await page.evaluate(() => window.__fs.sim.state.t);
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  w = await wins(); ok(w.menu && !w.paused, `Esc: the menu, not paused: ${JSON.stringify(w)}`);
+  ok((await page.$eval('#pause h2', (e) => e.textContent.trim())) === 'Menu', 'it\'s called Menu');
   const pauseBtns = await page.$$eval('#pause [data-act]', (b) => b.map((x) => x.textContent.trim()));
-  ok(pauseBtns.includes('Save a copy') && pauseBtns.includes('Weight and fuel'), `the pause menu: ${pauseBtns.join(', ')}`);
+  ok(pauseBtns[0] === 'Close' && !pauseBtns.includes('Resume'), `its first button is Close: ${pauseBtns[0]}`);
+  await page.waitForTimeout(400);
+  ok((await page.evaluate(() => window.__fs.sim.state.t)) > t0 + 0.5, 'the flight goes on under it');
+  const gearUnder = await page.evaluate(() => window.__fs.sim.controls.gearDown);
+  await page.keyboard.press('g'); await page.waitForTimeout(150);
+  ok((await page.evaluate(() => window.__fs.sim.controls.gearDown)) === gearUnder, 'the flight\'s keys wait while it shows (G did nothing)');
+  ok(pauseBtns.includes('Save a copy') && pauseBtns.includes('Weight and fuel'), `the menu: ${pauseBtns.join(', ')}`);
   await shotMenu('v032-pause-menu');
+  await page.click('#pause [data-act="resume"]'); await page.waitForTimeout(200);
+  w = await wins(); ok(!w.menu && !w.paused, `Close: the menu goes, still flying: ${JSON.stringify(w)}`);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   await page.click('#pause [data-act="weight"]'); await page.waitForTimeout(200);
-  // v0.5.4: the menu closes and the game stays paused (quietly) with the Weight tab open.
-  w = await wins(); ok(w.load && w.paused, `Weight and fuel: the Weight tab, the game still paused: ${JSON.stringify(w)}`);
-  ok(await page.$eval('#pause', (e) => e.hidden), 'and no pause menu over it');
-  ok((await page.$eval('.fsui-pause-btn', (b) => b.textContent.trim())) === 'Resume', 'the HUD\'s button reads Resume');
+  w = await wins(); ok(w.load && !w.menu && !w.paused, `Weight and fuel: the Weight tab, the pause as it was (none): ${JSON.stringify(w)}`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
-  w = await wins(); ok(!w.load && w.paused && await page.$eval('#pause', (e) => e.hidden), `Esc closes the window, still paused: ${JSON.stringify(w)}`);
+  w = await wins(); ok(!w.load && !w.menu && !w.paused, `Esc closes the window: ${JSON.stringify(w)}`);
 
-  // v0.5.4: the Pause button beside Hide panels: a quiet pause, the L window works, Resume goes on.
+  // The Pause button beside Hide panels is the only pause (v0.5.4's button; v0.5.5: the only one).
   await page.click('.fsui-pause-btn'); await page.waitForTimeout(150);
-  w = await wins(); ok(!w.paused && (await page.$eval('.fsui-pause-btn', (b) => b.textContent.trim())) === 'Pause', `Resume: flying again, the button reads Pause: ${JSON.stringify(w)}`);
-  await page.click('.fsui-pause-btn'); await page.waitForTimeout(150);
-  w = await wins(); ok(w.paused && await page.$eval('#pause', (e) => e.hidden), `Pause: paused, no pause menu: ${JSON.stringify(w)}`);
+  w = await wins(); ok(w.paused && !w.menu && (await page.$eval('.fsui-pause-btn', (b) => b.textContent.trim())) === 'Resume', `Pause: paused, no menu, the button reads Resume: ${JSON.stringify(w)}`);
   const zp = (await st()).z;
   await page.keyboard.press('l'); await page.waitForTimeout(200);
   w = await wins(); ok((w.sky || w.load) && w.paused, `L while paused: the window opens, still paused: ${JSON.stringify(w)}`);
   await page.waitForTimeout(600);
   ok(Math.abs((await st()).z - zp) < 1e-9, 'and nothing moves');
   await page.keyboard.press('l'); await page.waitForTimeout(150);
+
+  // v0.5.5 (Shane: "Allow the camera, and some settings to move while [paused] ... so that they immediately respond the
+  // moment I unpause"): the views, the levers and the panel work while paused; nothing moves until Resume.
+  const pz = await page.evaluate(() => { const fs = window.__fs, s = fs.sim.state, e = s.engines[0], c = fs.sim.controls;
+    return { draws: window.__draws, view: fs.rig.view.id, gear: c.gearDown, gearPos: s.gearPos, flapLever: c.flapLever, flapDeg: s.flapDeg, lever: c.thrust, leverN1: s.leverN1, n1: e.n1, t: s.t, ap: fs.ap.spdKt }; });
+  await page.keyboard.press('2'); await page.waitForTimeout(250);
+  const pv = await page.evaluate(() => ({ view: window.__fs.rig.view.id, draws: window.__draws }));
+  ok(pv.view === 'nose' && pv.draws > pz.draws, `2 while paused: the nose view, drawn at once (${pz.view} → ${pv.view}, ${pv.draws - pz.draws} draws)`);
+  await page.keyboard.press('3'); await page.waitForTimeout(150);
+  ok((await page.evaluate(() => window.__fs.rig.view.id)) === 'orbit', '3 while paused: 3rd person');
+  await page.keyboard.press('g'); await page.waitForTimeout(150);
+  await page.keyboard.press('BracketLeft'); await page.waitForTimeout(150);
+  // The panel's buttons work too: X takes the A/THR off (else the 777's takes its lever back after a hand on it).
+  if (await page.evaluate(() => window.__fs.ap.athr)) {
+    await page.keyboard.press('x'); await page.waitForTimeout(150);
+    ok(!(await page.evaluate(() => window.__fs.ap.athr)), 'X while paused: the A/THR off');
+  }
+  await page.keyboard.down('r'); await page.waitForTimeout(700); await page.keyboard.up('r'); await page.waitForTimeout(200);
+  const pc = await page.evaluate(() => { const fs = window.__fs, s = fs.sim.state, e = s.engines[0], c = fs.sim.controls;
+    return { gear: c.gearDown, gearPos: s.gearPos, flapLever: c.flapLever, stFlapLever: s.flapLever, flapDeg: s.flapDeg, lever: c.thrust, stLever: s.thrustLever, leverN1: s.leverN1, n1: e.n1, t: s.t }; });
+  ok(pc.gear !== pz.gear && pc.gearPos === pz.gearPos, `G while paused: the lever ${pz.gear ? 'up' : 'down'}, the gear still (${pc.gearPos})`);
+  ok(pc.flapLever === pz.flapLever - 1 && pc.stFlapLever === pc.flapLever && pc.flapDeg === pz.flapDeg, `[ while paused: the flap lever a step up (${pz.flapLever} → ${pc.flapLever}), the flaps still (${pc.flapDeg.toFixed(1)}°)`);
+  ok(pc.lever > pz.lever + 0.05 && pc.stLever === pc.lever && pc.leverN1 > pz.leverN1 + 1, `R held while paused: the lever forward (${pz.lever.toFixed(2)} → ${pc.lever.toFixed(2)}), the panel's ring with it (${pz.leverN1.toFixed(1)} → ${pc.leverN1.toFixed(1)} %)`);
+  ok(Math.abs(pc.n1 - pz.n1) < 1e-9 && pc.t === pz.t, `but the engines and the clock wait (N1 ${pc.n1.toFixed(2)}, t ${pc.t.toFixed(2)})`);
+  await page.keyboard.press('g'); await page.waitForTimeout(150);   // the gear back down before going on: this is a final
+  // Esc while paused: the menu, still paused; Esc again: no menu, still paused.
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-  ok(!(await page.$eval('#pause', (e) => e.hidden)), 'Esc from the quiet pause: the pause menu');
+  w = await wins(); ok(w.menu && w.paused, `Esc while paused: the menu, still paused: ${JSON.stringify(w)}`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-  w = await wins(); ok(!w.paused, `Esc again: flying: ${JSON.stringify(w)}`);
+  w = await wins(); ok(!w.menu && w.paused, `Esc again: the menu goes, still paused: ${JSON.stringify(w)}`);
+  // Resume: what was set moves.
+  await page.click('.fsui-pause-btn'); await page.waitForTimeout(800);
+  const pr = await page.evaluate(() => { const fs = window.__fs, s = fs.sim.state, e = s.engines[0]; return { paused: fs.paused, n1: e.n1, flapDeg: s.flapDeg, t: s.t }; });
+  ok(!pr.paused && pr.t > pc.t && pr.n1 > pc.n1 + 0.5 && pr.flapDeg < pc.flapDeg, `Resume: the engines spool up (N1 ${pc.n1.toFixed(1)} → ${pr.n1.toFixed(1)}) and the flaps come up (${pc.flapDeg.toFixed(1)}° → ${pr.flapDeg.toFixed(1)}°)`);
+  await page.evaluate((v) => { window.__fs.rig.viewId = v; }, pz.view);   // the view it had
+  // Back to a steady final for the rest.
+  await page.evaluate(() => window.__fs.skipToFinal());
+  await page.waitForTimeout(1500);
 
   // ---- Duplicate ----
   // This flight as a scenario, as New scenario makes one, then loaded.
   const id = await page.evaluate(() => { const fs = window.__fs; const r = fs.scenarios.create('FL450 test point', fs.captureState(), { route: 'RKSS 14R → RKPC 07', where: 'On final' }); fs.loadScenario(r.id); return r.id; });
   await page.waitForTimeout(800);
   ok(await page.evaluate(() => window.__fs.current?.name) === 'FL450 test point', 'flying the scenario');
-  await page.keyboard.press('Escape'); await page.waitForTimeout(300);   // the pause saves
+  // v0.5.5: the menu doesn't pause: the HUD's button holds the point still, then the menu (opening it saves).
+  await page.click('.fsui-pause-btn'); await page.waitForTimeout(150);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);   // the menu saves
   const atPause = await st();
   await page.click('#pause [data-act="copy"]'); await page.waitForTimeout(300);
   const toastText = await page.$eval('#toast', (e) => e.textContent);

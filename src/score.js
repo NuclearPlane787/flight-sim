@@ -1,6 +1,7 @@
 // The landing score: worked out at the first touchdown, finished after the rollout.
 //
-// v0.5.4: each part of the landing gets a whole score out of 10 from its cost: vertical speed
+// v0.5.4: each part of the landing gets a whole score out of 10 from its cost (v0.5.5: and points
+// out of its share of the 100, below): vertical speed
 // and peak g, the touchdown point against the aiming point, distance from the centreline, bank,
 // pitch, bounces, the approach (how far off the glide path and localizer it was from 1,000 ft
 // down, and how much the sink rate swung), and the grass when the wheels landed on it. A part
@@ -15,8 +16,18 @@
 // get back up, scored 100 under v0.1.2 and should score 80; the same touchdown after a steady
 // approach about 90 (tests/score.test.mjs rebuilds both).
 //
-// A touchdown that isn't on a runway, or one Indestructible kept from being a crash, scores
-// 10 at most (CAP), and says so; one on the grass 49 at most, an F.
+// v0.5.4's caps: a touchdown that isn't on a runway, or one Indestructible kept from being a
+// crash, scored 10 at most; one on the grass 49 at most, an F.
+//
+// v0.5.5 (Shane, 2026-11-18, of a would-be crash scored 10: "I see that the categories only
+// sum to 80 points? Where are the other twenty? ... the real score being 10/100 seems a little
+// harsh. Maybe just subtract points, say 15, or cut the score in half when a crash would have
+// happened."): each part now shows points out of its share of the 100 (the shares follow the
+// weights of the parts the landing has, in whole points adding up to 100), so the rows add up
+// to the total. What comes off after that is a row of its own, saying how much it took: the
+// worst part's cap (50 + 10 × its score out of 10), the grass (49 at most), a touchdown off a
+// runway (half) and a would-be crash (half). Bounces are counted from the wheels themselves
+// (bounceTracker below): Shane's clear bounce had scored 0.
 
 import { GROUND_Z } from './geometry.js';
 import { gridToMag } from './world/frame.js';
@@ -152,18 +163,90 @@ export const COST = {
 // 600 3, 900 0. Peak g: 1.3 9, 1.5 7, 2.0 3. Aiming point: ±50 m 10, +150 m 7, +300 m 3,
 // +500 m 1. Centreline: 1 m 10, 2 m 8, 5 m 4, 10 m 1. Bank: 2° 9, 5° 5, 7° 3. Pitch: 3–8° 9–10,
 // 1° 3, 9.5° 1. Bounces: one 5, two 3. Approach path: 0.25 dots 9, 0.5 7, 1 3, 2 0. Sink rate
-// swings: ±100 ft/min 9, ±200 6, ±300 3. The grass, the taxiway and the would-be crash score 0;
-// the last two weigh nothing and cap the total instead (CAP).
+// swings: ±100 ft/min 9, ±200 6, ±300 3. (The grass, the taxiway and the would-be crash were parts
+// in v0.5.4; since v0.5.5 they're rows of what comes off the total, so their entries here go unused.)
 export const RATE = {
   vs: [0.4, 3], g: [0.07, 1.5], aim: [0.14, 3], centreline: [0.16, 3], bank: [0.25, 1], pitch: [0.25, 1],
   bounces: [0.3, 1.5], path: [0.095, 2], swing: [0.1, 1.5], grass: [0.1, 3], offRunway: [0.1, 0], crash: [0.1, 0],
 };
 export const scoreFor = (cost, k) => Math.round(10 * Math.exp(-cost / k));
-// v0.5.4: the most a landing can score: off a runway or a would-be crash 10 (as v0.1.3's
-// taxiway rule did), on the grass 49 (an F).
-export const CAP = { offRunway: 10, crash: 10, grass: 49 };
+// v0.5.4: the most a landing on the grass can score, 49 (an F). (v0.5.4 also capped a touchdown off a
+// runway and a would-be crash at 10; v0.5.5 halves them instead, HALVED.)
+export const CAP = { grass: 49 };
+export const HALVED = ['offRunway', 'crash'];
 // v0.5.4: and the worst part's score caps it at 50 + 10 × that score (0/10: 50, 3/10: 80, 5/10 or better: none).
 export const WORST_CAP = (score) => 50 + 10 * score;
+// v0.5.5: the parts' shares of the 100, by their weights (RATE), in whole points that add up to exactly 100
+// (largest remainders first; on a tie the earlier part), and each part's points: its share × its score out of 10,
+// rounded, but a point short of its share unless the score is 10 (so 100 still takes 10/10 everywhere). Sets
+// share, points and penalty (what it lost: share − points) on each part.
+export const rowPoints = (score, share) => (score >= 10 ? share : Math.max(0, Math.min(share - 1, Math.round((share * score) / 10))));
+export function shareOut(parts) {
+  const W = parts.reduce((a, p) => a + p.weight, 0);
+  if (!(W > 0)) return parts;
+  const raw = parts.map((p) => (100 * p.weight) / W);
+  const sh = raw.map(Math.floor);
+  const order = raw.map((r, i) => [r - sh[i], i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (let k = 0, left = 100 - sh.reduce((a, b) => a + b, 0); k < left; k++) sh[order[k][1]]++;
+  parts.forEach((p, i) => { p.share = sh[i]; p.points = rowPoints(p.score, sh[i]); p.penalty = sh[i] - p.points; });
+  return parts;
+}
+// v0.5.5: the worst part's name on its cap's row ("Held down by vertical speed").
+export const HELD_BY = { 'Vertical speed': 'vertical speed', 'Peak g': 'peak g', 'Touchdown vs aiming point': 'the touchdown point',
+  'From centreline': 'the centreline', Bank: 'bank', Pitch: 'pitch', Bounces: 'bounces', 'Approach path': 'the approach path', 'Sink rate swings': 'the sink rate' };
+
+// v0.5.5: bounces from the wheels (Shane, 2026-11-18: "I did bounce once very clearly in that landing but the report
+// showed 0 bounces"). The sim's own 'bounce' event needs half a second with no wheel at all on the ground before the
+// next main-wheel contact, so a short hop, or a hop with the nose wheel still on, never counted. Here a bounce is a hop
+// after the landing's first contact (of any wheel, or a skid with Indestructible): every wheel and skid off the
+// ground, or the main wheels off once they've been on, then back down, in which the aircraft went back up: by riseM
+// or more, or by minRiseM for at least minS. (A nose wheel touching first while the aircraft is still coming down
+// isn't a bounce: nothing rose.) One that starts more than windowS after the last arrival is the rollout's, not a
+// bounce, and one longer than maxS is a go-around (the scorer's own rule), in the air again. The landing starts at a
+// first contact after airS in the air, or at the touchdown event. From the state's wow (the wheels on the ground;
+// without it, onGround) and the reference point's height (pos.z; without it, agl).
+export const BOUNCE = { minS: 0.2, riseM: 0.15, minRiseM: 0.03, windowS: 8, airS: 3, maxS: 4 };
+export function bounceTracker(B = BOUNCE) {
+  let airSince = null, landing = false, mainsEver = false, hop = null, lastArrival = -Infinity, n = 0, groundZ = null;
+  const api = {
+    get count() { return n; },
+    set count(v) { n = v; },
+    get landing() { return landing; },
+    reset() { airSince = null; landing = false; mainsEver = false; hop = null; lastArrival = -Infinity; n = 0; groundZ = null; },
+    // The landing starts now (the touchdown event), if it hadn't at a first contact.
+    start(t, mains = true) { if (landing) return; landing = true; mainsEver = !!mains; hop = null; lastArrival = t; n = 0; },
+    // A lift-off (the take-off, a touch-and-go) or a go-around: in the air again.
+    air(t) { const c = n; api.reset(); airSince = t; n = c; },
+    update(s) {
+      const contact = !!(s.onGround || s.scraping);
+      const mains = s.wow ? !!(s.wow.left || s.wow.right) : !!s.onGround;
+      const z = Number.isFinite(s.pos?.z) ? s.pos.z : Number(s.agl) || 0;
+      if (!landing) {
+        if (!contact) { if (airSince === null) airSince = s.t; return; }
+        if (airSince !== null && s.t - airSince >= B.airS) api.start(s.t, mains);
+        airSince = null;
+        return;
+      }
+      if (mains) mainsEver = true;
+      const up = !contact || (mainsEver && !mains);
+      if (up) {
+        // the rise is from the height at the last moment on the ground (the frame before the hop)
+        if (!hop) hop = { t0: s.t, z0: groundZ ?? z, top: z };
+        else hop.top = Math.max(hop.top, z);
+        if (!contact && s.t - hop.t0 > B.maxS) api.air(hop.t0);   // a go-around: no bounce
+        return;
+      }
+      groundZ = z;
+      if (hop) {
+        const h = hop, rise = h.top - h.z0;
+        hop = null;
+        if ((rise >= B.riseM || (rise >= B.minRiseM && s.t - h.t0 >= B.minS)) && h.t0 - lastArrival <= B.windowS) n++;
+        lastArrival = s.t;
+      }
+    },
+  };
+  return api;
+}
 // v0.4.1: the sim's crash reasons, short enough for the card's value column.
 export const DAMAGE_SHORT = { 'hard landing: gear collapsed': 'gear collapsed', 'nose gear collapsed': 'nose gear', 'ran off the runway': 'off the runway' };
 
@@ -264,7 +347,7 @@ export function createScorer() {
   let landing = null;  // { runway, end, other } of the touchdown, or null (off the runway)
   let td = null;       // the first touchdown
   let peakG = 0;
-  let bounces = 0;
+  const bt = bounceTracker();   // v0.5.5: the bounces, from the wheels
   let airborneSince = null;
   let result = null;
   // v0.4.1: what would have crashed (the sim's damage events, with Indestructible on): [{ t, reason }], the
@@ -281,7 +364,7 @@ export function createScorer() {
     setRunway(end, other) {
       rf = end && other ? runwayFrame(end, other) : null;
       landing = end && other ? { runway: null, end, other } : null;
-      td = null; result = null; bounces = 0; peakG = 0; damage = [];
+      td = null; result = null; bt.reset(); peakG = 0; damage = [];
     },
     // At the touchdown: the runway it was on (landingRunway()), or null for none.
     setLanding(l) {
@@ -294,7 +377,7 @@ export function createScorer() {
     get track() { return track; },
     // keepTrack: after a rewind, the approach flown before the rewound-to moment still counts.
     reset(keepTrack = false) {
-      td = null; result = null; bounces = 0; peakG = 0; airborneSince = null;
+      td = null; result = null; bt.reset(); peakG = 0; airborneSince = null;
       if (!keepTrack) { clearTrack(); damage = []; }
     },
 
@@ -314,7 +397,7 @@ export function createScorer() {
         v: 1,
         landing: landing ? { ...ref(landing.end), from: landing.runway || td ? 'touchdown' : 'plan' } : null,
         td: td ? jsonSafe(td) : null,
-        peakG, bounces, airborneSince,
+        peakG, bounces: bt.count, airborneSince,
         ...(damage.length ? { damage: damage.map((d) => ({ t: d.t, reason: d.reason })) } : {}),
         result: result ? jsonSafe({ ...result, touchdown: null }) : null,
         // [t, x, y, z, vs, gs] per sample (t exact: the 0.25 s spacing and the 5-minute window use it)
@@ -325,7 +408,7 @@ export function createScorer() {
     // Back from serialize(): resolveEnd(icao, ident, { x, y }) → { end, other, runway? } (the
     // airports' own end objects), or null, which leaves no runway (and so no approach parts).
     load(o, resolveEnd) {
-      rf = null; landing = null; td = null; result = null; peakG = 0; bounces = 0; airborneSince = null;
+      rf = null; landing = null; td = null; result = null; peakG = 0; bt.reset(); airborneSince = null;
       clearTrack(); damage = [];
       if (!o) return;
       damage = Array.isArray(o.damage) ? o.damage.map((d) => ({ t: d.t, reason: String(d.reason) })) : [];
@@ -337,7 +420,9 @@ export function createScorer() {
         }
       }
       td = o.td ? { ...o.td, along: o.td.along ?? NaN, cross: o.td.cross ?? NaN } : null;
-      peakG = o.peakG ?? 0; bounces = o.bounces ?? 0; airborneSince = o.airborneSince ?? null;
+      peakG = o.peakG ?? 0; airborneSince = o.airborneSince ?? null;
+      // v0.5.5: a save made after the touchdown goes on counting from where it was
+      if (td && !result) { bt.start(td.t); bt.count = o.bounces ?? 0; } else bt.count = o.bounces ?? 0;
       result = o.result ? { ...o.result, touchdown: td } : null;
       track = (o.track || []).map((p) => (Array.isArray(p) ? { t: p[0], x: p[1], y: p[2], z: p[3], vs: p[4], gs: p[5] }
         : { t: p.t, x: p.x, y: p.y, z: p.z, vs: p.vs, gs: p.gs }));
@@ -355,7 +440,7 @@ export function createScorer() {
       // after the moment it went back to.
       if (damage.length && s.t < damage[damage.length - 1].t) damage = damage.filter((d) => d.t <= s.t);
       for (const e of events) {
-        if (e.type === 'liftoff') { clearTrack(); if (!td) damage = []; }
+        if (e.type === 'liftoff') { clearTrack(); if (!td) damage = []; if (!td) bt.air(s.t); }
         if (e.type === 'damage' && !result) { damage.push({ t: s.t, reason: e.reason }); if (damage.length > 10) damage.shift(); }
       }
       if (!td && !s.onGround && s.t - lastSampleT >= APPROACH.sampleS) {
@@ -373,10 +458,13 @@ export function createScorer() {
             ...(s.indestructible ? { indestructible: true } : {}),
             approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0, groundZ) : null };
           peakG = e.g;
+          bt.start(s.t);                          // v0.5.5: if no first contact started the landing already
         } else if (e.type === 'touchdown' && td && !result) {
           peakG = Math.max(peakG, e.g);           // a bounce's second arrival
-        } else if (e.type === 'bounce' && td) bounces++;
+        }
+        // v0.5.5: the sim's 'bounce' events aren't counted (bt counts every hop, theirs included)
       }
+      if (!result) bt.update(s);
       if (!td || result) return null;
       // v0.4.2: on the skids (Indestructible, the gear up) is on the ground too.
       const grounded = s.onGround || s.scraping;
@@ -384,12 +472,13 @@ export function createScorer() {
       else if (airborneSince === null) airborneSince = s.t;
       // Off the ground again for 4 s after touching down: a go-around, nothing to score, and
       // the next approach starts afresh.
-      if (airborneSince !== null && s.t - airborneSince > 4) { td = null; bounces = 0; clearTrack(); return null; }
+      if (airborneSince !== null && s.t - airborneSince > 4) { td = null; bt.air(airborneSince); bt.count = 0; clearTrack(); return null; }
       const stopped = grounded && s.gs < 30 / 1.943844;
       if (!stopped && s.t - td.t < 60) return null;
 
       const aim = rf ? aimingPoint(rf.lda) : 400;
       const parts = [];
+      const bounces = bt.count;
       // v0.5.4: each part keeps its cost and gets its score out of 10 and its weight (RATE[key]).
       const add = (key, name, value, unit, cost, extra) => parts.push({ name, value, unit, cost: +cost.toFixed(4),
         score: scoreFor(cost, RATE[key][0]), weight: RATE[key][1], penalty: 0, ...extra });
@@ -401,7 +490,6 @@ export function createScorer() {
       if (td.onRunway) {
         add('aim', 'Touchdown vs aiming point', Math.round(td.along - aim), 'm', COST.aim(td.along, aim));
         add('centreline', 'From centreline', +Math.abs(td.cross).toFixed(1), 'm', COST.centreline(td.cross));
-        if (td.surface === 'ground') add('grass', 'On the grass', 'yes', '', COST.grass);
       }
       add('bank', 'Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
       add('pitch', 'Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch, pitchBand));
@@ -411,26 +499,29 @@ export function createScorer() {
         add('path', 'Approach path', +ap.pathDots.toFixed(1), 'dots', COST.path(ap.pathDots), ap.note ? { note: ap.note } : {});
         add('swing', 'Sink rate swings', Math.round(ap.swingFpm), 'ft/min', COST.swing(ap.swingFpm));
       }
-      if (!td.onRunway) add('offRunway', 'On a runway', 'no', '', COST.offRunway);
-      // v0.4.1: Indestructible held it together, from 10 s before the touchdown on.
+      // v0.5.5: the parts' points out of their shares of the 100; the total is their sum, then what comes off,
+      // each a row of its own (kind 'penalty': what it took off, `minus`, also as its `penalty`).
+      shareOut(parts);
+      let points = parts.reduce((a, p) => a + p.points, 0);
+      const pens = [];
+      const off = (name, value, rule, after, cost, extra) => {
+        const minus = Math.max(0, points - after);
+        pens.push({ kind: 'penalty', name, value, unit: '', rule, cost: +cost.toFixed(4), minus, penalty: minus, ...extra });
+        points -= minus;
+      };
+      // The worst part holds the total down (v0.5.4's WORST_CAP), so one part gone badly isn't averaged away:
+      // 900 ft/min with the rest right scores 50, a D; 600 ft/min 80 at most. A part at 5/10 or better caps nothing.
+      const worst = parts.reduce((a, p) => (!a || p.score < a.score ? p : a), null);
+      if (worst && WORST_CAP(worst.score) < points) {
+        off(`Held down by ${HELD_BY[worst.name] || worst.name.toLowerCase()}`, '', `${WORST_CAP(worst.score)} at most`, WORST_CAP(worst.score), 0, { of: worst.name });
+      }
+      if (td.onRunway && td.surface === 'ground') off('On the grass', 'yes', `${CAP.grass} at most`, Math.min(points, CAP.grass), COST.grass);
+      if (!td.onRunway) off('On a runway', 'no', 'half', Math.floor(points / 2), COST.offRunway);
+      // v0.4.1: Indestructible held it together, from 10 s before the touchdown on. v0.5.5: half off (v0.5.4: 10 at most).
       const dmg = damage.filter((d) => d.t >= td.t - 10).map((d) => d.reason);
-      if (dmg.length) add('crash', 'Would have crashed', DAMAGE_SHORT[dmg[0]] || dmg[0], '', COST.crash);
+      if (dmg.length) off('Would have crashed', DAMAGE_SHORT[dmg[0]] || dmg[0], 'half', Math.floor(points / 2), COST.crash);
+      parts.push(...pens);
       const cost = parts.reduce((a, p) => a + p.cost, 0);
-      // v0.5.4: the weighted average of the scores out of 10, × 10; 100 only with every part at
-      // 10/10. The taxiway, the would-be crash and the grass cap it (CAP), and the cap's own part
-      // takes the points it takes.
-      const sw = parts.reduce((a, p) => a + p.weight, 0);
-      const avg = (10 * parts.reduce((a, p) => a + p.weight * p.score, 0)) / sw;
-      let capper = dmg.length ? ['Would have crashed', CAP.crash] : !td.onRunway ? ['On a runway', CAP.offRunway]
-        : td.surface === 'ground' ? ['On the grass', CAP.grass] : null;
-      // v0.5.4 (review): the worst part holds the total down too, to 50 + 10 × its score (WORST_CAP), so one part
-      // gone badly isn't averaged away: 900 ft/min with the rest right scores 50, a D, not a B; 600 ft/min 80 at
-      // most. A part at 5/10 or better caps nothing.
-      const worst = parts.filter((p) => p.weight > 0).reduce((a, p) => (!a || p.score < a.score ? p : a), null);
-      if (worst && WORST_CAP(worst.score) < (capper ? capper[1] : 100)) capper = [worst.name, WORST_CAP(worst.score)];
-      const cap = capper ? capper[1] : 100;
-      const points = Math.min(cap, parts.every((p) => p.score === 10) ? 100 : Math.min(99, Math.round(avg)));
-      sharePoints(parts, points, (p) => (10 * p.weight * (10 - p.score)) / sw + (capper && p.name === capper[0] ? Math.max(0, avg - cap) : 0));
       result = { points, grade: grade(points), parts, cost: +cost.toFixed(4), touchdown: td, offRunway: !td.onRunway,
         runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim, approach: ap,
         ...(td.indestructible ? { indestructible: true } : {}), ...(dmg.length ? { damage: [...new Set(dmg)] } : {}) };

@@ -1369,7 +1369,27 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     updateState(atm, ias, V / atm.a, X.prevAlpha, state.beta, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
   }
 
-  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad, dropTanks,
+  // v0.5.5 (Shane: "allow things like the 'predicted' engine thrust setting to change ... of course the real thrust
+  // only changes once I unpause"): while the game is paused, the state's readouts of the levers follow the controls
+  // at once (the thrust lever and its detent, the N1 it asks for: the engine panel's ring, the flap lever and the
+  // configuration it selects, the parking brake, the law), with nothing integrated: no time passes, and the engines,
+  // the surfaces and the gear move only from the next step(). step() never calls this.
+  function previewControls() {
+    const S = state, lever = controls.thrust;
+    S.thrustLever = lever; S.detent = detentName(lever);
+    if (lever >= 0 && !X.crashed) {
+      atmAt(X.pz, atm);   // step() fills it afresh before it reads it
+      X.leverN1 = n1ForPhi(leverToPhi(lever), idleN1(flatSigma(atm.rho / RHO0, atm.T), S.mach || 0));
+    }
+    S.leverN1 = X.leverN1;
+    const fl = clamp(controls.flapLever | 0, 0, CONFIG_BY_LEVER.length - 1);
+    let oneF = X.lever1F;
+    if (fl === 1 && A.HAS_1F && fl !== X.prevLever) oneF = X.prevLever === 0 ? (S.onGround || S.ias < 100 * A.KT) : S.ias < A.AUTO_RETRACT_KT * A.KT;
+    S.flapLever = controls.flapLever; S.config = fl === 1 && A.HAS_1F ? (oneF ? '1+F' : '1') : CONFIG_BY_LEVER[fl];
+    S.parkingBrake = controls.parkingBrake; S.law = controls.law;
+  }
+
+  return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad, dropTanks, previewControls,
     setIndestructible: (on) => setOption('indestructible', on), setAutoTrim: (on) => setOption('autoTrim', on),
     setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, get weather() { return wxS; }, get baro() { return { hpa: X.baroHpa, std: X.baroStd }; },
     get type() { return typeDef; }, get design() { return typeDef.design || null; },

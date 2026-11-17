@@ -65,9 +65,10 @@ try {
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await page.waitForTimeout(500);
-  const pausedAfter = await page.evaluate(() => window.__fs.paused && !document.getElementById('pause').hidden);
-  check('coming back shows the pause menu (the flight waits for the player)', pausedAfter === true);
-  await page.keyboard.press('Escape');
+  // v0.5.5: a hidden page pauses quietly (no menu); the HUD's button reads Resume.
+  const pausedAfter = await page.evaluate(() => window.__fs.paused && document.getElementById('pause').hidden);
+  check('coming back: still paused, quietly (the flight waits for the player)', pausedAfter === true);
+  await page.evaluate(() => window.__fs.setPaused(false));
 
   // A predicted path: one job, within its CPU budget; a newer request cancels the older.
   const pred = await page.evaluate(async () => {

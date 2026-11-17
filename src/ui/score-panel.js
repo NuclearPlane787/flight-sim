@@ -1,6 +1,7 @@
 // The landing-score card, shown after the rollout: the grade in big letters, the points,
-// each part of the score with its value and its score out of 10 (v0.5.4), a one-line verdict, and the
-// touchdown point on a small runway diagram (against the aiming point and centreline).
+// each part of the score with its value and its points out of its share of the 100 (v0.5.5; v0.5.4: its score
+// out of 10), then what came off (the worst part's cap, the grass, off a runway, a would-be crash), a one-line
+// verdict, and the touchdown point on a small runway diagram (against the aiming point and centreline).
 //
 //   const card = createScorePanel(root, { onclose, onnewflight });
 //   card.show(result, extras);   // result: score.js's { points, grade, parts, touchdown }
@@ -8,7 +9,7 @@
 //
 // extras (all optional): { route, runway, vsFpm, g, touchdown: { along, cross },
 //   runwayLengthM, runwayWidthM, aimM }. Missing ones fall back to the result.
-// The pure helpers (verdict, gradeColor, partScore, scoreColor, penaltyFrac, partsHtml, runwaySvg) are exported
+// The pure helpers (verdict, gradeColor, partScore, partFrac, scoreColor, penaltyFrac, partsHtml, runwaySvg) are exported
 // for the logbook and the node tests. Nothing here touches the DOM until a function runs.
 
 export const GRADE_COLORS = { A: '#3cff4e', B: '#a6e22e', C: '#ffe838', D: '#ffa515', F: '#ff3b3b' };
@@ -90,16 +91,26 @@ const fmtValue = (p) => {
   return `${p.value}${p.unit ? (p.unit === '°' ? '°' : ' ' + p.unit) : ''}`;
 };
 
-// The parts as rows: name, value, a bar, and the score. v0.5.4: the bar is filled to the score
-// out of 10 (6/10 fills 60%, 10/10 all of it, in full green), and the score reads "6/10"; a
-// part from before v0.5.4 keeps its penalty ("−7") beside the bar its penalty reads as.
+// The parts as rows: name, value, a bar, and the score. v0.5.5: a part's points out of its share of the 100
+// ("13/17"), the bar filled to them, so the rows add up to the total; what came off after that (kind 'penalty': the
+// worst part's cap, the grass, off a runway, a would-be crash) is a row of its own, its rule ("half", "80 at most")
+// where the bar would be and what it took ("−15"). v0.5.4's parts read "6/10", the bar filled to the score out of
+// 10 (in full green at 10/10); a part from before v0.5.4 keeps its penalty ("−7") beside the bar its penalty reads as.
+export const partFrac = (p) => (Number.isFinite(p?.share) && Number.isFinite(p?.points) ? (p.share > 0 ? p.points / p.share : 0) : partScore(p) / 10);
 export function partsHtml(parts) {
   return `<div class="fssc-parts">${(parts || []).map((p) => {
+    if (p.kind === 'penalty') {
+      const m = Number(p.minus) || 0;
+      return `<div class="fssc-part pen"><span class="n">${esc(p.name)}</span><span class="v">${esc(fmtValue(p))}</span>`
+        + `<span class="rule">${esc(p.rule || '')}</span>`
+        + `<span class="p" style="color:${m ? GRADE_COLORS.F : '#8a9097'}">${m ? '−' + m : '0'}</span></div>`;
+    }
     const s = partScore(p), col = scoreColor(s), pen = Number(p.penalty) || 0;
-    const txt = Number.isFinite(p.score) ? `${s}/10` : pen ? '−' + pen : '0';
+    const shared = Number.isFinite(p.share) && Number.isFinite(p.points);
+    const txt = shared ? `${p.points}/${p.share}` : Number.isFinite(p.score) ? `${s}/10` : pen ? '−' + pen : '0';
     return `<div class="fssc-part"><span class="n">${esc(p.name === 'Touchdown vs aiming point' ? 'From aiming point' : p.name)}</span>`
       + `<span class="v">${esc(fmtValue(p))}</span>`
-      + `<span class="bar"><i style="width:${Math.max(2, s * 10)}%;background:${col}"></i></span>`
+      + `<span class="bar"><i style="width:${Math.max(2, Math.round(partFrac(p) * 1000) / 10)}%;background:${col}"></i></span>`
       + `<span class="p" style="color:${col}">${txt}</span></div>`;
   }).join('')}</div>`;
 }

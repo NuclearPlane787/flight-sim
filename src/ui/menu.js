@@ -419,9 +419,9 @@ const KEYS = [
   ['= / −', 'time compression', 'M', 'map, jumps, skip to final'],
   ['1 2 3', 'cockpit (1 again: other seat), nose, 3rd person', 'F3 or `', 'performance readout'],
   ['drag / pinch', 'look or orbit / zoom', 'double-click', 'recentre'],
-  ['T', 'rewind 30 s (paused or crashed)', 'P', 'pushback (= speeds it up)'],
+  ['T', 'rewind 30 s (paused, crashed or in the menu)', 'P', 'pushback (= speeds it up)'],
   ['FCU window', 'scroll it, or click, type, Enter', 'map', 'click the bright path (AP on) to jump'],
-  ['V', 'next view', 'Esc', 'pause menu'],
+  ['V', 'next view', 'Esc', 'the menu (it doesn\u2019t pause: the Pause button at the top left does)'],
   ['K', 'set the altimeter to the local QNH', '', ''],
 ];
 

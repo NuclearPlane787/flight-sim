@@ -1,12 +1,17 @@
 // The landing score (src/score.js): which runway a touchdown was on, what each part costs,
-// v0.5.4: each part's score out of 10 and their weighted average, the approach, and the caps
-// (off a runway, a would-be crash, the grass).
+// v0.5.4: each part's score out of 10, the approach; v0.5.5: each part's points out of its share of
+// the 100 (the rows add up), what comes off after them (the worst part's cap, the grass, half off a
+// runway, half for a would-be crash), and the bounces counted from the wheels.
 //   node --test games/flight-sim/tests/score.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createScorer, pickRunway, landingRunway, COST, RATE, CAP, WORST_CAP, scoreFor, approachStats, runwayFrame } from '../src/score.js';
+import { createScorer, pickRunway, landingRunway, COST, RATE, CAP, WORST_CAP, scoreFor, approachStats, runwayFrame,
+  shareOut, rowPoints, bounceTracker, BOUNCE } from '../src/score.js';
 import { GROUND_Z } from '../src/geometry.js';
-import { verdict } from '../src/ui/score-panel.js';
+import { verdict, partsHtml } from '../src/ui/score-panel.js';
+import { TYPES } from '../src/sim/types.js';
+import { createSim } from '../src/sim/sim.js';
+import { run, approachPilot, KT, FT } from './sim-helpers.mjs';
 
 const DEG = Math.PI / 180;
 // Two made-up runways: 09/27 along +x (3000 m by 45 m), and 18/36 crossing it at x = 1000.
@@ -65,8 +70,9 @@ const shanesFinal = approach(smooth((d) => (d >= 3100 ? onPath(d)
 // A landing on 09: the approach (fed frame by frame), the touchdown, then the rollout to a
 // stop. The defaults are the ideal touchdown.
 function land({ vs = 130, g = 1, along = 400, cross = 0, bank = 0, pitch = 5.5, runway = true, rolloutNz = 1, bounceG = null,
-  surface = 'runway', track = null, damage = null } = {}) {
+  surface = 'runway', track = null, damage = null, type = null } = {}) {
   const sc = createScorer();
+  if (type) sc.setType(type);
   for (const p of track || []) sc.update({ t: p.t, pos: { x: p.x, y: p.y, z: p.z }, vs: p.vs, gs: p.gs, onGround: false }, []);
   const s = { t: (track ? track[track.length - 1].t : 0) + 10, ias: 70, gs: 70, vs: 0, onGround: true, nz: 1, pos: { x: along, y: -cross, z: GROUND_Z } };
   if (runway) sc.setLanding(landingRunway(runways, along, -cross, EAST));
@@ -74,8 +80,9 @@ function land({ vs = 130, g = 1, along = 400, cross = 0, bank = 0, pitch = 5.5, 
   sc.update(s, [...(damage ? [{ type: 'damage', reason: damage }] : []),
     { type: 'touchdown', vsMs: -vs / 196.85, g, x: along, y: -cross, bank: bank * DEG, pitch: pitch * DEG, surface }]);
   if (bounceG) {
-    s.t += 1; s.onGround = false; sc.update(s, []);
-    s.t += 1; s.onGround = true; sc.update(s, [{ type: 'bounce' }, { type: 'touchdown', vsMs: -3, g: bounceG, x: along + 100, y: 0, bank: 0, pitch: 0.05 }]);
+    // v0.5.5: a second off the ground, half a metre up (the scorer counts the hop from the wheels and the height)
+    s.t += 1; s.onGround = false; s.pos.z = GROUND_Z + 0.5; sc.update(s, []);
+    s.t += 1; s.onGround = true; s.pos.z = GROUND_Z; sc.update(s, [{ type: 'bounce' }, { type: 'touchdown', vsMs: -3, g: bounceG, x: along + 100, y: 0, bank: 0, pitch: 0.05 }]);
   }
   let res = null;
   for (let i = 0; i < 40 && !res; i++) {
@@ -145,7 +152,8 @@ test("Shane's landing (190 ft/min, 2 m left, 150 m long, low at 1 km and a bob) 
   assert.ok(ap.pathDots > 0.6 && ap.pathDots < 1.1, `${ap.pathDots}`);
   assert.ok(ap.swingFpm > 150 && ap.swingFpm < 260, `${ap.swingFpm}`);
   const res = land({ vs: 190, g: 1.3, along: 550, cross: -2, bank: 0.5, pitch: 6, track: shanesFinal });
-  assert.equal(res.points, 80, `${res.points} ${JSON.stringify(scores(res))} ${ap.pathDots} ${ap.swingFpm}`);
+  // (v0.1.3 to v0.5.4: exactly 80; v0.5.5's whole points per part make it 81)
+  assert.ok(res.points >= 79 && res.points <= 82, `${res.points} ${JSON.stringify(scores(res))} ${ap.pathDots} ${ap.swingFpm}`);
   assert.equal(res.grade, 'B');
   assert.deepEqual(scores(res), { 'Vertical speed': 10, 'Peak g': 9, 'Touchdown vs aiming point': 7, 'From centreline': 8,
     Bank: 10, Pitch: 10, Bounces: 0 === 0 ? 10 : 0, 'Approach path': part(res, 'Approach path').score, 'Sink rate swings': part(res, 'Sink rate swings').score });
@@ -165,7 +173,13 @@ test('the parts lost add up to the points lost', () => {
     land({ along: -120, surface: 'ground' }), land({ damage: 'hard landing: gear collapsed' })]) {
     assert.equal(res.parts.reduce((a, p) => a + p.penalty, 0), 100 - res.points, JSON.stringify(res.parts));
     assert.ok(res.parts.every((p) => Number.isInteger(p.penalty) && p.penalty >= 0));
-    assert.ok(res.parts.every((p) => Number.isInteger(p.score) && p.score >= 0 && p.score <= 10));
+    // v0.5.5: the parts' shares add up to 100, their points to the total before what comes off, which is a row each
+    const cats = res.parts.filter((p) => p.kind !== 'penalty'), pens = res.parts.filter((p) => p.kind === 'penalty');
+    assert.ok(cats.every((p) => Number.isInteger(p.score) && p.score >= 0 && p.score <= 10));
+    assert.equal(cats.reduce((a, p) => a + p.share, 0), 100);
+    assert.ok(cats.every((p) => p.points === rowPoints(p.score, p.share) && p.penalty === p.share - p.points));
+    assert.equal(cats.reduce((a, p) => a + p.points, 0) - pens.reduce((a, p) => a + p.minus, 0), res.points);
+    assert.ok(pens.every((p) => p.penalty === p.minus && !Number.isFinite(p.score)));
   }
 });
 
@@ -209,7 +223,8 @@ test('main wheels on the grass: short of the threshold, or off the side', () => 
   assert.equal(part(short, 'On the grass').cost, COST.grass);
   assert.ok(part(short, 'Touchdown vs aiming point').cost > COST.aim(0, 400)); // short of the threshold costs more
   assert.equal(short.grade, 'F');
-  assert.equal(part(short, 'On the grass').score, 0);
+  assert.equal(part(short, 'On the grass').kind, 'penalty');   // v0.5.5: a row of what came off, not a part
+  assert.equal(part(short, 'On the grass').rule, '49 at most');
   assert.ok(short.points > 20 && short.points <= CAP.grass, `${short.points}`);
   assert.match(verdict(short), /^Short of the threshold/);
   const side = land({ along: 450, cross: 25, surface: 'ground' });
@@ -219,26 +234,121 @@ test('main wheels on the grass: short of the threshold, or off the side', () => 
   assert.equal(part(land({}), 'On the grass'), undefined);
 });
 
-test('a touchdown off the runway scores low, not 0, and says so', () => {
+test('a touchdown off the runway: half off, and says so', () => {
+  // v0.5.5: half (v0.5.4: 10 at most). Perfect in every part it can be scored on (no aiming point or
+  // centreline off a runway): 100, halved.
   const res = land({ runway: false });
-  assert.equal(res.points, 10);
-  assert.equal(res.grade, 'F');
+  assert.equal(res.points, 50);
+  assert.equal(part(res, 'On a runway').rule, 'half');
+  assert.equal(part(res, 'On a runway').minus, 50);
+  const firm = land({ runway: false, vs: 600, g: 1.8 });
+  assert.ok(firm.points < 50 && firm.grade === 'F', `${firm.points}`);
   assert.ok(res.offRunway);
   assert.equal(res.runway, null);
   assert.equal(part(res, 'On a runway').value, 'no');
   assert.ok(!part(res, 'From centreline') && !part(res, 'Approach path'));
   assert.equal(verdict(res), "That wasn't a runway.");
-  assert.equal(verdict({ points: 10, grade: 'F', parts: res.parts }), "That wasn't a runway."); // from the logbook
+  assert.equal(verdict({ points: 50, grade: 'D', parts: res.parts }), "That wasn't a runway."); // from the logbook
 });
 
-test('a would-be crash (Indestructible) scores 10 at most, and says so', () => {
+test('a would-be crash (Indestructible) is halved, and says so', () => {
+  // v0.5.5 (Shane: "cut the score in half when a crash would have happened"; v0.5.4 capped it at 10).
   const res = land({ track: approach(onPath), damage: 'hard landing: gear collapsed' });
-  assert.equal(res.points, CAP.crash);
-  assert.equal(res.grade, 'F');
+  assert.equal(res.points, 50);
   assert.equal(part(res, 'Would have crashed').value, 'gear collapsed');
-  assert.equal(part(res, 'Would have crashed').score, 0);
-  assert.equal(part(res, 'Would have crashed').penalty, 90); // the cap's own part takes what it takes
+  assert.equal(part(res, 'Would have crashed').kind, 'penalty');
+  assert.equal(part(res, 'Would have crashed').rule, 'half');
+  assert.equal(part(res, 'Would have crashed').minus, 50);
   assert.match(verdict(res), /^Without Indestructible, that was a crash/);
+  // Off a runway as well: half, then half again.
+  assert.equal(land({ runway: false, damage: 'hard landing: gear collapsed' }).points, 25);
+});
+
+// v0.5.5: Shane's card of 2026-11-17 (a 777, Indestructible, started on a short final, so no approach parts): 587
+// ft/min, 2.33 g, 982 m past the aiming point, 8.4 m off, 0.4° of bank, 0.2° of pitch, no bounce counted, and the nose
+// gear would have gone. v0.5.4 gave it 10 (its parts' scores out of 10 summed to 29 of 80). Now its rows add up to
+// about 30, halved for the would-be crash: about 15.
+test("Shane's would-be crash of 2026-11-17: its rows add up to about 30, then half", () => {
+  const res = land({ vs: 587, g: 2.33, along: 400 + 982, cross: 8.4, bank: 0.4, pitch: 0.2, damage: 'nose gear collapsed', type: TYPES['b777-300er'] });
+  assert.deepEqual(scores(res), { 'Vertical speed': 3, 'Peak g': 1, 'Touchdown vs aiming point': 0, 'From centreline': 1,
+    Bank: 10, Pitch: 4, Bounces: 10, 'Would have crashed': undefined });
+  const cats = res.parts.filter((p) => p.kind !== 'penalty');
+  assert.equal(cats.reduce((a, p) => a + p.share, 0), 100);
+  const sum = cats.reduce((a, p) => a + p.points, 0);
+  assert.ok(sum >= 27 && sum <= 33, `${sum} ${JSON.stringify(cats.map((p) => `${p.points}/${p.share}`))}`);
+  assert.equal(res.points, Math.floor(sum / 2));
+  assert.ok(res.points >= 13 && res.points <= 16 && res.grade === 'F', `${res.points}`);
+  assert.equal(part(res, 'Would have crashed').minus, sum - res.points);
+  assert.match(verdict(res), /^Without Indestructible, that was a crash \(nose gear/);
+  // the card: each part "points/share", the would-be crash's row "half" and what it took
+  const html = partsHtml(res.parts);
+  assert.match(html, />7\/22</);
+  assert.match(html, /class="rule">half<\/span><span class="p"[^>]*>−\d+</);
+});
+
+test('the shares: whole points adding up to 100 by weight; 100 only with 10/10 everywhere', () => {
+  const ps = (ws, sc = 10) => shareOut(ws.map((w) => ({ weight: w, score: sc })));
+  for (const ws of [[3, 1.5, 3, 3, 1, 1, 1.5, 2, 1.5], [3, 1.5, 3, 3, 1, 1, 1.5], [3, 1.5, 1, 1, 1.5]]) {
+    const parts = ps(ws);
+    assert.equal(parts.reduce((a, p) => a + p.share, 0), 100, JSON.stringify(parts));
+    assert.ok(parts.every((p) => p.points === p.share));
+  }
+  // every share loses a point at 9/10, however small
+  for (let share = 1; share <= 30; share++) assert.ok(rowPoints(9, share) < share && rowPoints(9, share) >= 0, `${share}`);
+  assert.equal(rowPoints(10, 17), 17);
+  assert.equal(rowPoints(0, 17), 0);
+  assert.equal(rowPoints(5, 17), 9);   // 8.5, rounded
+});
+
+// v0.5.5: the bounces, from the wheels and the height (Shane: "I did bounce once very clearly in that landing but the
+// report showed 0 bounces"). A state stream at 100 Hz: s(t, { nose, mains, z }).
+function wheels(script) {
+  const bt = bounceTracker();
+  const st = (t, o) => ({ t, onGround: !!(o.nose || o.mains || o.skid), scraping: !!o.skid, wow: { nose: !!o.nose, left: !!o.mains, right: !!o.mains }, pos: { z: o.z ?? 0 } });
+  let t = 0;
+  for (const [secs, o] of script) for (const end = t + secs; t < end - 1e-9; t += 0.01) bt.update(st(t, typeof o === 'function' ? o(t) : o));
+  return bt.count;
+}
+const AIR = (z = 30) => ({ z });
+test('bounces: a short hop, a hop with the nose wheel on, not the rollout, not a nose wheel touching first', () => {
+  // half a minute in the air, then the main wheels down and the rollout
+  const air = [[30, AIR(30)]];
+  assert.equal(wheels([...air, [20, { mains: true, nose: true }]]), 0);
+  // a hop of 0.3 s, 0.25 m up: the sim's own event needed half a second with no wheel on the ground
+  assert.equal(wheels([...air, [1, { mains: true }], [0.3, (t) => ({ z: 0.25 })], [20, { mains: true, nose: true }]]), 1);
+  // the main wheels lifting 0.4 s, 0.2 m, with the nose wheel still on (a flat, nose-down arrival)
+  assert.equal(wheels([...air, [0.5, { mains: true }], [0.5, { mains: true, nose: true }], [0.4, { nose: true, z: 0.2 }], [20, { mains: true, nose: true }]]), 1);
+  // two hops: two bounces
+  assert.equal(wheels([...air, [0.5, { mains: true }], [0.6, { z: 0.5 }], [0.5, { mains: true }], [0.4, { z: 0.2 }], [20, { mains: true, nose: true }]]), 2);
+  // the rollout's bumps: a wheel off for a frame or two, a few millimetres
+  assert.equal(wheels([...air, [3, { mains: true, nose: true }], ...Array.from({ length: 10 }, () => [[0.02, { nose: true, z: 0.004 }], [1, { mains: true, nose: true }]]).flat(), [5, { mains: true, nose: true }]]), 0);
+  // a hop 12 s after the wheels came down is the rollout's
+  assert.equal(wheels([...air, [12, { mains: true, nose: true }], [0.5, { nose: true, z: 0.3 }], [5, { mains: true, nose: true }]]), 0);
+  // the nose wheel first, still coming down (the main wheels 0.8 m up and sinking), then the main wheels: no bounce
+  assert.equal(wheels([...air, [0.3, { nose: true, z: 0 }], [0.3, (t) => ({ z: -0.3 })], [20, { mains: true, nose: true }]]), 0);
+  // a lift-off and a go-around aren't bounces: in the air for 30 s again, then down
+  assert.equal(wheels([...air, [2, { mains: true }], [30, AIR(30)], [20, { mains: true, nose: true }]]), 0);
+});
+
+test('bounces with the real sim: a 777 bounced (Indestructible) counts once, as the sim saw it', () => {
+  // 170 kt, flaps for landing, 560 ft/min with the stick pushed from 20 ft: the nose gear goes first, then a bounce of
+  // about 1.6 s on the main wheels (the sim's own event sees it too: not counted twice)
+  const sim = createSim({ type: 'b777-300er' });
+  const D = sim.type.data, mass = 240000, fuel = 25000;
+  sim.reset({ x: 0, y: 0, hdg: 0, onGround: false, z: 60 * FT + sim.type.geo.GROUND_Z, iasMs: 170 * KT, flapLever: 4, gearDown: true, fuelKg: fuel, payloadKg: mass - D.OEW - fuel });
+  sim.setIndestructible(true);
+  const sc = createScorer(); sc.setType(sim.type);
+  const s = sim.state;
+  let down = false, simBounces = 0;
+  run(sim, 30, () => {
+    if (!down) { approachPilot(sim, { vs: -560, flareFt: 0, tdFpm: -560 }); if (s.agl < 20 * FT) sim.controls.pitch = -0.6; sim.controls.thrust = s.agl < 20 * FT ? 0 : 0.35; }
+    else { sim.controls.pitch = 0; sim.controls.thrust = 0; }
+    const ev = sim.events.splice(0);
+    for (const e of ev) { if (e.type === 'touchdown') down = true; if (e.type === 'bounce') simBounces++; }
+    sc.update(s, ev);
+  });
+  assert.equal(simBounces, 1);
+  assert.equal(sc.serialize().bounces, 1);
 });
 
 test('the approach: glideslope and localizer dots, sink rate swings, and what counts', () => {

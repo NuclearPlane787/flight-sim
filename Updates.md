@@ -1,8 +1,15 @@
 # Updates
 
-What each update added and changed, newest first. Dates are in KST. Each commit to the repository is titled with its version number alone, and this file says what's in it. The game shows its version in the pause menu and on the loading screen.
+What each update added and changed, newest first. Dates are in KST. Each commit to the repository is titled with its version number alone, and this file says what's in it. The game shows its version in the Esc menu and on the loading screen.
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
+
+## v0.5.5 · 2026-11-18 · Esc opens the menu without pausing, controls while paused, scores that add up
+
+- **Esc opens the menu and doesn't pause.** Only the Pause button at the top left pauses and resumes. The menu is called Menu now, and its blue button is Close: it closes the menu and leaves the pause as it was. The flight goes on behind it (its keys wait until it's closed), opening it saves as the pause did, and Rewind 30 s works from it. Time of day and Weight and fuel open their window without touching the pause. Hiding the page still pauses, quietly, and the button reads Resume when you're back.
+- **Set things up while paused:** switch between the cockpit, nose and outside views and move the camera freely; move the thrust levers (the engine panel's command marker follows at once, the engines when you resume), the flaps, the gear, the speedbrake, the autopilot and the FCU or MCP. Nothing moves until you press Resume, then it all responds at once; gear, flaps and speedbrake say so in a note when you set them.
+- **Landing scores that add up.** Each category now scores out of its share of the 100 (vertical speed, the touchdown point and the centreline about 20 each, bank and pitch about 7), so the rows add up to the total, and anything taken off after that is a row of its own saying what it took: held down by the worst category, the grass (49 at most), off a runway (half). A would-be crash halves the total now instead of capping it at 10: your nose-gear landing on the 777 comes out at 31, halved to 15. Your reference landing scores 81. Older logbook cards show as they were.
+- **Bounces are counted** from the main wheels leaving the ground: any hop after touchdown that rises 15 cm, or stays off for a fifth of a second, counts, even with the nose wheel still on. Before, the aircraft had to be off the ground for half a second with no wheel touching, so a quick hop after a flat, nose-first landing counted none.
 
 ## v0.5.4 · 2026-11-16 · A pause button, landings out of 10, and more for the warehouse
 
