@@ -177,7 +177,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   await page.keyboard.press('3'); await page.waitForTimeout(150);
   ok((await page.evaluate(() => window.__fs.rig.view.id)) === 'orbit', '3 while paused: 3rd person');
   await page.keyboard.press('g'); await page.waitForTimeout(150);
-  await page.keyboard.press('BracketLeft'); await page.waitForTimeout(150);
+  await page.keyboard.press('Minus'); await page.waitForTimeout(150);   // v0.5.6: − is flaps up a step ([ was)
   // The panel's buttons work too: X takes the A/THR off (else the 777's takes its lever back after a hand on it).
   if (await page.evaluate(() => window.__fs.ap.athr)) {
     await page.keyboard.press('x'); await page.waitForTimeout(150);
@@ -187,7 +187,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   const pc = await page.evaluate(() => { const fs = window.__fs, s = fs.sim.state, e = s.engines[0], c = fs.sim.controls;
     return { gear: c.gearDown, gearPos: s.gearPos, flapLever: c.flapLever, stFlapLever: s.flapLever, flapDeg: s.flapDeg, lever: c.thrust, stLever: s.thrustLever, leverN1: s.leverN1, n1: e.n1, t: s.t }; });
   ok(pc.gear !== pz.gear && pc.gearPos === pz.gearPos, `G while paused: the lever ${pz.gear ? 'up' : 'down'}, the gear still (${pc.gearPos})`);
-  ok(pc.flapLever === pz.flapLever - 1 && pc.stFlapLever === pc.flapLever && pc.flapDeg === pz.flapDeg, `[ while paused: the flap lever a step up (${pz.flapLever} → ${pc.flapLever}), the flaps still (${pc.flapDeg.toFixed(1)}°)`);
+  ok(pc.flapLever === pz.flapLever - 1 && pc.stFlapLever === pc.flapLever && pc.flapDeg === pz.flapDeg, `− while paused: the flap lever a step up (${pz.flapLever} → ${pc.flapLever}), the flaps still (${pc.flapDeg.toFixed(1)}°)`);
   ok(pc.lever > pz.lever + 0.05 && pc.stLever === pc.lever && pc.leverN1 > pz.leverN1 + 1, `R held while paused: the lever forward (${pz.lever.toFixed(2)} → ${pc.lever.toFixed(2)}), the panel's ring with it (${pz.leverN1.toFixed(1)} → ${pc.leverN1.toFixed(1)} %)`);
   ok(Math.abs(pc.n1 - pz.n1) < 1e-9 && pc.t === pz.t, `but the engines and the clock wait (N1 ${pc.n1.toFixed(2)}, t ${pc.t.toFixed(2)})`);
   await page.keyboard.press('g'); await page.waitForTimeout(150);   // the gear back down before going on: this is a final

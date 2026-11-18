@@ -132,6 +132,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     pitch: 0, roll: 0, yaw: 0, thrust: 0, trim: 0,
     brakeL: 0, brakeR: 0, parkingBrake: false, gearDown: true, flapLever: 0,
     speedbrake: 0, spoilersArmed: false, law: 'normal',
+    // v0.5.6: each engine's thrust lever while engine groups (src/input.js) have parted them, else null: engine i's
+    // lever is thrustEng?.[i] ?? thrust.
+    thrustEng: null,
   };
 
   // ---- the read-only state, updated in place every step ----
@@ -233,7 +236,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     state.engines.length = 0;
     for (let i = 0; i < NE; i++) {
       eng.push({ n1: 0, n1Target: 0, rev: 0, thrustN: 0, ffKgS: 0, fuelOk: true });
-      state.engines.push({ n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0, off: false });
+      state.engines.push({ n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0, off: false, leverN1: 0 });   // v0.5.6: its own ring
     }
   };
   mkEngines();
@@ -321,7 +324,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (A.PARTS_AERO === undefined) return takeoffThs0();
     // the schedule read at the CG this load would have on the base's airframe (the airframe's own structure moved it;
     // ballast, engines and tanks keep their moves, as on the base's airframe)
-    const cgEq = cgX - (A.AIRFRAME_CG_SHIFT || 0) * A.OEW / mass;
+    // v0.5.6: and the airframe's moves of the parts it carries and of its fuel (designs.js), so that's the base's CG
+    const cgEq = cgX - ((A.AIRFRAME_CG_SHIFT || 0) * A.OEW + (X.fuelL + X.fuelR) * (A.AIRFRAME_WING_FUEL_DX || 0) + X.fuelC * (A.AIRFRAME_CENTRE_FUEL_DX || 0)) / mass;
     const t = clamp((-0.5 + 20 * (0.25 - cgEq / A.MAC - 0.28)) * A.DEG, -A.THS_DN, A.THS_UP);
     const cmAt = (ths, parts) => {
       tsS.slat = X.slat; tsS.flap = X.flap; tsS.hWing = A.WING_HEIGHT; tsS.ths = ths;
@@ -329,8 +333,25 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       if (parts) partsDeltaInto(A.PARTS_AERO, tsS, tsO);
       return tsO.Cm;
     };
-    const h = 0.01, base = cmAt(t, false), d0 = cmAt(t, true), slope = (cmAt(t + h, true) - d0) / h;
-    return slope > 0.1 ? clamp(t - (d0 - base) / slope, -A.THS_DN, A.THS_UP) : t;
+    const h = 0.01, base = cmAt(t, false), clB = tsO.CL, d0 = cmAt(t, true), clD = tsO.CL, slope = (cmAt(t + h, true) - d0) / h;
+    // v0.5.6: and the nose lifting by itself at the base's speed (a 1.5 tailplane lifted it 6 to 8 % earlier: the
+    // heavier tail's CG aft of the base's, and a Cm matched about the reference point doesn't see the weight's arm about
+    // the main wheels). At the nose's lift-off, about the main wheels: q·S·(c·Cm − CL·x_m) + T·(−z_T) = W·(x_cg − x_m)
+    // (the thrust below the CG and the acceleration it gives lift the nose; T: TOGA at M0.25). The base's terms give its
+    // lift-off q·S; the design's Cm takes the difference at that q: c·ΔCm = CL_d·x_m,d − CL_b·x_m,b + W/(q·S)·Δ(x_cg − x_m).
+    // Now within about 1 % of the base's speed on the three types (tests/takeoff-trim.test.mjs).
+    let target = base;
+    // v0.5.6 (review): the main wheels' line through both legs, where it crosses the centreline (the legs differ with
+    // Mirror off and two different wings), as designs.js's mainX0() takes it.
+    const mainX = (g) => { const L = g?.left, R = g?.right; if (!L) return undefined; if (!R || L.x === R.x) return L.x; return L.x + ((R.x - L.x) * L.y) / (L.y - R.y); };
+    const xmB = mainX(typeDef.base?.geo?.GEAR) ?? mainX(GEAR), xmD = mainX(GEAR);
+    const mB = A.MAC * base - clB * xmB, armB = cgEq - xmB, armD = cgX - xmD;
+    let T = 0, Tz = 0;
+    for (let i = 0; i < ENGINES.length; i++) { const t0 = A.ENGINE_DATA ? A.ENGINE_DATA[i].T0_ENGINE : A.T0_ENGINE; T += t0; Tz += t0 * ENGINES[i].z; }
+    const thrustM = T > 0 ? -T * (1 + (A.LAPSE_M1 || 0) * 0.25 + (A.LAPSE_M2 || 0) * 0.0625) * Tz / T : 0;
+    const W = mass * G, qS = (W * armB - thrustM) / mB;
+    if (mB > 1e-4 && armB > 0 && qS > 0) target = base + ((clD * xmD - clB * xmB) + (W / qS) * (armD - armB)) / A.MAC;
+    return slope > 0.1 ? clamp(t - (d0 - target) / slope, -A.THS_DN, A.THS_UP) : t;
   };
   // The load's fields in the public state (updateState, setLoad).
   function massState(S) {
@@ -496,8 +517,21 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // Thrust demand (A/THR or manual) and the engines. While the A/THR drives the lever
     // (v0.2.2) it writes it back to the controls, so the keyboard's lever, the cockpit's levers
     // and the engine panel follow it.
-    const phiFwd = athrStep(X, ap, E, Math.max(0, controls.thrust), dt);
-    if (X.athrDriving) controls.thrust = X.athrLever;
+    // v0.5.6: engine groups part the levers (controls.thrustEng: each engine's). A hand on any of them while the A/THR
+    // drives is a hand on the levers (the one furthest from the A/THR's); the A/THR, driving, brings them together.
+    const TE = controls.thrustEng;
+    let split = TE !== null && TE !== undefined && TE.length === NE;
+    // v0.5.6 (review): apart, the all-engines lever is the highest one (an Airbus takes the most advanced lever): the
+    // A/THR's modes, the detent (MAN TOGA), the callouts and the windshear check read controls.thrust. input.js keeps it
+    // so; this holds it for any other way in (a restored save, a test).
+    if (split) { let hi = TE[0]; for (let i = 1; i < NE; i++) if (TE[i] > hi) hi = TE[i]; controls.thrust = hi; }
+    let leverIn = controls.thrust;
+    if (split && X.athrDriving) {
+      let far = 0;
+      for (let i = 0; i < NE; i++) { const d = Math.abs(TE[i] - X.athrLever); if (d > far) { far = d; leverIn = TE[i]; } }
+    }
+    const phiFwd = athrStep(X, ap, E, Math.max(0, leverIn), dt);
+    if (X.athrDriving) { controls.thrust = X.athrLever; if (split) { controls.thrustEng = null; split = false; } }
     if (X.athrOffBy) { events.push({ type: 'athrDisconnect', reason: X.athrOffBy }); X.athrOffBy = ''; }
     const lever = controls.thrust;
     const revSel = lever < -0.02 && mainsWow;
@@ -510,7 +544,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       const e = eng[i];
       if (X.eOff & (1 << i)) { e.n1 = e.n1Target = e.thrustN = e.ffKgS = e.rev = 0; X.eN1[i] = X.eN1t[i] = X.eThr[i] = X.eFf[i] = X.eRev[i] = 0; continue; }
       e.n1 = X.eN1[i]; e.rev = X.eRev[i]; e.fuelOk = fuelTotal > 0;
-      (engKits ? engKits[i].engineStep : engineStep)(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
+      if (split) {   // v0.5.6: this engine's own lever
+        const li = TE[i], rs = li < -0.02 && mainsWow;
+        (engKits ? engKits[i].engineStep : engineStep)(e, li > 0 ? leverToPhi(li) : 0, rs, rs ? clamp(-li, 0, 1) : 0, sigmaT, mach, sqrtTheta, dt);
+      } else (engKits ? engKits[i].engineStep : engineStep)(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
       X.eN1[i] = e.n1; X.eRev[i] = e.rev; X.eN1t[i] = e.n1Target; X.eThr[i] = e.thrustN; X.eFf[i] = e.ffKgS;
       // v0.5.0: past its pylon's limit (a design's: 1.5 × its engine type's rated thrust) the engine tears off. It's
       // a failure, not a crash: Indestructible doesn't stop it. From this step on it makes no thrust and burns
@@ -527,11 +564,14 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigmaT, mach)) : X.eN1t[iRef];
 
     // Spoilers: speed brakes (inhibited in FULL, α prot, TOGA/MCT), ground spoilers.
-    const leverIdle = lever <= 0.02;
-    if (mainsWow && ((controls.spoilersArmed && leverIdle && ias > 72 * A.KT) || revSel)) X.gspLatched = true;
-    if (lever > 0.05 || (!mainsWow && !wowN)) X.gspLatched = false;
+    // v0.5.6: with the levers apart, the highest one counts (idle means all at idle), and any in reverse.
+    let lvHi = lever, revAny = revSel;
+    if (split) { lvHi = TE[0]; revAny = false; for (let i = 0; i < NE; i++) { if (TE[i] > lvHi) lvHi = TE[i]; if (TE[i] < -0.02 && mainsWow) revAny = true; } }
+    const leverIdle = lvHi <= 0.02;
+    if (mainsWow && ((controls.spoilersArmed && leverIdle && ias > 72 * A.KT) || revAny)) X.gspLatched = true;
+    if (lvHi > 0.05 || (!mainsWow && !wowN)) X.gspLatched = false;
     X.gsp = approach(X.gsp, X.gspLatched ? 1 : 0, dt * (X.gspLatched ? 2.0 : 0.5));
-    const sbInhibit = X.cfg === A.CONFIG_FULL || X.protAlpha || lever > 0.75 || X.alphaFloorLock;
+    const sbInhibit = X.cfg === A.CONFIG_FULL || X.protAlpha || lvHi > 0.75 || X.alphaFloorLock;
     X.sb = approach(X.sb, sbInhibit ? 0 : clamp(controls.speedbrake, 0, 1), dt * 0.5);
 
     // Brakes (anti-skid in the tyre model) and nosewheel steering.
@@ -971,9 +1011,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     S.cgX = cgX; S.cgMac = 0.25 - cgX / A.MAC;
     massState(S);
     let ffSum = 0;
+    // v0.5.6: each engine's ring: its own lever's N1 while the levers are apart (controls.thrustEng), else the lever's.
+    const TEs = controls.thrustEng, splitS = TEs !== null && TEs !== undefined && TEs.length === NE;
+    const idleS = splitS ? idleN1(flatSigma(atmo.rho / RHO0, atmo.T), mach) : 0;
     for (let i = 0; i < NE; i++) {
       const e = S.engines[i];
       e.n1 = X.eN1[i]; e.n1Target = X.eN1t[i]; e.ffKgS = X.eFf[i]; e.thrustN = X.eThr[i]; e.rev = X.eRev[i]; e.off = (X.eOff & (1 << i)) !== 0;
+      e.leverN1 = splitS ? (TEs[i] >= 0 ? n1ForPhi(leverToPhi(TEs[i]), idleS) : X.eN1t[i]) : X.leverN1;
       ffSum = i === 0 ? X.eFf[0] : ffSum + X.eFf[i];
     }
     S.fuelFlowKgS = ffSum;
@@ -1054,6 +1098,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     events.length = 0;
     controls.pitch = controls.roll = controls.yaw = 0;
     controls.brakeL = controls.brakeR = 0; controls.speedbrake = 0;
+    controls.thrustEng = null;   // v0.5.6: the levers together
     controls.flapLever = ic.flapLever ?? 0;
     controls.gearDown = ic.gearDown ?? true;
     controls.law = ic.law || controls.law || 'normal';
@@ -1197,7 +1242,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   function snapshot() {
     const apSnap = {};
     for (const k of AP_FIELDS) apSnap[k] = ap[k];
-    const snap = { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls }, ap: apSnap, wow: [wowN, wowL, wowR] };
+    const snap = { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls, thrustEng: controls.thrustEng ? controls.thrustEng.slice() : null }, ap: apSnap, wow: [wowN, wowL, wowR] };
     for (const k of ENGINE_FIELDS) snap.core[k] = X[k].slice();
     if (typeDef.design) snap.design = typeDef.design;   // v0.5.0: the design itself, whole (designs.js)
     if (wxS) snap.weather = wxS;   // the default weather writes nothing: absent means calm
@@ -1234,6 +1279,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
     migrateEngines(snap.core);
     Object.assign(controls, snap.controls);
+    // v0.5.6: the levers apart, as saved (a save from before has none: together).
+    const te = snap.controls?.thrustEng;
+    controls.thrustEng = Array.isArray(te) && te.length === NE && te.every(Number.isFinite) ? te.slice() : null;
     for (const k of AP_FIELDS) ap[k] = snap.ap[k];
     [wowN, wowL, wowR] = snap.wow;
     events.length = 0;
@@ -1382,6 +1430,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       X.leverN1 = n1ForPhi(leverToPhi(lever), idleN1(flatSigma(atm.rho / RHO0, atm.T), S.mach || 0));
     }
     S.leverN1 = X.leverN1;
+    // v0.5.6: each engine's ring, its own lever's while engine groups have parted them.
+    const TEp = controls.thrustEng, splitP = TEp !== null && TEp !== undefined && TEp.length === NE && !X.crashed;
+    const idleP = splitP ? (atmAt(X.pz, atm), idleN1(flatSigma(atm.rho / RHO0, atm.T), S.mach || 0)) : 0;
+    for (let i = 0; i < NE && i < S.engines.length; i++) {
+      S.engines[i].leverN1 = splitP ? (TEp[i] >= 0 ? n1ForPhi(leverToPhi(TEp[i]), idleP) : X.eN1t[i]) : S.leverN1;
+    }
     const fl = clamp(controls.flapLever | 0, 0, CONFIG_BY_LEVER.length - 1);
     let oneF = X.lever1F;
     if (fl === 1 && A.HAS_1F && fl !== X.prevLever) oneF = X.prevLever === 0 ? (S.onGround || S.ias < 100 * A.KT) : S.ias < A.AUTO_RETRACT_KT * A.KT;

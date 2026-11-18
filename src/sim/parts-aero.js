@@ -121,8 +121,8 @@ export function baseShape(base) {
 // The wing swings about its root's quarter chord, its chord grows about each station's quarter chord, its span from the
 // fuselage's side; the tails grow about their roots' trailing edges (v0.5.4: were the quarter chords); the forward
 // plug moves the nose forward and the aft plug the tail (tailplane and fin) back. The reference point (the base's 25 %
-// MAC) stays where it is.
-export function wingSide(base, ws, side) {
+// MAC) stays where it is. v0.5.6: wingX (dx here) moves the whole wing aft (forward when negative) along the fuselage.
+export function wingSide(base, ws, side, dx = 0) {
   const b = baseShape(base).wing, s0 = b.stations[0];
   const qc0 = s0.xle - s0.c / 4, ys = s0.y;
   const W = typeById(base).geo.WING, dih0 = W.dihedralDeg * DEG;
@@ -136,7 +136,7 @@ export function wingSide(base, ws, side) {
     const c = st.c * ws.chord;
     const zRes = st.z - (s0.z + (st.y - ys) * Math.tan(dih0));
     const z = s0.z + (y - ys) * Math.tan(ws.dihedral * DEG) + zRes * ws.span;
-    return { y, xle: x + c / 4, c, z };
+    return { y, xle: x + c / 4 - dx, c, z };
   });
   return { ...b, stations: out, side };
 }
@@ -166,7 +166,8 @@ export function shapeOf(base, af) {
   // effective aspect ratio: about 8 % more with them [EST] (Airbus quotes up to 4 % less fuel on long sectors, about
   // a tenth of the induced drag), which goes into the induced drag, the downwash and the 3D lift slope.
   const tipK = af.sharklets === false ? 1 / SHARKLET_AR : 1;
-  return { ...b, wingL: wingSide(base, af.wingL, 1), wingR: wingSide(base, af.wingR, -1), tail, fin, body, tipK };
+  const dx = af.wingX || 0;   // v0.5.6: the wing's position (airframe-map.js's wing() agrees)
+  return { ...b, wingL: wingSide(base, af.wingL, 1, dx), wingR: wingSide(base, af.wingR, -1, dx), tail, fin, body, tipK };
 }
 export function defaultSide(base) {
   return { span: 1, chord: 1, sweep: 0, dihedral: typeById(base).geo.WING.dihedralDeg };
@@ -193,7 +194,11 @@ function stripsOf(st, counts, toFRD, kind, cover) {
       const at = (t) => ({ s: lerp(a.s, b.s, t), xle: lerp(a.xle, b.xle, t), c: lerp(a.c, b.c, t), h: lerp(a.h, b.h, t) });
       const pa = at(ta), pb = at(tb), pm = at(tm);
       const qa = toFRD(pa.xle - pa.c / 4, pa.s, pa.h), qb = toFRD(pb.xle - pb.c / 4, pb.s, pb.h), qm = toFRD(pm.xle - pm.c / 4, pm.s, pm.h);
-      const span = sub(qb, qa), ds = Math.hypot(span[0], span[1], span[2]);
+      // v0.5.6: the strip's area is its (streamwise) chord times its width across the span: the quarter-chord line's
+      // length projected on the plane normal to x (dihedral and cant in, sweep out). Until v0.5.5 it was that line's
+      // whole length, so sweeping a panel back made it bigger by 1/cos Λ (the 777 at +8°: 492 → 534 m²), though the
+      // strips' sections already go to their normal plane (an = a / cos Λ in partsInto()), which assumes this area.
+      const span = sub(qb, qa), ds = Math.hypot(span[1], span[2]);
       out.push({ kind, r: qm, S: pm.c * ds, c: pm.c, es: unit(span), eta: (pm.s - s0) / (s1 - s0), ...cover((pm.s - s0) / (s1 - s0)) });
     }
   }

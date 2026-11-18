@@ -168,7 +168,8 @@ try {
 
   // Controls: the common table as before; the Boeing section stays away until it has rows.
   await page.evaluate(() => window.__fs.controlsPage.open());
-  check('Controls: the keys table, no empty family section', await page.$$eval('.fsm-controls .fsm-keys', (t) => t.length) === 1 && await page.$$eval('.fsm-controls .fsm-keys-h', (h) => h.length) === 0);
+  // v0.5.6: the global keys editor, a table a section; the A321neo flown has no Boeing notes.
+  check('Controls: the keys, a table a section, no Boeing notes', await page.$$eval('.fsm-controls .fsk-table', (t) => t.length) === 3 && (await page.$eval('.fsm-controls [data-family-keys]', (d) => d.textContent.trim())) === '');
   await page.evaluate(() => window.__fs.controlsPage.close());
 
   // The logbook, with a type and without, and the longest name the columns must hold.

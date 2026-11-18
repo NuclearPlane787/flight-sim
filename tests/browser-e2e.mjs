@@ -71,7 +71,7 @@ try {
   await shot('3-climb-out');
   // Thrust to CL, flaps up on schedule, then the autopilot.
   await page.evaluate(() => { window.__fs.input.lever = 25 / 45; window.__e2e.phase = 'idle'; });
-  await page.keyboard.press('Digit6');
+  for (let k = 0; k < 6; k++) await page.keyboard.press('Minus');   // v0.5.6: flaps up a step at a time (to 0)
   await page.evaluate(() => {
     const fs = window.__fs, ap = fs.ap, s = fs.sim.state;
     const j = fs.runwayEnds('RKPC', '07').end;

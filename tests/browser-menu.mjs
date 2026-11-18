@@ -149,11 +149,13 @@ try {
 
   // ---- Controls ----
   await go('scene=controls&sky=1');
-  check(await page.$$eval('.fsm-keys tr', (e) => e.length) === 12, 'keys table with the Sky row');
+  // v0.5.6: the keys editor (the global keys with theirs, the defaults without a store; the parts' are the warehouse's)
+  // and the reserved L line.
+  check(await page.$$eval('.fsk-table tr[data-row]', (e) => e.length) === 14 && /warehouse/.test(await page.textContent('.fsk-part')) && /Sky window/.test(await page.textContent('.fsk-fixed')), 'the keys, and L for the Sky window');
   check(await inView('.fsm-controls .fsm-card'), 'Controls card inside the window');
   await shot('v020-menu-dev-controls.png');
   await go('scene=controls');
-  check(!/Sky window/.test(await page.textContent('.fsm-keys')), 'no Sky row without { sky: true }');
+  check(!/Sky window/.test(await page.textContent('.fsk-fixed')), 'no Sky window without { sky: true }');
 
   // ---- The setup's Name field ----
   await go('scene=setup');

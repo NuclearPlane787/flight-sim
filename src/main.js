@@ -19,7 +19,9 @@ import { VERSION } from './version.js';
 import { ScenarioStore, whereText, legacyId } from './scenarios.js';
 import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js';
 import { createClock, afternoonOf } from './clock.js';
-import { typeById, DEFAULT_TYPE } from './sim/types.js';
+import { typeById, DEFAULT_TYPE, TYPE_LIST } from './sim/types.js';
+import { loadKeys, saveKeys, resolveKeys, scopeOf, keyLabel, keysFrom } from './keys.js';
+import { designStore } from './designs-store.js';
 import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
@@ -164,6 +166,35 @@ async function boot() {
   let prediction = null, terrainToastKey = null;
 
   const input = createInput(window);
+  // v0.5.6: the keys, per aircraft (src/keys.js): read once here, changed by the Controls page, applied to the
+  // aircraft flown (useType) and again whenever its keys change.
+  let keysStorage = null;
+  try { keysStorage = window.localStorage; } catch { keysStorage = null; }
+  let keysStore = loadKeys(keysStorage);
+  let flyingDef = null;
+  function applyKeys(def = flyingDef) {
+    if (!def) return;
+    const { scope, base } = scopeOf(def), n = def.geo?.ENGINES?.length || 2;
+    input.setEngineCount(n);
+    const resolved = resolveKeys(keysStore, { scope, base, nEngines: n });
+    input.setBindings(resolved);
+    // v0.5.6 (review): the pushback's messages name the keys as bound (their first key; the default if unbound).
+    gate.setKeyNames?.((id) => keyLabel(resolved.bind?.[id]?.[0] || ''));
+  }
+  // The aircraft that have keys: the three types, then the saved designs (each flies its base type's part keys until
+  // it has its own).
+  function keyAircraft() {
+    const out = TYPE_LIST().map((t) => ({ scope: `type:${t.id}`, base: null, name: t.name, def: () => resolveDef(t.id) }));
+    for (const d of designStore().list()) out.push({ scope: `design:${d.id}`, base: `type:${d.base}`, name: d.name || 'A design', def: () => resolveDef(d) });
+    return out;
+  }
+  // v0.5.6: the keys as the Controls page (the global ones) and the warehouse (the parts') change them: kept and applied
+  // at once (it may be the aircraft flown). nameOf(scope) names an aircraft in a refusal.
+  const keysApi = {
+    load: () => keysStore,
+    save: (next) => { keysStore = next; const ok = saveKeys(keysStorage, next); applyKeys(); return ok; },
+    nameOf: (scope) => { const a = keyAircraft().find((x) => x.scope === scope); return a ? (scope.startsWith('type:') ? `the ${a.name}` : `“${a.name}”`) : null; },
+  };
   const callouts = createCallouts();
   const scorer = createScorer();
   const synth = synthMod ? synthMod.createSynth() : null;
@@ -207,6 +238,7 @@ async function boot() {
     scorer.setType(def);
     callouts.setType(def);
     input.setDetents(def.data.THRUST_DETENTS);
+    flyingDef = def; applyKeys(def);   // v0.5.6: its keys, and its engines for the engine groups
     synth?.setType?.(def);
     hud?.setType?.(def);
     controlsPage?.setFamily?.(def.family);
@@ -309,6 +341,7 @@ async function boot() {
     // The lever at the trim thrust (sim.reset puts it there), at most CL: the A/THR takes it
     // from there and moves it (v0.2.2; before, it sat in CL).
     input.lever = sim.controls.thrust = Math.min(sim.controls.thrust, sim.leverClimb);
+    sim.controls.thrustEng = null;   // v0.5.6: the levers together again
     // v0.4.0: the crew has the arrival's QNH set, and the heading held is the one the aircraft flies, crabbed into
     // any crosswind, so HDG keeps it on the extended centreline. In calm air both are as before, exactly.
     sim.setLocalQnh();
@@ -743,7 +776,7 @@ async function boot() {
     const dt = Math.min(0.1, Math.max(0, (now - pausedLast) / 1000));
     pausedLast = now;
     const held = !menuOpen && !crashed && input.leverHeld();
-    if (held) input.updateLever(dt, sim.controls, sim.state.onGround, sim.state.athrActive);
+    if (held) { input.updateLever(dt, sim.controls, sim.state.onGround, sim.state.athrActive); groupTakesAthr(); }
     sim.previewControls?.();
     renderOnce();
     if (held) pausedRaf = requestAnimationFrame(pausedFrame);
@@ -794,6 +827,14 @@ async function boot() {
         else toast('Pushback works from a gate start (Flight setup → At the gate)');
         break;
       case 'perf': setPerf(ui.perf.hidden); break;
+      // v0.5.6: a wing tank's key (the warehouse): the wing tanks drop, as the Weight tab's button drops them
+      case 'dropTanks': {
+        if (!(sim.type?.geo?.PODS || []).length) { toast('No wing tanks to drop', 1500); break; }
+        if (sim.state.tanksDropped) { toast('The wing tanks are gone already', 1500); break; }
+        const r = dropWingTanks();
+        if (r.text) toast(r.text, 1800);
+        break;
+      }
       case 'rewind': break; // T: handled above, only from the pause or crash screens
       default:
         if (a === 'flapUp' || a === 'flapDown') {
@@ -831,7 +872,7 @@ async function boot() {
       setMenu(false); openSky();   // v0.5.5: the pause as it was
     } } : {}),
   });
-  const controlsPage = createControlsPage($('pages-root'), { sky: !!skyWinMod?.createSkyWindow });
+  const controlsPage = createControlsPage($('pages-root'), { sky: !!skyWinMod?.createSkyWindow, keys: keysApi });
   for (const pg of [settingsPage, controlsPage]) pg.onclose = () => { if (!inMenu) input.setEnabled(true); };
 
   for (const btn of document.querySelectorAll('[data-act]')) {
@@ -1026,6 +1067,12 @@ async function boot() {
   // A pinch over a panel or dialog must not zoom the page (the canvas handles its own).
   window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
+  // v0.5.6 (review): an engine group's key that takes the levers from a driving A/T disconnects a Boeing's A/T, as the
+  // A321's A/THR disconnects (in the sim): the Boeing's hand-on-lever override would take the levers back a second
+  // later while the key is still held, and part them again, over and over.
+  function groupTakesAthr() {
+    if (input.groupTook && sim.state.athrActive && flyingDef?.family === 'boeing' && ap.athr) ap.toggleAthr();
+  }
   function frame(now) {
     raf = 0;
     if (paused || document.hidden) { renderOnce(); return; }
@@ -1039,6 +1086,7 @@ async function boot() {
     const s = sim.state;
     if (menuOpen) input.dropAll();   // v0.5.5: under the menu the flight goes on, without the keys (sticks centre)
     input.update(dt, sim.controls, s.onGround, s.athrActive);   // the A/THR moves the lever (v0.2.2)
+    groupTakesAthr();   // v0.5.6 (review)
     if (window.__fsController) window.__fsController(sim, dt); // test-only landing controller
     if (crashed) { render(dt); cancelAnimationFrame(raf); raf = 0; return; } // the crash panel waits; rewind/restart restart the loop
 
@@ -1241,6 +1289,7 @@ async function boot() {
     onLoad: (id) => loadScenario(id),
     onNew: () => newScenario(),
     onFlyDesign: (d) => newScenario(d),   // v0.5.2: the warehouse's Fly it
+    keys: keysApi,                        // v0.5.6: the parts' keys, in the warehouse
     onLogbook: () => openLogbook(false),
     onSettings: () => settingsPage.open(),
     onControls: () => controlsPage.open(),
@@ -1300,6 +1349,7 @@ async function boot() {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (inMenu || !plan || setup.isOpen) return;
+    if (controlsPage.isOpen || settingsPage.isOpen) return;   // v0.5.6: a page over the flight has the keys (the Controls page takes them)
     e.preventDefault();
     toggleL();
   }, true);
@@ -1357,6 +1407,8 @@ async function boot() {
     get achievedScale() { return achievedScale; },
     get paused() { return paused; },
     get menuOpen() { return menuOpen; }, setMenu,   // v0.5.5
+    // v0.5.6: the key bindings for checks (not stored): the store as keys.js keeps it, applied to the flight at once.
+    setKeys(next) { keysStore = keysFrom(next); applyKeys(); }, get keys() { return keysStore; },   // v0.5.6: { global, scopes }
     get crashed() { return crashed; },
     get dest() { return dest; },
     startFlight, skipToFinal, jumpTo, changeRoute, selectView, scenarios, clock, captureState, applyState, saveNow, loadScenario, exitToMenu, newScenario,

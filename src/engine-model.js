@@ -20,7 +20,7 @@
 // geometry is what it was (the same vertices, triangles and colours; only the parts' bones are new).
 
 import * as THREE from '../vendor/three.module.js';
-import { lathe, grid, boxAt, foilPoint, foilPiece } from './aircraft.js';
+import { lathe, grid, boxAt, foilPoint, foilPiece, toModel } from './aircraft.js';
 import { curve } from './widebody-shape.js';
 import { UV } from './livery.js';
 import { B787_9, B777_300ER } from './widebody-specs.js';
@@ -112,17 +112,50 @@ function bodyPylon(b, n, host, EB, BY) {
   b.add(g, EB, C.pylon, null, BY);
 }
 
-// v0.5.4: the wing tanks dropped (the sim's state.tanksDropped). For a model's update(): scales its addPod() bones
-// ('pod<k>', each a tank with its pylon, which hang from nothing else) to nothing while it's true, and back to 1 when
-// it's false or missing. Does nothing on a model without tanks, and only touches the bones when the state changes.
+// v0.5.4: the wing tanks dropped (the sim's state.tanksDropped). For a model's update(): its addPod() bones ('pod<k>',
+// each a tank with its pylon, which hang from nothing else) leave while it's true, and come back when it's false or
+// missing. Does nothing on a model without tanks, and only touches the bones while something changes.
+// v0.5.6 (ROADMAP, "Found while building v0.5.4": they vanished at once): podDropper(B) → (dropped, t). Dropped in
+// flight, they fall away in the aircraft's frame for FALL.hideS seconds of sim time `t` (the models pass state.t;
+// without it, the page's clock): down at g, aft at FALL.dragMs2 (their drag in the air the aircraft flies through),
+// tumbling nose down, then they're hidden (scaled to nothing, as before). Already dropped when first seen, or after a
+// jump in time (a flight loaded, a rewind), they're just hidden; dropped false again (a rewind past the drop), they're
+// back at once.
+export const FALL = { g: 9.81, dragMs2: 8, pitchRadS2: 0.6, hideS: 3.5 };
 export function podDropper(B) {
   const pods = Object.keys(B).filter((n) => /^pod\d+$/.test(n)).map((n) => B[n]);
-  let gone = false;
-  return (dropped) => {
-    const g = dropped === true;
-    if (g === gone || !pods.length) return;
-    gone = g;
-    for (const bn of pods) bn.scale.setScalar(g ? 0 : 1);
+  let mode = 'on';             // 'on' (carried), 'falling', 'gone' (hidden)
+  let seenOn = false;          // carried at some update: a later drop is one this flight saw happen
+  let t0 = 0, lastT = null;
+  const off = new THREE.Vector3(), pitchAxis = new THREE.Vector3(), q = new THREE.Quaternion();
+  const put = (dx, dz, pitch, scale) => {
+    toModel(0, 1, 0, pitchAxis).normalize();      // nose down is a turn about the geometry's +y (left)
+    q.setFromAxisAngle(pitchAxis, pitch);
+    for (const bn of pods) {
+      bn.position.copy(bn.userData.rest).add(toModel(dx, 0, dz, off));
+      bn.quaternion.copy(q);
+      bn.scale.setScalar(scale);
+    }
+  };
+  return (dropped, t) => {
+    if (!pods.length) return;
+    const now = Number.isFinite(t) ? t : (globalThis.performance?.now?.() ?? Date.now()) / 1000;
+    const jump = lastT === null || now < lastT - 1e-6 || now - lastT > 1;
+    lastT = now;
+    if (dropped !== true) {
+      if (mode !== 'on') { put(0, 0, 0, 1); mode = 'on'; }
+      seenOn = true;
+      return;
+    }
+    if (mode === 'on') {
+      if (seenOn && !jump) { mode = 'falling'; t0 = now; }
+      else { put(0, 0, 0, 0); mode = 'gone'; return; }
+    }
+    if (mode !== 'falling') return;
+    const e = now - t0;
+    if (e >= FALL.hideS || e < -0.5) { put(0, 0, 0, 0); mode = 'gone'; return; }
+    const k = 0.5 * Math.max(0, e) ** 2;
+    put(-FALL.dragMs2 * k, -FALL.g * k, FALL.pitchRadS2 * k, 1);
   };
 }
 

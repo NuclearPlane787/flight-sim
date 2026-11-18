@@ -705,11 +705,15 @@ export function standsFor(airport, typeDef) {
   if (!classSpan || !geo || !all.length) return all;
   const c = fitContext(airport);
   const size = { span: Math.max(classSpan, geo.SPAN), length: geo.LENGTH };
-  const key = `${size.span}|${size.length}|${geo.NOSE_X}`;
+  // v0.5.6: the wheelbase too (a design's main gear follows its wing, and the pushback turns on it); and a design
+  // only ever gets stands its base type can use (a longer wheelbase can swing a pushback clear of a wall its base's
+  // clips, but the stand stays one the base's operator doesn't give that type)
+  const key = `${size.span}|${size.length}|${geo.NOSE_X}|${geo.WHEELBASE}`;
   let list = c.lists.get(key);
   if (!list) {
     const rules = AIP_STANDS[airport.icao];
-    const fits = all.filter((s) => !rules?.exclude(s.ref) && standFits(airport, c, s, size, geo));
+    const baseRefs = design && typeDef.base ? new Set(standsFor(airport, typeDef.base).map((s) => s.ref)) : null;
+    const fits = all.filter((s) => !rules?.exclude(s.ref) && (!baseRefs || baseRefs.has(s.ref)) && standFits(airport, c, s, size, geo));
     const rank = (s) => { const i = rules ? rules.prefer.indexOf(s.ref) : -1; return i < 0 ? Infinity : i; };
     list = fits.map((s, i) => [rank(s), i, s]).sort((p, q) => (p[0] - q[0]) || (p[1] - q[1])).map((p) => p[2]);
     c.lists.set(key, list);

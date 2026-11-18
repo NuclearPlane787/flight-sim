@@ -54,9 +54,13 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   // The stand that goes by this ref. Some of Incheon's refs name two positions: take one that fits.
   const standByRef = (ap, ref) => usable(ap).find((s) => s.ref === ref) || (ap.stands || []).find((s) => s.ref === ref);
 
+  let keyNameFn = null;
+  const keyName = (id, dflt) => { const k = keyNameFn ? keyNameFn(id) : null; return k || dflt; };
   const flow = {
     onstatus: null,
     setType(typeDef) { forcedType = typeDef || null; },
+    // v0.5.6 (review): fn(id) → the key's name as bound for the aircraft flown ('' when unbound); main.js sets it.
+    setKeyNames(fn) { keyNameFn = typeof fn === 'function' ? fn : null; },
     pushPath,
     start, onKey, update, afterLanding, afterRestore, clear, serialize, deserialize, afterLoad,
     get phase() { return phase; },
@@ -162,16 +166,21 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     return pushbackPoses(st, pb.state).map(([x, y, h]) => [x + Math.sin(h) * noseX, y + Math.cos(h) * noseX, h]);
   }
 
+  // v0.5.6 (review): the keys as they're bound for the aircraft flown (main.js: setKeyNames), else the defaults.
+  function pushingText() {
+    const p = keyName('pushback', 'P'), l = keyName('yawLeft', 'Q'), r = keyName('yawRight', 'E'), f = keyName('faster', ']');
+    return `Pushing back. ${p} holds, ${l}/${r} steer the turn, ${f} speeds it up`;
+  }
   function onKey(action) {
     if (action !== 'pushback') return null;
     if (phase === 'parked' && pb) {
       phase = 'pushback';
       pb.toggle();
       sim.controls.parkingBrake = false;
-      say('Pushing back. P holds, Q/E steer the turn, = speeds it up');
+      say(pushingText());
     } else if (phase === 'pushback' && pb) {
       pb.toggle();
-      say(pb.state.running ? 'Pushing back. P holds, Q/E steer the turn, = speeds it up' : 'Pushback held: P to continue');
+      say(pb.state.running ? pushingText() : `Pushback held: ${keyName('pushback', 'P')} to continue`);
     } else if (phase === 'taxi') say('Pushback complete. ' + (route ? route.text : ''));
     else say('No pushback here: only at a gate start');
     return status;

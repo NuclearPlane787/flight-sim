@@ -87,10 +87,10 @@ try {
 
     if (phase === 'approach' || phase === 'flare') {
       // Configuration by distance, and the speed to fly.
-      if (toGo < 11 * NM && r.config === '1') await tap('Digit8');
-      if (toGo < 9 * NM && r.config === '2' && ias < 184) await tap('Digit9');
+      if (toGo < 11 * NM && r.config === '1') await tap('Equal');   // v0.5.6: = is a step down
+      if (toGo < 9 * NM && r.config === '2' && ias < 184) await tap('Equal');
       if (toGo < 9 * NM && !next.gear) { next.gear = 1; await tap('KeyG'); } // once: G toggles
-      if (toGo < 7 * NM && r.config === '3' && ias < 175) await tap('Digit0');
+      if (toGo < 7 * NM && r.config === '3' && ias < 175) await tap('Equal');
       const vapp = r.config === 'FULL' && r.vls > 0 ? r.vls * KT + 5 : r.config === '3' ? 150 : r.config === '2' ? 165 : 180;
 
       // Lateral: bank towards the centreline (tap A/D; the bank holds hands off).

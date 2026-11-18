@@ -10,11 +10,15 @@
 // with no needle, OFF in the N1 dial, its readouts blank in amber boxes, and an amber "ENG n OFF" under
 // the systems on the right.
 //
+// v0.5.6: each engine's ring at its own lever's N1 (state.engines[i].leverN1: the per-engine keys can split the
+// levers; together, every ring sits where the one lever's did), and a white "WING TANKS DROPPED" memo under the
+// systems for 20 s of sim time after a design's wing tanks are dropped.
+//
 // createEicas(cv) -> { draw(view), setType(def) }
 
 import { C, font, DEG, clamp } from '../common.js';
 import { createEngines } from '../../sim/engines.js';
-import { engineRow, engineCountOf } from '../engine-row.js';
+import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO } from '../engine-row.js';
 import { isa, RHO0 } from '../../sim/atmosphere.js';
 import { thrustRefMode, refPhi, flapFraction, leverFraction, flapLabel, egtEstimate, EGT_RED, n2Estimate } from './logic.js';
 
@@ -25,6 +29,7 @@ const N1_MAX = 110, N1_RED = 104;
 export function createEicas(cv) {
   const { ctx } = cv;
   let A = null, eng = null, tdef = null;
+  const tanksMemo = dropMemo(20);   // v0.5.6
 
   function setType(def) {
     tdef = def || null;
@@ -67,7 +72,7 @@ export function createEicas(cv) {
     else {   // two engines: v0.4.4's layout, unchanged
 
     // N1.
-    for (let i = 0; i < 2; i++) n1Dial(s, i ? xR : xL, 0.14 * s, 0.08 * s, e[i] || {}, st, ref.n1);
+    for (let i = 0; i < 2; i++) n1Dial(s, i ? xR : xL, 0.14 * s, 0.08 * s, e[i] || {}, st, ref.n1, undefined, i);
     ctx.fillStyle = C.white; ctx.font = font(s * 0.03); ctx.textAlign = 'center';
     ctx.fillText('N1', mid, 0.115 * s);
     if (st.athrActive) { ctx.fillStyle = C.green; ctx.font = font(s * 0.024, true); ctx.fillText('A/T', mid, 0.15 * s); }
@@ -106,10 +111,18 @@ export function createEicas(cv) {
     simRate(s, view, 0.97 * s, 0.585 * s);
     // Engines torn off their pylons: an amber line each under the systems (Boeing's caution colour).
     const offs = []; e.forEach((en, i) => { if (en?.off) offs.push(i + 1); });
+    let nLines = 0;
     if (offs.length) {
       ctx.fillStyle = C.amber; ctx.textAlign = 'left';
       const lines = offs.length > 4 ? [offs.slice(0, 3).map((i) => `ENG ${i}`).join(' ') + ' OFF', offs.slice(3).map((i) => `ENG ${i}`).join(' ') + ' OFF'] : offs.map((i) => `ENG ${i} OFF`);
       lines.forEach((t, k) => { fit(t, s * 0.03, 0.4 * s, true); ctx.fillText(t, x0, 0.435 * s + k * 0.04 * s); });
+      nLines = lines.length;
+    }
+    // v0.5.6: the wing tanks' drop, a white memo under the cautions for 20 s of sim time.
+    if (tanksMemo(st)) {
+      ctx.fillStyle = C.white; ctx.textAlign = 'left';
+      fit(DROP_MEMO, s * 0.03, 0.4 * s, true);
+      ctx.fillText(DROP_MEMO, x0, 0.435 * s + nLines * 0.04 * s);
     }
   }
 
@@ -128,7 +141,7 @@ export function createEicas(cv) {
     const rowY = 0.475 * s, row2 = 0.54 * s;
     for (let i = 0; i < n; i++) {
       const x = row.xs[i], en = e[i] || {};
-      n1Dial(s, x, yN, r, en, st, ref.n1, { kk, bx: x, by: yN + 0.55 * r + 0.022 * s + dropN, bw, min: MIN, num: i + 1 });
+      n1Dial(s, x, yN, r, en, st, ref.n1, { kk, bx: x, by: yN + 0.55 * r + 0.022 * s + dropN, bw, min: MIN, num: i + 1 }, i);
       egtDial(s, x, yE, rE, en, ambient, { kk, bx: x, by: yE + 0.55 * rE + 0.022 * s, bw, min: MIN });
       const n2 = en.n2 !== undefined ? en.n2 : n2Estimate(en.n1 || 0);
       box(s, x, rowY, bw, en.off ? '' : n2.toFixed(1), s * 0.032, C.white, en.off ? C.amber : C.frame, MIN);
@@ -187,7 +200,7 @@ export function createEicas(cv) {
 
   // L (3, 4 or 6 engines): { kk, the marks' scale; bx, by, bw, the readout box; min, its least text
   // size; num, the engine's number }. Without it, two engines' dial exactly as before.
-  function n1Dial(s, x, y, r, e, st, refN, L) {
+  function n1Dial(s, x, y, r, e, st, refN, L, i = 0) {
     const F = (n) => clamp(n, 0, N1_MAX) / N1_MAX;
     const a = (n) => A0 + F(n) * (A1 - A0);
     const n1 = e.n1 || 0;
@@ -209,9 +222,10 @@ export function createEicas(cv) {
     const ar = a(refN);
     ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(2, s * 0.006);
     ctx.beginPath(); ctx.moveTo(x + Math.cos(ar) * r * 0.82, y + Math.sin(ar) * r * 0.82); ctx.lineTo(x + Math.cos(ar) * r * 1.1, y + Math.sin(ar) * r * 1.1); ctx.stroke();
-    // The lever's target: v0.2.2's cyan ring, at the N1 the lever asks for here and now.
-    if (st.leverN1 > 0) {
-      const tl = a(st.leverN1);
+    // The lever's target: v0.2.2's cyan ring, at the N1 the lever asks for here and now (v0.5.6: this engine's lever).
+    const lv = ringN1(st, i);
+    if (lv > 0) {
+      const tl = a(lv);
       ctx.lineWidth = Math.max(1.5, s * 0.004);
       ctx.beginPath(); ctx.arc(x + Math.cos(tl) * r * 1.16, y + Math.sin(tl) * r * 1.16, L ? s * 0.008 * L.kk : s * 0.008, 0, Math.PI * 2); ctx.stroke();
     }

@@ -31,7 +31,7 @@ try {
   check('Fly starts a flight on the ground, running', s0.onGround && !s0.paused, JSON.stringify(s0));
   const order = ['nose', 'orbit', 'captain', 'fo'];
   const v0 = await page.evaluate(() => window.__fs.rig.view.id);
-  await page.keyboard.press('Digit8');
+  await page.keyboard.press('Equal');   // v0.5.6: flaps a step down (6–0 aren't bound by default)
   await page.keyboard.press('KeyV');
   await page.waitForTimeout(400);
   const k = await page.evaluate(() => ({ flap: window.__fs.sim.controls.flapLever, view: window.__fs.rig.view.id }));

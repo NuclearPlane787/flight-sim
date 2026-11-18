@@ -105,6 +105,8 @@
 .fsw-pal-b:hover:not(:disabled) { border-color: #2fe3ff; }
 .fsw-pal-b.on { background: #0e4a5a; border-color: #2fe3ff; box-shadow: inset 0 0 0 1px #2fe3ff; }
 .fsw-pal-b:disabled { opacity: 0.4; cursor: default; }
+/* v0.5.6: a part can be dragged from the palette onto the aircraft (no page scroll or text selection on the way) */
+.fsw-pal-b:not(:disabled) { touch-action: none; user-select: none; -webkit-user-select: none; }
 .fsw-hang { display: flex; }
 .fsw-hang button { flex: 1; font-size: 12px; padding: 4px 6px; }
 .fsw-check { display: flex; align-items: center; gap: 7px; margin: 6px 0 2px; font-size: 13px; color: #c9d3db; cursor: pointer; }
@@ -142,3 +144,27 @@
   background: rgba(10, 40, 24, 0.86); border: 1px solid #2c7a4a; border-radius: 5px; pointer-events: none; }
 .fsw-tip.bad { color: #ffe0e0; background: rgba(60, 12, 12, 0.88); border-color: #c33; }
 .fsw-tip[hidden] { display: none; }
+
+/* v0.5.6: the parts' keys (Besiege-style keycaps), and a stock aircraft's keys-only editor */
+.fsw-stock { margin-top: -6px; font-size: 14px; }
+.fsw-keys { margin-top: 12px; padding-top: 8px; border-top: 1px solid #1f3a46; }
+.fsw-keys h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #2fe3ff; }
+.fsw-krow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 3px 0; font-size: 13px; color: #c9d3db; }
+.fsw-krow + .fsw-krow { border-top: 1px solid #16262e; }
+.fsw-krow .lab { flex: 1 1 11em; min-width: 0; }
+.fsw-caps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.fsw-caps small { color: #8a9097; font-size: 11.5px; margin-left: 4px; }
+.fsw-cap { min-width: 2.1em; height: 2.1em; padding: 0 7px; font: 600 13px/1 ui-monospace, Menlo, monospace; color: #eef3f7; cursor: pointer;
+  background: linear-gradient(#26323a, #1a2329); border: 1px solid #44525c; border-bottom-width: 3px; border-radius: 6px; }
+.fsw-cap:hover { border-color: #2fe3ff; }
+.fsw-cap.empty { color: #5d6870; background: #11181d; border-style: dashed; border-bottom-width: 1px; }
+.fsw-cap.add { min-width: 1.7em; color: #8a9097; background: transparent; border-style: dashed; border-bottom-width: 1px; }
+.fsw-cap.follow { color: #8fa0aa; background: #141c21; }
+.fsw-cap.on { color: #04141a; background: #2fe3ff; border-color: #2fe3ff; font-family: inherit; font-weight: 600; }
+.fsw-kb { padding: 3px 9px; font-size: 12.5px; }
+.fsw-kmsg { min-height: 1.2em; margin: 6px 0 0; font-size: 12.5px; color: #2fe3ff; }
+.fsw-kmsg.bad { color: #ffb347; }
+.fsw-kown { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fsw[data-mode="keys"] .fsw-palette, .fsw[data-mode="keys"] .fsw-tools, .fsw[data-mode="keys"] .fsw-legend,
+.fsw[data-mode="keys"] [data-o="issues"], .fsw[data-mode="keys"] [data-o="nums"], .fsw[data-mode="keys"] [data-o="numsH"],
+.fsw[data-mode="keys"] [data-a="save"], .fsw[data-mode="keys"] [data-a="fly"] { display: none; }

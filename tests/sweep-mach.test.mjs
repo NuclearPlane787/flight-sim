@@ -100,8 +100,11 @@ test('FL450, six GE90s on a 777 at 265 t: closed on its own wing, +8° opens a w
   for (const c of [b, up, dn]) assert.ok(Math.abs(c.mass - 265000) < 1, `${c.mass}`);
   assert.equal(b.MMO, 0.89);
   assert.equal(b.window, 0, 'the base wing: the shaker reaches MMO');
-  assert.ok(up.MMO > b.MMO && up.window > 0.1, `+8°: MMO ${up.MMO}, clear of the shaker from M${up.shaker}`);
-  assert.ok(up.amber !== null && up.amber < up.MMO, `+8°: clear of the amber from M${up.amber}`);
+  // v0.5.6: with the swept wing's area right (it stays 433 m², where v0.5.4's strips grew it to 534 m²), +8° is clear
+  // of the shaker from M0.845 to its MMO 0.95, and the amber band (the minimum manoeuvre speed) covers all of it: v0.5.4
+  // had the shaker clear from M0.785 and the amber from M0.91, on the inflated area.
+  assert.ok(up.MMO > b.MMO && up.window > 0.1 && Math.abs(up.shaker - 0.845) < 0.0051, `+8°: MMO ${up.MMO}, clear of the shaker from M${up.shaker}`);
+  assert.equal(up.amber, null, `+8°: clear of the amber from M${up.amber}`);
   // the shaker lower and the top higher at the same Mach
   assert.ok(up.at82.stick < b.at82.stick - 5 && up.at82.vmax > b.at82.vmax + 5, JSON.stringify([up.at82, b.at82]));
   assert.ok(dn.MMO < b.MMO && dn.window <= b.window, `−8°: MMO ${dn.MMO}`);

@@ -9,7 +9,9 @@
 //   menu.openWarehouse() → Promise (v0.5.0: the Warehouse page, ui/warehouse.js, loaded on first use; the menu
 //   opens and closes it itself, behind WAREHOUSE_ON or the URL's ?warehouse=1; onWarehouseClose() after it closes)
 //   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky?, onIndestructible?, onAutoTrim? });
-//   const controls = createControlsPage(root, { sky? });   controls.setFamily(def.family) for the type flown
+//   const controls = createControlsPage(root, { sky?, keys? });   controls.setFamily(def.family) for the type flown
+//     v0.5.6: keys: { load(), save(store) → ok, aircraft() → [{ scope, base, name, def() }], current() → scope | null, currentBase() → scope | null }:
+//     the page edits each aircraft's keys (src/keys.js)
 //   page.open(); page.close(); page.isOpen; page.onclose = () => {}
 //
 // `scenarios` is the ScenarioStore (list, rename, duplicate, remove). Nothing renders behind the
@@ -17,6 +19,8 @@
 
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
 import { onDesignRename } from '../designs-store.js';
+import { GLOBAL_BINDINGS, SECTIONS, keyLabel, chordFor, resolveKeys, bindKey, clearKeys, resetKeys, bindingOf, isModifier,
+  movedText } from '../keys.js';
 
 // v0.5.0: the Warehouse button, off until a design flies end to end. `?warehouse=1` in the page's URL shows it
 // anyway (the tests and the dev checks).
@@ -52,7 +56,7 @@ function arrowNav(e, items) {
   return true;
 }
 
-export function createMenu(root, { version = '', backdrops = [], scenarios, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose, onFlyDesign } = {}) {
+export function createMenu(root, { version = '', backdrops = [], scenarios, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose, onFlyDesign, keys = null } = {}) {
   const el = document.createElement('div');
   el.className = 'fsm';
   el.hidden = true;
@@ -275,7 +279,7 @@ export function createMenu(root, { version = '', backdrops = [], scenarios, onCo
   function openWarehouse() {
     if (!warehouseLoad) {
       warehouseLoad = import('./warehouse.js').then((m) => {
-        warehouse = m.createWarehouse(root);
+        warehouse = m.createWarehouse(root, keys ? { keys } : {});   // v0.5.6: the parts' keys are set there
         warehouse.onclose = () => {
           if (el.hidden) return;
           showPage('main');
@@ -409,76 +413,136 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
   return page;
 }
 
-// The keys table (from v0.1.4's pause menu), then the FCU and map notes.
-const KEYS = [
-  ['W / S', 'pitch down / up', 'R / F', 'thrust levers (hold F at idle on the ground: reverse)'],
-  ['A / D', 'roll left / right', 'Space', 'wheel brakes (hold)'],
-  ['Q / E', 'yaw / steer', 'B', 'parking brake'],
-  ['6 7 8 9 0', 'flaps 0, 1, 2, 3, FULL', 'G', 'gear'],
-  ['C / Shift+C', 'speed brakes / arm ground spoilers', 'Z / X', 'autopilot / autothrust'],
-  ['= / −', 'time compression', 'M', 'map, jumps, skip to final'],
-  ['1 2 3', 'cockpit (1 again: other seat), nose, 3rd person', 'F3 or `', 'performance readout'],
-  ['drag / pinch', 'look or orbit / zoom', 'double-click', 'recentre'],
-  ['T', 'rewind 30 s (paused, crashed or in the menu)', 'P', 'pushback (= speeds it up)'],
-  ['FCU window', 'scroll it, or click, type, Enter', 'map', 'click the bright path (AP on) to jump'],
-  ['V', 'next view', 'Esc', 'the menu (it doesn\u2019t pause: the Pause button at the top left does)'],
-  ['K', 'set the altimeter to the local QNH', '', ''],
-];
-
-// Keys only one family of aircraft has (types.js `family`), in the same four cells as KEYS, under its own
-// heading after the common table, with its own notes. `replace` rewords the common table's cells that
-// differ, and `hideNote` drops a note that doesn't apply. The page shows a family's once main.js says
-// which family is being flown (setFamily), so the A321's page stays as it has always been.
-export const FAMILY_KEYS = [
-  { family: 'boeing', title: 'Boeing 787 and 777', rows: [
-    ['Y', 'trim nose down', 'H', 'trim nose up'],
-    ['[ / ]', 'flaps one step up / down', 'O', 'TO/GA'],
-  ], replace: {
-    'flaps 0, 1, 2, 3, FULL': 'flaps UP, 5, 15, 20, 30',
-    'autopilot / autothrust': 'autopilot / A/T arm',
-    'FCU window': 'MCP window',
-  }, hideNote: 'fcu', notes: `<p>The trim sets the speed the aircraft holds: let go of the controls and it settles back to the green TRIM mark on the speed tape.
-    With the A/P on, it trims itself. With <b>Boeing auto-trim</b> on (Settings) it always does: let go and the flight path holds, as the A321's does,
-    and with the flaps for landing W and S nudge the path; Y and H then nudge the path held, more finely. Below 50 ft on a landing it holds the attitude
-    and the nose sinks a little, so you flare, as in the A321.</p>
-    <p><b>The MCP</b> along the top sets the speed, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter.
-    Enter on HDG goes to HDG SEL, on ALT to FLCH, on V/S to V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
-    Above FL260 the speed window is in Mach, and a typed 84 or .84 is a Mach at any height. Its buttons light green when active and white when armed.
-    Esc, a click elsewhere or a flying key closes a window unchanged.</p>` },
-];
-
-const keyRows = (rows) => rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('');
-
-export function createControlsPage(root, { sky = false } = {}) {
-  const rows = keyRows(KEYS)
-    // v0.3.2: the Weight tab (passengers, cargo and fuel) is there with or without the Sky window.
-    + (sky ? `<tr><td>L or Cmd/Ctrl+L</td><td colspan="3">the Sky window (time of day), and its Weight tab (passengers, cargo and fuel)</td></tr>`
-      : `<tr><td>L or Cmd/Ctrl+L</td><td colspan="3">the Weight window (passengers, cargo and fuel)</td></tr>`);
-  const page = createPage(root, 'fsm-controls', 'Controls', `
-    <table class="keys fsm-keys">${rows}</table><div data-family-keys></div>
-    <div class="fsm-notes">
+// v0.5.6: the notes under the keys (the FCU, the map, the views), and the Boeings' own (their trim and MCP).
+const NOTES = `
       <p data-note="fcu"><b>The FCU</b> along the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps),
         or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S.
         An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
         Esc, a click elsewhere or a flying key closes it unchanged.</p>
-      <p><b>The map (M):</b> with the AP on, the bright line is where the aircraft will go: click a point on it to jump there.
+      <p><b>The map:</b> with the AP on, the bright line is where the aircraft will go: click a point on it to jump there.
         The magenta line is the route to your destination and doesn't jump, so point the HDG along it first.
         A red cross means the path meets the terrain. “Skip to 15 nm final” puts you on the 3° path to the destination runway.
         Drag the magenta line to add a waypoint. “Change route”, or a click on an airport, picks a new destination and runway;
         the line then goes direct from where you are.</p>
-      <p><b>Views:</b> the switch at the top right (or 1, 2, 3) picks the cockpit (the captain's seat), the nose or the 3rd person view.
-        In the cockpit, Cockpit (or 1) again swaps to the first officer's seat and back. V steps through all four.
-        Press and drag on the view (one finger) to look around, or in 3rd person to go round the aircraft; a two-finger swipe does the same.</p>
-    </div>`);
-  // The keys of the family being flown (a registry entry's `family`); any other is the common page.
-  const cells = [...page.el.querySelectorAll('.fsm-keys td')].map((td) => [td, td.textContent]);
-  page.setFamily = (family) => {
-    const g = FAMILY_KEYS.find((f) => f.family === family);
-    for (const [td, text] of cells) td.textContent = g?.replace?.[text] ?? text;
-    page.el.querySelector('[data-family-keys]').innerHTML = g ? `
-      <h3 class="fsm-keys-h" data-family="${esc(g.family)}">${esc(g.title)}</h3>
-      <table class="keys fsm-keys">${keyRows(g.rows)}</table>${g.notes ? `<div class="fsm-notes">${g.notes}</div>` : ''}` : '';
-    for (const n of page.el.querySelectorAll('[data-note]')) n.hidden = !!g && g.hideNote === n.dataset.note;
-  };
+      <p><b>Views:</b> the switch at the top right (or the view keys) picks the cockpit (the captain's seat), the nose or the 3rd person view.
+        In the cockpit, Cockpit again swaps to the first officer's seat and back. Next view steps through all four.
+        Press and drag on the view (one finger) to look around, or in 3rd person to go round the aircraft; a two-finger swipe does the same;
+        pinch or scroll to zoom, double-click to recentre.</p>`;
+export const FAMILY_NOTES = {
+  boeing: `<p>The trim sets the speed the aircraft holds: let go of the controls and it settles back to the green TRIM mark on the speed tape.
+    With the A/P on, it trims itself. With <b>Boeing auto-trim</b> on (Settings) it always does: let go and the flight path holds, as the A321's does,
+    and with the flaps for landing the pitch keys nudge the path; the trim keys then nudge the path held, more finely. Below 50 ft on a landing it holds the attitude
+    and the nose sinks a little, so you flare, as in the A321.</p>
+    <p><b>The MCP</b> along the top sets the speed, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter.
+    Enter on HDG goes to HDG SEL, on ALT to FLCH, on V/S to V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
+    Above FL260 the speed window is in Mach, and a typed 84 or .84 is a Mach at any height. Its buttons light green when active and white when armed.
+    Esc, a click elsewhere or a flying key closes a window unchanged.</p>`,
+};
+
+// v0.5.6: the Controls page edits the keys every aircraft shares (the views, time, the autopilot and autothrust, the
+// map, pushback, rewind, QNH, the readout). The parts' keys (the controls, the engines, the flaps, gear and brakes) are
+// each aircraft's own, set in the warehouse by clicking the part (Shane, 2026-11-18: "Move the keybinding settings
+// thing to the warehouse ... similar to Besiege"). Change takes the next key pressed (Esc cancels), + adds a second
+// key, Clear unbinds; a key another control here had moves, and that control says so; a key an aircraft's part uses
+// is refused, naming it. Without `keys` (the dev pages) it shows the defaults, read-only.
+export function createControlsPage(root, { sky = false, keys = null } = {}) {
+  const fixedL = sky ? 'L or Cmd/Ctrl+L: the Sky window (time of day), and its Weight tab (passengers, cargo and fuel)'
+    : 'L or Cmd/Ctrl+L: the Weight window (passengers, cargo and fuel)';
+  const page = createPage(root, 'fsm-controls', 'Controls', `
+    <div class="fsk">
+      <div class="fsk-top">
+        <p class="fsk-from" data-o="from"></p>
+        <button class="fsui-b" data-k="reset">Reset</button>
+      </div>
+      <p class="fsk-part" data-o="part">The flight controls’ and engines’ keys (the sticks, rudder, thrust, flaps, gear and brakes) are each aircraft’s own: set them in the warehouse by clicking a part.</p>
+      <p class="fsk-msg" data-o="msg" aria-live="polite"></p>
+      <div data-o="rows"></div>
+      <p class="fsk-fixed">Esc: the menu. ${esc(fixedL)}. These two can't be changed.</p>
+    </div>
+    <div class="fsm-notes">${NOTES}<div data-family-keys></div></div>`);
+  const el = page.el;
+  const o = (k) => el.querySelector(`[data-o="${k}"]`);
+  let flownFamily = null;    // setFamily(): the family flown (its notes)
+  let capturing = null;      // { id, add }: waiting for a key
+  let msg = '', msgBad = false;
+
+  const store = () => keys?.load?.() || null;
+  const nameOf = (scope) => { try { return keys?.nameOf?.(scope) || null; } catch { return null; } };
+  const setMsg = (text, bad = false) => { msg = text || ''; msgBad = bad; const m = o('msg'); m.textContent = msg; m.classList.toggle('bad', !!bad); };
+
+  function commit(next, okText = '') {
+    const ok = keys?.save ? keys.save(next) !== false : false;
+    if (!ok) setMsg('Couldn’t save the keys: the browser’s storage is off or full', true);
+    else setMsg(okText);
+    render();
+  }
+
+  function render() {
+    const st = store();
+    const res = resolveKeys(st, { scope: 'type:a321neo' });
+    const own = !!keys && GLOBAL_BINDINGS.some((b) => st?.global?.bind?.[b.id]);
+    o('from').textContent = !keys ? 'The default keys.' : own ? 'Changed from the defaults. Reset puts the defaults back (the parts’ keys stay).' : 'The default keys, the same for every aircraft.';
+    const reset = el.querySelector('[data-k="reset"]');
+    reset.disabled = !keys || !own || !!capturing;
+    const family = flownFamily || 'airbus';
+    const keyCell = (chords) => (chords.length ? chords.map((c) => `<kbd>${esc(keyLabel(c))}</kbd>`).join(' ') : '<span class="none">no key</span>');
+    const btns = (id) => keys ? `<span class="fsk-b">${capturing?.id === id ? '<button class="fsui-b on" data-b="cancel">Press a key… (Esc: cancel)</button>'
+      : `<button class="fsui-b" data-b="change" data-id="${id}">Change</button><button class="fsui-b" data-b="add" data-id="${id}" title="Add another key">+</button><button class="fsui-b" data-b="clear" data-id="${id}">Clear</button>`}</span>` : '';
+    let html = '';
+    for (const sec of SECTIONS) {
+      const rows = GLOBAL_BINDINGS.filter((b) => b.section === sec.id);
+      html += `<h3 class="fsm-keys-h">${esc(sec.title)}</h3><table class="fsk-table">${rows.map((b) => `<tr data-row="${b.id}"><td class="lab">${esc(b.label)}</td><td class="keys">${keyCell(res.bind[b.id])}</td><td class="act">${btns(b.id)}</td></tr>`).join('')}</table>`;
+    }
+    o('rows').innerHTML = html;
+    el.querySelector('[data-family-keys]').innerHTML = FAMILY_NOTES[family] || '';
+    for (const n of el.querySelectorAll('[data-note]')) n.hidden = family === 'boeing' && n.dataset.note === 'fcu';
+    const m = o('msg'); m.textContent = msg; m.classList.toggle('bad', !!msgBad);
+    // The keys stay the page's (a button it drew again had the focus): else they'd reach the flight under it.
+    if (!el.hidden && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+  }
+  page.render = () => { capturing = null; stopCapture(); setMsg(''); render(); };
+
+  // Capturing a key: everything goes to the page until a key is taken or Esc cancels.
+  function onCapture(e) {
+    if (!capturing || el.hidden) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (e.repeat || isModifier(e.code)) return;   // Shift (or the rest) alone: the key comes with it
+    if (e.code === 'Escape') { capturing = null; stopCapture(); setMsg(''); render(); return; }
+    const kind = bindingOf(capturing.id)?.kind || 'action';
+    const r = chordFor(e, kind);
+    if (r.refused) { setMsg(`${r.refused}. Press another key, or Esc.`, true); return; }
+    const out = bindKey(store(), {}, capturing.id, r.chord, { add: !!capturing.add, nameOf });
+    if (out.error) { setMsg(`${out.error}. Press another key, or Esc.`, true); return; }
+    capturing = null; stopCapture();
+    commit(out.store, movedText(out.moved, r.chord));
+  }
+  const swallowUp = (e) => { if (capturing) { e.stopPropagation(); e.stopImmediatePropagation(); } };
+  function startCapture(c) {
+    capturing = c;
+    document.addEventListener('keydown', onCapture, true);
+    document.addEventListener('keyup', swallowUp, true);
+    setMsg(`Press the key for “${bindingOf(c.id)?.label}” (Esc cancels).`);
+    render();
+  }
+  function stopCapture() {
+    document.removeEventListener('keydown', onCapture, true);
+    document.removeEventListener('keyup', swallowUp, true);
+  }
+
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || !keys) return;
+    if (b.dataset.b === 'cancel') { capturing = null; stopCapture(); setMsg(''); render(); return; }
+    if (capturing) return;
+    if (b.dataset.k === 'reset') commit(resetKeys(store(), { scope: 'global' }).store, 'Back to the defaults.');
+    else if (b.dataset.b === 'change' || b.dataset.b === 'add') startCapture({ id: b.dataset.id, add: b.dataset.b === 'add' });
+    else if (b.dataset.b === 'clear') commit(clearKeys(store(), {}, b.dataset.id).store, '');
+  });
+  // The family flown (its notes).
+  page.setFamily = (family) => { flownFamily = family || null; if (!el.hidden) render(); };
+  page.setAircraft = () => { if (!el.hidden && !capturing) render(); };
+  const close0 = page.close;
+  page.close = () => { capturing = null; stopCapture(); close0(); };
+  render();
   return page;
 }

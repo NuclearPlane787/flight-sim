@@ -1,4 +1,5 @@
-// v0.5.4: the models' side of dropped wing tanks (state.tanksDropped scales engine-model.js's pod<k> bones to nothing),
+// v0.5.4: the models' side of dropped wing tanks (state.tanksDropped scales engine-model.js's pod<k> bones to nothing;
+// v0.5.6: after they fall away, on the sim time state.t),
 // and the A321's inner flap re-clamped behind the main gear's leg on a design's airframe.
 //   node --test games/flight-sim/tests/v054-models.test.mjs
 import { test } from 'node:test';
@@ -21,6 +22,20 @@ const { newDesign, defaultAirframe, designDef, addPart } = await import('../src/
 const withTanks = (id) => addPart(newDesign(id), { kind: 'tank', mount: 'wing', side: 1, s: 10, kg: 3000 });
 const podBones = (m) => Object.keys(m.bones).filter((n) => /^pod\d+$/.test(n)).map((n) => m.bones[n]);
 
+// v0.5.6: the middle of what's weighted to `name`, as posed (the model's frame: y up, z aft), or null.
+function posedCentre(m, name) {
+  m.object.updateMatrixWorld(true);
+  const mesh = m.mesh, g = mesh.geometry, si = g.attributes.skinIndex, idx = mesh.skeleton.bones.findIndex((b) => b.name === name);
+  const v = new THREE.Vector3(), box = new THREE.Box3();
+  for (let i = 0; i < si.count; i++) {
+    if (si.getX(i) !== idx) continue;
+    v.fromBufferAttribute(g.attributes.position, i);
+    mesh.applyBoneTransform(i, v);
+    box.expandByPoint(v);
+  }
+  return box.isEmpty() ? null : box.getCenter(new THREE.Vector3());
+}
+
 // Where a vertex weighted to `name` is drawn in the pose the bones now hold (body frame, m).
 function posedSpread(m, name) {
   m.object.updateMatrixWorld(true);
@@ -39,20 +54,35 @@ for (const [label, build] of [
   ['A321', () => createAircraft({ def: designDef(withTanks('a321neo')) })],
   ['787-9', () => createWidebody(B787_9, { def: designDef(withTanks('b787-9')) })],
 ]) {
-  test(`${label}: the wing tanks and their pylons leave the model with { tanksDropped: true }, and come back without it`, () => {
+  // v0.5.6: dropped in flight they fall away first (engine-model.js podDropper, on the sim time the model passes).
+  test(`${label}: dropped in flight, the wing tanks and their pylons fall away, then leave the model; they come back without the flag`, () => {
     const m = build(), pods = podBones(m);
     assert.equal(pods.length, 2, 'two tanks (the part mirrored)');
-    m.update({});
+    m.update({ t: 100 });
     for (const p of pods) assert.equal(p.scale.x, 1);
-    const carried = posedSpread(m, pods[0].name);
+    const carried = posedSpread(m, pods[0].name), c0 = posedCentre(m, pods[0].name);
     assert.ok(carried > 3, `a tank carried is ${carried.toFixed(2)} m across`);
-    m.update({ tanksDropped: true });
+    m.update({ tanksDropped: true, t: 100.02 });
+    m.update({ tanksDropped: true, t: 101.02 });
+    const c1 = posedCentre(m, pods[0].name);
+    assert.ok(c0.y - c1.y > 4 && c1.z - c0.z > 3, `a second after the drop: ${(c0.y - c1.y).toFixed(2)} m down, ${(c1.z - c0.z).toFixed(2)} m aft`);
+    for (const p of pods) assert.equal(p.scale.x, 1, 'drawn while it falls');
+    m.update({ tanksDropped: true, t: 104 });
     for (const p of pods) assert.deepEqual(p.scale.toArray(), [0, 0, 0]);
-    assert.ok(posedSpread(m, pods[0].name) < 1e-9, 'dropped: drawn as a point');
-    m.update({ tanksDropped: false });
+    assert.ok(posedSpread(m, pods[0].name) < 1e-9, 'gone: drawn as a point');
+    m.update({ tanksDropped: false, t: 90 });
     for (const p of pods) assert.equal(p.scale.x, 1);
-    m.update({ tanksDropped: true }); m.update();
+    assert.ok(posedCentre(m, pods[0].name).distanceTo(c0) < 1e-6, 'a rewind past the drop: back where it hung');
+    m.update({ tanksDropped: true, t: 400 });
+    for (const p of pods) assert.deepEqual(p.scale.toArray(), [0, 0, 0], 'a jump in time: gone at once');
+    m.update({ t: 400.02 });
     for (const p of pods) assert.equal(p.scale.x, 1, 'missing is carried');
+  });
+
+  test(`${label}: a flight loaded with the wing tanks gone shows none`, () => {
+    const m = build(), pods = podBones(m);
+    m.update({ tanksDropped: true, t: 500 });
+    for (const p of pods) assert.deepEqual(p.scale.toArray(), [0, 0, 0]);
   });
 }
 
@@ -63,8 +93,9 @@ test('a model without tanks takes { tanksDropped: true } and changes nothing', (
   }
 });
 
-// The A321's inner flap on a design's airframe: its leading edge behind the main gear's leg (x −1.2, r 0.15) across the
-// leg's span, as the base's is (0.38 m behind its axis), with less sweep and a shorter chord too.
+// The A321's inner flap on a design's airframe: its leading edge behind the main gear's leg (r 0.15) across the leg's
+// span, as the base's is (0.38 m behind its axis), with less sweep and a shorter chord too. (v0.5.6: the leg follows
+// the wing, geo.GEAR, so the flap keeps most of its depth: tests/gear-follows-wing.test.mjs.)
 const W = (o = {}) => ({ span: 1, chord: 1, sweep: 0, dihedral: 5.1, ...o });
 const design = (af) => {
   const wl = W(af.wingL), wr = af.wingR ? W(af.wingR) : wl;

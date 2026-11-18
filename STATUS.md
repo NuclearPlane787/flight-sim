@@ -2844,3 +2844,80 @@ Built from 00:42 to 01:05 KST by two subagents (the menu and the pause; the scor
 `src/version.js` (`Flight Sim v0.5.5 · CL#261118`), `Updates.md`, `README.md` (the menu, the pause, T, the score), `ROADMAP.md` (the v0.5.5 row, v0.5.6 planned), `AGENTS.md`'s State, `HANDOFF.md` (where you start, the versions table, the code map), this entry.
 
 **Next:** Shane pushes with `sh tools/push.sh v0.5.5` from `games/flight-sim`, then Cmd+Shift+R in the app; then v0.5.6 (keys) from ROADMAP.
+
+## 2026-11-18, 03:35 KST: v0.5.6, keys and the warehouse's leftovers, overnight (Cowork session)
+
+**Shane** (after v0.5.5): "Planned additions for v0.5.6. Add to these if you want: 1. A keybindings selection per plane instead of general rule. That is, you can give each engine or two their own keybinding for powering up and down, or change the default key settings like ailerons, elevators, rudder, flaps. 2. I think we should change the default key bindings for flaps from 67890 to just -/= (the two keys left of the 0 key) each press moves the flap setting one step either way, so only 2 keys are taken up instead of 5." Claude added six (the swept wing's area, the main gear following the wing, drop tanks that fall away, take-off trim for bigger tails, keys for a part in hand and drag from the palette, VMC). Then: "I'll be back in the morning. You can work on v0.5.6, all of mine plus yours, overnight." v0.5.5 wasn't pushed when he left (his log: `c466026 v0.5.4`), so v0.5.6 went on top of it.
+
+Built from 03:35 to 05:00 KST: five subagents at once, each owning its files (A keys; B1 the swept area, the take-off trim and VMC; B2 the gear; C the drop tanks and the engine panels; D the warehouse), then a sixth for the wing position, then an independent reviewer (a fresh agent that hadn't seen the work) and the fixes for its findings here.
+
+### What changed
+
+1. **Keys per aircraft** (`src/keys.js`, `input.js`, the Controls page in `ui/menu.js`, `main.js`): every control rebindable for each type and each saved design (a design falls back to its base type), Change / + / Clear / Reset, a taken key moves (the page says from where), Esc, L and the browser's keys reserved, no Ctrl, Cmd or Alt (Shift for taps). Only changes are stored, under `gamedump:flight-sim:keys`. **Engine groups**: engines picked by number and position get their own up and down keys and their own levers (`controls.thrustEng`; `state.engines[i].leverN1` for each engine's ring); null is one lever as before (the golden flights exact).
+2. **Flaps on − and =** a step a press; 6 to 0 unbound; time compression on [ and ] (Num + and − too).
+3. **The swept wing's area:** a strip's area is its chord times its width across the span (it was its length along the sweep: the 777's strips counted 492 m², 534 at +8°); the calibration refitted (`kA` 0.854→0.916 on the A321, 0.763→0.868 on the 787, 0.829→0.940 on the 777); the 777's wing 433 m² swept or not. The six-GE90 777 at FL450 and 265 t: no window on its own wing; at +8° clear of the shaker from M0.845 to MMO 0.95, but inside the amber band throughout.
+4. **The main gear follows the wing** (`applyAirframeGeo()`, `mainX0()`, `tailAngle()`, `noseShare()` in `designs.js`; the models; stands by the wheelbase too): each leg where the stock leg is relative to its side of the wing; the inner flaps keep 0.7–1.7 m of depth at 0.8 chord. A smaller chord brings the legs forward, so the 777 and 787 at 0.8 chord and the A321 at −8°/0.8 sat on their tails at full thrust.
+5. **The wing's position** (`airframe.wingX`, −3 to +3 m, its slider in the wing's panel): the wing's map, strips, structure, fuel, engines, tanks and gear move together; 0 keeps a design on its base's airframe exact. With the wing 2 m aft the 0.8-chord Boeings take off normally (lift-off with a 2.5°/s rotation at 198 and 205 kt, no strike), the A321 at −8°/0.8 with 1 m (175 kt); their static margins become about 48 % and 29 % (amber).
+6. **Take-off trim** (`takeoffThs()`): moments about the main wheels at the base's lift-off speed, discounting what the airframe itself moves (engines and tanks a swept or moved wing carries). The 1.5 tailplane's hands-off nose lift: 6–7.5 % early before, within 1.1 % now (the 0.6 one within 0.5 %); the +8° 777's lifted by itself at 126 kt, now 171.
+7. **VMC** (`vmcKt`, `vmcAllKt`, `vrKt` in `designNumbers()`; rows in the warehouse): stock A321 123 kt (published 110–115), 787 120, 777 131; amber within 5 % of VR, red above; a 0.6 fin raises it about 20 %.
+8. **Drop tanks fall away** (`podDropper(dropped, t)`): down at g and aft at 8 m/s² in the aircraft's frame, nose down, hidden after 3.5 s; a clunk on the drop in flight only; WING TANKS DROPPED for 20 s on the ECAM or EICAS. **Each engine's command ring** from its own lever.
+9. **The warehouse:** the selected part's keys on a part in hand (offsets beside the pointer, kept with Shift+click); drag from the palette (attach on release where it fits, else back).
+
+### The review's findings and what was done
+
+1. *High:* with the levers apart the sim's all-engines lever (the A/THR's modes, the detent, the callouts, windshear) stayed where the all-engines keys left it: two groups at TOGA with the A/THR armed gave SPEED and lost 14 kt after lift-off. **Fixed:** apart, `controls.thrust` is the highest lever (`input.js`, and held in `sim.js` for any other way in); the reviewer's repro now stays MAN TOGA at 96.5 %.
+2. *Medium-high:* on the Boeings a held group key lost its levers every second (the A/T's hand-on-lever override took them back after its 1 s lag and the key parted them again). **Fixed:** a group key that takes the levers from a driving A/T disconnects it (`groupTakesAthr()` in `main.js`; the A321's A/THR already did, in the sim). `tests/cloud/v056-groups.cjs` (new): on the 777 and the A321 the autothrust disconnects, the levers stay apart, the all-engines lever is the highest, each ring its own.
+3. *Low:* the pushback's message still said "= speeds it up". **Fixed:** it names the keys as bound (`gate.setKeyNames()`).
+4. *Low:* the Controls page opened on the A321 for a design deleted after its scenario was saved. **Fixed:** it falls back to the design's base type.
+5. *Low:* the cockpit's levers move as one. **Left** (ROADMAP): they show the highest lever.
+6. *Low:* the take-off trim took the left leg alone as the main wheels' line. **Fixed:** the line through both legs, as `mainX0()`.
+
+### Decisions
+
+- The wing position was added (not on either list): without it the gear following the wing made the small-chord designs tail-sitters; ballast forward is the other way out.
+- A group's key disconnects the autothrust on all three types.
+- The flap detents are unbound by default, not removed; Shift is allowed for taps only.
+
+### Checked
+
+- 950 unit tests in the container (the golden flights exact; 60 new) and on the Mac through the guard.
+- In the cloud (SwiftShader): `athr-lever` (9), `weather-final` (21), `route-views` (17; landed B 89), `v044-hud` (36), `wing-gaps` (9), `v051-hangar`, `v052-editor` (24), `v052-designs`, `v056-editor` (new, 20), `weight-copy` (60), `v056-groups` (new, 12); after the review's fixes, the unit suite, `weight-copy` and `athr-lever` again, all passing.
+
+### Not checked
+
+- On the Mac's GPU or by hand: the keys page, the fall, the memo and the clunk were seen only in tests. The Mac-only browser scripts changed for the new keys (`browser-boot`, `browser-e2e`, `browser-boeing-flight`, `browser-keyboard-landing`, `browser-menu`, `browser-boeing-ui`, `browser-picker`) weren't run.
+
+### Written up
+
+`src/version.js` (`Flight Sim v0.5.6 · CL#261118`), `Updates.md`, `README.md` (the keys, the warehouse, the code map), `PLAN.md` ("Keys and the warehouse's leftovers (v0.5.6)"), `ROADMAP.md` (the v0.5.6 row, "Found while building v0.5.6", older items struck), `AGENTS.md`'s State, `HANDOFF.md` (where you start, the versions table, the code map), this entry.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.5.6` from `games/flight-sim`, then Cmd+Shift+R in the app. (v0.5.5 was pushed on its own first, `c2ebae4`, Shane wanting a consistent history: the folder was put back to v0.5.5's exact files for that commit, checksum and all, then to v0.5.6's.)
+
+## 2026-11-18, 09:10 KST: v0.5.6, the parts' keys move to the warehouse (Cowork session)
+
+**Shane** (v0.5.5 pushed, `c2ebae4`; before pushing v0.5.6): "before committing v0.5.6 let's do one more thing. 1. Move the keybinding settings thing to the warehouse, where you can attach keybindings by selecting plane parts like the engines, where they open a little tab and you can change the key by pressing on top of a little key icon. For example, an engine would have r/f as the controls. This is similar to Besiege. Are we good to move to v0.6.0? Or do you think we need a v0.5.7?" His answers: the Controls page keeps the keys that aren't parts, the same for every aircraft; the three types' part keys in the warehouse too (keys only); every part as proposed (engines R/F with their groups; the wing A/D, − =, the detents, C, Shift+C; the tailplane W/S, Y/H; the fin Q/E; the fuselage G, Space, B; a wing tank Drop, unbound; a twin takes the same keys with Mirror on). On v0.5.7: Claude's view, fly v0.5.6 first and do a short v0.5.7 for what turns up.
+
+Built from 09:14 to 09:40 KST by one subagent, then checked here.
+
+### What changed
+
+- **The store** is `{ v: 2, global, scopes }` under `gamedump:flight-sim:keys`: `global` the keys that aren't parts, `scopes` the parts' per type and design; v0.5.6's first shape loads, its per-aircraft changes to global keys dropped.
+- **The warehouse:** a Keys section in each part's tab and the airframe parts' (wing, tailplane, fin, fuselage), with keycaps (click, then press; Esc cancels, Backspace or Delete clears); an engine's own keys make it (and its twin) a group, As the others puts it back, and the all-engines keys show in every engine's tab; a keys-only editor for the three types ("Stock aircraft" in the list, with a Mirror box for their engines). Keys save as set; deleting or discarding a new design drops its keys, duplicating one copies them.
+- **The Controls page** shows the 14 global keys only, with a line pointing to the warehouse.
+- **Refusals both ways,** naming the control and the aircraft; a move within an aircraft leaves a note.
+- **In flight:** the global keys and the flown aircraft's part keys; the Drop key calls `dropWingTanks()`.
+
+### Checked
+
+- 956 unit tests in the container (the golden flights exact) and on the Mac through the guard; `tests/cloud/v056-keys.cjs` (new, 29: an engine's own up key and its group, T refused as rewind's, a stock type's elevator keys, the Controls page's 14 rows), `v056-groups.cjs` (14) on the new store; and the earlier browser checks again on this code, `v056-editor`, `v052-editor`, `weight-copy` and `v052-designs`, all passing.
+
+### Not checked and left
+
+- By hand, or on the Mac's GPU; the Mac-only browser scripts changed for the page (`browser-menu`, `browser-picker`) not run.
+- Engine groups are kept by engine number: deleting an engine before a grouped one shifts it (ROADMAP).
+
+### Written up
+
+`Updates.md` (the v0.5.6 keys bullets), `README.md` (the controls paragraph), `PLAN.md` (the bindings), `AGENTS.md`'s State, `HANDOFF.md` (the code map, the new tests), `ROADMAP.md` (the v0.5.6 row; engine groups by number), this entry.
+
+**Next:** Shane pushes with `sh tools/push.sh v0.5.6` from `games/flight-sim`, then Cmd+Shift+R in the app; then flies v0.5.6, and a short v0.5.7 takes what turns up before v0.6.0.

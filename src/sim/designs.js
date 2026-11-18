@@ -63,11 +63,14 @@ export const RANGES = {
 // fuselage's side, the chord at every station); sweep: degrees added to the quarter chord's; dihedral: degrees, absolute;
 // tail, fin: × the base's areas (aspect ratio and sweep kept); plugFwd, plugAft: metres of fuselage ahead of and behind
 // the wing; mirror: the two wing panels kept the same (the warehouse's default; off, each side is its own).
+// v0.5.6: wingX, the whole wing (both sides, its carry-through and what hangs off it: the engines, tanks and main gear)
+// moved aft by that many metres (forward when negative) along the fuselage, which stays; absent when 0.
 export const AIRFRAME_RANGES = {
   span: [0.8, 1.3], chord: [0.8, 1.3], sweep: [-8, 8], dihedral: [-3, 8], tail: [0.6, 1.6], fin: [0.6, 1.6], plugFwd: [-4, 6], plugAft: [-4, 6],
+  wingX: [-3, 3],
 };
 const WING_KEYS = ['span', 'chord', 'sweep', 'dihedral'];
-const STEP = { span: 0.01, chord: 0.01, sweep: 0.1, dihedral: 0.1, tail: 0.01, fin: 0.01, plugFwd: 0.05, plugAft: 0.05 };
+const STEP = { span: 0.01, chord: 0.01, sweep: 0.1, dihedral: 0.1, tail: 0.01, fin: 0.01, plugFwd: 0.05, plugAft: 0.05, wingX: 0.1 };
 const snap = (k, v) => { const q = STEP[k]; return +(Math.round(v / q) * q).toFixed(q < 0.1 ? 2 : 1); };
 const baseDihedral = (base) => typeById(base).geo.WING.dihedralDeg;
 // v0.5.3 (the run's extra time): the bases whose wingtip devices can come off: the A321's sharklets (`sharklets`, on by
@@ -93,19 +96,20 @@ export function fixAirframe(af, base) {
   const wingL = fixSide(af.wingL, base);
   const wingR = mirror ? { ...wingL } : fixSide(af.wingR ?? af.wingL, base);
   const one = (k, d) => { const v = num(af[k], d); return v === d ? d : snap(k, clamp(v, ...R[k])); };
+  const wingX = one('wingX', 0) || 0;   // v0.5.6: kept only when the wing has moved (an old design's field stays as it was)
   return { wingL, wingR, mirror, tail: one('tail', 1), fin: one('fin', 1), plugFwd: one('plugFwd', 0), plugAft: one('plugAft', 0),
-    ...(HAS_SHARKLETS(base) ? { sharklets: af.sharklets !== false } : {}) };
+    ...(wingX ? { wingX } : {}), ...(HAS_SHARKLETS(base) ? { sharklets: af.sharklets !== false } : {}) };
 }
 // Is the airframe the base's own? Then the design flies the base's lumped model alone (to the bit).
 export function isBaseAirframe(af, base) {
   if (!af) return true;
   const d = defaultAirframe(base);
-  return af.tail === 1 && af.fin === 1 && af.plugFwd === 0 && af.plugAft === 0 && af.sharklets !== false
+  return af.tail === 1 && af.fin === 1 && af.plugFwd === 0 && af.plugAft === 0 && af.sharklets !== false && !af.wingX
     && WING_KEYS.every((k) => af.wingL[k] === d.wingL[k] && af.wingR[k] === d.wingR[k]);
 }
 // The parts' model's airframe (src/sim/parts-aero.js's shapeOf()).
 const aeroAirframe = (af) => ({ wingL: af.wingL, wingR: af.wingR, tail: af.tail, fin: af.fin, plugFwd: af.plugFwd, plugAft: af.plugAft,
-  ...(af.sharklets === false ? { sharklets: false } : {}) });
+  ...(af.wingX ? { wingX: af.wingX } : {}), ...(af.sharklets === false ? { sharklets: false } : {}) });
 // A sharklet with its tip's reinforcement [EST]: Airbus doesn't publish it; about 200 kg is the figure usually given.
 const SHARKLET_KG = 200;
 
@@ -181,7 +185,9 @@ export function stationRange(base, engineId, af = null, side = 1) {
   const G = typeById(base).geo, E = ENGINE_TYPES[engineId] || engineOfType(base);
   const D = E.nacelle.D;
   let lo = G.FUSELAGE_WIDTH / 2 + D;
-  const gearY = G.GEAR.left.y, clear = D / 2 + 0.3;
+  // v0.5.6: the leg where it is on the design's wing (it moves out with a longer span: applyAirframeGeo())
+  const ws = af && typeof af === 'object' ? (side < 0 ? af.wingR : af.wingL) : null;
+  const gearY = ws && ws.span !== 1 ? airframeMap(base, af).wingStation(side, G.GEAR.left.y) : G.GEAR.left.y, clear = D / 2 + 0.3;
   if (lo < gearY + clear && lo > gearY - clear) lo = gearY + clear;
   // v0.5.3: to 70 % of the design's semi-span on that side
   const tip = af && typeof af === 'object' ? airframe(base, af).tipYs[side < 0 ? 1 : 0] : G.SPAN / 2;
@@ -525,7 +531,24 @@ function applyAirframeGeo(geo, M, G0) {
   const mv = (p) => ({ ...p, x: bx(p.x) });
   geo.AIRFRAME = M;
   geo.EYES = Object.fromEntries(Object.entries(geo.EYES).map(([k, e]) => [k, mv(e)]));
-  geo.GEAR = { ...geo.GEAR, nose: mv(geo.GEAR.nose) };
+  // v0.5.6: the main gear follows the wing (ROADMAP, "the gear stays at the wing's root"): each leg goes where the
+  // base's is relative to its wing side, through that side's map (the same fraction of the local chord at the leg's
+  // station, swept with it, outboard with the span), its wheels as low as they were. It's the only place the leg can
+  // be: at 0.8 of the chord a Boeing's trailing edge comes forward of the base's leg. What that does to the balance on
+  // the ground is the design's: a shorter chord or less sweep brings the leg forward towards the CG (the warehouse's
+  // nose-wheel check says so). A side whose span, chord and sweep are the base's keeps the base's leg exactly (its
+  // dihedral moves only the leg's top in the wing: the models).
+  const legOf = (g, side) => {
+    const w = M.af ? (side > 0 ? M.af.wingL : M.af.wingR) : null;
+    if (!w || (w.span === 1 && w.chord === 1 && w.sweep === 0 && !M.wingX)) return g;   // v0.5.6: and a moved wing (wingX)
+    const [x, y] = M.wing(side, g.x, g.y, 0);
+    return { ...g, x, y: w.span !== 1 ? y : g.y };
+  };
+  geo.GEAR = { ...geo.GEAR, nose: mv(geo.GEAR.nose), left: legOf(geo.GEAR.left, 1), right: legOf(geo.GEAR.right, -1) };
+  // and the wheelbase and track the stands' pushback and the taxi routes take, from the legs where they are now (the
+  // nose leg moves with the forward plug)
+  geo.WHEELBASE = geo.GEAR.nose.x - (geo.GEAR.left.x + geo.GEAR.right.x) / 2;
+  geo.TRACK = geo.GEAR.left.y - geo.GEAR.right.y;
   geo.TAIL_STRIKE_POINT = mv(geo.TAIL_STRIKE_POINT);
   geo.CRASH_POINTS = geo.CRASH_POINTS.map((c) => {
     if (c.why === 'wingtip strike') {
@@ -579,6 +602,16 @@ function buildData(T, d, engines, tanks, ballast, geo) {
     for (const p of pm) if (!afm.pm.includes(p)) { m2 += p.m; mx2 += p.m * (p.x - cg0); }
     const oew2 = A.OEW + d.oewDeltaKg + m2;
     D.AIRFRAME_CG_SHIFT = D.CG_OEW_X - (mx2 === 0 ? cg0 : cg0 + mx2 / oew2);
+    // v0.5.6: and what the airframe carries elsewhere: an engine or a wing tank on a moved, swept or resized wing goes
+    // with the wing (its station on the base's wing, through the map), and that move is the airframe's too. Kept in,
+    // the take-off trim read the schedule for a base with its engines where the design's wing put them: a 777 with 8°
+    // more sweep (its engines 1.26 m aft) lifted its nose by itself at 126 kt instead of 172.
+    const M = airframeMap(d.base, d.airframe);
+    const onBase = (p) => (p.mount === 'wing' || p.mount === 'overwing' ? { ...p, s: M.wingBase(p.side || 1, p.s) } : p);
+    let mxa = 0;
+    engines.forEach((e, i) => { mxa += e.E.installedKg * (geo.NACELLES[i].x - placeEngine(d.base, onBase(e.part), null).nacelle.x); });
+    for (const t of tanks) if (!t.place.hold) mxa += t.part.kg * TANK_EMPTY * (t.place.x - placeTank(d.base, onBase(t.part), null).x);
+    D.AIRFRAME_CG_SHIFT += mxa / oew;
   }
   // The inertias: the per-kg terms already grow with the OEW, so the point masses add only what they add beyond them.
   let ixx = 0, iyy = 0, izz = 0;
@@ -598,12 +631,22 @@ function buildData(T, d, engines, tanks, ballast, geo) {
   D.FUEL_WING_EACH = Math.min(A.FUEL_WING_EACH * fw, cap / 2);
   if (afm) {
     D.CG_WING_FUEL_X = A.CG_WING_FUEL_X + afm.fuelDx;
+    D.AIRFRAME_WING_FUEL_DX = afm.fuelDx;   // v0.5.6: the airframe's move of the wing's fuel (the take-off trim's)
     D.IXX_WING_FUEL_R2 = A.IXX_WING_FUEL_R2 * afm.fuelR2; D.IZZ_WING_FUEL_R2 = A.IZZ_WING_FUEL_R2 * afm.fuelR2;
   }
   const centre = cap - 2 * D.FUEL_WING_EACH;
   D.FUEL_CENTER = centre + added;
   D.FUEL_MAX = cap + added;
-  if (added > 0) D.CG_CENTER_FUEL_X = (centre * A.CG_CENTER_FUEL_X + tanks.reduce((s, t) => s + t.part.kg * t.place.x, 0)) / (centre + added);
+  // v0.5.6: the centre tank is in the wing's box, so it moves with the wing (wingX, aft)
+  const wingX = (afm && d.airframe.wingX) || 0, cgC0 = A.CG_CENTER_FUEL_X - wingX;
+  if (wingX) D.CG_CENTER_FUEL_X = cgC0;
+  if (added > 0) D.CG_CENTER_FUEL_X = (centre * cgC0 + tanks.reduce((s, t) => s + t.part.kg * t.place.x, 0)) / (centre + added);
+  // v0.5.6: and of the centre tank's (its box with the wing, the wing tanks' fuel with their wing), as the trim takes it
+  if (afm) {
+    const M = airframeMap(d.base, d.airframe);
+    const podDx = tanks.reduce((s, t) => (t.place.hold ? s : s + t.part.kg * (t.place.x - placeTank(d.base, { ...t.part, s: M.wingBase(t.part.side || 1, t.part.s) }, null).x)), 0);
+    D.AIRFRAME_CENTRE_FUEL_DX = centre + added > 0 ? (centre * -wingX + podDx) / (centre + added) : 0;
+  }
   // v0.5.4: the wing tanks can be dropped in flight (sim.js dropTanks()): the fuel they hold, the airframe's own centre
   // tank (what's above it is theirs first), the centre fuel's CG without them (the hold tanks' kept), and their empty
   // masses where they hang. The hold tanks stay.
@@ -613,7 +656,7 @@ function buildData(T, d, engines, tanks, ballast, geo) {
     D.DROP_TANKS = Object.freeze({
       kg: pods.reduce((s, t) => s + t.part.kg, 0),
       centreOwnKg: centre,
-      cgCentreX: holdKg > 0 ? (centre * A.CG_CENTER_FUEL_X + holds.reduce((s, t) => s + t.part.kg * t.place.x, 0)) / (centre + holdKg) : A.CG_CENTER_FUEL_X,
+      cgCentreX: holdKg > 0 ? (centre * cgC0 + holds.reduce((s, t) => s + t.part.kg * t.place.x, 0)) / (centre + holdKg) : cgC0,
       pm: Object.freeze(pods.map((t) => Object.freeze({ m: t.part.kg * TANK_EMPTY, x: t.place.x, y: t.place.y, z: t.place.z }))),
     });
   }
@@ -730,7 +773,13 @@ function airframeMasses(T, af) {
 // The angle at which the tail-strike point touches, pivoting on the main wheels (rad).
 function tailAngle(G) {
   const m = G.GEAR.left, t = G.TAIL_STRIKE_POINT;
-  return Math.atan2(t.z - m.z, m.x - t.x);
+  return Math.atan2(t.z - m.z, mainX0(G) - t.x);
+}
+// v0.5.6: where the line through the main wheels crosses the centreline (x): the legs' own x when they're level, as
+// the base's always are; between them when the wings differ (each leg follows its own side).
+function mainX0(G) {
+  const L = G.GEAR.left, R = G.GEAR.right;
+  return L.x === R.x ? L.x : L.x + ((R.x - L.x) * L.y) / (L.y - R.y);
 }
 
 // The design's parts placed: engines in the sim's order, tanks, ballast.
@@ -813,14 +862,14 @@ function stabilityOf(def, cgX) {
   return { sm: -cma / cla + cgX / A.MAC, cnb: cnb - cgX * cyb / A.SPAN, vs };
 }
 function noseShare(def, cgX) {
-  const G = def.geo, xm = G.GEAR.left.x, xn = G.GEAR.nose.x;
+  const G = def.geo, xm = mainX0(G), xn = G.GEAR.nose.x;   // v0.5.6: the main wheels' line on the centreline
   return (cgX - xm) / (xn - xm);
 }
 // The same with full take-off thrust on the brakes' release, at a mass: the engines' thrust below the CG (the sim's CG
 // is on the centreline) and the acceleration's inertia at the CG pitch the nose up by T · (CG height − thrust line) over
 // the weight times the wheelbase. (A stretched 787 at 0.3 % empty sat back on its tail at 25 kt: this catches it.)
 function noseShareThrust(def, cgX, mass) {
-  const G = def.geo, A = def.data, xm = G.GEAR.left.x, xn = G.GEAR.nose.x, ED = A.ENGINE_DATA;
+  const G = def.geo, A = def.data, xm = mainX0(G), xn = G.GEAR.nose.x, ED = A.ENGINE_DATA;
   let T = 0, Tz = 0;
   G.ENGINES.forEach((e, i) => { const t = ED ? ED[i].T0_ENGINE : A.T0_ENGINE; T += t; Tz += t * e.z; });
   const zT = T > 0 ? Tz / T : 0;
@@ -900,6 +949,72 @@ function scoreBand(sc, sooner) {
 }
 export const resolveDef = (x) => (isDesign(x) ? designDef(x) : typeById(x));
 
+// ---- v0.5.6: VMC and VR [EST] ----
+// VMC: the slowest speed (KCAS, sea level ISA, the take-off flaps, gear up) at which full rudder holds the aircraft
+// straight with its critical engine out and the others at take-off thrust, banked 5° towards the live engines (as
+// certification allows). The lateral trim, q·S·(CYβ·β + CYδr·δ) + W·sin φ = 0 and q·S·b·(Cnβ·β + Cnδr·δ) = N_T, gives
+// q = (N_T − k·W·sin φ·b) / (δmax·Cn_eff·S·b), with Cn_eff = Cnδr − Cnβ·CYδr/CYβ (the sideslip the rudder's own side
+// force makes takes some of its power) and k = −Cnβ/CYβ. The derivatives are the sim's (the lumped model and the parts'
+// difference: the fin's size and arm); the engines' thrust lapses with the Mach, the failed one windmills (drag about
+// 0.15·q on its fan's area); N_T takes each engine's arm and its toe. At the lightest weight on a runway (empty with 5 t
+// of fuel), where the bank helps least, as certification takes it: the base types come out at about 124 kt (A321neo),
+// 120 (787-9) and 131 (777-300ER) (published VMCA about 110–115, 120–125 and 125–135). vmcAll: a design whose thrust is
+// lopsided with every engine running, on the runway (no bank): the speed below which full rudder can't hold it (null
+// when balanced). VR [EST]: 1.08 × the 1 g stall speed in the take-off flaps at the default load (certification wants
+// VR ≥ 1.05 VMC; the base types have 15 % or more in hand there).
+const VMC_BANK = 5 * DEG;
+function takeoffConfig(A) {
+  const C = A.CONFIGS;
+  return C['1+F'] || C['15'] || C['5'] || Object.values(C).find((c) => c.flap > 0) || { slat: 0, flap: 0 };
+}
+function lateralOf(def) {
+  const A = def.data, cf = takeoffConfig(A);
+  const s = { ...PT_REF, alpha: 0.12, M: 0.18, slat: cf.slat, flap: cf.flap, gear: 0, hWing: 3000 };
+  const d = (k, f, h) => (coeffsOf(def, { ...s, [k]: s[k] + h })[f] - coeffsOf(def, { ...s, [k]: s[k] - h })[f]) / (2 * h);
+  const cnb = d('beta', 'Cn', 0.01), cyb = d('beta', 'CY', 0.01), cnr = d('rud', 'Cn', 0.02), cyr = d('rud', 'CY', 0.02);
+  const clmax = coeffsOf(def, { ...s, alpha: 0.05, M: 0.2, gear: 1 }).clmax;
+  return { cnEff: Math.abs(cnr - cnb * cyr / cyb), k: Math.abs(cnb / cyb), clmax };
+}
+// the engines' yawing moments about the CG (N·m, nose left +) at Mach M: [all running, each one failed]
+function engineYaw(def, cgX, M, q) {
+  const A = def.data, G = def.geo, ED = A.ENGINE_DATA, n = G.ENGINES.length, DIRS = G.THRUST_DIRS;
+  const one = (i) => {
+    const d = ED ? ED[i] : A, e = G.ENGINES[i], dir = DIRS ? DIRS[i] : [1, 0, 0];
+    const T = d.T0_ENGINE * Math.max(0, 1 + (d.LAPSE_M1 || 0) * M + (d.LAPSE_M2 || 0) * M * M);
+    const rx = e.x - cgX, ry = e.y;
+    return { T: T * (rx * dir[1] - ry * dir[0]), wm: ry * 0.15 * q * Math.PI * ((G.NACELLES?.[i]?.D ?? 2) ** 2) / 4 };
+  };
+  const per = Array.from({ length: n }, (_, i) => one(i));
+  const all = per.reduce((s, p) => s + p.T, 0);
+  return { all, out: per.map((p) => all - p.T + p.wm) };
+}
+function vmcSolve(def, lat, cgX, mass, bank, pick) {
+  const A = def.data, S = A.S, b = A.SPAN, dmax = A.RUD_MAX, W = mass * 9.80665;
+  let q = 2500;
+  for (let it = 0; it < 12; it++) {
+    const V = Math.sqrt(2 * q / 1.225), M = V / 340.294;
+    const N = Math.abs(pick(engineYaw(def, cgX, M, q)));
+    const qn = (N - lat.k * W * Math.sin(bank) * b) / (dmax * lat.cnEff * S * b);
+    if (!(qn > 0)) return 0;
+    if (Math.abs(qn - q) < 0.5) { q = qn; break; }
+    q = qn;
+  }
+  return Math.sqrt(2 * q / 1.225) / 0.514444;
+}
+function vmcNumbers(def, massTo) {
+  const A = def.data, n = def.geo.ENGINES.length;
+  if (!n || !(A.RUD_MAX > 0)) return { vmcKt: null, vmcAllKt: null, vrKt: null };
+  const lat = lateralOf(def);
+  // at the lightest it'll be on a runway (empty with 5 t of fuel: as noseLoadThrust), the bank's help least
+  const mL = A.OEW + 5000, cgL = (A.OEW * A.CG_OEW_X + 5000 * A.CG_CENTER_FUEL_X) / mL;
+  const vmcKt = n > 1 ? vmcSolve(def, lat, cgL, mL, VMC_BANK, (y) => y.out.reduce((m, v) => (Math.abs(v) > Math.abs(m) ? v : m), 0)) : null;
+  // lopsided with all running: worth showing when it's over 2 % of the critical engine-out moment
+  const y0 = engineYaw(def, cgL, 0.15, 1500), crit = Math.max(...y0.out.map(Math.abs), 1);
+  const vmcAllKt = Math.abs(y0.all) > 0.02 * crit ? vmcSolve(def, lat, cgL, mL, 0, (y) => y.all) : null;
+  const vrKt = 1.08 * Math.sqrt(2 * massTo * 9.80665 / (1.225 * A.S * lat.clmax)) / 0.514444;
+  return { vmcKt, vmcAllKt, vrKt };
+}
+
 // ---- the warehouse's numbers ----
 // Each engine's ground clearance at rest (the nacelle's lowest point over the ground) and at the tail-strike attitude
 // (pitched up about the main wheels until the tail touches); each pylon's load at full thrust (sea level, standing)
@@ -960,5 +1075,19 @@ export function designNumbers(def) {
     payloadMaxKg: Math.max(0, L.MZFW - A.OEW), tailStrikeDeg: ta / DEG, engines, pods,
     engineCount: n, thrustOffsetM: total > 0 ? ty / total : 0, cgShiftMac, dragAddedM2: A.DRAG_ADDED_M2 || 0, cgX,
     mmo: A.MMO,   // v0.5.4: the sweep moves it
+    // v0.5.6: VMC (the critical engine out, at the lightest runway weight), VMC with all engines running when the
+    // thrust is lopsided (null when not), and a VR estimate at the default load; and the base type's (vmcNumbers())
+    ...vmcOf(def, A.OEW + payload + fuel),
   };
+}
+// v0.5.6: designNumbers()'s VMC and VR, the design's and its base's (for a type, the same numbers).
+function vmcOf(def, massTo) {
+  const d = vmcNumbers(def, massTo);
+  const T = def.base;
+  if (!T) return { ...d, vmcBaseKt: d.vmcKt, vrBaseKt: d.vrKt };
+  const A0 = T.data, L0 = T.limits, pax = T.defaults?.pax ?? 0;
+  const p0 = Math.min(pax * L0.PAX_KG + (T.defaults?.cargoKg ?? 0), Math.max(0, L0.MZFW - A0.OEW));
+  const f0 = Math.max(0, Math.min(A0.FUEL_MAX, L0.MTOW - A0.OEW - p0));
+  const b = vmcNumbers(T, A0.OEW + p0 + f0);
+  return { ...d, vmcBaseKt: b.vmcKt, vrBaseKt: b.vrKt };
 }

@@ -173,10 +173,10 @@ for (const spec of [B787_9, B777_300ER]) {
       const base = plugPlan(spec, { ...M, cuts: M.cuts, plugFwd: 0, plugAft: 0, bodyX: (x) => x }).windows.length;
       const extra = Math.round((M.plugFwd + M.plugAft) / p);
       assert.ok(Math.abs(ws.length - base - extra) <= 3, `${ws.length} windows a side, the base's ${base}, plugs worth ${extra}`);
-      // the nose gear at the design's, the main legs where they were
+      // the nose gear at the design's, the main legs at the design's too (v0.5.6: they follow the wing)
       const nose = m.bones.noseLeg.userData.pivot, legL = m.bones.mainLegL.userData.pivot;
       assert.ok(Math.abs(-nose.z - def.geo.GEAR.nose.x) < 1e-6, 'nose leg at GEAR.nose.x');
-      assert.ok(Math.abs(-legL.z - def.geo.GEAR.left.x) < 1e-6 && Math.abs(-legL.x - def.geo.GEAR.left.y) < 1e-6, 'main leg where it was');
+      assert.ok(Math.abs(-legL.z - def.geo.GEAR.left.x) < 1e-6 && Math.abs(-legL.x - def.geo.GEAR.left.y) < 1e-6, 'main leg at GEAR.left');
       // the eye inside the design's skin, and the cockpit carried forward with it
       const E = def.geo.EYES.captain, s = m.shape.fuseSection(E.x);
       assert.ok(Math.hypot(E.y / s.hw, (E.z - s.zc) / (E.z > s.zc ? s.up : s.down)) < 0.9, 'the eye is inside the skin');

@@ -12,10 +12,14 @@
 // exactly as before. An engine torn off its pylon (state.engines[i].off) shows amber: the dial with no
 // needle, OFF in it, XX for its readouts.
 //
+// v0.5.6: each engine's ring at its own lever's N1 (state.engines[i].leverN1: the per-engine keys can split the
+// levers; together, every ring sits where the one lever's did), and "WING TANKS DROPPED" at the bottom left for 20 s
+// of sim time after a design's wing tanks are dropped.
+//
 // createEnginesPanel(cv) -> { draw(view), setType(def) }
 
 import { C, font, DEG, clamp } from './common.js';
-import { engineRow, engineCountOf } from './engine-row.js';
+import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO } from './engine-row.js';
 
 // Thrust lever position (−1…1) to the N1 it commands at take-off conditions, for a state
 // without leverN1 (the dev pages' mocks). Rough LEAP-1A values: IDLE ~20 %, CL ~89 %,
@@ -37,6 +41,7 @@ export function createEnginesPanel(cv) {
   const { ctx } = cv;
   let def = null;
   function setType(d) { def = d || null; }
+  const tanksMemo = dropMemo(20);   // v0.5.6
 
   function draw(view) {
     const s = cv.w, st = view.state;
@@ -87,6 +92,11 @@ export function createEnginesPanel(cv) {
     spoilers(s, st, view, 0.34 * s, 0.4 * s);
     brakes(s, st, 0.72 * s, 0.4 * s);
     simRate(s, view, 0.97 * s, 0.595 * s);
+    // v0.5.6: the wing tanks' drop, a white memo line under the gear for 20 s of sim time.
+    if (tanksMemo(st)) {
+      ctx.fillStyle = C.white; ctx.textAlign = 'left';
+      fitText(DROP_MEMO, 0.03 * s, 0.598 * s, s * 0.03, 0.42 * s, s * 0.02, true);
+    }
   }
 
   const fmt = (v) => (v === undefined || v === null || !isFinite(v) ? '--' : String(Math.round(v / 10) * 10).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
@@ -111,8 +121,8 @@ export function createEnginesPanel(cv) {
       ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(2, s * 0.006);
       ctx.beginPath(); ctx.arc(x, y, r * 0.93, Math.min(A(n1), A(e.n1Target)), Math.max(A(n1), A(e.n1Target))); ctx.stroke();
     }
-    // Thrust lever marker: a cyan ring on the scale, at the N1 the lever asks for.
-    const tl = A(st.leverN1 > 0 ? st.leverN1 : tlaN1(st.thrustLever ?? 0));
+    // Thrust lever marker: a cyan ring on the scale, at the N1 the lever asks for (v0.5.6: this engine's lever).
+    const tl = A(ringN1(st, i) || tlaN1(st.thrustLever ?? 0));
     ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(1.5, s * 0.004);
     ctx.beginPath(); ctx.arc(x + Math.cos(tl) * r * 1.09, y + Math.sin(tl) * r * 1.09, s * 0.009, 0, Math.PI * 2); ctx.stroke();
     // Needle and readout.
@@ -158,7 +168,7 @@ export function createEnginesPanel(cv) {
       const x = row.xs[i], e = eng[i] || {};
       const box = { x: x - bw / 2, y: by, w: bw, h: bh, size: rs };
       if (e.off) offDial(s, x, y, r, kk, box);
-      else dialN(s, x, y, r, kk, e, st, box);
+      else dialN(s, x, y, r, kk, e, st, box, i);
       // The engine's number, small, in the dial's open quarter.
       ctx.fillStyle = e.off ? C.amber : C.white; ctx.font = font(s * 0.022); ctx.textAlign = 'center';
       ctx.fillText(String(i + 1), x + 0.6 * r, y + 0.42 * r);
@@ -182,7 +192,7 @@ export function createEnginesPanel(cv) {
 
   // One of 3, 4 or 6 dials: two engines' dial at radius r, its lines and marks scaled by kk, the
   // readout in `box` under it. The scale's figures only while there's room for them.
-  function dialN(s, x, y, r, kk, e, st, box) {
+  function dialN(s, x, y, r, kk, e, st, box, i) {
     const a0 = 135 * DEG, a1 = 360 * DEG;
     const A = (n) => a0 + clamp(n, 0, 110) / 110 * (a1 - a0);
     ctx.strokeStyle = C.white; ctx.lineWidth = Math.max(1.5, s * 0.004 * kk);
@@ -201,7 +211,7 @@ export function createEnginesPanel(cv) {
       ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(2, s * 0.006 * kk);
       ctx.beginPath(); ctx.arc(x, y, r * 0.93, Math.min(A(n1), A(e.n1Target)), Math.max(A(n1), A(e.n1Target))); ctx.stroke();
     }
-    const tl = A(st.leverN1 > 0 ? st.leverN1 : tlaN1(st.thrustLever ?? 0));
+    const tl = A(ringN1(st, i) || tlaN1(st.thrustLever ?? 0));   // v0.5.6: this engine's lever
     ctx.strokeStyle = C.cyan; ctx.lineWidth = Math.max(1.5, s * 0.004 * kk);
     ctx.beginPath(); ctx.arc(x + Math.cos(tl) * r * 1.09, y + Math.sin(tl) * r * 1.09, s * 0.009 * kk, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = C.green; ctx.lineWidth = Math.max(2.5, s * 0.007 * kk);

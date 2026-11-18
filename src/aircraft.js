@@ -512,28 +512,25 @@ export function createAircraft(opts = {}) {
     return { ...s, le: mapP(MAP.wing(side), s.le), chord: s.chord * w.chord, n: V(0, -side * Math.sin(d), Math.cos(d)) };
   } : wingSec;
   const finLeX = AF ? (z) => { const zb = z <= 1.9 ? z : 1.9 + (z - 1.9) / AF.finScale; return AF.fin(finSec(zb).le.x, 0, zb)[0]; } : (z) => finSec(z).le.x;
-  // v0.5.4: the inner flap's leading edge on a design's airframe. The map carries it with the wing, but the main gear's
-  // leg stays where it is, so with less sweep or a shorter chord the edge came forward of the leg (−8° and 0.8: half a
-  // metre ahead of it) and the leg showed through the flap. Re-clamped after the map, as the Boeings' is: each end where
-  // the map puts it but no nearer the leg than the base's edge is (FLAP_IN_LE_X, 0.38 m behind its axis), and straight
-  // across the design's span between them, so the fixed structure's edge and the flap's (drawn at different stations)
-  // still meet. Never past 0.985 of the chord: where the trailing edge itself comes up to the leg (−8° and 0.8 bring it
-  // within 0.3 m of its axis) that leaves the flap a strip a few centimetres deep just behind the leg. Gives the chord
-  // fraction at a base station, as fFlapLE does.
-  const FLAP_F_MAX = 0.985;
+  // The inner flap's leading edge on a design's airframe. v0.5.4 re-clamped it behind the (then unmoved) main gear's
+  // leg after the design's map, which left a strip a few centimetres deep with −8° and 0.8. v0.5.6: the leg follows the
+  // wing (designs.js applyAirframeGeo(): the base's through the same map at its own span), so the map alone keeps the
+  // edge behind it, by the base's 0.38 m × the side's chord. A shorter chord (or the edge's slant across the leg with a
+  // new sweep) brings it nearer than the base's 0.38 m: then the edge, straight across the design's span between its
+  // mapped ends, moves aft as a whole until it's 0.38 m behind the leg's axis everywhere across the leg (±0.15 m), a few
+  // centimetres of the flap's depth at most. Never past 0.985 of the chord. Gives the chord fraction at a base station,
+  // as fFlapLE does.
+  const FLAP_F_MAX = 0.985, LEG_HALF = 0.15;
   function flapInAfterMap(side, fBase, inFin) {
-    const M = MAP.wing(side), T = (side > 0 ? GEAR_.left : GEAR_.right).x - (GEAR.left.x - FLAP_IN_LE_X);
+    const M = MAP.wing(side), leg = side > 0 ? GEAR_.left : GEAR_.right, T = leg.x - (GEAR.left.x - FLAP_IN_LE_X);
     const at = (y, f) => { const p = foilPoint(wingSec(y, side), f, 0); return M(p.x, p.y, p.z); };
-    const end = (y) => { const q = at(y, fBase(y)); return [Math.max(Math.min(q[0], T), at(y, FLAP_F_MAX)[0]), Math.abs(q[1])]; };
-    let [x0, y0] = end(FIN_Y[0]), [x1, y1] = end(FIN_Y[1]);
-    // and at the leg's own span no nearer it than that either (with the ends capped, a short span or chord could bring
-    // the line between them forward there): the line moved aft as a whole if need be
-    const yLeg = Math.abs((side > 0 ? GEAR_.left : GEAR_.right).y), yb = AF.wingBase(side, yLeg);
-    if (yb > FIN_Y[0] && yb < FIN_Y[1]) {
-      const want = Math.max(T, at(yb, FLAP_F_MAX)[0]), d = x0 + ((x1 - x0) * (yLeg - y0)) / (y1 - y0) - want;
-      if (d > 0) { x0 -= d; x1 -= d; }
-    }
-    const off = (y, f) => { const q = at(y, f); return q[0] - (x0 + ((x1 - x0) * (Math.abs(q[1]) - y0)) / (y1 - y0)); };
+    const q0 = at(FIN_Y[0], fBase(FIN_Y[0])), q1 = at(FIN_Y[1], fBase(FIN_Y[1]));
+    let x0 = q0[0], x1 = q1[0];
+    const y0 = Math.abs(q0[1]), y1 = Math.abs(q1[1]), yLeg = Math.abs(leg.y);
+    const lineAt = (y) => x0 + ((x1 - x0) * (y - y0)) / (y1 - y0);
+    const d = Math.max(lineAt(Math.max(y0, yLeg - LEG_HALF)), lineAt(Math.min(y1, yLeg + LEG_HALF))) - T;
+    if (yLeg > y0 && yLeg < y1 && d > 0) { x0 -= d; x1 -= d; }
+    const off = (y, f) => { const q = at(y, f); return q[0] - lineAt(Math.abs(q[1])); };
     return (y) => {
       if (!inFin(y)) return fBase(y);
       // the fraction whose mapped point is on that line (x is linear in it; a secant step or two)
@@ -639,8 +636,8 @@ export function createAircraft(opts = {}) {
     b.add(lathe([{ x: 0, r: 0.1 }, { x: 0, r: 0.0 }], 10, TAIL_X + 0.03, 0, 0.85), ROOT, C.plug);
   });
 
-  // Belly fairing (navy), a wide shallow body under the wing box.
-  {
+  // Belly fairing (navy), a wide shallow body under the wing box. v0.5.6: it moves with a moved wing (wingX).
+  const bellyFairing = () => {
     const hw = curve([[-6.2, 1.0], [-5, 1.7], [-3, 2.2], [0, 2.35], [4, 2.3], [6.5, 1.95], [8.2, 1.1]]);
     const bot = curve([[-6.2, -2.06], [-5, -2.17], [-3, -2.3], [0, -2.36], [4, -2.33], [6.5, -2.2], [8.2, -1.98]]);
     const zc = -1.3, rows = [];
@@ -653,7 +650,8 @@ export function createAircraft(opts = {}) {
       rows.push(row);
     }
     b.add(grid(rows, { expect: (c) => V(0, c.y, c.z - zc) }), ROOT, C.navy);
-  }
+  };
+  if (AF && AF.wingX) mapped((x, y, z) => [x - AF.wingX, y, z], bellyFairing); else bellyFairing();
 
   // Wing, both sides.
   const parts = {}; // per side: hinge data for update()
@@ -670,7 +668,7 @@ export function createAircraft(opts = {}) {
     const X_FIN_LE = FLAP_IN_LE_X;
     const inFin = (y) => y >= FIN_Y[0] - 1e-6 && y <= FIN_Y[1] + 1e-6;
     let fFlapLE = (y) => (inFin(y) ? fAt(y, X_FIN_LE) : 0.75);
-    if (AF) fFlapLE = flapInAfterMap(side, fFlapLE, inFin);   // v0.5.4: behind the leg after the design's map
+    if (AF) fFlapLE = flapInAfterMap(side, fFlapLE, inFin);   // v0.5.4, v0.5.6: behind the leg, which follows the wing
     // Fixed structure: its leading edge behind the slats is a round nose about the slats' hinge line,
     // so a slat that droops about that line stays sealed against it (v0.4.1, below).
     // v0.5.3: the wing's every part (and its hinges) through the design's wing map; the sharklet through its own.
@@ -777,12 +775,17 @@ export function createAircraft(opts = {}) {
     const TYRE_R = WHEEL_R_MAIN;
     const axleZ = gm.z + TYRE_R;
     // The leg hangs from inside the wing (its pivot and braces moved up with the wing in v0.1.2).
-    const pivot = V(gm.x, gm.y, -0.9);
+    // v0.5.6: on a design's wing the leg is where the wing's map puts the base's (geo.GEAR), and its top and its braces'
+    // ends ride the wing too (the base's points through the side's map: the dihedral raises or lowers them, a thinner
+    // wing brings them nearer its chord plane); the wheels stay where the sim has them.
+    const gm0 = side > 0 ? GEAR.left : GEAR.right;
+    const onWing = AF ? (dx, dy, z) => V(...MAP.wing(side)(gm0.x + dx, gm0.y + dy, z)) : (dx, dy, z) => V(gm.x + dx, gm.y + dy, z);
+    const pivot = AF ? V(gm.x, gm.y, onWing(0, 0, -0.9).z) : V(gm.x, gm.y, -0.9);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
     // v0.5.0: a design's longer gear (EXT) lengthens the leg below the wing; the pivot and braces stay.
     b.add(cylBetween(pivot, V(gm.x, gm.y, -2.7 - EXT), 0.15, 0.14, 14), LEG, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, -2.15), V(gm.x, gm.y - side * 0.95, -0.98), 0.06, 0.06, 8), LEG, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, -2.0), V(gm.x + 1.0, gm.y, -0.98), 0.06, 0.06, 8), LEG, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, -2.15), onWing(0, -side * 0.95, -0.98), 0.06, 0.06, 8), LEG, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, -2.0), onWing(1.0, 0, -0.98), 0.06, 0.06, 8), LEG, C.gear);
     b.add(boxAt(gm.x, gm.y + side * 0.24, -1.76, 0.75, 0.04, 1.52), LEG, C.navy);
     const PIS = bone('mainPiston' + S, 'mainLeg' + S, V(gm.x, gm.y, axleZ), V(0, 0, 1));
     b.add(cylBetween(V(gm.x, gm.y, -2.6 - EXT), V(gm.x, gm.y, axleZ), 0.1, 0.1, 12), PIS, C.chrome);
@@ -970,7 +973,7 @@ export function createAircraft(opts = {}) {
 
   function update(state = {}, dt = 0) {
     clock += dt;
-    dropPods(state.tanksDropped);   // v0.5.4: dropped tanks (and their pylons) leave the wing
+    dropPods(state.tanksDropped, state.t);   // v0.5.4: dropped tanks (and their pylons) leave the wing; v0.5.6: they fall away (sim time)
     const s = state.surfaces || {};
     // Trailing edge up is a positive rotation about the (+y-pointing) hinge axes.
     rot('stab', SIGNS.stab * (s.stab || 0));

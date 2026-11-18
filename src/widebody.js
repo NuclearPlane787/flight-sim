@@ -463,12 +463,22 @@ export function createWidebody(spec, opts = {}) {
     const inFin = (y) => y >= FI0 - 1e-6 && y <= FI1 + 1e-6;
     let fFlapLE = (y) => (inFin(y) ? fAt(y, FL.xAt(y)) : HF);
     if (AF) {
-      // the same rule on the design's wing: behind the (unmoved) leg at the inboard end, at hingeF outboard, straight
-      // across the design's span; never past 0.85 of a short chord.
+      // v0.5.6: the leg follows the wing (designs.js applyAirframeGeo(): the base's leg through the same map at its own
+      // span), so the base's edge carried by the map stays behind it, by the base's clearance × the side's chord. (v0.5.3
+      // kept the edge behind the unmoved leg, which left a sliver of a flap at 0.8 of the chord.) The edge runs straight
+      // across the design's span between the base's ends carried by the map; where a shorter chord (or the edge's
+      // slant across the leg with a new sweep) brings it nearer the leg's axis than the base's clearance, it moves aft
+      // as a whole until it's that far behind everywhere across the leg (±0.25 m): a few centimetres of the flap's depth.
+      // Never past 0.85 of a short chord.
+      const fB = (y, x) => { const w = wingSecBase(y, side); return (w.le.x - x) / w.chord; };
       const yd0 = AF.wingStation(side, FI0), yd1 = AF.wingStation(side, FI1);
-      const xd1 = xAt(FI1, HF), xd0 = Math.min(xAt(FI0, HF), Math.max(G.GEAR.left.x - 0.45, xAt(FI0, 0.85)));
-      const xL = (y) => xd0 + ((xd1 - xd0) * (AF.wingStation(side, y) - yd0)) / (yd1 - yd0);
-      fFlapLE = (y) => (inFin(y) ? clamp(fAt(y, xL(y)), HF - 0.2, 0.85) : HF);
+      let xd0 = xAt(FI0, fB(FI0, FL.x0)), xd1 = xAt(FI1, fB(FI1, FL.x1));
+      const leg = side > 0 ? G.GEAR.left : G.GEAR.right, leg0 = side > 0 ? spec.geo.GEAR.left : spec.geo.GEAR.right;
+      const gap0 = leg0.x - FL.xAt(Math.abs(leg0.y)), yL = Math.abs(leg.y);
+      const line = (yd) => xd0 + ((xd1 - xd0) * (yd - yd0)) / (yd1 - yd0);
+      const d = Math.max(line(Math.max(yd0, yL - 0.25)), line(Math.min(yd1, yL + 0.25))) - (leg.x - gap0);
+      if (yL > yd0 && yL < yd1 && d > 0) { xd0 -= d; xd1 -= d; }
+      fFlapLE = (y) => (inFin(y) ? clamp(fAt(y, line(AF.wingStation(side, y))), HF - 0.2, 0.85) : HF);
     }
     // Fixed structure, then the fixed parts of the leading and trailing edges. The fixed leading edge
     // behind the slats is a round nose about the slats' hinge line, so a slat that droops about that
@@ -570,10 +580,11 @@ export function createWidebody(spec, opts = {}) {
     // --- Main gear: a four- or six-wheel bogie on a leg that folds inward into the belly ---
     const gm = side > 0 ? G.GEAR.left : G.GEAR.right;
     const axleZ = gm.z + R_MAIN;
-    // v0.5.3: on a design's wing the pivot stays as deep in the wing as it was (the wing's height at the leg moves
-    // with the dihedral); the wheels stay where the sim has them.
-    const pivotDz = AF ? hostWingSec(Math.abs(gm.y), side).le.z - wingSecBase(Math.abs(gm.y), side).le.z : 0;
-    const pivot = V(gm.x, gm.y, spec.gear.mainPivotZ + pivotDz);
+    // v0.5.3: on a design's wing the pivot stays as deep in the wing as it was; the wheels stay where the sim has them.
+    // v0.5.6: the leg is where the wing's map puts the base's (geo.GEAR), and its top is the base's through the same
+    // map (the dihedral raises or lowers it, a thinner wing brings it nearer the chord plane).
+    const gm0 = side > 0 ? spec.geo.GEAR.left : spec.geo.GEAR.right;
+    const pivot = V(gm.x, gm.y, AF ? wingP(side, gm0.x, Math.abs(gm0.y), spec.gear.mainPivotZ).z : spec.gear.mainPivotZ);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
     const zLow = axleZ + 0.72;
     b.add(cylBetween(pivot, V(gm.x, gm.y, zLow), 0.2, 0.19, 14), LEG, C.gear);
@@ -871,7 +882,7 @@ export function createWidebody(spec, opts = {}) {
 
   function update(state = EMPTY, dt = 0) {
     clock += dt;
-    dropPods(state.tanksDropped);   // v0.5.4: dropped tanks (and their pylons) leave the wing
+    dropPods(state.tanksDropped, state.t);   // v0.5.4: dropped tanks (and their pylons) leave the wing; v0.5.6: they fall away (sim time)
     const s = state.surfaces || EMPTY;
     rot('stab', SIGNS.stab * (s.stab || 0));
     rot('elevL', SIGNS.elevator * (s.elevator || 0));

@@ -17,8 +17,10 @@
 //     bodyX(x) → x                      // the fuselage's stations: ahead of FWD_CUT moved forward by plugFwd, behind
 //                                       // AFT_CUT moved back by plugAft, between them as they were
 //     bodyXBase(x) → x                  // the inverse (a station in the plugs gives the cut's own: a constant section)
-//     cuts: { fwd, aft }                // the base's cut stations (x)
+//     cuts: { fwd, aft }                // the base's cut stations (x), with the wing (v0.5.6: wingX moves them)
 //     plugFwd, plugAft, af, base, ys, tipY: [left, right] (|y| of each wing's tip), span (tip to tip)
+//     wingX                             // v0.5.6: the whole wing moved aft by that much (m; forward when negative), its
+//                                       // carry-through and everything hung off it with it; the fuselage stays
 //   }
 
 import { typeById } from './types.js';
@@ -30,9 +32,10 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 // Where the plugs go in: in the cabin's constant section, just ahead of the wing's root and just behind it (the
 // fuselage is a cylinder there on all three types: aircraft.js's and widebody-specs.js's tables).
 const CUT_GAP = 1.0;   // m clear of the wing's root
-export function plugCuts(base) {
+// v0.5.6: `wingX`, the wing moved aft (the cuts stay 1 m clear of its root where it is).
+export function plugCuts(base, wingX = 0) {
   const W = typeById(base).geo.WING;
-  return { fwd: W.rootX + CUT_GAP, aft: W.rootX - W.rootChord - CUT_GAP };
+  return { fwd: W.rootX + CUT_GAP - wingX, aft: W.rootX - W.rootChord - CUT_GAP - wingX };
 }
 
 // The base wing's planform, piecewise linear through the parts' stations (root at the fuselage's side, kink, tip):
@@ -53,14 +56,15 @@ function planform(base) {
 const MAPS = new Map();
 export function airframeMap(base, af) {
   const T = typeById(base), id = T.id;
-  const key = id + '|' + (af ? JSON.stringify([af.wingL, af.wingR, af.tail, af.fin, af.plugFwd, af.plugAft, af.sharklets !== false]) : '');
+  const key = id + '|' + (af ? JSON.stringify([af.wingL, af.wingR, af.tail, af.fin, af.plugFwd, af.plugAft, af.sharklets !== false, af.wingX || 0]) : '');
   let m = MAPS.get(key);
   if (m) return m;
   const P = planform(id), S = baseShape(id), G = T.geo;
   const dih0 = G.WING.dihedralDeg * DEG;
   const sideOf = (side) => (af ? (side > 0 ? af.wingL : af.wingR) : { span: 1, chord: 1, sweep: 0, dihedral: G.WING.dihedralDeg });
   const ident = !af || (['wingL', 'wingR'].every((k) => af[k].span === 1 && af[k].chord === 1 && af[k].sweep === 0 && af[k].dihedral === G.WING.dihedralDeg)
-    && af.tail === 1 && af.fin === 1 && af.plugFwd === 0 && af.plugAft === 0 && af.sharklets !== false);
+    && af.tail === 1 && af.fin === 1 && af.plugFwd === 0 && af.plugAft === 0 && af.sharklets !== false && !af.wingX);
+  const wx = (af && af.wingX) || 0;   // v0.5.6: the wing's move aft
   const wingSideMap = (side) => {
     const w = sideOf(side), ys = P.ys;
     const tanD = Math.tan(w.dihedral * DEG), tanD0 = Math.tan(dih0);
@@ -73,7 +77,7 @@ export function airframeMap(base, af) {
       const yn = ay <= ys ? ay : ys + (ay - ys) * w.span;
       const dyn = Math.max(0, yn - ys);
       const qcN = P.qc0 - dyn * Math.tan(Math.atan(t0) + w.sweep * DEG);
-      const xn = qcN + (x - pf.qc) * w.chord;
+      const xn = qcN + (x - pf.qc) * w.chord - wx;   // v0.5.6: the whole wing moved aft by wingX
       // the chord plane's height: the base's dihedral line turned to the design's, the rest (camber, twist, the
       // drawn heights) kept, the thickness × chord about the chord plane
       const planeB = P.z0 + (yb - ys) * tanD0;
@@ -84,7 +88,7 @@ export function airframeMap(base, af) {
   };
   const WL = wingSideMap(1), WR = wingSideMap(-1);
   const fwd = af ? af.plugFwd : 0, aft = af ? af.plugAft : 0;
-  const cuts = plugCuts(id);
+  const cuts = plugCuts(id, wx);
   // tailplane and fin: about their roots' trailing edges (the parts' stations[0]). v0.5.4: was the root's quarter
   // chord, which grew a bigger tail forward over the elevator's and rudder's hinge line and the fuselage's tail cone; a
   // real stretch grows the surface forward from where it ends. With a factor of 1 the surface stays exactly the base's.
@@ -105,7 +109,7 @@ export function airframeMap(base, af) {
   // (v0.5.3, extra time) with the sharklets off the tip is the parts' own (17.0 m on the A321)
   const tipG = af && af.sharklets === false ? P.tip : G.SPAN / 2;
   m = {
-    identity: ident, base: id, af, cuts, plugFwd: fwd, plugAft: aft, ys: P.ys,
+    identity: ident, base: id, af, cuts, plugFwd: fwd, plugAft: aft, ys: P.ys, wingX: wx,
     wing: (side, x, y, z) => (ident ? [x, y, z] : (side > 0 ? WL : WR)(x, y, z)),
     wingStation: (side, yb) => (yb <= P.ys ? yb : P.ys + (yb - P.ys) * sideOf(side).span),
     wingBase: (side, y) => (y <= P.ys ? y : P.ys + (y - P.ys) / sideOf(side).span),

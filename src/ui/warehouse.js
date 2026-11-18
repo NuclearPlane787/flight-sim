@@ -36,6 +36,8 @@ import { ENGINE_LIST, ENGINE_TYPES } from '../sim/engine-types.js';
 import { TYPES, TYPE_LIST } from '../sim/types.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
 import { designStore } from '../designs-store.js';
+import { partBindings, resolveKeys, engineKeys, keyLabel, scopeOf, bindingOf, chordFor, isModifier, bindKey, clearKeys, resetKeys,
+  bindEngineKey, engineAsOthers, setEngineTwin, movedText, keysFrom } from '../keys.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const kg = (v) => `${Math.round(v).toLocaleString('en-US')} kg`;
@@ -154,6 +156,9 @@ export function readout(design, { airframe: afOn = airframeEnabled() } = {}) {
     lvl(!none && yawFrac > 1, !none && yawFrac > WARN.yawFrac),
     yawFrac > 1 ? `Lopsided thrust: at full power it yaws harder than the ${TYPES[d.base].name} with an engine out, and the rudder can’t hold it on the runway. Balance the engines (Mirror).`
       : yawFrac > WARN.yawFrac ? `Lopsided thrust: at full power it pulls the nose ${toward}. Hold rudder on the take-off roll.` : '');
+  // v0.5.6: the minimum control speeds (vmcRows(); shown once designs.js gives them, with the airframe on: the rudder's
+  // power comes from the fin's size).
+  if (afOn && !none) for (const r of vmcRows(n, B.n, rows.find((x) => x.k === 'yaw')?.level)) add(r.k, r.label, r.value, r.level, r.note);
   const p0 = B.line.pitchNm, pitchHard = !none && Math.abs(line.pitchNm) > WARN.pitchX * Math.max(Math.abs(p0), 1);
   add('pitch', 'Thrust’s pitch at full power', none ? '—' : `nose ${line.pitchNm >= 0 ? 'up' : 'down'} ${Math.round(Math.abs(line.pitchNm) / 1000).toLocaleString('en-US')} kN·m (base ${p0 >= 0 ? 'up' : 'down'} ${Math.round(Math.abs(p0) / 1000).toLocaleString('en-US')})`,
     lvl(false, pitchHard), pitchHard ? `Full thrust pitches the nose ${line.pitchNm >= 0 ? 'up' : 'down'} hard (the thrust line is far from the CG): every power change needs a retrim.` : '');
@@ -264,6 +269,92 @@ export function nudgeHelp(p) {
   if (has('ArrowUp', true)) out.push('Shift+↑ ↓ up and down');
   if (has('e')) out.push('Q E turn');
   return out.join(' · ');
+}
+
+// v0.5.6: the part in hand's keys (KSP's; ROADMAP's v0.5.2 found item): the same keys as a selected part's (nudgeOf()),
+// kept as the hand's offsets, applied to wherever the pointer puts the part (applyHand()): dx, dz and yaw as the part's
+// own values (its defaults are 0), s and x added to the station snapped under the pointer. `cand`: the part placement()
+// gives for the pointer, before the offsets (or { kind, mount } with the pointer off the aircraft). → the new offsets (the
+// same object where the key does nothing to this part or it's at a limit: RANGES for dx, dz and yaw, the mount's range
+// for the station).
+export const HAND0 = Object.freeze({ dx: 0, dz: 0, yaw: 0, s: 0, x: 0 });
+const r2h = (v) => Math.round(v * 100) / 100;
+export function nudgeHand(hand, cand, key, shift = false, base = null, af = null) {
+  const n = nudgeOf(cand, key, shift);
+  if (!n) return hand;
+  const h = { ...HAND0, ...hand };
+  let lo, hi;
+  if (n.key === 's' || n.key === 'x') {
+    const R = base ? mountRange(base, { side: 1, ...cand }, af) : { lo: -20, hi: 20 };
+    const v0 = cand[n.key];
+    // relative to the snapped station under the pointer: the station stays in the mount's range
+    if (Number.isFinite(v0)) { lo = Math.min(0, R.lo - v0); hi = Math.max(0, R.hi - v0); }
+    else { lo = -(R.hi - R.lo); hi = R.hi - R.lo; }
+  } else [lo, hi] = RANGES[n.key];
+  const v = r2h(clamp(h[n.key] + n.by, lo, hi));
+  if (Math.abs(v - h[n.key]) < 1e-9) return hand;
+  h[n.key] = v;
+  return h;
+}
+// The hand's offsets on a part placement() gave (the station's offset only where it has that station). → the part.
+export function applyHand(c, hand) {
+  if (!c || !hand) return c;
+  const out = { ...c }, v = (k) => Number(hand[k]) || 0;
+  if (out.kind === 'engine') { out.dx = v('dx'); out.dz = v('dz'); out.yaw = v('yaw'); }
+  else if (out.kind === 'tank' && out.mount === 'wing') out.dx = v('dx');
+  if (out.s !== undefined && v('s')) out.s = r2h(out.s + v('s'));
+  if (out.x !== undefined && v('x')) out.x = r2h(out.x + v('x'));
+  return out;
+}
+// The hand's own values for the tip beside the pointer ('' when there are none): the station shows in partWhere().
+export function handText(hand) {
+  if (!hand) return '';
+  const out = [], f = (v) => String(+Math.abs(v).toFixed(2));
+  if (hand.dx) out.push(`${f(hand.dx)} m ${hand.dx > 0 ? 'forward' : 'aft'}`);
+  if (hand.dz) out.push(`${f(hand.dz)} m ${hand.dz > 0 ? 'up' : 'down'}`);
+  if (hand.yaw) out.push(`toed ${hand.yaw > 0 ? 'in' : 'out'} ${Math.abs(hand.yaw)}°`);
+  return out.join(' · ');
+}
+// v0.5.6: a part dragged from the palette (ROADMAP's v0.5.2 found item: "no drag from the palette"). A press on a palette
+// part becomes a drag past PAL_DRAG_PX; its release decides: 'none' (it never moved: a click, which picks the part up as
+// before), 'attach' (over the aircraft where the ghost fits) or 'cancel' (off the aircraft, or where it doesn't fit: the
+// part goes back).
+export const PAL_DRAG_PX = 6;
+export function paletteDrop({ moved, over, ghost } = {}) {
+  if (!moved) return 'none';
+  if (!over || !ghost) return 'cancel';
+  return ghost.ok && ghost.next ? 'attach' : 'cancel';
+}
+
+// v0.5.6: the minimum control speeds (designs.js designNumbers(): vmcKt, the critical engine out and the rest at full
+// thrust; vmcAllKt, every engine at full thrust on a lopsided design; vrKt) against VR: certification wants VR at least
+// 1.05 × VMC. A design no worse than its base passes (the base is certified, whatever this model makes of its margin).
+export const VMC_MARGIN = 1.05;
+export function vmcLevel(vmc, vr, baseVmc = NaN) {
+  if (!Number.isFinite(vmc) || !Number.isFinite(vr) || vr <= 0) return 'ok';
+  if (Number.isFinite(baseVmc) && vmc <= baseVmc + 0.5) return 'ok';
+  return vmc > vr ? 'bad' : vmc * VMC_MARGIN > vr ? 'warn' : 'ok';
+}
+// The readout's rows for them ({ k, label, value, level, note }): the engine-out VMC against VR and the base's, and for a
+// lopsided design (vmcAllKt > 0) the speed from which the rudder holds it with every engine at full power: amber below VR
+// where the yaw row already calls it lopsided (a trace of asymmetry the nose wheel holds stays green), red above VR. One
+// note for one cause: the lopsided row speaks only when it's worse than the yaw row (`yawLevel`).
+export function vmcRows(n, baseN = null, yawLevel = 'ok') {
+  const out = [], vmc = n?.vmcKt, vr = n?.vrKt, bv = baseN?.vmcKt, kt = (v) => `${Math.round(v)} kt`;
+  if (Number.isFinite(vmc)) {
+    const lv = vmcLevel(vmc, vr, bv);
+    out.push({ k: 'vmc', label: 'Minimum control speed (engine out)', level: lv,
+      value: `${kt(vmc)}${Number.isFinite(vr) ? ` · VR ${kt(vr)}` : ''}${Number.isFinite(bv) ? ` (the base’s ${kt(bv)})` : ''}`,
+      note: lv === 'bad' ? 'VMC is above VR: an engine failing at rotation yaws it off the runway, full rudder or not. Move the outer engines in, lower their thrust or make the fin bigger.'
+        : lv === 'warn' ? 'VMC is within 5 % of VR (certification wants VR at least 1.05 × VMC): an engine failing at rotation takes all the rudder. Move the outer engines in, lower their thrust or make the fin bigger.' : '' });
+  }
+  const va = n?.vmcAllKt;
+  if (Number.isFinite(va) && va > 0) {
+    const yl = yawLevel || 'ok', lv = Number.isFinite(vr) && va > vr ? 'bad' : yl !== 'ok' ? 'warn' : 'ok';
+    out.push({ k: 'vmcAll', label: 'Lopsided thrust (all engines)', value: `the rudder holds it from ${kt(va)}`, level: lv,
+      note: lv === 'bad' && yl !== 'bad' ? `Lopsided thrust: with every engine at full power the rudder holds it straight only from ${kt(va)}, above VR. Balance the engines (Mirror).` : '' });
+  }
+  return out;
 }
 
 // Where a part dropped on the airframe goes. `hit`: the surface under the pointer (hitAirframe()); `what`: the part in
@@ -426,7 +517,7 @@ export function createHistory(limit = 200) {
 // v0.5.3: and the airframe (its wing, tails and plugs).
 export const viewKey = (d) => JSON.stringify([d.base, d.parts.filter((p) => p.kind === 'engine' || (p.kind === 'tank' && p.mount === 'wing'))
   .map(({ id, pair, thrust, ...p }) => p), d.gearExtendM, d.registration, afKey(d.airframe)]);
-const afKey = (af) => (af ? [af.wingL, af.wingR, af.tail, af.fin, af.plugFwd, af.plugAft, af.sharklets !== false] : null);
+const afKey = (af) => (af ? [af.wingL, af.wingR, af.tail, af.fin, af.plugFwd, af.plugAft, af.sharklets !== false, af.wingX || 0] : null);
 
 // ---- v0.5.3: the airframe in the editor (behind AIRFRAME_ON, or the page's ?airframe=1) ----
 // Click the wing, the tailplane, the fin or the fuselage to select it; its sliders replace the aircraft's in the side
@@ -438,9 +529,10 @@ export function airframeEnabled(search) {
   try { return new URLSearchParams(search ?? globalThis.location?.search ?? '').get('airframe') === '1'; } catch { return false; }
 }
 export const AF_WING_KEYS = ['span', 'chord', 'sweep', 'dihedral'];
-export const AF_STEP = { span: 0.01, chord: 0.01, sweep: 0.1, dihedral: 0.1, tail: 0.01, fin: 0.01, plugFwd: 0.05, plugAft: 0.05 };
-// What each selection's sliders change.
-export const AF_KEYS = { wing: AF_WING_KEYS, tailplane: ['tail'], fin: ['fin'], body: ['plugFwd', 'plugAft'] };
+export const AF_STEP = { span: 0.01, chord: 0.01, sweep: 0.1, dihedral: 0.1, tail: 0.01, fin: 0.01, plugFwd: 0.05, plugAft: 0.05, wingX: 0.1 };
+// What each selection's sliders change. v0.5.6: the wing's position along the fuselage (wingX: both sides together,
+// whatever Mirror says) after its own sides' sliders.
+export const AF_KEYS = { wing: [...AF_WING_KEYS, 'wingX'], tailplane: ['tail'], fin: ['fin'], body: ['plugFwd', 'plugAft'] };
 export const afNames = { wing: 'Wing', tailplane: 'Tailplane', fin: 'Fin', body: 'Fuselage' };
 const wingOf = (side) => (side < 0 ? 'wingR' : 'wingL');
 
@@ -459,7 +551,8 @@ export function editAirframe(design, key, value, side = 1) {
     if ('sharklets' in af) next = { ...af, sharklets: !!value };   // the A321's (v0.5.3, extra time)
   } else if (key === 'reset') {
     const z = defaultAirframe(d.base);
-    if (value === 'wing') next = { ...(af.mirror ? { ...af, wingL: z.wingL, wingR: z.wingR } : { ...af, [own]: z[own] }), ...('sharklets' in z ? { sharklets: true } : {}) };
+    // v0.5.6: and back to the base's place on the fuselage (wingX: both sides, so even with Mirror off)
+    if (value === 'wing') next = { ...(af.mirror ? { ...af, wingL: z.wingL, wingR: z.wingR } : { ...af, [own]: z[own] }), ...('sharklets' in z ? { sharklets: true } : {}), wingX: 0 };
     else if (value === 'tailplane') next = { ...af, tail: 1 };
     else if (value === 'fin') next = { ...af, fin: 1 };
     else if (value === 'body') next = { ...af, plugFwd: 0, plugAft: 0 };
@@ -472,7 +565,7 @@ export function editAirframe(design, key, value, side = 1) {
 // edge out, trailing edge back), the fuselage as its top view and side view. → { wingL, wingR, tailL, tailR, fin,
 // bodyTop, bodySide }, each an array of [x, y, z].
 export function afOutline(base, af) {
-  const S = shapeOf(base, af ? { wingL: af.wingL, wingR: af.wingR, tail: af.tail, fin: af.fin, plugFwd: af.plugFwd, plugAft: af.plugAft } : null);
+  const S = shapeOf(base, af ? { wingL: af.wingL, wingR: af.wingR, tail: af.tail, fin: af.fin, plugFwd: af.plugFwd, plugAft: af.plugAft, ...(af.wingX ? { wingX: af.wingX } : {}) } : null);
   const panel = (st, s) => [...st.map((p) => [p.xle, s * p.y, p.z]), ...st.slice().reverse().map((p) => [p.xle - p.c, s * p.y, p.z])];
   const B = S.body, w = B.width / 2, h = B.height / 2, L = B.noseX - B.tailX;
   const nose = B.noseX, tail = B.tailX, n1 = nose - 0.08 * L, t1 = tail + 0.22 * L;
@@ -582,9 +675,10 @@ function airframeRows(n, add) {
   const noseBad = nlOk && nl < AF_WARN.noseBad, noseWarn = nlOk && (nl < AF_WARN.nose || nt < AF_WARN.noseThrust);
   add('nose', 'Nose wheel load (empty or loaded)', nlOk ? `${f(nl * 100, 1)} % of the weight${Number.isFinite(nl0) ? ` (base ${f(nl0 * 100, 1)})` : ''}` : '—',
     lvl(noseBad, noseWarn),
-    !nlOk ? '' : noseBad ? `Only ${f(nl * 100, 1)} % of the weight on the nose wheel: it sits back on its tail as soon as the engines push. Move weight forward (ballast, the engines, a longer forward plug) or shorten the aft plug.`
-      : lifts ? `Full thrust lifts the nose wheel when light (${f(nt * 100, 1)} % of the weight left on it): take off with the levers part way, or move weight forward.`
-      : noseWarn ? `A light nose wheel (${f(nl * 100, 1)} % of the weight, ${f(nt * 100, 1)} % with full thrust when light): poor steering, and it may sit back on its tail at full thrust.` : '');
+    // v0.5.6: the main gear is on the wing, so moving the wing aft (its Position) puts the wheels further behind the CG
+    !nlOk ? '' : noseBad ? `Only ${f(nl * 100, 1)} % of the weight on the nose wheel: it sits back on its tail as soon as the engines push. Move the wing aft (its Position: the main gear goes with it), or move weight forward (ballast, the engines, a longer forward plug), or shorten the aft plug.`
+      : lifts ? `Full thrust lifts the nose wheel when light (${f(nt * 100, 1)} % of the weight left on it): move the wing aft (its Position: the main gear goes with it), take off with the levers part way, or move weight forward.`
+      : noseWarn ? `A light nose wheel (${f(nl * 100, 1)} % of the weight, ${f(nt * 100, 1)} % with full thrust when light): poor steering, and it may sit back on its tail at full thrust. Moving the wing aft (its Position) puts the main gear further behind the CG.` : '');
   const L = a?.codeLetter, G = a?.gateLetter, spOk = Number.isFinite(a?.spanM);
   const wide = !!L && !!G && LETTERS.indexOf(L) > LETTERS.indexOf(G);
   add('span', 'Wingspan · code letter', spOk ? `${f(a.spanM, 1)} m · code ${L ?? '—'} (gate ${G ?? '—'})` : '—', lvl(false, wide),
@@ -927,6 +1021,10 @@ async function createView(host, onStatus) {
     setHooks(h) { hooks = h; },
     setOverlay(o) { overlay = o; drawOverlay(); request(); },
     setCursor(c) { canvas.classList.toggle('place', c === 'place'); canvas.classList.toggle('over', c === 'over'); },
+    // v0.5.6 (a part dragged from the palette): the pointer's ray (geometry frame), and whether a point (client pixels)
+    // is on the view itself (not the palette or a panel over it)
+    ray: (e) => rayAt(e),
+    overCanvas: (x, y) => document.elementFromPoint(x, y) === canvas,
     // A point of the geometry frame on the screen (client pixels), as last drawn.
     project(x, y, z) {
       const v = new THREE.Vector3(-y, z, -x).project(camera), r = canvas.getBoundingClientRect();
@@ -942,6 +1040,69 @@ async function createView(host, onStatus) {
 }
 
 // ---- The page ----
+
+// ---- v0.5.6: the parts' keys (Shane: "you can attach keybindings by selecting plane parts like the engines, where
+// they open a little tab and you can change the key by pressing on top of a little key icon ... similar to Besiege") ----
+// The keys tab of the selected part or piece of airframe: each control a row of keycaps (src/keys.js). An engine's tab
+// has its own keys (with its mirror twin's) and the all-engines keys; a wing tank's, the drop; the wing's, the ailerons,
+// flaps and spoilers; the tailplane's, the elevator (and a Boeing's trim); the fin's, the rudder; the fuselage's, the
+// gear and brakes. The pure parts below are tested in node (tests/warehouse-keytab.test.mjs).
+export const KEY_PART = { wing: 'wing', tailplane: 'tailplane', fin: 'fin', body: 'fuselage' };
+// The keys' scope of what's open: a type (the stock aircraft's keys-only editor) or a design (its base type's keys
+// until one is changed for it).
+export const keyScopeOf = (design, stock = false) => (stock ? { scope: `type:${design.base}`, base: null } : scopeOf({ id: design.base, design: { id: design.id, base: design.base } }));
+// An engine part's index in the sim (designDef()'s order), and its mirror twin's (or null).
+export function engineIndex(def, partId) {
+  const N = def?.geo?.NACELLES || [];
+  const i = N.findIndex((n) => n.part === partId);
+  return i;
+}
+export function twinIndex(design, def, partId) {
+  const p = design.parts.find((q) => q.id === partId);
+  if (!p?.pair) return null;
+  const t = engineIndex(def, p.pair);
+  return t >= 0 ? t : null;
+}
+// A flap detent's row names the type's detent (0, 1, 2, 3, FULL; UP, 5, 15, 20, 30).
+export function keyLabelOf(b, def) {
+  if (b.flap === undefined) return b.label;
+  const L = def?.data?.FLAP_LEVER, K = def?.data?.FLAP_KEYS;
+  return L && K && K[b.flap] !== undefined ? `Flaps to ${L[K[b.flap]]}` : b.label;
+}
+const caps = (chords, id, more = true) => {
+  const out = (chords || []).map((c, i) => ({ cap: `${id}:${i}`, text: keyLabel(c), chord: c }));
+  if (!out.length) out.push({ cap: `${id}:0`, text: '', empty: true });
+  else if (more) out.push({ cap: `${id}:${out.length}`, text: '+', add: true });
+  return out;
+};
+// The tab: { title, rows: [{ id | eng, label, caps: [{ cap, text, chord?, empty?, add?, follow? }], ... }] }. what:
+// { part: partId } or { af: 'wing' | 'tailplane' | 'fin' | 'body' }. twinOn: an engine's twin takes its keys (a
+// design's: its mirror; a type's: the keys-only editor's Mirror).
+export function keyTab(design, def, store, sc, what, { twinOn = true } = {}) {
+  const fam = def?.family || TYPES[design.base]?.family || null;
+  const res = resolveKeys(store, { ...sc, nEngines: def?.geo?.ENGINES?.length ?? null });
+  const rowsOf = (part) => partBindings(part, fam).map((b) => ({ id: b.id, label: keyLabelOf(b, def), caps: caps(res.bind[b.id], b.id) }));
+  if (what.af) return { title: 'Keys', part: KEY_PART[what.af], rows: rowsOf(KEY_PART[what.af]) };
+  const p = design.parts.find((q) => q.id === what.part);
+  if (!p) return { title: 'Keys', rows: [] };
+  if (p.kind === 'tank' && p.mount === 'wing') return { title: 'Keys', part: 'tank', rows: rowsOf('tank') };
+  if (p.kind !== 'engine') return { title: 'Keys', part: null, rows: [], note: 'No keys: it has nothing to move.' };
+  const i = engineIndex(def, p.id), t = twinIndex(design, def, p.id);
+  const engines = t !== null && twinOn ? [i, t] : [i];
+  const ek = engineKeys(store, sc, i);
+  const name = `Engine ${i + 1}${engines.length > 1 ? ` and ${t + 1} (its twin)` : ''}`;
+  const one = (dir) => {
+    const l = dir > 0 ? ek.up : ek.down;
+    return l.length ? { cap: `eng:${dir > 0 ? 'up' : 'down'}`, text: keyLabel(l[0]), chord: l[0], follow: !ek.own } : { cap: `eng:${dir > 0 ? 'up' : 'down'}`, text: '', empty: true };
+  };
+  return {
+    title: 'Keys', part: 'engine', engine: { i, twin: t, engines, own: ek.own, with: ek.engines },
+    rows: [
+      { eng: true, label: ek.own ? `${name}: its own` : `${name}: as the others`, caps: [one(1), one(-1)], own: ek.own },
+      { all: true, label: 'All engines (on the ground at idle, down holds reverse)', up: caps(res.bind.thrustUp, 'thrustUp', false), down: caps(res.bind.thrustDown, 'thrustDown', false) },
+    ],
+  };
+}
 
 function linkCss() {
   if (document.querySelector('link[data-fsw-css]')) return;
@@ -960,16 +1121,19 @@ const PALETTE = [
 ];
 const HELP = {
   idle: 'Drag to go round · scroll to zoom · click a part to select it, drag it to move it · Z undo · Shift+Z redo',
-  place: 'Click on the aircraft to attach it · Shift+click keeps it in hand · right-click or Esc puts it back',
+  place: 'Click on the aircraft to attach it (or drag it there from the palette) · Shift+click keeps it in hand · right-click or Esc puts it back',
   sel: 'Drag the part to move it · Delete removes it · Esc lets go',
   // v0.5.3, with the airframe on
-  idleAf: 'Drag to go round · scroll to zoom · click a part, or the wing, tail, fin or fuselage, to change it · Z undo · Shift+Z redo',
+  idleAf: 'Drag to go round · scroll to zoom · click a part, or the wing, tail, fin or fuselage, to change it · drag a part from the palette onto it · Z undo · Shift+Z redo',
   af: 'Drag a slider: the new outline shows in green, the model follows on release · Z undo · Esc lets go',
+  // v0.5.6: a stock aircraft's keys
+  keys: 'Drag to go round · scroll to zoom · click an engine, the wing, the tailplane, the fin or the fuselage: its keys · Esc goes back',
+  keySel: 'Click a keycap, then press the key · Esc lets go',
 };
 // A rebuild this quick (ms) keeps 30 frames a second while a slider moves: the model follows live, not on release.
 const LIVE_BUILD_MS = 20;
 
-export function createWarehouse(root, { store = designStore() } = {}) {
+export function createWarehouse(root, { store = designStore(), keys = null } = {}) {
   linkCss();
   const el = document.createElement('div');
   el.className = 'fsw';
@@ -983,9 +1147,10 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     <section class="fsw-listpage" data-o="listPage" aria-label="Designs">
       <div class="fsw-listcard">
         <div class="fsw-new"><span>New design from the</span>${typesShown().map((t) => `<button class="fsui-b primary" data-new="${esc(t.id)}">${esc(t.name)}</button>`).join('')}</div>
+        <div class="fsw-new fsw-stock" data-o="stock"${keys ? '' : ' hidden'}><span>Stock aircraft</span>${typesShown().map((t) => `<button class="fsui-b" data-stock="${esc(t.id)}" title="The ${esc(t.name)}’s keys: click a part to set them">${esc(t.name)} · Keys</button>`).join('')}</div>
         <p class="fsm-note" data-o="listMsg" aria-live="polite"></p>
         <div class="fsm-list" data-o="list"></div>
-        <p class="fsm-help">A design is one of the three types with parts attached: engines anywhere they fit, tanks and ballast, its weight, fuel and gear changed. Click one to open it. Saved designs fly from New scenario’s aircraft picker. Esc goes back.</p>
+        <p class="fsm-help">A design is one of the three types with parts attached: engines anywhere they fit, tanks and ballast, its weight, fuel and gear changed. Click one to open it. Saved designs fly from New scenario’s aircraft picker. A part’s keys (an engine’s thrust, the wing’s ailerons and flaps, the tail’s elevator and rudder, the gear and brakes) are set by clicking it: a stock aircraft’s with its Keys. Esc goes back.</p>
       </div>
     </section>
     <section class="fsw-editor" data-o="editor" hidden aria-label="Design">
@@ -1015,7 +1180,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
         <div class="fsw-scroll">
           <div class="fsw-issues" data-o="issues" aria-live="polite"></div>
           <div class="fsw-parts" data-o="parts"></div>
-          <h3 class="fsw-h">The numbers</h3>
+          <h3 class="fsw-h" data-o="numsH">The numbers</h3>
           <div class="fsw-nums" data-o="nums"></div>
         </div>
         <div class="fsw-foot">
@@ -1039,11 +1204,19 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   // the selected part, the one under the pointer, the ghost (where the part in hand or being dragged would go).
   let tool = null, toolKey = null, hangOver = false, mirrorOn = true, markersOn = true;
   let sel = null, hover = null, ghost = null, dragPart = null, sliding = false, last = null;
+  // v0.5.6: the part in hand's offsets (its keys: nudgeHand()), the last candidate placement() gave under the pointer
+  // before them, the pointer's last ray and event over the view (to show a key's change at once), and a drag from the
+  // palette under way ({ key, id, x0, y0, moved }) and when the last one ended (its click doesn't pick the part again).
+  let hand = { ...HAND0 }, handCand = null, handAt = null, palDrag = null, palDragEnd = 0;
   // v0.5.3: the airframe (behind AIRFRAME_ON or ?airframe=1): the selected piece ({ what: wing | tailplane | fin | body,
   // side }), the one under the pointer, and whether one of its sliders is moving (the ghost outline shows).
   const afOn = airframeEnabled();
   let selAf = null, hoverAf = null, afDrag = false;
   const hist = createHistory();
+  // v0.5.6: the keys (`keys`: { load(), save(store), nameOf(scope) }: main.js's). keysOnly: a stock aircraft's keys
+  // editor (no palette, no sliders: a click on a part opens its keys tab). capKey: the keycap waiting for a key
+  // ({ cap, id, i } or { cap, eng: +1 | -1 }); keyMsg: the tab's line; stockTwin: a type's Mirror for its engines' keys.
+  let keysOnly = false, capKey = null, keyMsg = '', keyMsgBad = false, stockTwin = true;
 
   // ---- The list ----
   function rowHtml(d) {
@@ -1100,6 +1273,8 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       editing = confirming = null;
       listMsgBad = !res.ok;
       listMsg = res.ok ? `Copied as “${res.design.name}”: at the top.` : res.error === 'quota' ? 'Browser storage is full: no copy was made.' : 'That design is gone.';
+      // v0.5.6: the copy takes the design's keys
+      if (res.ok && keys) { const st = keysFrom(keys.load()), own = st.scopes[`design:${id}`]; if (own) { st.scopes[`design:${res.design.id}`] = JSON.parse(JSON.stringify(own)); keys.save(st); } }
       renderList(res.ok ? res.design.id : id);
       if (res.ok) $('list').scrollTop = 0;
       return;
@@ -1112,6 +1287,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     if (r === 'yes') {
       const list = store.list(), i = list.findIndex((d) => d.id === id);
       if (!store.remove(id)) { listMsg = 'Browser storage refused the change: the design is still there.'; listMsgBad = true; }
+      else dropKeys(id);   // v0.5.6: its keys go with it
       confirming = null;
       const next = store.list();
       renderList(next[Math.min(i, next.length - 1)]?.id || null);
@@ -1132,6 +1308,17 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     if (row && e.target === row && e.key === 'Enter' && !confirming) { e.preventDefault(); const d = store.get(row.dataset.id); if (d) openEditor(d, false); }
   });
   for (const b of el.querySelectorAll('[data-new]')) b.onclick = () => openEditor(store.draft(b.dataset.new), true);
+  // v0.5.6: a stock aircraft's keys: its own editor, keys only
+  for (const b of el.querySelectorAll('[data-stock]')) b.onclick = () => openStock(b.dataset.stock);
+  function openStock(typeId) {
+    if (!keys || !TYPES[typeId]) return;
+    openEditor(newDesign(typeId, { id: `stock-${typeId}`, name: TYPES[typeId].name }), false, true);
+  }
+  function dropKeys(designId) {
+    if (!keys) return;
+    const st = keys.load();
+    if (st?.scopes?.[`design:${designId}`]) keys.save(resetKeys(st, { scope: `design:${designId}` }).store);
+  }
 
   // ---- The editor: the side panel ----
   const dirty = () => isNew || JSON.stringify(cur) !== savedJson;
@@ -1159,6 +1346,11 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     return o;
   }
   function partHtml(p) {
+    if (keysOnly) {
+      return `<div class="fsw-sel" data-o="sel"><h3>${esc(partLabel(p))}${p.pair ? ' <small>and its mirror twin</small>' : ''}</h3>
+        <p class="fsw-base">${esc(partWhere(p, cur.base, cur.airframe))}</p>${keysHtml({ part: p.id })}
+        <div class="fsw-btns"><button type="button" class="fsui-b" data-a="done">Done</button></div></div>`;
+    }
     const T = TYPES[cur.base], R = mountRange(cur.base, p, cur.airframe), o = partOuts(p);
     const tailTaken = cur.parts.some((q) => q.kind === 'engine' && q.mount === 'tail' && q.id !== p.id);
     let h = `<div class="fsw-sel" data-o="sel">
@@ -1183,12 +1375,18 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       const K = p.kind === 'ballast' ? RANGES.ballastKg : p.mount === 'hold' ? RANGES.holdKg : RANGES.tankKg;
       h += slider('data-q', 'kg', p.kind === 'ballast' ? 'Mass' : 'Fuel', K[0], K[1], p.kind === 'ballast' ? 50 : 100, p.kg, o.kg);
     }
+    h += keysHtml({ part: p.id });
     h += `<div class="fsw-btns"><button type="button" class="fsui-b danger" data-a="remove">Remove${p.pair ? ' both' : ''}</button><button type="button" class="fsui-b" data-a="done">Done</button></div></div>`;
     return h;
   }
   // The aircraft: its name and registration, its parts (a click selects one), its weight, fuel and gear.
   function aircraftHtml() {
     const d = cur, T = TYPES[d.base], A = T.data;
+    if (keysOnly) {
+      return `<div class="fsw-sel" data-o="sel"><h3>The ${esc(T.name)}’s keys</h3>
+        <p class="fsw-base">Click a part to set its keys: an engine (its thrust), the wing (the ailerons, flaps and spoilers), the tailplane (the elevator${T.family === 'boeing' ? ' and trim' : ''}), the fin (the rudder) or the fuselage (the gear and brakes). A design on the ${esc(T.name)} flies these until one is changed for it. The views, time and autopilot keys are on the Controls page.</p>
+        ${keysOwnHtml()}</div>`;
+    }
     const shown = d.parts.filter((p, i) => !p.pair || d.parts.findIndex((q) => q.id === p.pair) > i);
     const name = (p) => (!p.pair ? partLabel(p) : p.kind === 'engine' ? `${ENGINE_TYPES[p.engine]?.short ?? p.engine} · ${WHERE[p.mount]}` : 'Wing tanks');
     const list = shown.length ? shown.map((p) => `<button type="button" class="fsw-prow" data-sel="${esc(p.id)}"><span>${esc(name(p))}${p.pair ? ' <b>× 2</b>' : ''}</span><small>${esc(partWhere(p, d.base, d.airframe))}</small></button>`).join('')
@@ -1204,16 +1402,26 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       <h3 class="fsw-h">Weight, fuel and gear</h3>
       ${slider('data-p', 'oewFrac', 'Structure’s weight', RANGES.oewFrac[0], RANGES.oewFrac[1], 0.005, (d.oewDeltaKg / A.OEW).toFixed(3), oewOut(d, A))}
       ${slider('data-p', 'fuelFrac', 'Wing and centre tanks', RANGES.fuelFrac[0], RANGES.fuelFrac[1], 0.01, (d.fuelCapacityKg / A.FUEL_MAX).toFixed(3), fuelOut(d, A))}
-      ${slider('data-p', 'gearExtendM', 'Gear extension', RANGES.gearExtendM[0], RANGES.gearExtendM[1], 0.05, d.gearExtendM, `+${d.gearExtendM.toFixed(2)} m`)}`;
+      ${slider('data-p', 'gearExtendM', 'Gear extension', RANGES.gearExtendM[0], RANGES.gearExtendM[1], 0.05, d.gearExtendM, `+${d.gearExtendM.toFixed(2)} m`)}
+      ${keys ? `<h3 class="fsw-h">Keys</h3><p class="fsw-base">Click a part to set its keys: an engine, a wing tank, the wing, the tailplane, the fin or the fuselage.</p>${keysOwnHtml()}` : ''}`;
+  }
+  // v0.5.6: whose keys these are, and the way back to the defaults (a type's) or the base type's (a design's).
+  function keysOwnHtml() {
+    if (!keys) return '';
+    const T = TYPES[cur.base], sc = keyScope(), own = !!keys.load()?.scopes?.[sc.scope];
+    const text = keysOnly ? (own ? 'Changed from the defaults.' : 'The default keys.')
+      : own ? 'This design has keys of its own.' : `It flies the ${T.name}’s keys until one is changed here.`;
+    return `<p class="fsw-base fsw-kown">${esc(text)}${own ? ` <button type="button" class="fsui-b fsw-kb" data-a="keysReset">${keysOnly ? 'Back to the defaults' : `Back to the ${esc(T.name)}’s`}</button>` : ''}</p>
+      <p class="fsw-kmsg${keyMsgBad ? ' bad' : ''}" data-o="kmsg" aria-live="polite">${esc(keyMsg)}</p>`;
   }
   const oewOut = (d, A) => `${pct(d.oewDeltaKg / A.OEW, 1)} (${d.oewDeltaKg >= 0 ? '+' : '−'}${Math.abs(d.oewDeltaKg).toLocaleString('en-US')} kg)`;
   const fuelOut = (d, A) => `${Math.round((d.fuelCapacityKg / A.FUEL_MAX) * 100)} % · ${kg(d.fuelCapacityKg)}`;
   const partsHtml = () => { const p = selPart(); return p ? partHtml(p) : selAf ? afHtml() : aircraftHtml(); };
 
   // v0.5.3: the selected piece of the airframe: its sliders, Mirror for the wing, back to the base's, Done.
-  const AF_LABEL = { span: 'Span', chord: 'Chord', sweep: 'Sweep', dihedral: 'Dihedral', tail: 'Area', fin: 'Area', plugFwd: 'Plug ahead of the wing', plugAft: 'Plug behind the wing' };
+  const AF_LABEL = { span: 'Span', chord: 'Chord', sweep: 'Sweep', dihedral: 'Dihedral', tail: 'Area', fin: 'Area', plugFwd: 'Plug ahead of the wing', plugAft: 'Plug behind the wing', wingX: 'Position' };
   const afSide = () => (selAf?.side < 0 ? 'wingR' : 'wingL');
-  function afValue(k) { const af = cur.airframe; return AF_WING_KEYS.includes(k) ? af[afSide()][k] : af[k]; }
+  function afValue(k) { const af = cur.airframe; return AF_WING_KEYS.includes(k) ? af[afSide()][k] : k === 'wingX' ? af.wingX || 0 : af[k]; }
   function afOuts() {
     const af = cur.airframe, w = af[afSide()], S = shapeOf(cur.base, null), d0 = defaultAirframe(cur.base).wingL;
     const semi = (st) => st[st.length - 1].y;
@@ -1231,15 +1439,21 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     o.fin = `×${af.fin.toFixed(2)} · ${(finArea(S.fin.stations) * af.fin).toFixed(1)} m²`;
     const plug = (v) => (v ? `${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(2)} m` : 'none');
     o.plugFwd = plug(af.plugFwd); o.plugAft = plug(af.plugAft);
+    // v0.5.6: the wing's place on the fuselage (its engines, tanks and main gear with it)
+    o.wingX = af.wingX ? `${Math.abs(af.wingX).toFixed(1)} m ${af.wingX > 0 ? 'aft' : 'forward'}` : 'the base’s';
     return o;
   }
   function afHtml() {
     const af = cur.airframe, what = selAf.what, o = afOuts(), R = AIRFRAME_RANGES;
     const sideName = selAf.side > 0 ? 'left' : 'right';
     const title = what === 'wing' ? (af.mirror ? 'Wing · both sides' : `Wing · ${sideName} side`) : afNames[what];
-    const note = { wing: 'The span from the fuselage’s side, the chord at every station, the sweep added to the quarter chord’s, the dihedral.',
+    const note = { wing: 'The span from the fuselage’s side, the chord at every station, the sweep added to the quarter chord’s, the dihedral; and where the whole wing sits along the fuselage, with its engines, tanks and main gear (both sides).',
       tailplane: 'Its area, with its aspect ratio and sweep kept.', fin: 'Its area, with its aspect ratio and sweep kept.',
       body: 'Fuselage added ahead of and behind the wing (negative takes it out): the nose moves forward, the tail back.' }[what];
+    if (keysOnly) {
+      return `<div class="fsw-sel" data-o="sel" data-af-sel="${esc(what)}"><h3>${esc(what === 'wing' ? 'Wing' : afNames[what])}</h3>${keysHtml({ af: what })}
+        <div class="fsw-btns"><button type="button" class="fsui-b" data-a="done">Done</button></div></div>`;
+    }
     let h = `<div class="fsw-sel" data-o="sel" data-af-sel="${esc(what)}">
       <h3>${esc(title)}</h3><p class="fsw-base">${esc(note)}</p>`;
     if (what === 'wing') h += `<label class="fsw-check"><input type="checkbox" data-afm="mirror"${af.mirror ? ' checked' : ''}> Mirror: both sides the same</label>`;
@@ -1248,8 +1462,106 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       const r = k === 'dihedral' ? R.dihedral : R[k];
       h += slider('data-af', k, AF_LABEL[k], r[0], r[1], AF_STEP[k], afValue(k), o[k]);
     }
+    h += keysHtml({ af: what });
     h += `<div class="fsw-btns"><button type="button" class="fsui-b" data-a="afreset">As the base</button><button type="button" class="fsui-b" data-a="done">Done</button></div></div>`;
     return h;
+  }
+
+  // ---- v0.5.6: the keys tab ----
+  const keyScope = () => keyScopeOf(cur, keysOnly);
+  function keysHtml(what) {
+    if (!keys || !cur) return '';
+    const tab = keyTab(cur, designDef(cur), keys.load(), keyScope(), what, { twinOn: keysOnly ? stockTwin : true });
+    if (!tab.rows.length) return tab.note ? `<div class="fsw-keys" data-o="keys"><h4>Keys</h4><p class="fsw-base">${esc(tab.note)}</p></div>` : '';
+    const cap = (c) => {
+      const on = capKey?.cap === c.cap;
+      const title = on ? 'Press a key: Esc cancels, Backspace or Delete clears it' : c.add ? 'Add another key' : c.empty ? 'No key: click, then press one' : c.follow ? 'The all-engines key: click, then press one of its own' : 'Click, then press the new key';
+      return `<button type="button" class="fsw-cap${c.empty ? ' empty' : ''}${c.add ? ' add' : ''}${c.follow ? ' follow' : ''}${on ? ' on' : ''}" data-cap="${esc(c.cap)}" title="${esc(title)}">${on ? 'Press a key' : esc(c.text || '·')}</button>`;
+    };
+    let h = '<div class="fsw-keys" data-o="keys"><h4>Keys</h4>';
+    for (const r of tab.rows) {
+      const kr = r.eng ? 'eng' : r.all ? 'all' : r.id;
+      h += `<div class="fsw-krow${r.eng ? ' eng' : ''}" data-krow="${esc(kr)}"><span class="lab">${esc(r.label)}</span><span class="fsw-caps">`;
+      if (r.eng) h += `<small>up</small>${cap(r.caps[0])}<small>down</small>${cap(r.caps[1])}`;
+      else if (r.all) h += `<small>up</small>${r.up.map(cap).join('')}<small>down</small>${r.down.map(cap).join('')}`;
+      else h += r.caps.map(cap).join('');
+      h += '</span>';
+      if (r.eng && r.own) h += '<button type="button" class="fsui-b fsw-kb" data-a="asOthers" title="Back on the all-engines keys">As the others</button>';
+      h += '</div>';
+    }
+    if (tab.engine && keysOnly && tab.engine.twin !== null) h += `<label class="fsw-check"><input type="checkbox" data-k="twin"${stockTwin ? ' checked' : ''}> Mirror: engine ${tab.engine.twin + 1} takes the same keys</label>`;
+    h += `<p class="fsw-kmsg${keyMsgBad ? ' bad' : ''}" data-o="kmsg" aria-live="polite">${esc(keyMsg)}</p></div>`;
+    return h;
+  }
+  // The engines a key on the selected engine changes (it, and its twin with Mirror on).
+  function keyEngines() {
+    const p = selPart();
+    if (!p || p.kind !== 'engine') return [];
+    const def = designDef(cur), i = engineIndex(def, p.id), t = twinIndex(cur, def, p.id);
+    return t !== null && (!keysOnly || stockTwin) ? [i, t] : [i];
+  }
+  function setKeyMsg(text, bad = false) {
+    keyMsg = text || ''; keyMsgBad = !!bad;
+    const m = $('parts').querySelector('[data-o="kmsg"]');
+    if (m) { m.textContent = keyMsg; m.classList.toggle('bad', keyMsgBad); }
+  }
+  function redrawPanel() {
+    $('parts').innerHTML = partsHtml();
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true });
+  }
+  function saveKeysNow(next, text) {
+    const ok = keys.save(next) !== false;
+    keyMsg = ok ? text || '' : 'Couldn’t save the keys: the browser’s storage is off or full'; keyMsgBad = !ok;
+    redrawPanel();
+  }
+  function startCap(capId) {
+    const [k, v] = capId.split(':');
+    capKey = k === 'eng' ? { cap: capId, eng: v === 'up' ? 1 : -1 } : { cap: capId, id: k, i: Number(v) || 0 };
+    const what = capKey.eng ? `thrust ${capKey.eng > 0 ? 'up' : 'down'} on ${keyEngines().map((i) => `engine ${i + 1}`).join(' and ')}` : `“${keyLabelOf(bindingOf(capKey.id), designDef(cur))}”`;
+    keyMsg = `Press the key for ${what}: Esc cancels, Backspace or Delete clears it.`; keyMsgBad = false;
+    document.addEventListener('keydown', onKeyCap, true);
+    document.addEventListener('keyup', swallowKeyUp, true);
+    redrawPanel();
+  }
+  function stopCap() {
+    capKey = null;
+    document.removeEventListener('keydown', onKeyCap, true);
+    document.removeEventListener('keyup', swallowKeyUp, true);
+  }
+  const swallowKeyUp = (e) => { if (capKey) { e.stopPropagation(); e.stopImmediatePropagation(); } };
+  // A keycap waiting: the next key sets it (Shift with a tap), Esc cancels, Backspace or Delete clears it; a key a part
+  // of this aircraft has moves here (that one says so), a global one is refused.
+  function onKeyCap(e) {
+    if (!capKey || el.hidden || !cur) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (e.repeat || isModifier(e.code)) return;
+    const c = capKey, st = keys.load(), sc = keyScope();
+    if (e.code === 'Escape') { stopCap(); keyMsg = ''; redrawPanel(); return; }
+    if (e.code === 'Backspace' || e.code === 'Delete') {
+      stopCap();
+      if (c.eng) {
+        const E = keyEngines();
+        if (!engineKeys(st, sc, E[0]).own) { keyMsg = 'It moves with the all-engines keys: press a key on it to give it its own.'; keyMsgBad = false; redrawPanel(); return; }
+        saveKeysNow(bindEngineKey(st, sc, E, c.eng, null).store, 'Cleared: it has no key there now.');
+      } else saveKeysNow(clearKeys(st, sc, c.id, { index: c.i }).store, 'Cleared.');
+      return;
+    }
+    const kind = c.eng ? 'held' : bindingOf(c.id)?.kind || 'action';
+    const r = chordFor(e, kind);
+    if (r.refused) { setKeyMsg(`${r.refused}. Press another key, or Esc.`, true); return; }
+    const out = c.eng ? bindEngineKey(st, sc, keyEngines(), c.eng, r.chord) : bindKey(st, sc, c.id, r.chord, { index: c.i, nameOf: keys.nameOf });
+    if (out.error) { setKeyMsg(`${out.error}. Press another key, or Esc.`, true); return; }
+    stopCap();
+    saveKeysNow(out.store, movedText(out.moved, r.chord) || `${keyLabel(r.chord)} set.`);
+  }
+  // A type's engine selected: its Mirror shows whether its twin has the same keys.
+  function syncStockTwin() {
+    const p = selPart();
+    if (!keysOnly || !keys || p?.kind !== 'engine') return;
+    const def = designDef(cur), i = engineIndex(def, p.id), t = twinIndex(cur, def, p.id);
+    if (t === null) return;
+    const st = keys.load(), sc = keyScope(), a = engineKeys(st, sc, i), b = engineKeys(st, sc, t);
+    stockTwin = a.own ? a.engines.includes(t) : !b.own;
   }
 
   function numsHtml(r) {
@@ -1273,7 +1585,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     // slider out from under the pointer: a 777's span crossing into code F at ×1.02); they catch up on release
     if (!sliding) $('issues').innerHTML = issuesHtml(r);
     $('nums').innerHTML = numsHtml(r);
-    $('crumb').textContent = `${cur.name}${dirty() ? ' · not saved' : ''}`;
+    $('crumb').textContent = keysOnly ? `Keys · the ${TYPES[cur.base].name}` : `${cur.name}${dirty() ? ' · not saved' : ''}`;
     el.dataset.worst = r.worst;
     act('save').disabled = !r.canSave;
     act('fly').disabled = !r.canFly;
@@ -1374,6 +1686,13 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   });
   $('parts').addEventListener('change', (e) => {
     const t = e.target;
+    if (t.dataset.k === 'twin' && keys && keysOnly) {
+      stockTwin = t.checked;
+      const p = selPart(), def = designDef(cur), i = p ? engineIndex(def, p.id) : -1, tw = p ? twinIndex(cur, def, p.id) : null;
+      if (i >= 0 && tw !== null && engineKeys(keys.load(), keyScope(), i).own) saveKeysNow(setEngineTwin(keys.load(), keyScope(), i, tw, stockTwin).store, stockTwin ? `Engine ${tw + 1} takes the same keys.` : `Engine ${tw + 1} is back on the all-engines keys.`);
+      else redrawPanel();
+      return;
+    }
     if (t.type === 'range') {
       sliding = false; syncParts(null); renderNumbers(); tools();
       if (afDrag) { afDrag = false; view?.setDesign(cur, true); drawOverlay(); }
@@ -1389,6 +1708,12 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   $('parts').addEventListener('click', (e) => {
     const row = e.target.closest('[data-sel]');
     if (row) { select(row.dataset.sel); return; }
+    // v0.5.6: a keycap (again: cancels), As the others, back to the defaults
+    const capB = e.target.closest('[data-cap]');
+    if (capB && keys) { if (capKey?.cap === capB.dataset.cap) { stopCap(); keyMsg = ''; redrawPanel(); } else { stopCap(); startCap(capB.dataset.cap); } return; }
+    const ka = e.target.closest('[data-a]')?.dataset.a;
+    if (keys && ka === 'asOthers') { stopCap(); saveKeysNow(engineAsOthers(keys.load(), keyScope(), keyEngines()).store, 'Back on the all-engines keys.'); return; }
+    if (keys && ka === 'keysReset') { stopCap(); saveKeysNow(resetKeys(keys.load(), { scope: keyScope().scope }).store, keysOnly ? 'Back to the default keys.' : `Back to the ${TYPES[cur.base].name}’s keys.`); return; }
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'remove') { removeSel(); return; }
     if (a === 'done') { select(null); return; }
@@ -1405,6 +1730,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   function select(id) {
     sel = id && cur.parts.some((p) => p.id === id) ? id : null;
     if (sel || !id) { selAf = null; afDrag = false; }
+    stopCap(); keyMsg = ''; keyMsgBad = false; syncStockTwin();   // v0.5.6
     $('parts').innerHTML = partsHtml();
     help();
     drawOverlay();
@@ -1413,6 +1739,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   function selectAf(what, side = 1) {
     if (!afOn || !AF_KEYS[what]) { select(null); return; }
     sel = null; selAf = { what, side: side < 0 ? -1 : 1 }; afDrag = false;
+    stopCap(); keyMsg = ''; keyMsgBad = false;   // v0.5.6
     $('parts').innerHTML = partsHtml();
     help();
     drawOverlay();
@@ -1439,21 +1766,95 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     }
     help();
   }
-  // v0.5.4: a selected part's line ends with the keys it takes (nudgeHelp()).
+  // v0.5.4: a selected part's line ends with the keys it takes (nudgeHelp()). v0.5.6: so does the part in hand's.
   function help() {
-    const keys = sel ? nudgeHelp(selPart()) : '';
-    $('viewHelp').textContent = tool ? HELP.place : sel ? (keys ? `${HELP.sel} · ${keys}` : HELP.sel) : selAf ? HELP.af : afOn ? HELP.idleAf : HELP.idle;
+    const keys = tool ? nudgeHelp(handPart()) : sel ? nudgeHelp(selPart()) : '';
+    const t = keysOnly ? (sel || selAf ? HELP.keySel : HELP.keys)
+      : tool ? (keys ? `${HELP.place} · ${keys}` : HELP.place) : sel ? (keys ? `${HELP.sel} · ${keys}` : HELP.sel) : selAf ? HELP.af : afOn ? HELP.idleAf : HELP.idle;
+    if ($('viewHelp').textContent !== t) $('viewHelp').textContent = t;
+  }
+  // v0.5.6: the part in hand as it would go (the ghost's), or as the palette gives it with the pointer off the aircraft:
+  // what decides which keys it takes.
+  function handPart() {
+    if (!tool) return null;
+    if (handCand) return handCand;
+    return { kind: tool.kind, engine: tool.engine, side: 1, mount: tool.kind === 'engine' ? (hangOver ? 'overwing' : 'wing') : tool.mount };
   }
   function pickTool(key) {
     if (!key || key === toolKey) { tool = null; toolKey = null; }
     else { const e = PALETTE.find((p) => p.key === key); tool = e ? e.what : null; toolKey = e ? key : null; }
     ghost = null; tip(null);
+    hand = { ...HAND0 }; handCand = null;   // v0.5.6: a new part in hand starts where the pointer puts it
     view?.setCursor(tool ? 'place' : null);
     tools();
     drawOverlay();
   }
+  // v0.5.6: a key on the part in hand: its offsets change, and the ghost (and the tip) show it at once.
+  function nudgeInHand(key, shift) {
+    const next = nudgeHand(hand, handPart(), key, shift, cur.base, cur.airframe);
+    if (next === hand) return;
+    hand = next;
+    if (handAt && view) showGhost(ghostFor(handAt.r, null), handAt.e);
+    help();
+  }
+  // v0.5.6: the ghost attached (a click, or a drag from the palette let go over the aircraft). `keep`: Shift, the part
+  // stays in hand with its offsets. → whether it went on.
+  function attachGhost(g, keep) {
+    if (!g) return false;
+    if (!g.ok || !g.next) { setMsg(`Can’t go there: ${WHY[g.why] || 'it doesn’t fit.'}`, 'bad'); return false; }
+    const had = new Set(cur.parts.map((q) => q.id));
+    if (!commit(g.next)) return false;
+    const added = cur.parts.find((q) => !had.has(q.id));
+    if (!keep) { tool = null; toolKey = null; hand = { ...HAND0 }; handCand = null; view?.setCursor(null); tip(null); }
+    ghost = null;
+    if (added) select(added.id);
+    tools();
+    if (added) setMsg(`${partLabel(added)}${added.pair ? ' and its twin' : ''} attached.`, 'ok');
+    return true;
+  }
+  // v0.5.6: drag a part from the palette onto the aircraft (paletteDrop()): past PAL_DRAG_PX the press picks the part up
+  // and its ghost follows the pointer over the view; the release attaches it there (one undo step), or puts it back off
+  // the aircraft or where it doesn't fit. A press that doesn't move stays a click (the palette's click picks it up).
+  $('palette').addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('[data-place]');
+    if (!b || b.disabled || e.button !== 0 || !e.isPrimary || !cur || page !== 'editor') return;
+    palDrag = { key: b.dataset.place, id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false };
+    window.addEventListener('pointermove', onPalMove, true);
+    window.addEventListener('pointerup', onPalUp, true);
+    window.addEventListener('pointercancel', onPalUp, true);
+  });
+  function endPalDrag() {
+    palDrag = null;
+    window.removeEventListener('pointermove', onPalMove, true);
+    window.removeEventListener('pointerup', onPalUp, true);
+    window.removeEventListener('pointercancel', onPalUp, true);
+  }
+  function onPalMove(e) {
+    if (!palDrag || e.pointerId !== palDrag.id || !cur) return;
+    if (!palDrag.moved) {
+      if (Math.hypot(e.clientX - palDrag.x0, e.clientY - palDrag.y0) < PAL_DRAG_PX) return;
+      palDrag.moved = true;
+      if (toolKey !== palDrag.key) pickTool(palDrag.key);
+    }
+    if (view?.overCanvas(e.clientX, e.clientY)) { const r = view.ray(e); handAt = { r, e }; showGhost(ghostFor(r, null), e); }
+    else { handAt = null; tip(null); if (ghost) { ghost = null; drawOverlay(); } }
+  }
+  function onPalUp(e) {
+    if (!palDrag || e.pointerId !== palDrag.id) return;
+    const d = palDrag;
+    endPalDrag();
+    if (!d.moved || !cur) return;   // a click: the palette's own handler
+    palDragEnd = performance.now();
+    const over = e.type === 'pointerup' && !!view?.overCanvas(e.clientX, e.clientY);
+    const g = over ? ghostFor(view.ray(e), null) : null;
+    const what = paletteDrop({ moved: true, over, ghost: g });
+    if (what === 'attach') { attachGhost(g, e.shiftKey); return; }
+    if (g && !g.ok) setMsg(`Can’t go there: ${WHY[g.why] || 'it doesn’t fit.'}`, 'bad');
+    pickTool(null);
+  }
   $('palette').addEventListener('click', (e) => {
     const b = e.target.closest('[data-place]');
+    if (b && performance.now() - palDragEnd < 400) return;   // v0.5.6: the end of a drag, not a click
     if (b) { pickTool(b.dataset.place); return; }
     const h = e.target.closest('[data-hang]');
     if (h) { hangOver = h.dataset.hang === 'over'; ghost = null; tools(); drawOverlay(); }
@@ -1476,7 +1877,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     if (hover && hover !== sel && byId.get(hover) && !tool) lines.push({ ...byId.get(hover), style: 'hover' });
     const ghosts = ghost ? ghost.parts.map((p) => ({ ...partBox(cur.base, p, cur.airframe), ok: ghost.ok })) : [];
     let markers = null;
-    if (markersOn && last) {
+    if (markersOn && last && !keysOnly) {
       const span = last.def.geo.SPAN || 40, r = 0.022 * span, ln = last.line;
       markers = { r, len: 0.22 * span, cg: { x: last.numbers.cgX, y: 0, z: 0 }, ct: ln.T > 0 ? { x: ln.x, y: ln.y, z: ln.z, dir: ln.dir } : null };
     }
@@ -1500,8 +1901,11 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     const hit = hitAirframe(cur, r.o, r.u);
     const over = part ? (part.mount === 'overwing' ? true : part.mount === 'wing' ? false : hangOver) : hangOver;
     const what = part ? { ...part, over } : { ...tool, over };
-    const c = placement(cur.base, what, hit, 0.25, cur.airframe);
-    if (!c) return null;
+    const c0 = placement(cur.base, what, hit, 0.25, cur.airframe);
+    if (!c0) return null;
+    // v0.5.6: the part in hand takes its keys' offsets (applyHand()); the candidate before them decides the keys' ranges
+    if (!part) handCand = c0;
+    const c = part ? c0 : applyHand(c0, hand);
     let next, ids;
     if (part) {
       next = updatePart(cur, part.id, { mount: c.mount, side: c.side, ...(c.s !== undefined ? { s: c.s } : {}), ...(c.x !== undefined ? { x: c.x } : {}) });
@@ -1525,17 +1929,19 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   const WHY = { room: `no room (${MAX_ENGINES} engines and ${MAX_PARTS} parts at most).`, tail: 'the tail takes one engine.', overlap: 'it’s in another part’s way.' };
   function showGhost(g, e) {
     tip(g, e);
+    if (tool && !dragPart) help();   // v0.5.6: the keys follow where the part in hand would go (wing, body, tail)
     const k = g ? g.key + g.ok : null;
     if (k === (ghost ? ghost.key + ghost.ok : null)) return;
     ghost = g;
     drawOverlay();
   }
-  // Beside the pointer: the part in hand's name and where it would go, or why it can't.
+  // Beside the pointer: the part in hand's name and where it would go, or why it can't. v0.5.6: and its keys' values.
   function tip(g, e) {
     const t = $('tip');
     if (!g || !e) { t.hidden = true; return; }
     const p = g.parts[0], r = $('view').getBoundingClientRect();
-    t.textContent = g.ok ? `${partLabel(p)} · ${partWhere(p, cur.base, cur.airframe)}${g.parts.length > 1 ? ' · and its twin' : ''}` : `Can’t go there: ${WHY[g.why] || 'it doesn’t fit.'}`;
+    const hv = tool && !dragPart ? handText(hand) : '';
+    t.textContent = g.ok ? `${partLabel(p)} · ${partWhere(p, cur.base, cur.airframe)}${hv ? ` · ${hv}` : ''}${g.parts.length > 1 ? ' · and its twin' : ''}` : `Can’t go there: ${WHY[g.why] || 'it doesn’t fit.'}`;
     t.classList.toggle('bad', !g.ok);
     t.style.left = `${Math.min(r.width - 260, e.clientX - r.left + 16)}px`;
     t.style.top = `${Math.max(4, e.clientY - r.top - 34)}px`;
@@ -1544,8 +1950,8 @@ export function createWarehouse(root, { store = designStore() } = {}) {
 
   const hooks = {
     hover(r, e) {
-      if (!cur) return;
-      if (tool) { showGhost(ghostFor(r, null), e); return; }
+      if (!cur || palDrag) return;   // v0.5.6: a drag from the palette shows its own ghost (onPalMove())
+      if (tool) { handAt = { r, e }; showGhost(ghostFor(r, null), e); return; }
       const id = pickPart(cur, r.o, r.u);
       // v0.5.3: the airframe under the pointer (no part in the way)
       const h = afOn && !id ? pickAirframe(cur, r.o, r.u) : null, ha = h ? { what: h.on, side: h.side } : null;
@@ -1559,7 +1965,7 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       const id = pickPart(cur, r.o, r.u);
       if (!id) return false;
       if (id !== sel) select(id);
-      dragPart = cur.parts.find((p) => p.id === id) || null;
+      dragPart = keysOnly ? null : cur.parts.find((p) => p.id === id) || null;   // v0.5.6: a stock aircraft's parts stay put
       return true;
     },
     move(r, e) { if (dragPart) showGhost(ghostFor(r, dragPart), e); },
@@ -1580,18 +1986,10 @@ export function createWarehouse(root, { store = designStore() } = {}) {
       }
       const g = ghostFor(r, null);
       if (!g) return;
-      if (!g.ok || !g.next) { setMsg(`Can’t go there: ${WHY[g.why] || 'it doesn’t fit.'}`, 'bad'); return; }
-      const had = new Set(cur.parts.map((q) => q.id));
-      if (!commit(g.next)) return;
-      const added = cur.parts.find((q) => !had.has(q.id));
-      if (!e.shiftKey) { tool = null; toolKey = null; view?.setCursor(null); tip(null); }
-      ghost = null;
-      if (added) select(added.id);
-      tools();
-      if (added) setMsg(`${partLabel(added)}${added.pair ? ' and its twin' : ''} attached.`, 'ok');
+      attachGhost(g, e.shiftKey);   // v0.5.6: as a drag from the palette lets go (Shift keeps it in hand, its offsets too)
     },
     cancel() { if (tool) pickTool(null); else if (sel || selAf) select(null); },
-    leave() { tip(null); if (ghost && !dragPart) { ghost = null; drawOverlay(); } if (hover || hoverAf) { hover = null; hoverAf = null; drawOverlay(); } },
+    leave() { if (palDrag) return; handAt = null; tip(null); if (ghost && !dragPart) { ghost = null; drawOverlay(); } if (hover || hoverAf) { hover = null; hoverAf = null; drawOverlay(); } },
   };
 
   function save() {
@@ -1608,11 +2006,13 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   }
   function setMsg(t, cls) { $('msg').textContent = t; $('msg').className = `fsw-msg ${cls || ''}`; }
 
-  function openEditor(d, fresh) {
-    cur = normalizeDesign(d); savedJson = JSON.stringify(cur); isNew = !!fresh;
+  function openEditor(d, fresh, stock = false) {
+    keysOnly = !!stock && !!keys; stopCap(); keyMsg = ''; keyMsgBad = false; stockTwin = true;
+    el.dataset.mode = keysOnly ? 'keys' : 'design';
+    cur = normalizeDesign(d); savedJson = JSON.stringify(cur); isNew = !!fresh && !keysOnly;
     page = 'editor';
     editing = confirming = null;
-    tool = toolKey = sel = hover = ghost = dragPart = null;
+    tool = toolKey = sel = hover = ghost = dragPart = null; hand = { ...HAND0 }; handCand = handAt = null;
     selAf = hoverAf = null; afDrag = false;
     sliding = false;
     hist.clear();
@@ -1621,9 +2021,10 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     $('parts').innerHTML = partsHtml();
     renderNumbers();
     tools();
-    setMsg(fresh ? `A new design: the ${TYPES[cur.base].name} as it is. Attach parts from the palette, then Save.` : '', '');
+    setMsg(keysOnly ? '' : fresh ? `A new design: the ${TYPES[cur.base].name} as it is. Attach parts from the palette, then Save.` : '', '');
     startView();
-    $('parts').querySelector('[data-p="name"]')?.focus({ preventScroll: true });
+    const nameIn = $('parts').querySelector('[data-p="name"]');
+    if (nameIn) nameIn.focus({ preventScroll: true }); else el.focus({ preventScroll: true });
   }
   function startView() {
     const gen = ++viewGen;
@@ -1642,10 +2043,11 @@ export function createWarehouse(root, { store = designStore() } = {}) {
   function stopView() { viewGen++; view?.dispose(); view = null; if (window.__fsw) window.__fsw = null; }
   function leaveEditor(force) {
     if (!force && dirty()) { $('ask').hidden = false; act('keep').focus(); return false; }
-    stopView();
+    stopView(); stopCap();
     const id = cur?.id;
-    cur = null; savedJson = null; isNew = false;
-    tool = toolKey = sel = hover = ghost = dragPart = null;
+    if (isNew && !keysOnly && id && !store.get(id)) dropKeys(id);   // v0.5.6: a new design never saved takes its keys with it
+    cur = null; savedJson = null; isNew = false; keysOnly = false;
+    tool = toolKey = sel = hover = ghost = dragPart = null; hand = { ...HAND0 }; handCand = handAt = null;
     selAf = hoverAf = null; afDrag = false;
     hist.clear();
     showList(store.get(id) ? id : null);
@@ -1674,11 +2076,13 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     e.stopPropagation();
     if (e.defaultPrevented) return;
     const typing = !!e.target.matches?.('input[type="text"], textarea');
-    if (page === 'editor' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (page === 'editor' && !typing && !keysOnly && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); removeSel(); return; }
       // v0.5.4: the selected part's keys (nudgePart()); a focused slider keeps its own arrows.
       const arrows = e.key.startsWith('Arrow') && !!e.target.matches?.('input[type="range"]');
+      // v0.5.6: with a part in hand, the keys are its (nudgeInHand()), even with a part selected (after Shift+click)
+      if (tool && NUDGE_KEYS.has(e.key) && !arrows) { e.preventDefault(); nudgeInHand(e.key, e.shiftKey); return; }
       if (sel && NUDGE_KEYS.has(e.key) && !arrows) { e.preventDefault(); nudgeSel(e.key, e.shiftKey, e.repeat); return; }
     }
     nudging = null;
@@ -1714,9 +2118,11 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     },
     close() {
       if (el.hidden) return;
-      stopView();
+      stopView(); stopCap();
+      if (isNew && cur && !store.get(cur.id)) dropKeys(cur.id);
+      keysOnly = false;
       cur = null; page = 'list';
-      tool = toolKey = sel = hover = ghost = dragPart = null;
+      tool = toolKey = sel = hover = ghost = dragPart = null; hand = { ...HAND0 }; handCand = handAt = null;
       selAf = hoverAf = null; afDrag = false;
       if (el.contains(document.activeElement)) document.activeElement.blur();
       el.hidden = true;
@@ -1734,6 +2140,10 @@ export function createWarehouse(root, { store = designStore() } = {}) {
     selectAirframe: (what, side) => (what ? selectAf(what, side) : select(null)),
     get tool() { return toolKey; },
     openEditor: (d) => openEditor(d, false),
+    // v0.5.6: a stock aircraft's keys editor, and whether it's the one open
+    openStock,
+    get keysOnly() { return keysOnly; },
+    get capturing() { return capKey ? { ...capKey } : null; },
   };
   window.__wh = api;   // for the browser checks
   return api;

@@ -125,3 +125,34 @@
 .fsui-tc .fsui-dc-tag { display: inline-block; margin-left: 6px; padding: 0 5px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: #0b1014; background: #2fe3ff; border-radius: 3px; vertical-align: 2px; }
 @media (max-width: 900px) { .fsui-designs { grid-template-columns: minmax(0, 1fr); } }
+
+/* v0.5.6: the Controls page edits each aircraft's keys (menu.js createControlsPage, src/keys.js). */
+.fsk-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fsk-pick { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #c9ced2; flex: 1; min-width: 0; }
+.fsk-pick select { flex: 1; min-width: 0; max-width: 360px; background: #0b1014; color: #eef3f7; border: 1px solid #2b3238; border-radius: 6px; padding: 5px 8px; font: inherit; }
+.fsk-from { margin: 8px 0 0; font-size: 12.5px; color: #8a9097; flex: 1; min-width: 0; }
+.fsk-top .fsk-from { margin: 0; }
+.fsk-part { margin: 8px 0 0; padding: 7px 10px; font-size: 13px; color: #c9ced2; background: #0b1014; border: 1px solid #2b3238; border-radius: 8px; }
+.fsk-msg { min-height: 1.3em; margin: 6px 0 0; font-size: 13px; color: #2fe3ff; }
+.fsk-msg.bad { color: #ffb347; }
+.fsk-table { width: 100%; border-collapse: collapse; font-size: 13.5px; color: #a9b4bd; }
+.fsk-table td { padding: 3px 8px 3px 0; vertical-align: middle; }
+.fsk-table tr + tr td { border-top: 1px solid #1c2329; }
+.fsk-table td.lab { color: #eef3f7; width: 46%; }
+.fsk-table td.keys { width: 22%; }
+.fsk-table td.act { text-align: right; white-space: nowrap; }
+.fsk kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; margin: 1px 2px 1px 0; border: 1px solid #3a444c; border-bottom-width: 2px; border-radius: 4px;
+  background: #121a20; color: #eef3f7; font: 600 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
+.fsk .none { color: #5d666e; font-style: italic; }
+.fsk-b .fsui-b, .fsk-gkeys .fsui-b, .fsk-eng .fsui-b { padding: 3px 9px; font-size: 12.5px; margin-left: 4px; }
+.fsk-b .fsui-b.on, .fsk-gkeys .fsui-b.on { border-color: #2fe3ff; color: #2fe3ff; }
+.fsk-groups { margin: 8px 0 4px; }
+.fsk-note { margin: 4px 0 8px; font-size: 12.5px; color: #8a9097; }
+.fsk-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; margin-bottom: 6px; background: #0b1014; border: 1px solid #2b3238; border-radius: 8px; }
+.fsk-gname { font-size: 13.5px; font-weight: 600; color: #eef3f7; min-width: 11em; }
+.fsk-eng { display: flex; flex-wrap: wrap; gap: 2px; }
+.fsk-eng .fsui-b { margin-left: 0; min-width: 3.2em; }
+.fsk-eng .fsui-b.on { background: #10343c; border-color: #2fe3ff; color: #eef3f7; }
+.fsk-gkeys { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-left: auto; font-size: 13px; color: #a9b4bd; }
+.fsk-gk { display: inline-flex; align-items: center; gap: 4px; }
+.fsk-fixed { margin: 10px 0 0; font-size: 12.5px; color: #8a9097; }

@@ -174,6 +174,7 @@ export function createSynth({ context = null } = {}) {
 
   // Edge detectors and state between updates.
   let hasPrev = false, pT = 0, pGear = 0, pFlap = 0, pSlat = 0, pGround = false, pRev = 0;
+  let pTanks = false;   // v0.5.6: the wing tanks' release, heard once
   let gearMoveUntil = 0;
   let flapMoveUntil = 0;
   let wasApDisc = false;
@@ -874,6 +875,20 @@ export function createSynth({ context = null } = {}) {
         const k = mix('clunk') * G('clunk') * (lock ? 0.6 : 1);
         pluck(n.clunk, now, k * 0.5, 0.05);
         pluck(n.clunkNoise, now, k * 0.7, 0.035);
+      }
+    }
+    // v0.5.6: the wing tanks let go (state.tanksDropped turning true in flight): a heavier clunk with a thump, as the
+    // shackles open. Not for a flight loaded with them gone, nor across a jump in time (a load, a rewind); dropped while
+    // paused (from the Weight tab), it waits for the resume.
+    if (s.tanksDropped !== true) pTanks = false;
+    else if (!pTanks) {
+      if (!hasPrev || s.t < pT || s.t - pT > 2) pTanks = true;
+      else if (!paused) {
+        const k = mix('clunk') * G('clunk');
+        pluck(n.clunk, now, k * 0.7, 0.07);
+        pluck(n.clunkNoise, now, k * 0.9, 0.05);
+        pluck(n.thump, now, mix('thump') * 0.35, 0.1);
+        pTanks = true;
       }
     }
     const gearOn = now < gearMoveUntil, flapOn = now < flapMoveUntil;

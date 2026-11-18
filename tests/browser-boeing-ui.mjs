@@ -202,14 +202,16 @@ try {
     const { createControlsPage } = await import('../src/ui/menu.js');
     const pg = createControlsPage(document.body); window.__cp = pg;
     const text = () => pg.el.textContent;
-    const a321 = { hasTrim: /trim nose/.test(text()), flaps: /flaps 0, 1, 2, 3, FULL/.test(text()), rows: pg.el.querySelectorAll('.fsm-keys tr').length };
+    // v0.5.6: the keys editor; without a store it shows the defaults, with the family's rows and detents.
+    const row = (id) => !!pg.el.querySelector(`tr[data-row="${id}"]`);
+    const a321 = { hasTrim: row('trimDown') || row('toga'), flaps: /Flaps to FULL/.test(text()), rows: pg.el.querySelectorAll('tr[data-row]').length };
     pg.setFamily('boeing'); pg.open();
-    return { a321, trim: /trim nose down/.test(text()), flaps: /flaps UP, 5, 15, 20, 30/.test(text()), mcp: /The MCP/.test(text()), fcuHidden: pg.el.querySelector('[data-note="fcu"]').hidden };
+    return { a321, trim: row('trimDown') && row('toga'), flaps: /Flaps to 30/.test(text()), mcp: /The MCP/.test(text()), fcuHidden: pg.el.querySelector('[data-note="fcu"]').hidden };
   });
-  check(!cp.a321.hasTrim && cp.a321.flaps && cp.a321.rows === 11, 'Controls: the common page has no Boeing keys');
+  check(!cp.a321.hasTrim && cp.a321.flaps && cp.a321.rows >= 30, 'Controls: the common page has no Boeing keys');
   check(cp.trim && cp.flaps && cp.mcp && cp.fcuHidden, 'Controls: setFamily(boeing) shows the trim, the detents and the MCP, not the FCU');
   await page.waitForTimeout(150); await shot('v030-boeing-controls.png');
-  const back = await page.evaluate(() => { const pg = window.__cp; pg.setFamily('airbus'); return { trim: /trim nose/.test(pg.el.textContent), flaps: /flaps 0, 1, 2, 3, FULL/.test(pg.el.textContent), fcu: !pg.el.querySelector('[data-note="fcu"]').hidden }; });
+  const back = await page.evaluate(() => { const pg = window.__cp; pg.setFamily('airbus'); return { trim: !!pg.el.querySelector('tr[data-row="trimDown"]'), flaps: /Flaps to FULL/.test(pg.el.textContent), fcu: !pg.el.querySelector('[data-note="fcu"]').hidden }; });
   check(!back.trim && back.flaps && back.fcu, 'Controls: setFamily(airbus) puts it back');
 
   check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.join(' | ') : ''));

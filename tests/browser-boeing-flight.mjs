@@ -191,7 +191,7 @@ async function flight1() {
   check('AP on: LNAV and VNAV', s4.ap && /LNAV/.test(s4.lat) && /VNAV/.test(s4.ver), JSON.stringify({ lat: s4.lat, ver: s4.ver, thr: s4.thr }));
   // Flaps up on schedule.
   await until(page, () => window.__fs.sim.state.ias * 1.943844 > 205 || window.__fs.sim.state.pos.z * 3.28 > 3500, 120000, 'flap speed');
-  await page.keyboard.press('Digit6');
+  for (let k = 0; k < 8; k++) await page.keyboard.press('Minus');   // v0.5.6: flaps up a step at a time (to UP)
   await page.evaluate(() => window.__fs.setTimeScale(1));
   await until(page, () => window.__fs.sim.state.agl * 3.28084 > 2500, 180000, '2,500 ft');
   await page.evaluate(() => window.__fs.setTimeScale(8));
