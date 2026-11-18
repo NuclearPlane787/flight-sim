@@ -1,4 +1,4 @@
-// The path map (M): a full-window overlay with the coastline, the airports and runways,
+// The path map (N since v0.5.7, M before; the Controls page's key): a full-window overlay with the coastline, the airports and runways,
 // the aircraft, the line to the destination through dragged waypoints, and, with the
 // autopilot on, the predicted path in a bright colour. Click the path to jump there,
 // or skip to a 15 nm final. North up. Nothing here ever says you're off course.
@@ -27,7 +27,7 @@ export function createMap(root, { airports, coast } = {}) {
       <button class="fsui-b" data-a="clear" tabindex="-1">Clear waypoints</button>
       <button class="fsui-b" data-a="route" tabindex="-1">Change route</button>
       <button class="fsui-b primary" data-a="final" tabindex="-1">Skip to 15 nm final</button>
-      <button class="fsui-b" data-a="close" tabindex="-1">Close (M)</button>
+      <button class="fsui-b" data-a="close" tabindex="-1">Close (N)</button>
     </div>
     <div class="fsui-map-info"></div>
     <div class="fsui-map-help">Drag to pan · pinch or wheel to zoom<br>Drag the magenta line to add a waypoint · double-click a waypoint to remove it<br>Click the bright path to jump there · click an airport to fly there instead</div>
@@ -55,8 +55,15 @@ export function createMap(root, { airports, coast } = {}) {
   let view = null, samples = [], pending = null, hover = null, dirty = true, raf = 0, lastDraw = 0;
   let isOpen = false, lastSig = '';
 
+  // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()): the Close button's and the autopilot's in a hint.
+  let keyName = (id) => ({ map: 'N', ap: 'Z' })[id] || '';
+  function setKeyNames(fn) {
+    if (typeof fn === 'function') keyName = fn;
+    const k = keyName('map'), b = el.querySelector('[data-a="close"]');
+    if (b) b.textContent = k ? `Close (${k})` : 'Close';
+  }
   const api = {
-    open, close, toggle, update, setPrediction, setCoast,
+    open, close, toggle, update, setPrediction, setCoast, setKeyNames,
     get isOpen() { return isOpen; },
     get waypoints() { return route.waypoints; },
     setWaypoints(list) { setWaypoints(list); redraw(); },
@@ -416,7 +423,7 @@ export function createMap(root, { airports, coast } = {}) {
     if (!d.moved && (d.kind === 'sample' || (d.kind === 'seg' && d.sample))) showConfirm(d.sample);
     else if (!d.moved && d.kind === 'seg') hint(ahead().length
       ? 'Jumps go along the bright path. To jump along this line, turn the HDG towards it first.'
-      : 'Turn the autopilot on (Z): its bright path is where you can jump to.', d.sx, d.sy);
+      : `Turn the autopilot on${keyName('ap') ? ` (${keyName('ap')})` : ''}: its bright path is where you can jump to.`, d.sx, d.sy);
     else if (!d.moved && d.kind === 'pan' && d.airport) openRoute(d.airport.icao);
     else if (!d.moved && d.kind === 'pan') hideConfirm();
   };

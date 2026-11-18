@@ -50,7 +50,7 @@ try {
   // Rewind mid-pushback: the gate flow carries on with a taxi route from where it is.
   await page.goto(URL0.replace('start=final', 'start=gate&stand=3'));
   await page.waitForFunction(() => window.__fs && window.__fs.gate && window.__fs.gate.phase === 'parked', null, { timeout: 60000 });
-  await page.keyboard.press('KeyP');
+  await page.keyboard.press('Shift+KeyG');   // v0.5.7: the pushback is Shift+G (P is the warehouse's block)
   await page.waitForFunction(() => window.__fs.sim.state.t > 36, null, { timeout: 90000 });
   const g0 = await page.evaluate(() => window.__fs.gate.phase);
   await page.evaluate(() => { window.__fs.setPaused(true); window.__fs.rewindNow(); });

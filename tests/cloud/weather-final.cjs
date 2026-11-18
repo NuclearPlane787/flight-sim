@@ -3,7 +3,7 @@
 // tests/e2e-controller.js in a gusty crosswind, and the same final in calm air for comparison.
 //   - a flight starts with the altimeter at the day's QNH, and the AP's ALT at the altimeter's reading;
 //   - on a final the heading held is the crabbed one, so HDG keeps the aircraft on the extended centreline;
-//   - K sets the local QNH again after a wrong setting; skip to final sets it too;
+//   - Shift+B (K before v0.5.7) sets the local QNH again after a wrong setting; skip to final sets it too;
 //   - the card and the logbook give the tower's wind (the panel's), with its gusts;
 //   - in calm air the start is as v0.3.2's: 1013.25, the runway's heading, no drift.
 //   node weather-final.cjs [outDir]      (about 3 minutes with SwiftShader; FS_BASE as in stills.cjs)
@@ -68,13 +68,13 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   ok(Math.abs(a.cross - cross0) < 120, `HDG holds the extended centreline in the crosswind: ${Math.round(cross0)} → ${Math.round(a.cross)} m across`);
   ok(Math.abs(a.altIndFt - a.altFtFcu) < 100, `ALT holds the altimeter's ${a.altFtFcu} ft: ${Math.round(a.altIndFt)} ft`);
 
-  // ---- 2. K after a wrong setting, and skip to final ----
+  // ---- 2. Shift+B (K before v0.5.7) after a wrong setting, and skip to final ----
   await page.evaluate(() => window.__fs.sim.setBaro(1000));
-  await page.keyboard.press('k');
+  await page.keyboard.press('Shift+KeyB');   // v0.5.7: the local QNH is Shift+B (K is the warehouse's block)
   await page.waitForTimeout(150);
   a = await look();
   const toast = await page.evaluate(() => [...document.querySelectorAll('[id*="toast"], [class*="toast"]')].map((e) => e.textContent).join(' | '));
-  ok(a.baro.hpa === a.qnh, `K sets the local QNH again: ${a.baro.hpa}`);
+  ok(a.baro.hpa === a.qnh, `Shift+B sets the local QNH again: ${a.baro.hpa}`);
   ok(/QNH \d{3,4} set/.test(toast), `with a toast: "${toast.trim().slice(0, 80)}"`);
   await page.evaluate(() => {
     const fs = window.__fs, w = fs.sim.weather;

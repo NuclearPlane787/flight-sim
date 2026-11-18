@@ -76,7 +76,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   await shot('v021-view-switch-orbit');
 
   // ---- The map: a waypoint dragged onto the magenta line shows and counts ----
-  await page.keyboard.press('m');
+  await page.keyboard.press('n');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForTimeout(800);
   const info0 = await page.evaluate(() => document.querySelector('.fsui-map-info').textContent);
   const mid = await page.evaluate(() => { const fs = window.__fs, s = fs.sim.state, d = fs.dest.end; return fs.map._devScreen((s.pos.x * 0.3 + d.x * 0.7), (s.pos.y * 0.3 + d.y * 0.7)); });
@@ -125,7 +125,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   }
   const still = await page.evaluate(() => window.__fs.plan.dest);
   ok(still === 'RKSI', `Cancel leaves the route alone (${still})`);
-  await page.keyboard.press('m');
+  await page.keyboard.press('n');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForTimeout(400);
   await shot('v021-hud-new-route');
 

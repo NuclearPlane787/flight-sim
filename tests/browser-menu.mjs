@@ -32,11 +32,12 @@ try {
   // ---- The main menu ----
   await go('scene=main');
   check(await page.isVisible('.fsm [data-k="continue"]'), 'Continue shows with scenarios');
-  const sub = await page.textContent('[data-o="contSub"]');
-  check(sub === 'Test B · On the runway at RKPC', 'Continue is the newest: ' + sub);
+  // v0.5.7: Continue is the saved-flight card (ui/home-card.js), here from the Load list's text (the mock's summaries).
+  const card = await page.evaluate(() => ['cardKicker', 'cardTitle', 'cardSub', 'cardAction'].map((k) => document.querySelector(`[data-o="${k}"]`).textContent).join(' | '));
+  check(card === 'Saved flight | On the runway at Jeju | Test B · A321neo | Resume flight', 'Continue is the newest: ' + card);
   check(await focused() === 'continue', 'Continue has the focus');
-  const bg = await page.$eval('.fsm', (e) => getComputedStyle(e).getPropertyValue('--backdrop'));
-  check(/flight-sim\/assets\/menu\/.*\.jpg/.test(bg), 'a still is the backdrop: ' + bg.trim());
+  // v0.5.7: line art over a calm backdrop (no stills); ?backdrop= picks another.
+  check(await page.$eval('.fsm-left', (e) => e.classList.contains('bg-dusk')) && !(await page.$('.fsm-sub')), 'the dusk backdrop, no subtitle');
   check(await page.$eval('.fsm-title', (e) => getComputedStyle(e).fontFamily.startsWith('Barlow')), 'title in Barlow');
   check(await page.textContent('.fsm-version') === 'Flight Sim v0.2.0 · CL#261101', 'version label');
   check(await page.getAttribute('[data-k="exit"]', 'href') === '../../index.html', 'Exit links to Game Dump');
@@ -57,7 +58,8 @@ try {
   check(await inView('.fsm-nav'), 'buttons inside the window at 1440x900');
 
   // No scenarios: Continue hidden, New scenario primary
-  await go('scene=empty&bg=none');
+  await go('scene=empty&backdrop=night');
+  check(await page.$eval('.fsm-left', (e) => e.classList.contains('bg-night')), '?backdrop=night: the night backdrop');
   check(!(await page.isVisible('[data-k="continue"]')), 'Continue hidden with no scenarios');
   check(await page.$eval('[data-k="new"]', (e) => e.classList.contains('primary')), 'New scenario is primary then');
   await shot('v020-menu-dev-main-empty.png');
@@ -149,9 +151,10 @@ try {
 
   // ---- Controls ----
   await go('scene=controls&sky=1');
-  // v0.5.6: the keys editor (the global keys with theirs, the defaults without a store; the parts' are the warehouse's)
-  // and the reserved L line.
-  check(await page.$$eval('.fsk-table tr[data-row]', (e) => e.length) === 14 && /warehouse/.test(await page.textContent('.fsk-part')) && /Sky window/.test(await page.textContent('.fsk-fixed')), 'the keys, and L for the Sky window');
+  // v0.5.6: the keys editor (the defaults without a store). v0.5.7: every key but the warehouse's block (36 rows), the
+  // keyboard drawing (54 keys: the block's 16, 7 grey), and the reserved \ line.
+  check(await page.$$eval('.fsk-table tr[data-row]', (e) => e.length) === 36 && /warehouse/.test(await page.textContent('.fsk-part')) && /\\ or Cmd\/Ctrl\+L: the Sky window/.test(await page.textContent('.fsk-fixed')), 'the keys, and \\ for the Sky window');
+  check(await page.$$eval('.fskb-k', (e) => e.length) === 54 && await page.$$eval('.fskb-k.block', (e) => e.length) === 16 && await page.$$eval('.fskb-k.grey', (e) => e.length) === 7, 'the keyboard: the block’s 16 keys, 7 grey');
   check(await inView('.fsm-controls .fsm-card'), 'Controls card inside the window');
   await shot('v020-menu-dev-controls.png');
   await go('scene=controls');
@@ -185,7 +188,8 @@ try {
   check(await inView('.fsm-load'), 'Load fits at 1280x720');
   await shot('v020-menu-dev-load-720.png');
   await go('scene=controls&sky=1');
-  check(await page.$eval('.fsm-controls .fsm-card', (e) => e.scrollHeight <= e.clientHeight + 1), 'Controls without a scrollbar at 1280x720');
+  // v0.5.7: 36 keys and the keyboard scroll down at 1280x720, but never sideways
+  check(await page.$eval('.fsm-controls .fsm-card', (e) => e.scrollWidth <= e.clientWidth + 1), 'Controls without a sideways scrollbar at 1280x720');
   await shot('v020-menu-dev-controls-720.png');
   await go('scene=setup');
   await shot('v020-menu-dev-setup-name-720.png');

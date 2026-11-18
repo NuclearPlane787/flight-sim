@@ -35,7 +35,8 @@ try {
   page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
   await page.goto(BASE);
   await page.waitForSelector('.fsm:not([hidden])', { timeout: 90000 });
-  check('the menu\'s sub-title names no single type', (await page.textContent('.fsm-sub')) === 'Airliners over South Korea');
+  // v0.5.7: no sub-title at all (Shane: "Remove the 'Airliners over South Korea' thing on the homepage").
+  check('the menu\'s title names no single type', !(await page.$('.fsm-sub')) && !/A321|787|777/.test(await page.textContent('.fsm-head')));
 
   // ---- One type: the game as it is now ----
   await page.click('[data-k="new"]');
@@ -168,8 +169,8 @@ try {
 
   // Controls: the common table as before; the Boeing section stays away until it has rows.
   await page.evaluate(() => window.__fs.controlsPage.open());
-  // v0.5.6: the global keys editor, a table a section; the A321neo flown has no Boeing notes.
-  check('Controls: the keys, a table a section, no Boeing notes', await page.$$eval('.fsm-controls .fsk-table', (t) => t.length) === 3 && (await page.$eval('.fsm-controls [data-family-keys]', (d) => d.textContent.trim())) === '');
+  // v0.5.6: the global keys editor, a table a section (v0.5.7: seven); the A321neo flown has no Boeing notes.
+  check('Controls: the keys, a table a section, no Boeing notes', await page.$$eval('.fsm-controls .fsk-table', (t) => t.length) === 7 && (await page.$eval('.fsm-controls [data-family-keys]', (d) => d.textContent.trim())) === '');
   await page.evaluate(() => window.__fs.controlsPage.close());
 
   // The logbook, with a type and without, and the longest name the columns must hold.

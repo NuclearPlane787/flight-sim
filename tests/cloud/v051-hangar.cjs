@@ -86,7 +86,8 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} $
   await page.click('.fsw [data-a="top"]');
   await page.waitForTimeout(800);
   const rafAfter = await rafOver(1500);
-  check('nothing left running after Back', rafAfter <= rafMenu + 1, `menu ${rafMenu}, after ${rafAfter}`);
+  // v0.5.7: the home page's plane asks for up to 30 frames a second itself (before and after): a few frames of slack.
+  check('nothing left running after Back', rafAfter <= rafMenu + 4, `menu ${rafMenu}, after ${rafAfter}`);
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
   console.log(fails ? `${fails} FAILED` : 'ALL PASS');

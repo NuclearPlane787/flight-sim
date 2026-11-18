@@ -1,8 +1,9 @@
 // Keyboard input: held keys become ramped stick axes and lever movements; taps become
 // actions. Keys are tracked by e.code, auto-repeat is ignored, and everything held is
 // dropped when the window loses focus. No Ctrl shortcuts (Ctrl+W closes the tab).
-// v0.5.6: the keys come from the aircraft's bindings (src/keys.js: setBindings()), and engine groups have their own
-// thrust keys, which move only their engines' levers (controls.thrustEng; null while every lever is together).
+// v0.5.6: the keys come from the aircraft's bindings (src/keys.js: setBindings()). v0.5.7: an engine with keys of its
+// own (the warehouse's block) moves only its own lever, pausing at its detents and, held at idle on the ground, into
+// its own reverse; R and F (all engines) move every lever (controls.thrustEng; null while every lever is together).
 
 import { BINDINGS, keymapOf, resolveKeys } from './keys.js';
 
@@ -26,21 +27,22 @@ export const DEFAULT_KEYMAP = keymapOf(resolveKeys(null, { scope: 'type:a321neo'
 export function createInput(target = window) {
   const down = new Set();
   const axes = { pitch: 0, roll: 0, yaw: 0 };
-  let lever = 0;          // -1 … 1: every engine's, or (split) the all-engines keys' own
-  let groupTook = false;  // v0.5.6 (review): see the getter
-  let levers = null;      // v0.5.6: each engine's lever while an engine group has moved them apart, else null
+  let lever = 0;          // -1 … 1: every engine's, or (split) the highest of them
+  let engineTook = false; // v0.5.6 (review): see the getter
+  let levers = null;      // v0.5.6: each engine's lever while an engine's own keys have moved them apart, else null
+  let levSt = [];         // v0.5.7: each lever's pause at a detent and reverse timer while they're apart
   let nEngines = 2;
   let detents = DETENTS;  // the lever's stops (v0.3.0: the type's; a Boeing has idle and full)
-  let detentTimer = 0;    // time left paused at a detent
-  let reverseTimer = 0;
+  // The all-engines lever's pause at a detent and its reverse timer (R and F's).
+  const master = { timer: 0, rev: 0 };
   // R/F: 0 not held; 1 held since a moment the lever was the pilot's; 2 held since a moment the
   // A/THR was moving it (that press takes the lever over, and the sim disconnects the A/THR).
   let press = 0;
-  // v0.5.6: the keys (src/keys.js). held: control id → its keys; groups: [{ engines, up, down }] with each group's
-  // detent pause and press state.
+  // v0.5.6: the keys (src/keys.js). held: control id → its keys. v0.5.7: engines: the engines with keys of their own,
+  // [{ i, up, down }], each with its press state.
   let map = DEFAULT_KEYMAP;
   let heldKeys = {};
-  let groups = [];
+  let engines = [];
   const listeners = [];
   let enabled = true;
 
@@ -50,11 +52,13 @@ export function createInput(target = window) {
     heldKeys = {};
     for (const b of BINDINGS) if (b.kind === 'held') heldKeys[b.id] = [];
     for (const [chord, t] of map) if (t.kind === 'held') heldKeys[t.id].push(chord);
-    groups = r.groups.map((g, gi) => {
-      const up = [], dn = [];
-      for (const [chord, t] of map) if (t.kind === 'group' && t.g === gi) (t.dir > 0 ? up : dn).push(chord);
-      return { engines: g.engines.slice(), up, down: dn, timer: 0, press: 0 };
-    });
+    const byI = new Map();
+    for (const [chord, t] of map) {
+      if (t.kind !== 'engine') continue;
+      if (!byI.has(t.i)) byI.set(t.i, { i: t.i, up: [], down: [], press: 0 });
+      byI.get(t.i)[t.dir > 0 ? 'up' : 'down'].push(chord);
+    }
+    engines = [...byI.values()].sort((a, b) => a.i - b.i);
     down.clear();
   }
   setBindings(null);
@@ -74,7 +78,7 @@ export function createInput(target = window) {
       return;
     }
     const plain = map.get(code);
-    if (plain && plain.kind !== 'action') {   // a held control or an engine group's key (Shift or not)
+    if (plain && plain.kind !== 'action') {   // a held control or an engine's own key (Shift or not)
       e.preventDefault();
       down.add(code);
       return;
@@ -102,6 +106,7 @@ export function createInput(target = window) {
   const anyDown = (list) => { for (const c of list) if (down.has(c)) return true; return false; };
   const held = (id) => anyDown(heldKeys[id] || []);
   const pair = (neg, pos) => (held(pos) ? 1 : 0) - (held(neg) ? 1 : 0);
+  const engDir = (e) => (anyDown(e.up) ? 1 : 0) - (anyDown(e.down) ? 1 : 0);
 
   // Advance the ramps by dt (real seconds) and write them into the sim's controls.
   // athrDriving: the A/THR is moving the thrust lever (the sim's state.athrActive, v0.2.2).
@@ -122,16 +127,15 @@ export function createInput(target = window) {
     controls.brakeR = brake;
   }
 
-  // One lever's travel for a held direction, pausing at each detent it crosses (st: its { timer }); reverse only
-  // for the all-engines keys (allowRev).
-  function moveLever(l, dir, dt, st, onGround, allowRev) {
-    if (dir === 0) { st.timer = 0; return l; }
+  // One lever's travel for a held direction, pausing at each detent it crosses (st: its { timer, rev }); held down at
+  // idle on the ground for REVERSE_DELAY, into reverse. v0.5.7: an engine's own keys too, each with its own timers.
+  function moveLever(l, dir, dt, st, onGround) {
+    if (dir === 0) { st.timer = 0; st.rev = 0; return l; }
     if (st.timer > 0) { st.timer -= dt; return l; }
     if (dir < 0 && l <= 0) {
-      if (!allowRev) return l;   // a group's keys stop at idle (reverse is the all-engines keys')
       if (onGround) {
-        reverseTimer += dt;
-        if (reverseTimer >= REVERSE_DELAY) return Math.max(-1, l - LEVER_RATE * 2 * dt);
+        st.rev += dt;
+        if (st.rev >= REVERSE_DELAY) return Math.max(-1, l - LEVER_RATE * 2 * dt);
         return l;
       }
       return 0;
@@ -148,57 +152,50 @@ export function createInput(target = window) {
   }
 
   // The thrust lever moves while R or F is held and pauses at each detent it crosses. v0.5.5: on its own too, while
-  // the game is paused (main.js: the lever moves, the sim doesn't). v0.5.6: an engine group's keys move its engines'
-  // levers only (they part from the others: controls.thrustEng); the all-engines keys move every lever alike.
-  const master = { get timer() { return detentTimer; }, set timer(v) { detentTimer = v; } };
+  // the game is paused (main.js: the lever moves, the sim doesn't). v0.5.6: an engine's own keys move its lever only
+  // (it parts from the others: controls.thrustEng). v0.5.7: apart, each lever moves on its own: by its engine's own
+  // keys while one is held, else by R and F (all engines), each pausing at its own detents and, held at idle on the
+  // ground, going into its own reverse (so R lifts the others with the highest already at full).
   function leverStep(dt, controls, onGround, athrDriving = false) {
     // The levers as the sim left them: it brings them together when the A/THR takes them (thrustEng null), and a
     // restore or a rewind puts its own.
-    if (controls.thrustEng !== levers) levers = Array.isArray(controls.thrustEng) ? controls.thrustEng : null;
+    if (controls.thrustEng !== levers) { levers = Array.isArray(controls.thrustEng) ? controls.thrustEng : null; levSt = []; }
     const dir = pair('thrustDown', 'thrustUp');
     if (dir === 0) press = 0;
     else if (press === 0) press = athrDriving ? 2 : 1;
-    let gTake = false;
-    for (const g of groups) {
-      const gd = (anyDown(g.up) ? 1 : 0) - (anyDown(g.down) ? 1 : 0);
-      if (gd === 0) g.press = 0;
-      else if (g.press === 0) g.press = athrDriving ? 2 : 1;
-      if (g.press === 2) gTake = true;
+    let eTake = false;
+    const own = new Array(nEngines).fill(0);   // each engine's own keys' direction (0: none held, or it has none)
+    for (const e of engines) {
+      const ed = engDir(e);
+      if (ed === 0) e.press = 0;
+      else if (e.press === 0) e.press = athrDriving ? 2 : 1;
+      if (e.i < nEngines) { own[e.i] = ed; if (e.press === 2) eTake = true; }
     }
-    if (athrDriving && press !== 2 && !gTake) {
+    if (athrDriving && press !== 2 && !eTake) {
       // The A/THR moves the lever: follow it. A press that began before it took the lever
       // (pulling back into CL after take-off) does nothing more until the key is let go; a
-      // new press takes the lever from where it is. v0.5.6: it moves every engine's (no groups apart).
+      // new press takes the lever from where it is. v0.5.6: it moves every engine's (none apart).
       lever = controls.thrust;
-      levers = null;
-      detentTimer = 0;
-      reverseTimer = 0;
-      for (const g of groups) g.timer = 0;
-    } else {
-      if (dir === 0) { detentTimer = 0; reverseTimer = 0; }
-      const was = lever;
-      lever = moveLever(lever, dir, dt, master, onGround, true);
+      levers = null; levSt = [];
+      master.timer = 0; master.rev = 0;
+    } else if (!levers && own.every((d) => d === 0)) {
+      // Together, and no engine's own key: the one lever, exactly as before v0.5.6 (the golden flights fly this).
+      lever = moveLever(lever, dir, dt, master, onGround);
       if (!onGround && lever < 0) lever = 0;
-      // The all-engines keys move each engine's lever by as much as theirs moved.
-      if (levers && lever !== was) {
-        const d = lever - was;
-        for (let i = 0; i < levers.length; i++) levers[i] = Math.max(onGround ? -1 : 0, Math.min(1, levers[i] + d));
-      }
-      for (const g of groups) {
-        const gd = (anyDown(g.up) ? 1 : 0) - (anyDown(g.down) ? 1 : 0);
-        if (gd === 0) { g.timer = 0; continue; }
-        if (!levers) levers = new Array(nEngines).fill(lever);
-        const ref = g.engines.find((i) => i < levers.length);
-        if (ref === undefined) continue;
-        const next = moveLever(levers[ref], gd, dt, g, onGround, false);
-        const d = next - levers[ref];
-        for (const i of g.engines) if (i < levers.length) levers[i] = Math.max(Math.min(levers[i], 0), Math.min(1, levers[i] + d));
+    } else {
+      // An engine's own key parts the levers, each starting where the one lever was (and as far through its pause).
+      if (!levers) { levers = new Array(nEngines).fill(lever); levSt = levers.map(() => ({ timer: master.timer, rev: master.rev })); }
+      for (let i = 0; i < levers.length; i++) {
+        const st = levSt[i] || (levSt[i] = { timer: 0, rev: 0 });
+        let v = moveLever(levers[i], own[i] || dir, dt, st, onGround);
+        if (!onGround && v < 0) v = 0;
+        levers[i] = v;
       }
       // v0.5.6 (review): with the levers apart, the all-engines lever is the highest of them, as an Airbus takes the
       // most advanced lever: the A/THR's modes, the detent (MAN TOGA), the callouts and the windshear check read it.
-      if (levers) lever = Math.max(...levers);
+      lever = Math.max(...levers);
     }
-    groupTook = gTake;
+    engineTook = eTake;
     controls.thrust = lever;
     controls.thrustEng = levers;
   }
@@ -206,21 +203,23 @@ export function createInput(target = window) {
   return {
     update,
     updateLever: leverStep,   // v0.5.5: the thrust lever alone (while paused)
-    leverHeld: () => held('thrustUp') || held('thrustDown') || groups.some((g) => anyDown(g.up) || anyDown(g.down)),
-    // v0.5.6 (review): a group's key took the levers from a driving A/T this frame (main.js disconnects a Boeing's A/T,
-    // whose hand-on-lever override would take them back while the key is still held).
-    get groupTook() { return groupTook; },
+    leverHeld: () => held('thrustUp') || held('thrustDown') || engines.some((e) => e.i < nEngines && engDir(e) !== 0),
+    // v0.5.6 (review): an engine's own key took the levers from a driving A/T this frame (main.js disconnects a
+    // Boeing's A/T, whose hand-on-lever override would take them back while the key is still held).
+    get engineTook() { return engineTook; },
+    get groupTook() { return engineTook; },   // v0.5.6's name
     axes,
     onAction(fn) { listeners.push(fn); },
     setDetents(list) { detents = list || DETENTS; },
-    // v0.5.6: the aircraft's keys (keys.js resolveKeys()) and its engine count (the groups' levers).
+    // v0.5.6: the aircraft's keys (keys.js resolveKeys()) and its engine count (the engines' own levers).
     setBindings,
-    setEngineCount(n) { nEngines = Math.max(1, n | 0); if (levers && levers.length !== nEngines) levers = null; },
-    get groups() { return groups.map((g) => ({ engines: g.engines.slice(), up: g.up.slice(), down: g.down.slice() })); },
+    setEngineCount(n) { nEngines = Math.max(1, n | 0); if (levers && levers.length !== nEngines) { levers = null; levSt = []; } },
+    // v0.5.7: the engines with keys of their own: [{ i, up: [chords], down: [chords] }].
+    get engines() { return engines.map((e) => ({ i: e.i, up: e.up.slice(), down: e.down.slice() })); },
     get keymap() { return map; },
     get lever() { return lever; },
     // Setting the lever (a new flight, a skip to final, a rewind) brings every engine's back to it.
-    set lever(v) { lever = v; levers = null; },
+    set lever(v) { lever = v; levers = null; levSt = []; },
     get levers() { return levers ? levers.slice() : null; },
     isDown: (code) => down.has(code),
     setEnabled(v) { enabled = v; if (!v) dropAll(); },

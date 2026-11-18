@@ -96,7 +96,7 @@ try {
   const after = await st();
   const simRate = (after.t - before.t) / 5;
   check('sim ran faster than real time', simRate > 4, `${simRate.toFixed(1)}x over 5 s real`);
-  await page.keyboard.press('KeyM');
+  await page.keyboard.press('KeyN');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForFunction(() => window.__fs.prediction && window.__fs.prediction.length > 20, null, { timeout: 30000 });
   await page.waitForTimeout(500);
   await shot('5-map-predicted-path');
@@ -115,7 +115,7 @@ try {
   const miss = Math.hypot(aj.x - aj.vx * dtj - jump.x, aj.y - aj.vy * dtj - jump.y);
   const missZ = Math.abs(aj.z - aj.vz * dtj - jump.z);
   check('jump lands on the predicted path', dtj >= 0 && dtj < 5 && miss < 5 && missZ < 2, `miss ${miss.toFixed(2)} m horizontal, ${missZ.toFixed(2)} m vertical, after taking back ${dtj.toFixed(2)} s of flight; ${jump.n} samples`);
-  await page.keyboard.press('KeyM');
+  await page.keyboard.press('KeyN');   // v0.5.7: the map is N (M is the warehouse's block)
   await shot('6-after-jump');
 
   // 4. Skip to final at Jeju.

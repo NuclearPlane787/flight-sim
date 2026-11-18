@@ -99,7 +99,7 @@ try {
       }
       for (const id of ['toast', 'perf']) { const e = document.getElementById(id); if (e) e.style.visibility = 'hidden'; }
     }, { ms: shot.ms, view: shot.view, look: shot.look });
-    if (shot.skywin) { await page.keyboard.press('KeyL'); }
+    if (shot.skywin) { await page.keyboard.press('Backslash'); }   // v0.5.7: the Sky window is \ (L is the warehouse's block)
     for (let i = 0; i < 10; i++) { await page.evaluate(() => window.__fs.renderOnce()); await page.waitForTimeout(150); }
     const st = await page.evaluate(() => ({ ...window.__fs.world.sky.state, flash: 0 }));
     await page.screenshot({ path: path.join(OUT, `v020-night-${name}.png`) });

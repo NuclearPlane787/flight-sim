@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="../src/ui/ui.css">
   <link rel="stylesheet" href="../src/ui/logbook.css">
   <link rel="stylesheet" href="../src/ui/menu.css">
+  <link rel="stylesheet" href="../src/ui/home.css">
   <style>
     #app { background: linear-gradient(#3a6fa8, #9cc3e3 60%, #5b6b4a 60%); }
     #devlog { position: fixed; left: 8px; top: 4px; z-index: 100; font: 11px var(--font-mono); color: #9fb; pointer-events: none; }
@@ -15,7 +16,7 @@
 </head>
 <body>
   <!-- The main menu and its pages without WebGL, over a store kept in memory.
-       ?scene=main | load | empty | settings | controls | setup | pause   &bg=none (the dark gradient)
+       ?scene=main | load | empty | settings | controls | setup | pause   &backdrop=night | dusk | blueprint (v0.5.7)
        &sky=1 (the Sky rows). window.__calls lists what the menu asked the game to do;
        window.__keys what reached the game's window listener. -->
   <div id="app">
@@ -30,6 +31,7 @@
   <script type="module">
     import { ScenarioStore } from '../src/scenarios.js';
     import { createMenu, createSettingsPage, createControlsPage } from '../src/ui/menu.js';
+    import { shortPlace } from '../src/ui/home-card.js';
     import { createSetup } from '../src/ui/setup.js';
     import { loadAirportsOrMock, loadCoastOrMock } from './dev-ui-mock.js';
 
@@ -59,7 +61,6 @@
     window.addEventListener('keydown', (e) => keys.push(e.key)); // what the game would see
 
     const root = document.getElementById('menu-root');
-    const backdrops = qs.get('bg') === 'none' ? [] : ['../assets/menu/gimpo-gate.jpg', '../assets/menu/jeju-final.jpg', '../assets/menu/seoul.jpg'];
     const settingsState = { volume: 0.8, callouts: true, showPerf: false };
     const settings = createSettingsPage(root, {
       get: () => ({ ...settingsState }),
@@ -76,7 +77,8 @@
 
     const menu = createMenu(root, {
       version: 'Flight Sim v0.2.0 · CL#261101',
-      backdrops,
+      // v0.5.7: the card's place names, as main.js gives them
+      place: (icao) => { const a = airports.find((x) => x.icao === icao); return a ? (a.shortName || shortPlace(a.name)) : null; },
       scenarios: store,
       onContinue: (id) => log('continue ' + id),
       onNew: () => newScenario(),

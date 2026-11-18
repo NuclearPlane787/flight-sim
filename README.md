@@ -45,7 +45,7 @@ Sound starts with the first click or key, because browsers don't play audio befo
 
 ## Controls
 
-The keys below are the defaults (v0.5.6). **The controls' keys are set in the warehouse, Besiege-style:** click a part and its tab shows its keys as keycaps; click one and press the new key (Esc cancels, Backspace clears). The engines carry the thrust keys, the wing the ailerons, flaps, speedbrake and ground spoilers, the tailplane the elevator and trim, the fin the rudder, the fuselage the gear and brakes, and a wing tank a Drop key (unbound). Every design has its own keys, starting from its base type's; the three types have a keys-only editor in the warehouse's list; a twin takes the same keys with Mirror on. **Engine groups:** give an engine (and its twin) its own thrust keys in its tab and they move only its lever, so the levers can stand apart; As the others puts it back on the all-engines keys, shown in every engine's tab. **The Controls page** (main menu, Settings, the Esc menu) keeps the keys that aren't parts (the views, time, the autopilot, map, pushback, rewind, QNH, the readout), the same for every aircraft. A key one side uses is refused on the other, naming the control; Esc and L can't be rebound, and keys with Ctrl, Cmd or Alt aren't allowed. A group key while the A/THR or A/T drives disconnects it (it would bring the levers back together), and apart, the all-engines lever reads the most advanced one (MAN TOGA, the A/THR's modes). Only your changes are stored, under `gamedump:flight-sim:keys`.
+The keys below are the defaults (v0.5.7). **Two kinds of keys** (v0.5.7): a block of 16 keys under your right hand, **7 8 9 0, U I O P, J K L ; and M , . /** (Shift with them too), belongs to the warehouse: each aircraft sets its own keys there and nothing else uses them. Every other key is on the **Controls page** (main menu, Settings, the Esc menu), the same for every aircraft, under a drawing of the keyboard: the block's keys cyan, the Controls page's sand (faint when free), the keys that do nothing on their own grey; hover a key to see what it does, or a row to light its keys. Click a keycap and press the new key; Esc cancels, Backspace or Delete clears it, + adds another. **An engine's own keys:** click an engine in the warehouse and give it an up and a down key from the block, one engine at a time (the three types have a keys-only editor in the warehouse's list); engines start with none, and keys save as you set them (Discard doesn't undo them). R and F still move every lever; an engine's own keys move only its lever, so the levers can stand apart, and its down key held at idle on the ground holds its reverse. A wing tank's Drop key comes from the block too. An engine's own key while a Boeing's A/T drives disconnects it, and apart, the all-engines lever reads the most advanced one (MAN TOGA, the A/THR's modes). A key one side uses is refused on the other, naming the rule. Esc and \ can't be rebound; \` Tab Caps Lock Return delete and the Shifts can't be keys; keys with Ctrl, Cmd or Alt aren't allowed. Shane's rule for the defaults: a key you press more than once a flight in the air needs no Shift; rare ones (TO/GA, the QNH, pushback) may. Only your changes are stored, under `gamedump:flight-sim:keys`.
 
 | Key | Action |
 |---|---|
@@ -55,27 +55,28 @@ The keys below are the defaults (v0.5.6). **The controls' keys are set in the wa
 | R / F | thrust levers forward / back; on the ground at idle, keep holding F for reverse |
 | Space (hold) | wheel brakes |
 | B | parking brake |
-| K | set the altimeter to the local QNH |
+| Shift+B | set the altimeter to the local QNH (v0.5.7, was K) |
 | G | gear lever |
 | − / = | flap lever one step up / down (every type; v0.5.6, was 6 to 0 for the detents and [ ] for steps) |
 | (unbound) | the flap detents (A321neo 0, 1, 2, 3, FULL; Boeings UP, 5, 15, 20, 30): bind them in Controls if you want them |
 | H / Y (hold) | Boeings: pitch trim nose up / nose down (it moves the speed the aircraft holds; with auto-trim on, the flight path held) |
-| O | Boeings: TO/GA (take-off thrust on the ground, a go-around in the air) |
+| Shift+T | Boeings: TO/GA (take-off thrust on the ground, a go-around in the air; v0.5.7, was O) |
 | C | speed brakes in / out |
 | Shift+C | arm ground spoilers |
 | Z | autopilot on / off |
 | X | autothrust on / off |
 | ] / [ | time compression faster / slower (v0.5.6, was = and −; Num + and Num − too): with the AP on and 2,000 ft up, or in a pushback (up to 4×) |
-| M | map (predicted path, jumps, waypoints, Change route, skip to final) |
+| N | map (predicted path, jumps, waypoints, Change route, skip to final; v0.5.7, was M) |
 | 1 / 2 / 3 | cockpit (the captain's seat; 1 again swaps to the first officer's and back), nose, 3rd person view, as the switch at the top right does |
 | Hide panels (top left, v0.4.4) | hides the PFD, the ND and the engine panel for a wide view (the FCU or MCP and the view switch stay); Show panels brings them back, and the choice is kept |
 | Pause (beside it, v0.5.4) | the only pause (v0.5.5): Pause stops the flight and Resume goes on. While paused the views and the camera move, and the thrust levers (R and F; the engine panel's command ring follows), flaps, gear, speedbrake, the autopilot and the FCU or MCP take their settings, which act on Resume. A hidden page pauses too |
 | V | next view (Nose, 3rd person, Captain, First Officer) |
-| P | pushback start / stop |
+| Shift+G | pushback start / stop (v0.5.7, was P) |
 | Esc | the menu (v0.5.5: it doesn't pause; the flight goes on under it and its keys wait): Close, Save, Save a copy, Logbook, Rewind 30 s, Restart, New flight, Settings, Controls, Time of day, Weight and fuel, Exit to menu |
-| L, or Cmd/Ctrl+L | the Sky window: the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory); its Weight tab: the passengers, cargo and fuel, and (v0.5.4) Drop wing tanks for a design with wing tanks, in the air, once: they go with the fuel still in them. L opens the tab last shown; the menu's Weight and fuel and Time of day open it, the pause as it was |
-| F3 or \` | performance readout: a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the Esc menu) |
+| \\, or Cmd/Ctrl+L | the Sky window (v0.5.7: \\, was L): the time of day, the date, the clock's speed (the one Ctrl binding, as in Satisfactory); its Weight tab: the passengers, cargo and fuel, and (v0.5.4) Drop wing tanks for a design with wing tanks, in the air, once: they go with the fuel still in them. \\ opens the tab last shown; the menu's Weight and fuel and Time of day open it, the pause as it was |
+| F3 | performance readout (v0.5.7: \` no longer opens it): a line across the top with fps, ms per frame, physics steps, draw calls, triangles, GPU memory, the world's counts and the heap (also in the Esc menu) |
 | T | rewind 30 s (paused, with the menu open, or after a crash) |
+| 7–0, U–P, J–;, M–/ | the warehouse's block (v0.5.7): each aircraft's own keys for its engines' thrust and its wing tanks' Drop, none until you set them |
 | drag on the view (one finger) / pinch / double-click | look around, or orbit in 3rd person / zoom / recentre; a two-finger swipe also looks or orbits |
 
 The FCU strip at the top sets SPD, HDG, ALT and V/S. Scroll over a window to turn it (a quick flick turns it in big steps), or click it, type a value and press Enter, which also pushes the knob: ALT starts a level change, V/S engages V/S. An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min). Esc, a click elsewhere or a flying key closes it unchanged. The strip also has the AP1 and A/THR buttons and the Normal/Alternate law switch.
@@ -180,7 +181,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `index.html`, `style.css` | the page, the pause, crash and score panels |
 | `src/main.js` | boot, the frame loop (fixed 1/120 s physics, 60 fps cap, physics budget), time compression, rewind, jumps, skip to final, test hooks |
 | `src/version.js` | the version the game shows, bumped with every update (see `Updates.md`; commits are titled with the version, `sh tools/push.sh v0.1.1`) |
-| `src/input.js`, `src/keys.js` | keyboard: ramped stick axes, the thrust levers with detents and reverse, actions; v0.5.6: the bindings per aircraft (`keys.js`: the defaults, the stored changes per type and design, conflicts, reserved keys) and engine groups (one lever per engine, `controls.thrustEng`) |
+| `src/input.js`, `src/keys.js`, `src/ui/keyboard-map.js` | keyboard: ramped stick axes, the thrust levers with detents and reverse, actions; the bindings (`keys.js`, v0.5.7: the defaults, the warehouse's block `BLOCK`, the store v3 with the global keys and each aircraft's engine and Drop keys, refusals both ways, reserved keys, the v2 migration); each engine's own lever (`controls.thrustEng`, `engineSlots()` mapping a design's engine parts to the sim's engines); `keyboard-map.js`: the Controls page's keyboard drawing |
 | `src/camera.js` | the four views and the touchpad camera |
 | `src/geometry.js` | A321neo body-frame geometry shared by the sim, the model and the cameras |
 | `src/sim/` | atmosphere, A321neo data (with sources), flight model, engines, gear, fly-by-wire, autopilot, prediction worker |
@@ -192,8 +193,8 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/aircraft.js`, `src/livery.js`, `src/cockpit.js`, `src/cockpit-windows.js` | the procedural A321neo in Nuclear Airlines colours, the simple cockpit, and the six cockpit windows (shared by the outside, the livery and the cockpit) |
 | `src/ui/` | PFD, ND, engine panel, FCU, map, flight setup, logbook, landing score card |
 | `src/audio/` | `synth.js` (WebAudio engine, wind and warnings), `callouts.js` (radio-altitude callouts and RETARD) |
-| `src/scenarios.js` | the scenario store (save slots over localStorage), names, the migration from v0.1.x, the menu's texts |
-| `src/ui/menu.js`, `src/ui/menu.css`, `assets/menu/` | the main menu, Load scenario, Settings and Controls pages; the stills (rendered from the game by `tests/render-stills.mjs`) |
+| `src/scenarios.js` | the scenario store (save slots over localStorage), names, the migration from v0.1.x, the menu's texts; v0.5.7: the summary's flight fields for the home page's card (`flightFields()`) |
+| `src/ui/menu.js`, `src/ui/menu.css`, `src/ui/home-scene.js`, `src/ui/home-card.js`, `src/ui/home.css`, `src/ui/line-art.js` | the main menu, Load scenario, Settings and Controls pages; v0.5.7: the home page's scene (the moving path and plane, the floating boarding pass and suitcase, the landmarks' skyline tape, three backgrounds), the saved flight's card text, and the white line art (`SKYLINE`, `ICONS`). `assets/menu/`'s stills (rendered by `tests/render-stills.mjs`) are no longer shown |
 | `src/clock.js`, `src/astro.js` | the KST clock; the sun, the Moon and its phase, sidereal time and the stars (Meeus's low-precision formulas) |
 | `src/ui/sky-window.js` | the Sky window |
 | `src/ui/load-window.js` | the Weight window, the Sky window's second tab (v0.3.2) |

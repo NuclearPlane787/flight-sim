@@ -130,7 +130,7 @@ try {
   });
   await newScenario('Test B', { origin: 'RKPC', dest: 'RKSS', arr: '14R', start: 'gate', stand });
   await page.waitForTimeout(1000);
-  await page.keyboard.press('KeyP');
+  await page.keyboard.press('Shift+KeyG');   // v0.5.7: the pushback is Shift+G (P is the warehouse's block)
   await page.waitForTimeout(6000);
   await exitToMenu();
   const savedB = await st();

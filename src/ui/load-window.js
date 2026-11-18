@@ -70,7 +70,7 @@ export function createLoadWindow(root, { get, onapply, ondrop } = {}) {
         <button class="fssw-tab on" data-tab="load" role="tab" aria-selected="true"><span class="fssw-ico fssw-ico--load">${ICON.weight}</span>Weight</button>
       </div>
       <span class="fssw-sub">Fuel and payload</span>
-      <button class="fssw-x" data-a="close" title="Close (L or Esc)">${ICON.x}</button></div>
+      <button class="fssw-x" data-a="close" title="Close (\\ or Esc)">${ICON.x}</button></div>
     <div class="fssw-body fslw-body">
       <div class="fslw-now" data-o="loadNow"></div>
       <div class="fslw-grid">
@@ -89,7 +89,7 @@ export function createLoadWindow(root, { get, onapply, ondrop } = {}) {
         <button class="fssw-b" data-a="drop" title="Let the wing tanks go, with the fuel still in them (in the air, once)">Drop wing tanks</button>
       </div>
     </div>
-    <div class="fssw-foot"><span class="fssw-key">Enter</span> Apply · <span class="fssw-key">L</span><span class="fssw-key">Esc</span> Close</div>`;
+    <div class="fssw-foot"><span class="fssw-key">Enter</span> Apply · <span class="fssw-key">\\</span><span class="fssw-key">Esc</span> Close</div>`;
   root.appendChild(el);
   const o = (n) => el.querySelector(`[data-o="${n}"]`);
   const f = (n) => el.querySelector(`[data-f="${n}"]`);
@@ -224,7 +224,7 @@ export function createLoadWindow(root, { get, onapply, ondrop } = {}) {
   window.addEventListener('pointerdown', (e) => { if (open && !el.contains(e.target) && el.contains(document.activeElement)) document.activeElement.blur(); }, true);
 
   // Esc closes the window first (also from a field): only that Esc stops here, so the pause menu
-  // doesn't open. Every other key goes on (L is the lead's toggle).
+  // doesn't open. Every other key goes on (\ is the lead's toggle: main.js).
   window.addEventListener('keydown', (e) => {
     if (!open || e.key !== 'Escape' || document.body.classList.contains('in-menu')) return;
     const t = e.target;

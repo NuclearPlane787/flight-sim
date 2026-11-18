@@ -56,11 +56,11 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   const msg = () => page.$eval(`${W} [data-o="msg"]`, (e) => e.textContent);
   const wins = () => page.evaluate(() => ({ sky: !!window.__fs.skyWin?.isOpen, load: !!window.__fs.loadWin?.isOpen, paused: window.__fs.paused, menu: !!window.__fs.menuOpen && !document.querySelector('#pause').hidden }));
 
-  // ---- The L window's tabs ----
-  await page.keyboard.press('l');
+  // ---- The L window's tabs (its key is \ since v0.5.7) ----
+  await page.keyboard.press('Backslash');
   await page.waitForTimeout(200);
   let w = await wins();
-  ok(w.sky && !w.load, `L opens the Sky window: ${JSON.stringify(w)}`);
+  ok(w.sky && !w.load, `\\ opens the Sky window (v0.5.7; L before): ${JSON.stringify(w)}`);
   const tabs = await page.$$eval(`${S} .fssw-tab`, (b) => b.map((x) => x.textContent.trim() + (x.classList.contains('on') ? '*' : '')));
   ok(tabs.join('|') === 'Sky*|Weight|Weather', `its tabs: ${tabs.join(' | ')}`);
   await shot('v032-sky-tabs');
@@ -120,11 +120,11 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   await page.keyboard.press('1');
   await page.waitForTimeout(150);
 
-  // L closes it and opens the tab last shown; Esc in a field closes it without the pause menu.
-  await page.keyboard.press('l'); await page.waitForTimeout(150);
-  w = await wins(); ok(!w.sky && !w.load, 'L closes it');
-  await page.keyboard.press('l'); await page.waitForTimeout(150);
-  w = await wins(); ok(w.load && !w.sky, 'L again: back on the Weight tab');
+  // \ (L before v0.5.7) closes it and opens the tab last shown; Esc in a field closes it without the pause menu.
+  await page.keyboard.press('Backslash'); await page.waitForTimeout(150);
+  w = await wins(); ok(!w.sky && !w.load, '\\ closes it');
+  await page.keyboard.press('Backslash'); await page.waitForTimeout(150);
+  w = await wins(); ok(w.load && !w.sky, '\\ again: back on the Weight tab');
   ok((await val('pax')) === '300', 'with the new load in the fields');
   await page.click(`${W} [data-f="pax"]`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
@@ -161,11 +161,11 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   await page.click('.fsui-pause-btn'); await page.waitForTimeout(150);
   w = await wins(); ok(w.paused && !w.menu && (await page.$eval('.fsui-pause-btn', (b) => b.textContent.trim())) === 'Resume', `Pause: paused, no menu, the button reads Resume: ${JSON.stringify(w)}`);
   const zp = (await st()).z;
-  await page.keyboard.press('l'); await page.waitForTimeout(200);
-  w = await wins(); ok((w.sky || w.load) && w.paused, `L while paused: the window opens, still paused: ${JSON.stringify(w)}`);
+  await page.keyboard.press('Backslash'); await page.waitForTimeout(200);
+  w = await wins(); ok((w.sky || w.load) && w.paused, `\\ while paused: the window opens, still paused: ${JSON.stringify(w)}`);
   await page.waitForTimeout(600);
   ok(Math.abs((await st()).z - zp) < 1e-9, 'and nothing moves');
-  await page.keyboard.press('l'); await page.waitForTimeout(150);
+  await page.keyboard.press('Backslash'); await page.waitForTimeout(150);
 
   // v0.5.5 (Shane: "Allow the camera, and some settings to move while [paused] ... so that they immediately respond the
   // moment I unpause"): the views, the levers and the panel work while paused; nothing moves until Resume.
@@ -248,14 +248,14 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
   ok(s3.name === 'FL450 test point (copy)', 'flying the copy');
   ok(Math.hypot(s3.x - atPause.x, s3.y - atPause.y) < 30 && Math.abs(s3.z - atPause.z) < 3, `from the original's point (${Math.hypot(s3.x - atPause.x, s3.y - atPause.y).toFixed(1)} m)`);
   ok(s3.pax === 300 && s3.cargo === 5000 && Math.abs(s3.added - atPause.added) < 1e-6, `with its load: ${s3.pax} pax, ${s3.cargo} kg, ${s3.added.toFixed(0)} kg added`);
-  await page.keyboard.press('l'); await page.waitForTimeout(150);
+  await page.keyboard.press('Backslash'); await page.waitForTimeout(150);
   ok((await val('pax')) === '300', 'the Weight tab shows the copy\'s load');
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
 
   // A short window (1280x720): the pause menu and the Weight tab still fit.
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForTimeout(300);
-  await page.keyboard.press('l'); await page.waitForTimeout(200);
+  await page.keyboard.press('Backslash'); await page.waitForTimeout(200);
   const small = await page.evaluate(() => { const r = document.querySelector('.fslw').getBoundingClientRect(), p = document.querySelector('.fsui-pfd')?.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, pfd: p ? p.bottom : 0 }; });
   ok(small.bottom <= 720 && small.top >= small.pfd - 1, `1280x720: the Weight tab fits under the PFD (${Math.round(small.top)}–${Math.round(small.bottom)}, PFD to ${Math.round(small.pfd)})`);
   await shot('v032-weight-tab-720', { width: 1280, height: 720 });

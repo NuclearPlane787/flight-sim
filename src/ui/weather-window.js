@@ -83,7 +83,7 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
         <button class="fssw-tab on" data-tab="weather" role="tab" aria-selected="true"><span class="fssw-ico fswx-ico">${ICON.weather}</span>Weather</button>
       </div>
       <span class="fssw-sub" data-o="name"></span>
-      <button class="fssw-x" data-a="close" title="Close (L or Esc)">${ICON.x}</button></div>
+      <button class="fssw-x" data-a="close" title="Close (\\ or Esc)">${ICON.x}</button></div>
     <div class="fssw-body fswx-body">
       <div class="fswx-metar" data-o="metar"></div>
       <div class="fswx-presets">${PRESETS.map((p) => `<button class="fssw-b" data-p="${p.id}" title="${p.name}: ${p.note}">${p.short}</button>`).join('')}</div>
@@ -108,7 +108,7 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
         <button class="fssw-b fslw-apply" data-a="apply">Apply</button>
       </div>
     </div>
-    <div class="fssw-foot"><span class="fssw-key">Enter</span> Apply · <span class="fssw-key">L</span><span class="fssw-key">Esc</span> Close</div>`;
+    <div class="fssw-foot"><span class="fssw-key">Enter</span> Apply · <span class="fssw-key">\\</span><span class="fssw-key">Esc</span> Close</div>`;
   root.appendChild(el);
 
   const o = (n) => el.querySelector(`[data-o="${n}"]`);
@@ -288,7 +288,7 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
   window.addEventListener('pointerdown', (e) => { if (open && !el.contains(e.target) && el.contains(document.activeElement)) document.activeElement.blur(); }, true);
 
   // Esc closes the window first (also from a field): only that Esc stops here, so the pause menu doesn't
-  // open. Every other key goes on (L is the lead's toggle).
+  // open. Every other key goes on (\ is the lead's toggle: main.js).
   window.addEventListener('keydown', (e) => {
     if (!open || e.key !== 'Escape' || document.body.classList.contains('in-menu')) return;
     const t = e.target;

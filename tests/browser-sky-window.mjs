@@ -108,7 +108,7 @@ try {
   await page.click('.fssw [data-a="now"]');
   check(await page.evaluate(() => Math.abs(window.__clock.ms - Date.now()) < 5000), 'Now is the real time');
 
-  // ---- Keys: flight keys reach the game; Esc closes it first; L toggles ----
+  // ---- Keys: flight keys reach the game; Esc closes it first; \ toggles (L before v0.5.7) ----
   await page.click('.fssw [data-a="play"]');   // a button was just clicked: it must not hold the focus
   const running = await page.evaluate(() => window.__clock.running);
   check(await page.evaluate(() => !document.querySelector('.fssw').contains(document.activeElement)), 'buttons never take the focus');
@@ -125,10 +125,10 @@ try {
   check(await page.evaluate(() => !window.__keys.includes('Escape')), 'that Esc never reached the game (no pause menu)');
   await page.keyboard.press('Escape');
   check(await page.evaluate(() => window.__keys.includes('Escape')), 'with it closed, Esc goes to the game');
-  await page.keyboard.press('KeyL');
-  check(await page.evaluate(() => window.__win.isOpen), 'L opens it (the lead\'s toggle)');
-  await page.keyboard.press('KeyL');
-  check(await page.evaluate(() => !window.__win.isOpen), 'L closes it');
+  await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
+  check(await page.evaluate(() => window.__win.isOpen), '\\ opens it (the lead\'s toggle)');
+  await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
+  check(await page.evaluate(() => !window.__win.isOpen), '\\ closes it');
   await page.click('[data-m="pfd"]').catch(() => {});
 
   // ---- Cheap: no redraw while the minute stays ----
@@ -183,14 +183,14 @@ try {
   check(plan2.vals.join(' ') === '2026-12-21 17:17', 'defaults.time fills the fields: ' + plan2.vals.join(' '));
   check(plan2.plan?.time?.mode === 'now', 'Now gives { mode: now }');
 
-  // a flight, then L: the window over the real HUD
+  // a flight, then \: the window over the real HUD
   await page.goto(ROOT + '?test&origin=RKSS&dep=14R&dest=RKPC&arr=07&start=runway');
   await page.waitForFunction(() => window.__fs && window.__fs.plan && !window.__fs.inMenu, null, { timeout: 90000 });
   await page.waitForTimeout(1500);
   await page.evaluate(() => window.__fs.clock.set(Date.UTC(2026, 10, 1, 8, 40)));
-  await page.keyboard.press('KeyL');
+  await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
   await page.waitForTimeout(500);
-  check(await page.isVisible('.fssw'), 'L opens the window in the game');
+  check(await page.isVisible('.fssw'), '\\ opens the window in the game');
   await page.evaluate(() => window.__fs.setPaused(true, true));
   await page.waitForTimeout(300);
   await shot('v020-night-skywin-game.png');

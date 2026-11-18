@@ -45,7 +45,10 @@ export function createHud(root, { airports, coast } = {}) {
   ndEl.title = 'Scroll or click to change the range';
   const pfdCv = hidpiCanvas(pfdEl), ndCv = hidpiCanvas(ndEl), engCv = hidpiCanvas(engEl);
   const builtCoast = coast ? buildCoast(coast) : null;
-  const hud = { update, resize, setCoast, setTopInset, setType, setPause, onlaw: null, onview: null, onpause: null, poke, el };
+  // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()), for the Boeing MCP's tooltips (made on its first use).
+  let keyNames = null;
+  function setKeyNames(fn) { keyNames = typeof fn === 'function' ? fn : null; boeing?.fcu.setKeyNames?.(keyNames); }
+  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, onlaw: null, onview: null, onpause: null, poke, el };
   const airbus = {
     pfd: createPfd(pfdCv),
     nd: createNd(ndCv, { airports, coast: builtCoast }),
@@ -143,6 +146,7 @@ export function createHud(root, { airports, coast } = {}) {
         eng: createEicas(engCv),
         fcu: createMcp(el, hud),
       };
+      if (keyNames) boeing.fcu.setKeyNames?.(keyNames);
       if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(boeing.fcu.el);
     }
     if (toBoeing) { boeing.pfd.setType(def); boeing.eng.setType(def); } else airbus.eng.setType(def);

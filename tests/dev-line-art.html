@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flight Sim: line art (dev)</title>
+<!-- v0.5.7: the home page's line art (src/ui/line-art.js), white on the panel's dark blue. The skyline twice side by
+     side (the seam between the copies is marked by a red tick under the strip), at 1:1 and at half size, the landmark
+     names under it; the four icons at 1:1, 3× and half size. Strokes 1.75 px (1.2 px at half size), not scaled. Open it from the static server:
+       http://127.0.0.1:8765/games/flight-sim/tests/dev-line-art.html -->
+<style>
+  html, body { margin: 0; background: #0e1a33; color: #9fb3d9; font: 13px/1.4 system-ui, sans-serif; }
+  body { padding: 16px 0 40px; width: max-content; }
+  h2 { font-size: 13px; font-weight: 600; margin: 18px 16px 6px; color: #c9d6f0; }
+  .strip { display: block; margin: 0 16px; }
+  .icons { display: inline-flex; align-items: flex-end; gap: 28px; margin: 0 16px; }
+  .icons figure { margin: 0; text-align: center; }
+  .icons figcaption { margin-top: 4px; font-size: 11px; }
+  svg path { vector-effect: non-scaling-stroke; }
+</style>
+</head>
+<body>
+<h2 data-o="title">Skyline, 1:1 (two copies, the seam at the red tick)</h2>
+<div data-o="full"></div>
+<h2>Skyline, half size</h2>
+<div data-o="half"></div>
+<h2>Icons: 1:1, 3×, half size</h2>
+<div class="icons" data-o="icons"></div>
+<script type="module">
+import { SKYLINE, ICONS } from '../src/ui/line-art.js';
+
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, parent = null) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+// Strokes don't scale with the drawing (vector-effect): 1.75 px at 1:1 and 3×, 1.2 px at half size.
+const STROKE = { fill: 'none', stroke: '#fff', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+const sw = (scale) => (scale < 1 ? 1.2 : 1.75);
+const draw = (parent, paths, scale) => { const g = el('g', { ...STROKE, 'stroke-width': sw(scale) }, parent); for (const d of paths) el('path', { d }, g); return g; };
+
+// The strip: two copies side by side, then the names under each landmark of both copies.
+function strip(scale) {
+  const W = SKYLINE.width, LAB = 30, Hh = SKYLINE.height + LAB;
+  const svg = el('svg', { class: 'strip', width: 2 * W * scale, height: Hh * scale, viewBox: `0 0 ${2 * W} ${Hh}` });
+  svg.dataset.scale = scale;
+  for (const ox of [0, W]) draw(el('g', { transform: `translate(${ox} 0)` }, svg), SKYLINE.paths, scale);
+  el('line', { x1: W, y1: SKYLINE.height + 1, x2: W, y2: SKYLINE.height + 7, stroke: '#ff6a6a', 'stroke-width': 1.5 }, svg);
+  const labels = el('g', { fill: '#9fb3d9', 'font-size': scale < 1 ? 16 : 10, 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, svg);
+  for (const ox of [0, W]) {
+    SKYLINE.landmarks.forEach((l, i) => {
+      const t = el('text', { x: ox + (l.x0 + l.x1) / 2, y: SKYLINE.height + (scale < 1 ? (i % 2 ? 26 : 14) : 16) }, labels);
+      t.textContent = l.name;
+    });
+  }
+  return svg;
+}
+document.querySelector('[data-o="full"]').appendChild(strip(1));
+document.querySelector('[data-o="half"]').appendChild(strip(0.5));
+
+const box = document.querySelector('[data-o="icons"]');
+for (const scale of [1, 3, 0.5]) {
+  for (const [name, ic] of Object.entries(ICONS)) {
+    const fig = document.createElement('figure');
+    const svg = el('svg', { width: ic.w * scale, height: ic.h * scale, viewBox: `0 0 ${ic.w} ${ic.h}` }, fig);
+    el('rect', { x: 0, y: 0, width: ic.w, height: ic.h, fill: 'none', stroke: '#2a3b63', 'stroke-width': 0.6 }, svg);
+    draw(svg, ic.paths, scale);
+    const cap = document.createElement('figcaption');
+    cap.textContent = `${name} ${scale === 1 ? '1:1' : scale === 3 ? '3×' : '½'}`;
+    fig.appendChild(cap);
+    box.appendChild(fig);
+  }
+}
+const bytes = SKYLINE.paths.join('').length + Object.values(ICONS).reduce((n, ic) => n + ic.paths.join('').length, 0);
+document.querySelector('[data-o="title"]').textContent +=
+  ` — ${SKYLINE.width} × ${SKYLINE.height}, baseline ${SKYLINE.baseline}, ${SKYLINE.landmarks.length} landmarks, ${SKYLINE.paths.length} paths, ${(bytes / 1024).toFixed(1)} KB of path data`;
+window.__lineArt = { width: SKYLINE.width, height: SKYLINE.height, landmarks: SKYLINE.landmarks, bytes };
+document.body.dataset.ready = '1';
+</script>
+</body>
+</html>

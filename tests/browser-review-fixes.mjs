@@ -38,7 +38,7 @@ try {
   check('Restart the flight keeps the clock', afterRestart === night, `${new Date(afterRestart).toISOString()}`);
 
   // 2. The Sky window while paused: Noon shows at once.
-  await page.keyboard.press('KeyL');
+  await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
   await page.waitForSelector('.fssw:not([hidden])', { timeout: 5000 }).catch(() => {});
   await page.evaluate(() => window.__fs.setPaused(true));
   await page.waitForTimeout(300);

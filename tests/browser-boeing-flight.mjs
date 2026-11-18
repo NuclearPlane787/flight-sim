@@ -77,8 +77,8 @@ async function flight1() {
   await shot(page, 'at-stand-3rd');
   await page.evaluate(() => { const f = window.__fs; f.rig.viewId = 'nose'; Object.assign(f.rig.looks.orbit, { yaw: 0, pitch: 12 * Math.PI / 180 }); });
 
-  // The pushback, by the P key, at the tug's 4×.
-  await page.keyboard.press('KeyP');
+  // The pushback, by its key (Shift+G since v0.5.7), at the tug's 4×.
+  await page.keyboard.press('Shift+KeyG');   // v0.5.7: the pushback is Shift+G (P is the warehouse's block)
   await page.waitForTimeout(300);
   await page.evaluate(() => window.__fs.setTimeScale(4));
   const pushed = await until(page, () => window.__fs.gate.phase === 'taxi' || !!window.__fs.sim.state.crashed, 240000, 'the pushback');
@@ -165,7 +165,7 @@ async function flight1() {
     window.__e2e.vr = Math.round(s.vls * 1.943844 / f.sim.type.data.VMM_FACTOR * 1.2);   // VR ≈ 1.2 × the 1 g stall in the take-off flaps
     window.__e2e.phase = 'takeoff';
   });
-  await page.keyboard.press('KeyO');
+  await page.keyboard.press('Shift+KeyT');   // v0.5.7: TO/GA is Shift+T (O is the warehouse's block)
   await page.waitForTimeout(300);
   const s2a = await st(page);
   check('TO/GA: THR REF, the levers advancing', s2a.thr === 'THR REF' && s2a.ver === 'TO/GA', JSON.stringify({ thr: s2a.thr, ver: s2a.ver, lever: s2a.lever }));

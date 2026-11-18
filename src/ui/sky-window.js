@@ -171,7 +171,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
     : `<span class="fssw-ico">${ICON.sun}</span><h2>Sky</h2>`;
   el.innerHTML = `
     <div class="fssw-head">${title}<span class="fssw-sub">Time of day · KST</span>
-      <button class="fssw-x" data-a="close" title="Close (L or Esc)">${ICON.x}</button></div>
+      <button class="fssw-x" data-a="close" title="Close (\\ or Esc)">${ICON.x}</button></div>
     <div class="fssw-body">
       <canvas class="fssw-view"></canvas>
       <div class="fssw-clock">
@@ -201,7 +201,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
         <button class="fssw-b" data-a="now" title="The real time in Korea">Now<small data-o="tNow"></small></button>
       </div>
     </div>
-    <div class="fssw-foot"><span class="fssw-key">L</span><span class="fssw-key">Esc</span> Close · the flight's keys still work</div>`;
+    <div class="fssw-foot"><span class="fssw-key">\\</span><span class="fssw-key">Esc</span> Close · the flight's keys still work</div>`;
   root.appendChild(el);
   const o = (n) => el.querySelector(`[data-o="${n}"]`);
   const btn = (a) => el.querySelector(`[data-a="${a}"]`);
@@ -466,7 +466,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
   el.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); }, { passive: false });
 
   // Esc closes the window first: only that Esc stops here, so the pause menu doesn't open.
-  // Every other key goes on to the game. (L is the lead's toggle.)
+  // Every other key goes on to the game. (\ is the lead's toggle: main.js.)
   window.addEventListener('keydown', (e) => {
     if (!open || e.key !== 'Escape' || document.body.classList.contains('in-menu')) return;
     const t = e.target;

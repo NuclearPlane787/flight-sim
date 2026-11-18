@@ -9,7 +9,7 @@
 import { TYPES, DEFAULT_TYPE } from './sim/types.js';
 
 export const PREFIX = 'gamedump:flight-sim:';
-export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, type, summary: { route, where, design?, designId? }, legacy? }]
+export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, type, summary: { route, where, design?, designId?, phase?, … (flightPart) }, legacy? }]
 export const SCEN_PREFIX = PREFIX + 'scenario:';   // + id → { v: 1, id, name, savedAt, state }
 export const LASTFLIGHT_KEY = PREFIX + 'lastflight'; // v0.1.x's last plan (read, never changed)
 export const LOGBOOK_KEY = PREFIX + 'logbook';       // the one logbook (read, never changed here)
@@ -42,6 +42,20 @@ const typeFrom = (summary, state) => summary?.type || state?.plan?.type || null;
 // v0.5.4: a summary's design (its name, for the Load list) and the design's id (so a rename in the warehouse
 // finds the scenarios that fly it).
 const designPart = (summary) => ({ ...(summary?.design ? { design: String(summary.design) } : {}), ...(summary?.design && summary?.designId ? { designId: String(summary.designId) } : {}) });
+
+// v0.5.7: where the aircraft is, as fields for the home page's card (ui/home-card.js; `where` stays the Load list's
+// text): { phase, origin?, dest?, at?, stand?, alt?, distNm?, landed? }, as flightFields() makes them. Kept only
+// from the summary given (never the old one's), and only with a known phase; a save from before v0.5.7 has none,
+// and the card reads its `where`.
+export const PHASES = new Set(['fresh', 'air', 'parked', 'pushback', 'taxi', 'runway', 'crashed']);
+const flightPart = (summary) => {
+  if (!summary || !PHASES.has(summary.phase)) return {};
+  const out = { phase: summary.phase };
+  for (const k of ['origin', 'dest', 'at', 'stand']) if (summary[k] != null && summary[k] !== '') out[k] = String(summary[k]).slice(0, 24);
+  for (const k of ['alt', 'distNm']) if (typeof summary[k] === 'number' && Number.isFinite(summary[k])) out[k] = summary[k];
+  if (summary.landed === true) out.landed = true;
+  return out;
+};
 // The id of the design a saved state flies (the sim's snapshot's copy, else the plan's), or null for a type.
 export const stateDesignId = (st) => (st?.sim?.design?.id ?? st?.plan?.design?.id) || null;
 // The state with its copies of design `id` renamed: only the name, the parts and the airframe stay as saved.
@@ -119,7 +133,7 @@ export class ScenarioStore {
     const idx = this.index();
     let id = newId(now);
     while (idx.some((e) => e.id === id)) id = newId(now);
-    const entry = { id, name: clean, created: now, savedAt: now, type: typeFrom(summary, state) || DEFAULT_TYPE, summary: { route: summary.route || '', where: summary.where || '', ...designPart(summary) } };
+    const entry = { id, name: clean, created: now, savedAt: now, type: typeFrom(summary, state) || DEFAULT_TYPE, summary: { route: summary.route || '', where: summary.where || '', ...designPart(summary), ...flightPart(summary) } };
     if (legacy) entry.legacy = true;
     // The record first, then the index; if the index is refused, take the record back.
     if (!this.put(SCEN_PREFIX + id, { v: 1, id, name: clean, savedAt: now, state })) return { ok: false, error: 'quota' };
@@ -135,7 +149,7 @@ export class ScenarioStore {
     if (i < 0) return { ok: false, error: 'missing' };
     const e = idx[i], k = SCEN_PREFIX + id, old = this.raw(k);
     if (!this.put(k, { v: 1, id, name: e.name, savedAt: now, state })) { this.undo(k, old); return { ok: false, error: 'quota' }; }
-    idx[i] = { ...e, savedAt: now, type: typeFrom(summary, state) || e.type, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '', ...designPart(summary) } : e.summary };
+    idx[i] = { ...e, savedAt: now, type: typeFrom(summary, state) || e.type, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '', ...designPart(summary), ...flightPart(summary) } : e.summary };
     if (!this.put(INDEX_KEY, idx)) { this.undo(k, old); return { ok: false, error: 'quota' }; }
     return { ok: true };
   }
@@ -263,9 +277,36 @@ export function whereText({ onGround, altFt, distNm, destIcao, phase, icao, stan
     if (phase === 'taxi' || phase === 'taxi-in') return `Taxiing at ${at}`;
     return `On the runway at ${at}`;
   }
-  const ft = Math.max(0, Number(altFt) || 0);
-  const alt = ft >= 18000 ? `FL${Math.round(ft / 1000) * 10}` : `${(Math.round(ft / 100) * 100).toLocaleString('en-US')} ft`;
+  const alt = altText(altFt);
   return Number.isFinite(distNm) && destIcao ? `${alt}, ${Math.round(distNm)} nm to ${destIcao}` : alt;
+}
+
+// An altitude for the menus: a flight level from 18,000 ft ("FL350"), else feet to the hundred ("8,500 ft").
+export function altText(altFt) {
+  const ft = Math.max(0, Number(altFt) || 0);
+  return ft >= 18000 ? `FL${Math.round(ft / 1000) * 10}` : `${(Math.round(ft / 100) * 100).toLocaleString('en-US')} ft`;
+}
+
+// v0.5.7: the same place as fields, for the home page's card (main.js's summaryNow() saves them beside `where`):
+// the gate flow's phases folded as whereText() folds them (arrived → parked, taxi-in → taxi, the rest on the ground →
+// runway), `at` the airport it's at on the ground, the altitude and distance to the destination in the air, `landed`
+// once it has landed.
+export function flightFields({ onGround, altFt, distNm, origin, dest, phase, icao, stand, landed, crashed } = {}) {
+  const out = {
+    phase: crashed ? 'crashed' : !onGround ? 'air'
+      : phase === 'parked' || phase === 'arrived' ? 'parked' : phase === 'pushback' ? 'pushback'
+      : phase === 'taxi' || phase === 'taxi-in' ? 'taxi' : 'runway',
+  };
+  if (origin) out.origin = String(origin);
+  if (dest) out.dest = String(dest);
+  if (out.phase === 'air') {
+    const ft = Number(altFt);
+    if (Number.isFinite(ft)) out.alt = Math.max(0, Math.round(ft));
+    if (Number.isFinite(distNm) && dest) out.distNm = Math.round(distNm * 10) / 10;
+  } else if (icao) out.at = String(icao);
+  if (out.phase === 'parked' && stand != null && stand !== '') out.stand = String(stand);
+  if (landed) out.landed = true;
+  return out;
 }
 
 // When it was saved, in local time: "just now", "5 min ago", "Sun 1 Nov 14:05".

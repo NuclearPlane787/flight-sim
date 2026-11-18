@@ -113,6 +113,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
   let L = type.limits;
   const list = () => airportList(airports);
   let coastL = coast ? buildCoast(coast) : null;
+  let keyName = (id) => ({ pushback: 'Shift+G' })[id] || '';   // v0.5.7: the keys as bound (setKeyNames())
   const el = document.createElement('div');
   el.className = 'fsui-setup'; el.hidden = true;
   el.innerHTML = `
@@ -137,7 +138,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
         </div>
         <div class="fsui-sec"><h3>Start</h3>
           <div class="fsui-row"><div class="fsui-seg" data-seg="start">
-            <button data-v="runway">On the runway</button><button data-v="final">On a 15 nm final</button><button data-v="gate" title="At a stand, with pushback (P) and a taxi route to the runway">At the gate</button>
+            <button data-v="runway">On the runway</button><button data-v="final">On a 15 nm final</button><button data-v="gate" title="At a stand, with pushback (Shift+G) and a taxi route to the runway">At the gate</button>
           </div></div>
           <div class="fsui-row" data-o="standRow" style="display:none"><label>Stand</label><select data-f="stand"></select><span class="fsui-note" data-o="standNote"></span></div>
         </div>
@@ -250,7 +251,8 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     if (name === 'start') {
       o('standRow').style.display = v === 'gate' ? '' : 'none';
       const all = standsAt(plan.origin), n = all.length, g = all.filter((s) => s.gate).length;
-      o('standNote').textContent = n ? `${g} gates, ${n - g} remote stands · P pushes back` : noStands();
+      const pk = keyName('pushback');   // v0.5.7: the pushback's key as bound (the Controls page's)
+      o('standNote').textContent = n ? `${g} gates, ${n - g} remote stands${pk ? ` · ${pk} pushes back` : ''}` : noStands();
     }
   }
 
@@ -521,5 +523,11 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     else { renderTypes(); chooseType(typesNow()[0]?.id); }
   }
 
-  return { show, hide, setTypes, setCoast(c) { coastL = c ? buildCoast(c) : null; if (!el.hidden) drawMini(); }, get isOpen() { return !el.hidden; } };
+  // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()): the pushback's, in the gate start's title and note.
+  function setKeyNames(fn) {
+    if (typeof fn === 'function') keyName = fn;
+    const pk = keyName('pushback'), b = el.querySelector('[data-seg="start"] [data-v="gate"]');
+    if (b) b.title = `At a stand, with pushback${pk ? ` (${pk})` : ''} and a taxi route to the runway`;
+  }
+  return { show, hide, setTypes, setKeyNames, setCoast(c) { coastL = c ? buildCoast(c) : null; if (!el.hidden) drawMini(); }, get isOpen() { return !el.hidden; } };
 }

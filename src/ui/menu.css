@@ -1,44 +1,8 @@
 /* The main menu, Load scenario, and the Settings and Controls pages (fsm-*). Buttons reuse
    ui.css's .fsui-b and .fsui-seg; the look is v0.1.4's: Barlow, dark buttons, cyan primary. */
 
-/* ---- The main menu: title left, buttons right, a gradient over the still ---- */
-.fsm { position: fixed; inset: 0; z-index: 50; display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center; gap: 40px; padding: 6vh 7vw 9vh; box-sizing: border-box; outline: none;
-  font-family: var(--font); color: #eef3f7; pointer-events: auto; overscroll-behavior: none;
-  user-select: none; -webkit-user-select: none;
-  background:
-    linear-gradient(90deg, rgba(4, 7, 11, 0.88) 0%, rgba(4, 7, 11, 0.5) 34%, rgba(4, 7, 11, 0.18) 56%, rgba(4, 7, 11, 0.62) 78%, rgba(4, 7, 11, 0.9) 100%),
-    linear-gradient(0deg, rgba(4, 7, 11, 0.7) 0%, rgba(4, 7, 11, 0) 30%),
-    var(--backdrop, radial-gradient(ellipse at 30% 40%, #1d3550 0%, #0b1726 55%, #05070a 100%)) center / cover no-repeat,
-    #05070a; }
-.fsm[hidden] { display: none; }
-.fsm-left { align-self: center; min-width: 0; container-type: inline-size; }
-.fsm-eyebrow { margin: 0; font: 700 15px var(--font); text-transform: uppercase; letter-spacing: 0.24em; color: #2fe3ff;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
-.fsm-title { margin: 6px 0 0; font: 700 clamp(56px, 8vw, 118px)/0.88 var(--font); letter-spacing: 0.02em; text-transform: uppercase;
-  color: #f4f8fb; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55); }
-@supports (font-size: 1cqi) { .fsm-title { font-size: clamp(44px, 16cqi, 118px); } }
-.fsm-sub { margin: 12px 0 0; font: 600 20px var(--font); text-transform: uppercase; letter-spacing: 0.18em; color: #b9c7d3;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
-.fsm-version { position: absolute; left: 7vw; bottom: 3.6vh; margin: 0; font: 600 13px/1 var(--font); letter-spacing: 0.12em;
-  text-transform: uppercase; color: rgba(232, 238, 244, 0.6); }
-.fsm-right { align-self: center; min-width: 0; }
-
-/* The buttons: the game's dark buttons, larger */
-.fsm-nav { width: 360px; display: flex; flex-direction: column; gap: 6px; }
-.fsm-nav[hidden] { display: none; }
-.fsm-nav button, .fsm-nav a { display: block; box-sizing: border-box; width: 100%; padding: 12px 18px; text-align: left; text-decoration: none;
-  font: 600 19px/1.1 var(--font); letter-spacing: 0.03em; color: #eef3f7; background: rgba(22, 31, 41, 0.9);
-  border: 1px solid #33414f; border-radius: 6px; cursor: pointer; }
-.fsm-nav button[hidden] { display: none; }
-.fsm-nav button:hover, .fsm-nav a:hover { background: rgba(36, 50, 65, 0.95); border-color: #46596b; }
-.fsm-nav .primary { background: rgba(15, 110, 134, 0.95); border-color: #2fe3ff; }
-.fsm-nav .primary:hover { background: #148aa8; border-color: #2fe3ff; }
-.fsm-nav small { display: block; margin-top: 5px; font: 500 14px/1.2 var(--font); letter-spacing: 0.01em; color: #c4e9f2;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fsm-nav a { margin-top: 10px; color: #c9ced2; }
+/* ---- The main menu: v0.5.7's home page is in home.css (the scene, the panel, the card, the rows) ---- */
 .fsm :focus-visible, .fsm-page :focus-visible { outline: 2px solid #2fe3ff; outline-offset: 2px; }
-.fsm-nav :focus-visible { outline-offset: 3px; }
 
 /* ---- Load scenario ---- */
 .fsm-load { width: min(620px, 48vw); display: flex; flex-direction: column; max-height: 82vh; box-sizing: border-box;
@@ -102,16 +66,6 @@
 .fsm-notes p { margin: 0 0 8px; }
 .fsm-notes b { color: #2fe3ff; font-weight: 600; }
 
-/* ---- Small windows ---- */
-@media (max-width: 900px) {
-  .fsm { grid-template-columns: 1fr; align-content: center; gap: 24px; padding: 4vh 16px 10vh; }
-  .fsm-nav, .fsm-load { width: 100%; }
-  .fsm.on-load .fsm-left { display: none; }
-}
-@media (max-height: 760px) {
-  .fsm-nav button, .fsm-nav a { padding: 10px 16px; font-size: 17px; }
-}
-
 /* ---- The flight setup's Name field (setup.js; ui.css styles the other inputs) ---- */
 .fsui-dlg .fsui-name { flex: 1; max-width: 360px; font: 600 15px var(--font); color: #f0f0f0; background: #0a0e11;
   border: 1px solid #44505a; border-radius: 5px; padding: 6px 8px; outline: none; user-select: text; -webkit-user-select: text; }
@@ -126,33 +80,65 @@
   text-transform: uppercase; color: #0b1014; background: #2fe3ff; border-radius: 3px; vertical-align: 2px; }
 @media (max-width: 900px) { .fsui-designs { grid-template-columns: minmax(0, 1fr); } }
 
-/* v0.5.6: the Controls page edits each aircraft's keys (menu.js createControlsPage, src/keys.js). */
-.fsk-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.fsk-pick { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #c9ced2; flex: 1; min-width: 0; }
-.fsk-pick select { flex: 1; min-width: 0; max-width: 360px; background: #0b1014; color: #eef3f7; border: 1px solid #2b3238; border-radius: 6px; padding: 5px 8px; font: inherit; }
+/* ---- v0.5.6, v0.5.7: the Controls page's keys (menu.js createControlsPage, src/keys.js): every key that isn't the
+   warehouse's block, the same for every aircraft, each a keycap (Besiege-style, as the warehouse's) ---- */
+.fsk-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .fsk-from { margin: 8px 0 0; font-size: 12.5px; color: #8a9097; flex: 1; min-width: 0; }
 .fsk-top .fsk-from { margin: 0; }
 .fsk-part { margin: 8px 0 0; padding: 7px 10px; font-size: 13px; color: #c9ced2; background: #0b1014; border: 1px solid #2b3238; border-radius: 8px; }
 .fsk-msg { min-height: 1.3em; margin: 6px 0 0; font-size: 13px; color: #2fe3ff; }
 .fsk-msg.bad { color: #ffb347; }
+.fsk-cols { columns: 2 330px; column-gap: 28px; }
+.fsk-sec { break-inside: avoid; }
+.fsk-sec .fsm-keys-h { margin-top: 10px; }
+.fsk-sec:first-child .fsm-keys-h { margin-top: 0; }   /* level with the second column's first heading */
 .fsk-table { width: 100%; border-collapse: collapse; font-size: 13.5px; color: #a9b4bd; }
-.fsk-table td { padding: 3px 8px 3px 0; vertical-align: middle; }
+.fsk-table td { padding: 2px 0; vertical-align: middle; }
 .fsk-table tr + tr td { border-top: 1px solid #1c2329; }
-.fsk-table td.lab { color: #eef3f7; width: 46%; }
-.fsk-table td.keys { width: 22%; }
-.fsk-table td.act { text-align: right; white-space: nowrap; }
+.fsk-table td.lab { color: #eef3f7; padding-right: 10px; }
+.fsk-table td.keys { text-align: right; white-space: nowrap; }
 .fsk kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; margin: 1px 2px 1px 0; border: 1px solid #3a444c; border-bottom-width: 2px; border-radius: 4px;
   background: #121a20; color: #eef3f7; font: 600 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
 .fsk .none { color: #5d666e; font-style: italic; }
-.fsk-b .fsui-b, .fsk-gkeys .fsui-b, .fsk-eng .fsui-b { padding: 3px 9px; font-size: 12.5px; margin-left: 4px; }
-.fsk-b .fsui-b.on, .fsk-gkeys .fsui-b.on { border-color: #2fe3ff; color: #2fe3ff; }
-.fsk-groups { margin: 8px 0 4px; }
-.fsk-note { margin: 4px 0 8px; font-size: 12.5px; color: #8a9097; }
-.fsk-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; margin-bottom: 6px; background: #0b1014; border: 1px solid #2b3238; border-radius: 8px; }
-.fsk-gname { font-size: 13.5px; font-weight: 600; color: #eef3f7; min-width: 11em; }
-.fsk-eng { display: flex; flex-wrap: wrap; gap: 2px; }
-.fsk-eng .fsui-b { margin-left: 0; min-width: 3.2em; }
-.fsk-eng .fsui-b.on { background: #10343c; border-color: #2fe3ff; color: #eef3f7; }
-.fsk-gkeys { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-left: auto; font-size: 13px; color: #a9b4bd; }
-.fsk-gk { display: inline-flex; align-items: center; gap: 4px; }
+/* the keycaps, in the "set here" tint of the keyboard below */
+.fsk-cap { min-width: 2em; height: 1.9em; padding: 0 6px; margin: 1px 0 1px 3px; font: 600 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #f6e9cd; cursor: pointer; background: linear-gradient(#3d3324, #2b2419); border: 1px solid #75623f; border-bottom-width: 3px; border-radius: 6px; }
+.fsk-cap:hover { border-color: #e2c180; }
+.fsk-cap.empty { color: #6f6656; background: #15130f; border-style: dashed; border-bottom-width: 1px; }
+.fsk-cap.add { min-width: 1.6em; color: #8a9097; background: transparent; border: 1px dashed #44505a; }
+.fsk-cap.add:hover { color: #e2c180; border-color: #e2c180; }
+.fsk-cap.on { color: #1b1407; background: #e2c180; border-color: #e2c180; font-family: inherit; }
 .fsk-fixed { margin: 10px 0 0; font-size: 12.5px; color: #8a9097; }
+
+/* ---- v0.5.7: the Controls page: the keyboard (ui/keyboard-map.js). Who sets each key: the block, cyan as the
+   warehouse's accent (each aircraft's own); every other key sand (the same for every aircraft; faint: free); grey,
+   the keys that do nothing on their own. A row of the list hovered or focused lights its keys (.hl). ---- */
+.fsk-board { margin: 0 0 2px; }
+.fskb { position: relative; display: grid; grid-template-columns: minmax(0, 600px) minmax(150px, 1fr); align-items: center; gap: 8px 22px; }
+.fskb-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.fskb-k rect { stroke-width: 1; transition: opacity 0.12s; }
+.fskb-t { font: 600 14px var(--font); fill: #eef3f7; pointer-events: none; }
+.fskb-t.small { font-size: 10.5px; font-weight: 500; letter-spacing: 0.02em; }
+.fskb-k.block rect { fill: #0f3a45; stroke: #34c6e0; }
+.fskb-k.block .fskb-t { fill: #cdf6ff; }
+.fskb-k.global rect { fill: #3a3021; stroke: #b99558; }
+.fskb-k.global .fskb-t { fill: #f6e9cd; }
+.fskb-k.global.free rect { fill: #1e1a13; stroke: #5f5035; }
+.fskb-k.global.free .fskb-t { fill: #9c8c6e; }
+.fskb-k.grey rect { fill: #14181c; stroke: #283036; }
+.fskb-k.grey .fskb-t { fill: #56606a; }
+.fskb-svg.lit .fskb-k:not(.hl) rect, .fskb-svg.lit .fskb-k:not(.hl) .fskb-t { opacity: 0.38; }
+.fskb-k.hl rect { stroke: #ffffff; stroke-width: 2; }
+.fskb-tip { position: absolute; z-index: 2; margin: 0; padding: 4px 9px; font-size: 12.5px; color: #eef3f7; white-space: nowrap;
+  background: rgba(6, 10, 14, 0.95); border: 1px solid #46596b; border-radius: 5px; pointer-events: none; }
+.fskb-tip[hidden] { display: none; }
+.fskb-legend { margin: 0; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.3; color: #a9b4bd; }
+.fskb-legend span { display: flex; align-items: center; gap: 8px; }
+.fskb-legend i { flex: none; width: 18px; height: 14px; box-sizing: border-box; border: 1px solid; border-radius: 3px; }
+.fskb-legend i.block { background: #0f3a45; border-color: #34c6e0; }
+.fskb-legend i.global { background: #3a3021; border-color: #b99558; }
+.fskb-legend i.grey { background: #14181c; border-color: #283036; }
+@media (max-width: 860px) {
+  .fskb { grid-template-columns: minmax(0, 1fr); }
+  .fskb-legend { flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
+}

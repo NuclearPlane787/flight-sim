@@ -1,75 +1,82 @@
-// v0.5.6: the keys (Shane, 2026-11-18: "A keybindings selection per plane instead of general rule. That is, you can
-// give each engine or two their own keybinding for powering up and down, or change the default key settings like
-// ailerons, elevators, rudder, flaps"; then: "Move the keybinding settings thing to the warehouse, where you can attach
-// keybindings by selecting plane parts like the engines ... This is similar to Besiege").
+// The keys. v0.5.6 (Shane, 2026-11-18: "A keybindings selection per plane instead of general rule ... you can give each
+// engine or two their own keybinding for powering up and down"; then "Move the keybinding settings thing to the
+// warehouse ... similar to Besiege") gave each aircraft its parts' keys. v0.5.7 (Shane's decisions, final): a block of
+// 16 keys under the right hand is the warehouse's, each aircraft's own; every other key is the Controls page's, the same
+// for every aircraft.
 //
-// BINDINGS is every control a key can have, with its defaults. A part's controls (`part`: the engines' thrust, the
-// wing's ailerons, flaps and spoilers, the tailplane's elevator and trim, the fin's rudder, the fuselage's gear and
-// brakes, a wing tank's drop) are each aircraft's own, set in the warehouse by clicking that part: each type and each
-// saved design has its own set, and a design flies its base type's until one is changed for the design itself. The
-// rest (the views, time, the autopilot and autothrust, the map, pushback, rewind, QNH, the readout) are the same for
-// every aircraft: the Controls page's. Only what differs from the defaults is stored, under one key
-// (`gamedump:flight-sim:keys`):
-//   { v: 2, global: { bind: { map: ['KeyN'] } },
-//     scopes: { 'type:a321neo': { bind: { flapUp: ['KeyJ'] }, groups: [...] }, 'design:<id>': { ... } } }
-// An engine group is { engines: [0, 1], up: 'KeyU' | null, down: 'KeyJ' | null }: its keys move only those engines'
-// thrust levers (input.js; the sim's controls.thrustEng). The warehouse makes one when an engine's key is changed.
-// v0.5.6's first shape (every key per aircraft) reads as this one: a scope's non-part keys are dropped.
+// - The block: 7 8 9 0 / U I O P / J K L ; / M , . /, and Shift with any of them. Only the warehouse sets block keys,
+//   and the warehouse sets only block keys: each engine its own thrust up and down (held: the plain key), a wing tank
+//   the aircraft's Drop (an action: the key or Shift+ it). Engines start with none. A design's are stored by the
+//   engine's part id (sim/designs.js: each mirror twin is its own part), a stock type's by engine index.
+// - The Controls page: BINDINGS, every other control (the sticks, rudder, trim, thrust for all the engines, flaps,
+//   spoilers, gear, brakes, the autopilot, the views, time, the map, pushback, rewind, QNH, the readout).
+// - Keys that do nothing on their own and can't be bound: ` Tab Caps Lock Return delete (Backspace, Delete) and both
+//   Shifts; Esc (the menu), \ (the Sky window, fixed; Cmd/Ctrl+L opens it too), the modifiers, F5, F11 and F12, and
+//   anything with Ctrl, Cmd or Alt (the game's standing rule: Ctrl+W closes the tab).
 //
-// A key is a "chord": its e.code, or 'Shift+' and the code for a tap (Shift+C arms the ground spoilers). Held
-// controls take plain keys only. No Ctrl, Cmd or Alt (the game's standing rule: Ctrl+W closes the tab). Escape (the
-// menu) and L (the Sky window) are reserved, and so are the modifier keys, Tab and the browser's F5, F11 and F12.
-// Within an aircraft's part keys (or within the global ones), binding a key another control has moves it: that
-// control loses it (and shows unbound if it had no other). Between the two a key is refused: a part can't take a
-// global key, nor the Controls page a key any aircraft's parts use (by default or as stored).
+// A key is a "chord": its e.code, or 'Shift+' and the code for a tap (Shift+C arms the ground spoilers). Held controls
+// take plain keys only, and read their key with or without Shift. A key does one thing: binding a key another control
+// has (on the Controls page), or that another part of the same aircraft has (in the warehouse), moves it, and the one
+// that lost it says so. Only what differs from the defaults is stored, under one key (`gamedump:flight-sim:keys`):
+//   { v: 3, global: { bind: { map: ['KeyM'] } },
+//     aircraft: { 'type:a321neo': { engines: { '0': { up: 'KeyU', down: 'KeyJ' } } },
+//                 'design:<id>': { engines: { p3: { up: 'KeyI', down: 'KeyK' } }, drop: 'Shift+KeyP' } } }
+// v0.5.6's stores (v: 2, { global, scopes }, and its first shape, v: 1) read as this one: the global changes that are
+// still valid stay (not a block key, not reserved); the per-aircraft part keys and engine groups are dropped.
 
 export const KEYS_STORE = 'gamedump:flight-sim:keys';
 
-// kind: 'held' (read while down: the sticks, the levers, the brakes) or 'action' (once per press).
-// part: the part whose keys tab has it in the warehouse (none: a global key, the Controls page's, in `section`).
-// family: shown for that family only ('boeing': the 787 and 777). short: how a refusal names it.
-export const PARTS = [
-  { id: 'engine', title: 'Engine', the: 'an engine' },
-  { id: 'wing', title: 'Wing', the: 'the wing' },
-  { id: 'tailplane', title: 'Tailplane', the: 'the tailplane' },
-  { id: 'fin', title: 'Fin', the: 'the fin' },
-  { id: 'fuselage', title: 'Fuselage', the: 'the fuselage' },
-  { id: 'tank', title: 'Wing tank', the: 'a wing tank' },
-];
+// ---- the warehouse's block ----
+export const BLOCK = ['Digit7', 'Digit8', 'Digit9', 'Digit0', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon',
+  'KeyM', 'Comma', 'Period', 'Slash'];
+const BLOCK_SET = new Set(BLOCK);
+export const BLOCK_TEXT = '7–0, U–P, J–; and M–/';
+const plainOf = (c) => String(c).replace(/^Shift\+/, '');
+// A block key, or Shift with one.
+export const isBlockKey = (chord) => !!chord && BLOCK_SET.has(plainOf(chord));
+export const BLOCK_ONLY = `Only the block’s keys here: ${BLOCK_TEXT}`;
+
+// ---- the Controls page's keys ----
+// kind: 'held' (read while down: the sticks, the levers, the brakes) or 'action' (once per press). section: the
+// Controls page's. family: the 787 and 777 only ('boeing'). short: how a note names it.
+// Shane's rule of thumb for the defaults: keys you press more than once per flight in the air shouldn't need Shift;
+// rare ones, about once per flight (TO/GA, the local QNH, pushback, arming the ground spoilers), may.
 export const SECTIONS = [
+  { id: 'fly', title: 'Flying' },
+  { id: 'thrust', title: 'Thrust' },
+  { id: 'wing', title: 'Flaps and spoilers' },
+  { id: 'ground', title: 'Gear and brakes' },
   { id: 'auto', title: 'Autopilot and autothrust' },
   { id: 'views', title: 'Views' },
   { id: 'time', title: 'Time and the rest' },
 ];
 export const BINDINGS = [
-  { id: 'pitchDown', part: 'tailplane', kind: 'held', label: 'Pitch down (elevator)', short: 'pitch down', keys: ['KeyW'] },
-  { id: 'pitchUp', part: 'tailplane', kind: 'held', label: 'Pitch up (elevator)', short: 'pitch up', keys: ['KeyS'] },
-  { id: 'trimDown', part: 'tailplane', kind: 'held', label: 'Trim nose down (with auto-trim: the path down)', short: 'trim down', keys: ['KeyY'], family: 'boeing' },
-  { id: 'trimUp', part: 'tailplane', kind: 'held', label: 'Trim nose up (with auto-trim: the path up)', short: 'trim up', keys: ['KeyH'], family: 'boeing' },
-  { id: 'rollLeft', part: 'wing', kind: 'held', label: 'Roll left (ailerons)', short: 'roll left', keys: ['KeyA'] },
-  { id: 'rollRight', part: 'wing', kind: 'held', label: 'Roll right (ailerons)', short: 'roll right', keys: ['KeyD'] },
-  { id: 'yawLeft', part: 'fin', kind: 'held', label: 'Rudder left (and nose wheel)', short: 'rudder left', keys: ['KeyQ'] },
-  { id: 'yawRight', part: 'fin', kind: 'held', label: 'Rudder right (and nose wheel)', short: 'rudder right', keys: ['KeyE'] },
-  { id: 'thrustUp', part: 'engine', kind: 'held', label: 'Thrust levers up (all engines)', short: 'thrust up (all engines)', keys: ['KeyR'] },
-  { id: 'thrustDown', part: 'engine', kind: 'held', label: 'Thrust levers down (all; hold at idle on the ground: reverse)', short: 'thrust down (all engines)', keys: ['KeyF'] },
-  { id: 'flapUp', part: 'wing', kind: 'action', label: 'Flaps up a step', short: 'flaps up a step', keys: ['Minus'] },
-  { id: 'flapDown', part: 'wing', kind: 'action', label: 'Flaps down a step', short: 'flaps down a step', keys: ['Equal'] },
-  { id: 'flap0', part: 'wing', kind: 'action', label: 'Flaps to detent 1', short: 'flap detent 1', keys: [], flap: 0 },
-  { id: 'flap1', part: 'wing', kind: 'action', label: 'Flaps to detent 2', short: 'flap detent 2', keys: [], flap: 1 },
-  { id: 'flap2', part: 'wing', kind: 'action', label: 'Flaps to detent 3', short: 'flap detent 3', keys: [], flap: 2 },
-  { id: 'flap3', part: 'wing', kind: 'action', label: 'Flaps to detent 4', short: 'flap detent 4', keys: [], flap: 3 },
-  { id: 'flap4', part: 'wing', kind: 'action', label: 'Flaps to detent 5', short: 'flap detent 5', keys: [], flap: 4 },
-  { id: 'speedbrake', part: 'wing', kind: 'action', label: 'Speed brakes', short: 'the speed brakes', keys: ['KeyC'] },
-  { id: 'spoilersArm', part: 'wing', kind: 'action', label: 'Arm the ground spoilers', short: 'the ground spoilers', keys: ['Shift+KeyC'] },
-  { id: 'gear', part: 'fuselage', kind: 'action', label: 'Gear up or down', short: 'the gear', keys: ['KeyG'] },
-  { id: 'brakes', part: 'fuselage', kind: 'held', label: 'Wheel brakes (hold)', short: 'the wheel brakes', keys: ['Space'] },
-  { id: 'parkingBrake', part: 'fuselage', kind: 'action', label: 'Parking brake', short: 'the parking brake', keys: ['KeyB'] },
-  // v0.5.6: a wing tank's key drops the wing tanks in the air (main.js dropWingTanks(), as the Weight tab's button)
-  { id: 'dropTanks', part: 'tank', kind: 'action', label: 'Drop the wing tanks (in the air)', short: 'dropping the wing tanks', keys: [] },
+  { id: 'pitchDown', section: 'fly', kind: 'held', label: 'Pitch down (elevator)', short: 'pitch down', keys: ['KeyW'] },
+  { id: 'pitchUp', section: 'fly', kind: 'held', label: 'Pitch up (elevator)', short: 'pitch up', keys: ['KeyS'] },
+  { id: 'rollLeft', section: 'fly', kind: 'held', label: 'Roll left (ailerons)', short: 'roll left', keys: ['KeyA'] },
+  { id: 'rollRight', section: 'fly', kind: 'held', label: 'Roll right (ailerons)', short: 'roll right', keys: ['KeyD'] },
+  { id: 'yawLeft', section: 'fly', kind: 'held', label: 'Rudder left (and nose wheel)', short: 'rudder left', keys: ['KeyQ'] },
+  { id: 'yawRight', section: 'fly', kind: 'held', label: 'Rudder right (and nose wheel)', short: 'rudder right', keys: ['KeyE'] },
+  { id: 'trimDown', section: 'fly', kind: 'held', label: 'Trim nose down (the 787 and 777; with auto-trim: the path down)', short: 'trim nose down', keys: ['KeyY'], family: 'boeing' },
+  { id: 'trimUp', section: 'fly', kind: 'held', label: 'Trim nose up (the 787 and 777; with auto-trim: the path up)', short: 'trim nose up', keys: ['KeyH'], family: 'boeing' },
+  { id: 'thrustUp', section: 'thrust', kind: 'held', label: 'Thrust levers up (all engines)', short: 'thrust up (all engines)', keys: ['KeyR'] },
+  { id: 'thrustDown', section: 'thrust', kind: 'held', label: 'Thrust levers down (all; hold at idle on the ground: reverse)', short: 'thrust down (all engines)', keys: ['KeyF'] },
+  { id: 'flapUp', section: 'wing', kind: 'action', label: 'Flaps up a step', short: 'flaps up a step', keys: ['Minus'] },
+  { id: 'flapDown', section: 'wing', kind: 'action', label: 'Flaps down a step', short: 'flaps down a step', keys: ['Equal'] },
+  { id: 'flap0', section: 'wing', kind: 'action', label: 'Flaps to 0 (the Boeings: UP)', short: 'flaps to 0', keys: [], flap: 0 },
+  { id: 'flap1', section: 'wing', kind: 'action', label: 'Flaps to 1 (the Boeings: 5)', short: 'flaps to 1', keys: [], flap: 1 },
+  { id: 'flap2', section: 'wing', kind: 'action', label: 'Flaps to 2 (the Boeings: 15)', short: 'flaps to 2', keys: [], flap: 2 },
+  { id: 'flap3', section: 'wing', kind: 'action', label: 'Flaps to 3 (the Boeings: 20)', short: 'flaps to 3', keys: [], flap: 3 },
+  { id: 'flap4', section: 'wing', kind: 'action', label: 'Flaps to FULL (the Boeings: 30)', short: 'flaps to FULL', keys: [], flap: 4 },
+  { id: 'speedbrake', section: 'wing', kind: 'action', label: 'Speed brakes', short: 'the speed brakes', keys: ['KeyC'] },
+  { id: 'spoilersArm', section: 'wing', kind: 'action', label: 'Arm the ground spoilers', short: 'arming the ground spoilers', tip: 'arm the ground spoilers', keys: ['Shift+KeyC'] },
+  { id: 'gear', section: 'ground', kind: 'action', label: 'Gear up or down', short: 'the gear', keys: ['KeyG'] },
+  { id: 'brakes', section: 'ground', kind: 'held', label: 'Wheel brakes (hold)', short: 'the wheel brakes', keys: ['Space'] },
+  { id: 'parkingBrake', section: 'ground', kind: 'action', label: 'Parking brake', short: 'the parking brake', keys: ['KeyB'] },
   { id: 'ap', section: 'auto', kind: 'action', label: 'Autopilot', short: 'the autopilot', keys: ['KeyZ'] },
   { id: 'athr', section: 'auto', kind: 'action', label: 'Autothrust', short: 'the autothrust', keys: ['KeyX'] },
-  { id: 'toga', section: 'auto', kind: 'action', label: 'TO/GA switches (the 787 and 777)', short: 'the TO/GA switches', keys: ['KeyO'] },
-  { id: 'localQnh', section: 'auto', kind: 'action', label: 'Altimeter to the local QNH', short: 'the local QNH', keys: ['KeyK'] },
+  { id: 'toga', section: 'auto', kind: 'action', label: 'TO/GA switches (the 787 and 777)', short: 'the TO/GA switches', keys: ['Shift+KeyT'] },
+  { id: 'localQnh', section: 'auto', kind: 'action', label: 'Altimeter to the local QNH', short: 'the local QNH', keys: ['Shift+KeyB'] },
   { id: 'viewCockpit', section: 'views', kind: 'action', label: 'Cockpit (again: the other seat)', short: 'the cockpit view', keys: ['Digit1'] },
   { id: 'viewNose', section: 'views', kind: 'action', label: 'Nose', short: 'the nose view', keys: ['Digit2'] },
   { id: 'viewOrbit', section: 'views', kind: 'action', label: 'Outside (3rd person)', short: 'the outside view', keys: ['Digit3'] },
@@ -77,44 +84,45 @@ export const BINDINGS = [
   { id: 'faster', section: 'time', kind: 'action', label: 'Time faster', short: 'time faster', keys: ['BracketRight', 'NumpadAdd'] },
   { id: 'slower', section: 'time', kind: 'action', label: 'Time slower', short: 'time slower', keys: ['BracketLeft', 'NumpadSubtract'] },
   { id: 'rewind', section: 'time', kind: 'action', label: 'Rewind 30 s (paused, crashed or with the menu open)', short: 'rewind', keys: ['KeyT'] },
-  { id: 'map', section: 'time', kind: 'action', label: 'Map', short: 'the map', keys: ['KeyM'] },
-  { id: 'pushback', section: 'time', kind: 'action', label: 'Pushback start or stop', short: 'the pushback', keys: ['KeyP'] },
-  { id: 'perf', section: 'time', kind: 'action', label: 'Performance readout', short: 'the performance readout', keys: ['F3', 'Backquote'] },
+  { id: 'map', section: 'time', kind: 'action', label: 'Map', short: 'the map', keys: ['KeyN'] },
+  { id: 'pushback', section: 'time', kind: 'action', label: 'Pushback start or stop', short: 'the pushback', keys: ['Shift+KeyG'] },
+  { id: 'perf', section: 'time', kind: 'action', label: 'Performance readout', short: 'the performance readout', keys: ['F3'] },
 ];
 const BY_ID = new Map(BINDINGS.map((b) => [b.id, b]));
 export const bindingOf = (id) => BY_ID.get(id) || null;
-export const GLOBAL_BINDINGS = BINDINGS.filter((b) => !b.part);
-export const PART_BINDINGS = BINDINGS.filter((b) => b.part);
-export const isPartKey = (id) => !!BY_ID.get(id)?.part;
-// A part's controls, in its keys tab (family: the aircraft's; a family's own rows show for it only).
-export const partBindings = (part, family = null) => PART_BINDINGS.filter((b) => b.part === part && (!b.family || !family || b.family === family));
-export const partOf = (id) => PARTS.find((p) => p.id === id) || null;
+export const GLOBAL_BINDINGS = BINDINGS;   // v0.5.6's name: every binding is the Controls page's now
+// The block's controls, each aircraft's own (the warehouse), as a note names them.
+export const AIRCRAFT_CONTROLS = {
+  engine: { label: 'Its own thrust (up and down)', short: 'thrust' },
+  dropTanks: { label: 'Drop the wing tanks (in the air)', short: 'dropping the wing tanks' },
+};
 
-// Keys nothing can take: the menu, the Sky window, the modifiers, and keys the browser keeps.
+// ---- keys nothing can take ----
+// The menu, the Sky window, the keys that do nothing on their own (Shane: "Grey out the ` tab caps return delete and
+// the two shift keys, since their single shouldn't result in anything"), and the browser's.
 export const RESERVED = new Map([
-  ['Escape', 'Esc opens the menu'], ['KeyL', 'L opens the Sky window'], ['Tab', 'Tab moves between buttons'],
+  ['Escape', 'Esc opens the menu'],
+  ['Backslash', '\\ opens the Sky window'],
+  ['Backquote', '` does nothing on its own: it can’t be a key'],
+  ['Tab', 'Tab does nothing on its own (it moves between buttons): it can’t be a key'],
+  ['CapsLock', 'Caps Lock does nothing on its own: it can’t be a key'],
+  ['Enter', 'Return does nothing on its own: it can’t be a key'],
+  ['Backspace', 'Delete does nothing on its own: it can’t be a key'],
+  ['Delete', 'Delete does nothing on its own: it can’t be a key'],
   ['F5', 'F5 reloads the page'], ['F11', 'F11 is the browser’s full screen'], ['F12', 'F12 is the browser’s tools'],
 ]);
-const MODIFIERS = new Set(['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'CapsLock', 'Fn', 'FnLock', 'ContextMenu', 'OSLeft', 'OSRight']);
+// The keys that do nothing on their own (the Controls page's drawing greys them).
+export const DEAD_KEYS = ['Backquote', 'Tab', 'CapsLock', 'Enter', 'Backspace', 'ShiftLeft', 'ShiftRight'];
+const MODIFIERS = new Set(['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'Fn', 'FnLock', 'ContextMenu', 'OSLeft', 'OSRight']);
 // A modifier pressed on its own (a capture waits for the key with it: Shift, then C).
 export const isModifier = (code) => MODIFIERS.has(code);
 
-// The chord a key press makes for binding id (kind decides whether Shift counts): { chord } or { refused: why }.
-export function chordFor(e, kind = 'action') {
-  const code = e?.code || '';
-  if (!code) return { refused: 'That key has no code the browser reports' };
-  if (MODIFIERS.has(code)) return { refused: 'Shift, Ctrl, Alt and Cmd can’t be keys on their own' };
-  if (e.ctrlKey || e.metaKey || e.altKey) return { refused: 'No Ctrl, Cmd or Alt keys: the browser keeps those (Ctrl+W closes the tab)' };
-  if (RESERVED.has(code)) return { refused: RESERVED.get(code) };
-  return { chord: e.shiftKey && kind === 'action' ? `Shift+${code}` : code };
-}
-
-// A chord as printed: 'Shift+KeyC' → 'Shift+C'.
+// A key as printed: 'Shift+KeyC' → 'Shift+C'.
 const NAMED = {
   Minus: '−', Equal: '=', BracketLeft: '[', BracketRight: ']', Backquote: '`', Backslash: '\\', Semicolon: ';',
-  Quote: '\'', Comma: ',', Period: '.', Slash: '/', Space: 'Space', Enter: 'Enter', Backspace: 'Backspace',
+  Quote: '\'', Comma: ',', Period: '.', Slash: '/', Space: 'Space', Enter: 'Return', Backspace: 'Delete',
   Delete: 'Delete', Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'Page Up', PageDown: 'Page Down',
-  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', IntlBackslash: '§',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', IntlBackslash: '§', Tab: 'Tab', CapsLock: 'Caps Lock',
   NumpadAdd: 'Num +', NumpadSubtract: 'Num −', NumpadMultiply: 'Num ×', NumpadDivide: 'Num ÷',
   NumpadDecimal: 'Num .', NumpadEnter: 'Num Enter', NumpadEqual: 'Num =',
 };
@@ -128,35 +136,92 @@ export function keyLabel(chord) {
   return NAMED[chord] || chord;
 }
 
+// A chord for a control of `kind` where it's set ('global': the Controls page; 'block': the warehouse): { chord } (a
+// held control's without Shift) or { refused: why }.
+export function checkChord(chord, kind = 'action', where = 'global') {
+  if (typeof chord !== 'string' || !chord) return { refused: 'No key' };
+  const code = plainOf(chord);
+  if (!code || code.includes('+')) return { refused: 'No Ctrl, Cmd or Alt keys: the browser keeps those (Ctrl+W closes the tab)' };
+  if (MODIFIERS.has(code)) return { refused: 'Shift, Ctrl, Alt and Cmd can’t be keys on their own' };
+  if (RESERVED.has(code)) return { refused: RESERVED.get(code) };
+  const c = kind === 'held' ? code : chord;
+  if (where === 'block') { if (!BLOCK_SET.has(code)) return { refused: BLOCK_ONLY }; }
+  else if (BLOCK_SET.has(code)) return { refused: `${keyLabel(c)} is in the warehouse’s block (7–0, U–P, J–;, M–/): set it on a part` };
+  return { chord: c };
+}
+// The chord a key press makes for a control of `kind` (whether Shift counts) where it's set: { chord } or { refused }.
+export function chordFor(e, kind = 'action', where = 'global') {
+  const code = e?.code || '';
+  if (!code) return { refused: 'That key has no code the browser reports' };
+  if (MODIFIERS.has(code)) return { refused: 'Shift, Ctrl, Alt and Cmd can’t be keys on their own' };
+  if (e.ctrlKey || e.metaKey || e.altKey) return { refused: 'No Ctrl, Cmd or Alt keys: the browser keeps those (Ctrl+W closes the tab)' };
+  return checkChord(e.shiftKey && kind === 'action' ? `Shift+${code}` : code, kind, where);
+}
+
+// Two chords that would both take one key press: the same, or either read held (a held control reads its key with or
+// without Shift: X held and Shift+X tapped can't both be bound).
+const split = (c) => (c.startsWith('Shift+') ? [c.slice(6), true] : [c, false]);
+export function clash(a, ka, b, kb) {
+  if (!a || !b) return false;
+  const [ca, sa] = split(a), [cb, sb] = split(b);
+  return ca === cb && (sa === sb || ka === 'held' || kb === 'held');
+}
+
 // ---- the store (plain JSON) ----
-export const emptyStore = () => ({ v: 2, global: { bind: {} }, scopes: {} });
-const cleanList = (l) => (Array.isArray(l) ? l.filter((c) => typeof c === 'string' && c) : null);
-const cleanGroups = (gs, nEngines) => (Array.isArray(gs) ? gs : [])
-  .map((g) => ({
-    engines: [...new Set((Array.isArray(g?.engines) ? g.engines : []).filter((i) => Number.isInteger(i) && i >= 0 && (nEngines == null || i < nEngines)))].sort((a, b) => a - b),
-    up: typeof g?.up === 'string' && g.up ? g.up : null,
-    down: typeof g?.down === 'string' && g.down ? g.down : null,
-  }));
-// Only the ids of one side (the part keys in a scope, the global keys in `global`): anything else is dropped (v0.5.6's
-// first shape kept every key per aircraft).
-function cleanBind(bind, part) {
-  const out = {};
-  if (!bind || typeof bind !== 'object') return out;
-  for (const b of BINDINGS) {
-    if (!!b.part !== part) continue;
-    const l = cleanList(bind[b.id]);
-    if (l) out[b.id] = l;
+export const emptyStore = () => ({ v: 3, global: { bind: {} }, aircraft: {} });
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const uniq = (l) => l.filter((x, i) => l.indexOf(x) === i);
+// A stored list for binding b: its valid chords (null: not a list, so the defaults).
+function cleanList(l, b) {
+  if (!Array.isArray(l)) return null;
+  return uniq(l.map((c) => checkChord(c, b.kind, 'global').chord).filter(Boolean));
+}
+const blockChord = (c, kind) => (typeof c === 'string' && c ? checkChord(c, kind, 'block').chord || null : null);
+// An aircraft's entry: its engines' keys (by slot: a design's part id, a type's index) and the drop; null if empty.
+function cleanAircraft(e) {
+  if (!e || typeof e !== 'object') return null;
+  const engines = {};
+  for (const [slot, k] of Object.entries(e.engines && typeof e.engines === 'object' ? e.engines : {})) {
+    if (!slot || !k || typeof k !== 'object') continue;
+    const up = blockChord(k.up, 'held'), down = blockChord(k.down, 'held');
+    if (up || down) engines[slot] = { up, down };
   }
-  return out;
+  const drop = blockChord(e.drop, 'action');
+  if (!Object.keys(engines).length && !drop) return null;
+  return drop ? { engines, drop } : { engines };
 }
 function cleanStore(o) {
   if (!o || typeof o !== 'object') return emptyStore();
-  const scopes = {};
-  for (const [k, e] of Object.entries(o.scopes && typeof o.scopes === 'object' ? o.scopes : {})) {
-    if (!/^(type|design):/.test(k) || !e || typeof e !== 'object') continue;
-    scopes[k] = { bind: cleanBind(e.bind, true), groups: cleanGroups(e.groups, null).filter((g) => g.engines.length) };
+  if (!(o.v === 3 || (o.aircraft && typeof o.aircraft === 'object' && !o.scopes))) return migrate(o);
+  const out = emptyStore();
+  const g = o.global?.bind && typeof o.global.bind === 'object' ? o.global.bind : {};
+  for (const b of BINDINGS) { const l = cleanList(g[b.id], b); if (l) out.global.bind[b.id] = l; }
+  compact(out.global);
+  for (const [k, e] of Object.entries(o.aircraft && typeof o.aircraft === 'object' ? o.aircraft : {})) {
+    if (!/^(type|design):./.test(k)) continue;
+    const c = cleanAircraft(e);
+    if (c) out.aircraft[k] = c;
   }
-  return { v: 2, global: { bind: cleanBind(o.global?.bind, false) }, scopes };
+  return out;
+}
+// v0.5.6's stores: the global changes still valid (each as the Controls page would make it: a key another control has
+// by default moves); a change whose every key is the block's or reserved now goes back to the default. The
+// per-aircraft part keys and engine groups (`scopes`) are dropped.
+// v0.5.7's moved controls (TO/GA, the QNH, pushback, the map) keep their new keys against an old change that had
+// taken one of them (legal in v0.5.6: say next view on N), unless the old store had changed that control itself (review).
+const MOVED_IDS = ['toga', 'localQnh', 'pushback', 'map'];
+function migrate(o) {
+  let st = emptyStore();
+  const g = o.global?.bind && typeof o.global.bind === 'object' ? o.global.bind : {};
+  const keepNew = new Map(MOVED_IDS.filter((id) => !Array.isArray(g[id])).flatMap((id) => (bindingOf(id)?.keys || []).map((c) => [c, id])));
+  for (const b of BINDINGS) {
+    if (!Array.isArray(g[b.id])) continue;
+    const raw = g[b.id].filter((c) => typeof c === 'string' && c);
+    const ok = (cleanList(raw, b) || []).filter((c) => !keepNew.has(c) || keepNew.get(c) === b.id);
+    if (raw.length && !ok.length) continue;
+    st = assign(st, b.id, ok).store;
+  }
+  return st;
 }
 // A store as given (window.__fs.setKeys(), a test): read as loadKeys() reads the saved one.
 export const keysFrom = (o) => cleanStore(o ? clone(o) : null);
@@ -170,279 +235,229 @@ export function saveKeys(storage, store) {
   try { storage?.setItem(KEYS_STORE, JSON.stringify(store)); return true; } catch { return false; }
 }
 
-// Which set an aircraft (a registry entry or designDef(): sim/designs.js) flies with: its own, and its base type's.
+// Which aircraft keys an aircraft (a registry entry or designDef(): sim/designs.js) flies with. base: its base type's
+// (v0.5.6's fallback; v0.5.7's block keys are each aircraft's own, so nothing reads it).
 export function scopeOf(def) {
   if (!def) return { scope: 'type:a321neo', base: null };
   if (def.design) return { scope: `design:${def.design.id}`, base: `type:${def.design.base || def.id}` };
   return { scope: `type:${def.id}`, base: null };
 }
+// The aircraft's engines in the sim's order, each as its keys are stored: a design's by part id (geo.NACELLES[i].part:
+// designDef() orders the engines left outboard to right outboard, so an index isn't a part), a type's by index.
+export function engineSlots(def) {
+  const E = def?.geo?.ENGINES || [], N = def?.geo?.NACELLES || [];
+  return E.map((_, i) => (def?.design && N[i]?.part ? String(N[i].part) : String(i)));
+}
 
-// The entry an aircraft's part keys come from: its own, else its base type's (a design's), else none (the defaults).
-function entryOf(store, scope, base) {
-  const s = store?.scopes || {};
-  return s[scope] || (base ? s[base] : null) || null;
-}
-// Two chords that would both take one key press: the same, or either read held (a held control and an engine group
-// read their key with or without Shift: X held and Shift+X tapped can't both be bound).
-const split = (c) => (c.startsWith('Shift+') ? [c.slice(6), true] : [c, false]);
-export function clash(a, ka, b, kb) {
-  if (!a || !b) return false;
-  const [ca, sa] = split(a), [cb, sb] = split(b);
-  return ca === cb && (sa === sb || ka === 'held' || kb === 'held');
-}
-const globalBind = (store) => {
+// The global keys, as every aircraft flies them: { id: [chords] }. A hand-edited store's clash goes to the first.
+function globalBind(store) {
   const g = store?.global?.bind || {};
-  const out = {};
-  for (const b of GLOBAL_BINDINGS) out[b.id] = cleanList(g[b.id]) || b.keys.slice();
-  return out;
-};
-// The global control a chord would collide with: { id } or null.
-function globalUse(store, chord, kind) {
-  const g = globalBind(store);
-  for (const b of GLOBAL_BINDINGS) if (g[b.id].some((c) => clash(c, b.kind, chord, kind))) return { id: b.id };
-  return null;
-}
-// The part control (any aircraft's: the defaults, or as stored) a chord would collide with: { id, scope? } or
-// { g, scope } or null.
-function partUse(store, chord, kind) {
-  for (const b of PART_BINDINGS) if (b.keys.some((c) => clash(c, b.kind, chord, kind))) return { id: b.id };
-  for (const [scope, e] of Object.entries(store?.scopes || {})) {
-    for (const b of PART_BINDINGS) if ((cleanList(e?.bind?.[b.id]) || []).some((c) => clash(c, b.kind, chord, kind))) return { id: b.id, scope };
-    for (const g of cleanGroups(e?.groups, null)) if ([g.up, g.down].some((c) => clash(c, 'held', chord, kind))) return { g: true, scope };
+  const out = {}, taken = [];
+  for (const b of BINDINGS) {
+    const l = (cleanList(g[b.id], b) ?? b.keys.slice()).filter((c) => !taken.some(([t, k]) => clash(t, k, c, b.kind)));
+    for (const c of l) taken.push([c, b.kind]);
+    out[b.id] = l;
   }
-  return null;
+  return out;
 }
-const partWhy = (u, chord, nameOf) => {
-  const where = u.scope ? ` on ${nameOf?.(u.scope) || 'one of your aircraft'}` : '';
-  if (u.g) return `${keyLabel(chord)} is an engine’s own thrust key${where}: change it in the warehouse first (click the engine)`;
-  const b = BY_ID.get(u.id), part = partOf(b.part);
-  return `${keyLabel(chord)} is the key for ${b.short}, on ${part.the}${where}: change it in the warehouse first (click ${part.the})`;
-};
-const globalWhy = (u, chord) => `${keyLabel(chord)} is the key for ${BY_ID.get(u.id).short}: change it on the Controls page`;
+const aircraftOf = (store, scope) => (scope ? cleanAircraft(store?.aircraft?.[scope]) : null);
 
-// The keys for an aircraft: { bind: { id: [chords] }, groups: [{ engines, up, down }], own: whether the aircraft has
-// its own part keys (else its base type's or the defaults), from: the scope they come from }. The global keys are
-// every aircraft's. nEngines drops the groups' engines it doesn't have. A part's key that collides with a global one
-// is left out (the refusals keep them apart; a store edited by hand may not).
-export function resolveKeys(store, { scope, base = null, nEngines = null } = {}) {
-  const e = entryOf(store, scope, base);
+// The keys for an aircraft: { bind: { id: [chords] } (the global ones, every aircraft's), engines: [{ i, slot, up, down }]
+// (the engines with keys of their own, by index in the sim; slots: engineSlots(def)), drop (a chord or null), own
+// (whether it has block keys of its own) }. A store edited by hand with a key twice keeps the first.
+export function resolveKeys(store, { scope = null, slots = null } = {}) {
   const bind = globalBind(store);
-  const taken = GLOBAL_BINDINGS.flatMap((b) => bind[b.id].map((c) => [c, b.kind]));
-  const free = (c, kind) => !taken.some(([t, k]) => clash(t, k, c, kind));
-  for (const b of PART_BINDINGS) bind[b.id] = ((e && cleanList(e.bind?.[b.id])) || b.keys.slice()).filter((c) => free(c, b.kind));
-  const groups = cleanGroups(e?.groups, nEngines).filter((g) => g.engines.length > 0)
-    .map((g) => ({ ...g, up: g.up && free(g.up, 'held') ? g.up : null, down: g.down && free(g.down, 'held') ? g.down : null }));
-  const s = store?.scopes || {};
-  return { bind, groups, own: !!s[scope], from: s[scope] ? scope : base && s[base] ? base : null };
+  const e = aircraftOf(store, scope);
+  const taken = [];
+  const take = (c, kind) => { if (!c || taken.some(([t, k]) => clash(t, k, c, kind))) return null; taken.push([c, kind]); return c; };
+  const engines = [];
+  (slots || []).forEach((slot, i) => {
+    const k = e?.engines?.[slot];
+    if (!k) return;
+    const up = take(k.up, 'held'), down = take(k.down, 'held');
+    if (up || down) engines.push({ i, slot: String(slot), up, down });
+  });
+  const drop = take(e?.drop || null, 'action');
+  return { bind, engines, drop, own: !!e };
 }
 
-// chord → { kind: 'action' | 'held', id } or { kind: 'group', g, dir: +1 | -1 }, the first claim winning (the store
-// keeps keys unique anyway).
+// chord → { kind: 'action' | 'held', id } or { kind: 'engine', i, dir: +1 | -1 }, the first claim winning.
 export function keymapOf(resolved) {
   const map = new Map();
   for (const b of BINDINGS) {
-    for (const c of resolved.bind[b.id] || []) {
-      const chord = b.kind === 'held' ? c.replace(/^Shift\+/, '') : c;
-      if (!map.has(chord) && !RESERVED.has(chord.replace(/^Shift\+/, ''))) map.set(chord, { kind: b.kind, id: b.id });
+    for (const c of resolved?.bind?.[b.id] || []) {
+      const chord = b.kind === 'held' ? plainOf(c) : c;
+      if (!map.has(chord) && !RESERVED.has(plainOf(chord))) map.set(chord, { kind: b.kind, id: b.id });
     }
   }
-  resolved.groups.forEach((g, gi) => {
-    for (const [dir, c] of [[1, g.up], [-1, g.down]]) {
-      if (c && !map.has(c) && !RESERVED.has(c)) map.set(c, { kind: 'group', g: gi, dir });
-    }
-  });
+  for (const e of resolved?.engines || []) {
+    for (const [dir, c] of [[1, e.up], [-1, e.down]]) if (c && !map.has(c) && !RESERVED.has(c)) map.set(c, { kind: 'engine', i: e.i, dir });
+  }
+  const d = resolved?.drop;
+  if (d && !map.has(d) && !RESERVED.has(plainOf(d))) map.set(d, { kind: 'action', id: 'dropTanks' });
   return map;
 }
 
 // ---- changes (each returns a new store and what moved, or { error }) ----
-const clone = (o) => JSON.parse(JSON.stringify(o));
 const fresh = (store) => cleanStore(clone(store || emptyStore()));
-// The aircraft's own entry, made from the set it flies with now (its base type's, for a design) if it has none.
-function own(store, scope, base) {
-  const out = fresh(store);
-  if (!out.scopes[scope]) {
-    const from = base ? out.scopes[base] : null;
-    out.scopes[scope] = from ? clone(from) : { bind: {}, groups: [] };
-  }
-  return { out, e: out.scopes[scope] };
-}
-// The global entry.
-function glob(store) {
-  const out = fresh(store);
-  return { out, e: out.global };
-}
 // Only what differs from the defaults is kept.
 function compact(e) {
   for (const b of BINDINGS) {
-    const l = cleanList(e.bind[b.id]);
-    if (!l || (l.length === b.keys.length && l.every((c, i) => c === b.keys[i]))) delete e.bind[b.id];
+    const l = e.bind[b.id];
+    if (!Array.isArray(l) || (l.length === b.keys.length && l.every((c, i) => c === b.keys[i]))) delete e.bind[b.id];
   }
-  if (e.groups) e.groups = e.groups.filter((g) => g.engines.length);
   return e;
 }
-// Take a chord away from everything in the entry (one side's controls: `list`) but `keep` ({ id } or { g, dir });
-// → what lost it.
-function takeAway(e, chord, keep, list) {
-  const moved = [];
-  const kind = keep.g !== undefined ? 'held' : BY_ID.get(keep.id)?.kind || 'action';
-  for (const b of list) {
-    if (keep.id === b.id) continue;
-    const cur = cleanList(e.bind[b.id]) || b.keys.slice();
-    const next = cur.filter((c) => !clash(c, b.kind, chord, kind));
-    if (next.length !== cur.length) { e.bind[b.id] = next; moved.push({ id: b.id, chord, left: next.length }); }
-  }
-  (e.groups || []).forEach((g, gi) => {
-    for (const k of ['up', 'down']) {
-      const dir = k === 'up' ? 1 : -1;
-      if (g[k] && clash(g[k], 'held', chord, kind) && !(keep.g === gi && keep.dir === dir)) {
-        g[k] = null; moved.push({ g: gi, engines: g.engines.slice(), dir, chord, left: 0 });
-      }
-    }
-  });
-  return moved;
-}
-const plainOf = (c) => c.replace(/^Shift\+/, '');
-
-// Bind a chord to control id: its keys replaced (index: that one only; add, or an index past the end: one more).
-// A part's control changes the aircraft's ({ scope, base }); a global one, every aircraft's. nameOf(scope) names an
-// aircraft in a refusal. → { store, moved } or { error }.
-export function bindKey(store, { scope = null, base = null } = {}, id, chord, { add = false, index = null, nameOf = null } = {}) {
+// Control id's keys become `list`; the other controls lose any key that would take the same press. → { store, moved }
+// (moved: [{ id, chord: the key it lost, left: how many it has now }])
+function assign(store, id, list) {
   const b = BY_ID.get(id);
-  if (!b) return { error: `No control "${id}"` };
-  if (!chord) return { error: 'No key' };
-  const c = b.kind === 'held' ? plainOf(chord) : chord;
-  if (RESERVED.has(plainOf(c))) return { error: RESERVED.get(plainOf(c)) };
-  let out, e, moved;
-  if (b.part) {
-    const u = globalUse(store, c, b.kind);
-    if (u) return { error: globalWhy(u, c) };
-    ({ out, e } = own(store, scope, base));
-    moved = takeAway(e, c, { id }, PART_BINDINGS);
-  } else {
-    const u = partUse(store, c, b.kind);
-    if (u) return { error: partWhy(u, c, nameOf) };
-    ({ out, e } = glob(store));
-    moved = takeAway(e, c, { id }, GLOBAL_BINDINGS);
+  const out = fresh(store), cur = globalBind(out), moved = [];
+  for (const o of BINDINGS) {
+    if (o.id === id) continue;
+    const lost = cur[o.id].filter((c) => list.some((x) => clash(c, o.kind, x, b.kind)));
+    if (!lost.length) continue;
+    const next = cur[o.id].filter((c) => !lost.includes(c));
+    out.global.bind[o.id] = next;
+    for (const c of lost) moved.push({ id: o.id, chord: c, left: next.length });
   }
-  let cur = cleanList(e.bind[id]) || b.keys.slice();
-  if (add || (index != null && index >= cur.length)) cur = cur.includes(c) ? cur : [...cur, c];
-  else if (index != null) { cur = cur.slice(); cur[index] = c; cur = cur.filter((x, i) => cur.indexOf(x) === i); }
-  else cur = [c];
-  e.bind[id] = cur;
-  compact(e);
+  out.global.bind[id] = list.slice();
+  compact(out.global);
   return { store: out, moved };
 }
-// Unbind control id (index: that key only).
-export function clearKeys(store, { scope = null, base = null } = {}, id, { index = null } = {}) {
+// Bind a chord to control id (a Controls page key, every aircraft's): its keys replaced (index: that one only; add, or
+// an index past the end: one more). A block key is refused (the warehouse's). → { store, moved } or { error }.
+export function bindKey(store, id, chord, { add = false, index = null } = {}) {
   const b = BY_ID.get(id);
   if (!b) return { error: `No control "${id}"` };
-  const { out, e } = b.part ? own(store, scope, base) : glob(store);
-  const cur = cleanList(e.bind[id]) || b.keys.slice();
-  e.bind[id] = index == null ? [] : cur.filter((x, i) => i !== index);
-  compact(e);
-  return { store: out, moved: [] };
+  const r = checkChord(chord, b.kind, 'global');
+  if (r.refused) return { error: r.refused };
+  const c = r.chord;
+  let cur = globalBind(store)[id];
+  if (add || (index != null && index >= cur.length)) cur = cur.includes(c) ? cur : [...cur, c];
+  else if (index != null) { cur = cur.slice(); cur[index] = c; cur = uniq(cur); }
+  else cur = [c];
+  return assign(store, id, cur);
 }
-// Back to the defaults: 'global' (the Controls page's), or an aircraft's part keys (a design: its base type's again).
-// A deleted design's keys go the same way.
+// Unbind control id (index: that key only).
+export function clearKeys(store, id, { index = null } = {}) {
+  const b = BY_ID.get(id);
+  if (!b) return { error: `No control "${id}"` };
+  const cur = globalBind(store)[id];
+  return assign(store, id, index == null ? [] : cur.filter((x, i) => i !== index));
+}
+// Back to the defaults: 'global' (the Controls page's), or an aircraft's block keys (none). A deleted design's keys
+// go the same way.
 export function resetKeys(store, { scope }) {
   const out = fresh(store);
   if (scope === 'global') out.global = { bind: {} };
-  else delete out.scopes[scope];
-  return { store: out, moved: [] };
-}
-export function addGroup(store, { scope, base = null }, engines = []) {
-  const { out, e } = own(store, scope, base);
-  e.groups.push({ engines: [...new Set(engines)].filter((i) => Number.isInteger(i) && i >= 0).sort((a, b) => a - b), up: null, down: null });
-  return { store: out, moved: [], index: e.groups.length - 1 };
-}
-export function setGroupEngines(store, { scope, base = null }, gi, engines) {
-  const { out, e } = own(store, scope, base);
-  if (!e.groups[gi]) return { error: 'No such group' };
-  e.groups[gi].engines = [...new Set(engines)].filter((i) => Number.isInteger(i) && i >= 0).sort((a, b) => a - b);
-  compact(e);
-  return { store: out, moved: [] };
-}
-export function bindGroupKey(store, { scope, base = null }, gi, dir, chord) {
-  const plain = chord ? plainOf(chord) : null;
-  if (plain && RESERVED.has(plain)) return { error: RESERVED.get(plain) };
-  if (plain) { const u = globalUse(store, plain, 'held'); if (u) return { error: globalWhy(u, plain) }; }
-  const { out, e } = own(store, scope, base);
-  if (!e.groups[gi]) return { error: 'No such group' };
-  const moved = plain ? takeAway(e, plain, { g: gi, dir }, PART_BINDINGS) : [];
-  e.groups[gi][dir > 0 ? 'up' : 'down'] = plain;
-  return { store: out, moved };
-}
-export function removeGroup(store, { scope, base = null }, gi) {
-  const { out, e } = own(store, scope, base);
-  if (!e.groups[gi]) return { error: 'No such group' };
-  e.groups.splice(gi, 1);
-  compact(e);
+  else delete out.aircraft[scope];
   return { store: out, moved: [] };
 }
 
-// ---- v0.5.6: an engine's keys, as its keys tab in the warehouse shows and changes them ----
-// Engine i's thrust keys: its group's ({ own: true, gi, engines }), else the all-engines keys it moves with
-// (own: false). up and down are lists of chords.
-export function engineKeys(store, { scope, base = null } = {}, i) {
-  const e = entryOf(store, scope, base);
-  const gs = cleanGroups(e?.groups, null);
-  const gi = gs.findIndex((g) => g.engines.includes(i));
-  const res = resolveKeys(store, { scope, base });
-  if (gi < 0) return { own: false, gi: -1, engines: [i], up: res.bind.thrustUp, down: res.bind.thrustDown };
-  const g = gs[gi];
-  const free = (c) => (c && !globalUse(store, c, 'held') ? [c] : []);
-  return { own: true, gi, engines: g.engines.slice(), up: free(g.up), down: free(g.down) };
+// ---- the block: each aircraft's engines and its drop (the warehouse) ----
+// An aircraft's block keys, as stored: { engines: { slot: { up, down } }, drop }.
+export function aircraftKeys(store, scope) {
+  const e = aircraftOf(store, scope);
+  return { engines: e ? clone(e.engines) : {}, drop: e?.drop || null };
 }
-// Engine i's key changed (dir: +1 up, -1 down; chord null clears it): engines (i first, and its mirror twin) become a
-// group of their own if they aren't one (the other key unbound until set), or keep theirs (a twin joining it).
-export function bindEngineKey(store, { scope, base = null } = {}, engines, dir, chord) {
-  const E = [...new Set(engines)].filter((i) => Number.isInteger(i) && i >= 0);
-  if (!E.length) return { error: 'No engine' };
-  const plain = chord ? plainOf(chord) : null;
-  if (plain && RESERVED.has(plain)) return { error: RESERVED.get(plain) };
-  if (plain) { const u = globalUse(store, plain, 'held'); if (u) return { error: globalWhy(u, plain) }; }
-  const { out, e } = own(store, scope, base);
-  let gi = e.groups.findIndex((g) => g.engines.includes(E[0]));
-  if (gi >= 0 && e.groups[gi].engines.some((i) => !E.includes(i))) {
-    // it shares a group with engines that aren't its twin (Mirror turned off since): it leaves it for one of its own
-    for (const g of e.groups) g.engines = g.engines.filter((i) => !E.includes(i));
-    gi = -1;
+// Engine `slot`'s own keys: { up, down } (chords or null).
+export function engineKeysOf(store, scope, slot) {
+  const k = aircraftOf(store, scope)?.engines?.[String(slot)];
+  return { up: k?.up || null, down: k?.down || null };
+}
+function own(store, scope) {
+  const out = fresh(store);
+  const e = out.aircraft[scope] || { engines: {} };
+  out.aircraft[scope] = e;
+  return { out, e };
+}
+function tidy(out, scope) {
+  const c = cleanAircraft(out.aircraft[scope]);
+  if (c) out.aircraft[scope] = c; else delete out.aircraft[scope];
+  return out;
+}
+// Take a chord off everything of the aircraft but `keep` ({ eng: slot, dir } or { drop: true }); → what lost it (and
+// the key it lost).
+function takeAway(e, chord, kind, keep) {
+  const moved = [];
+  for (const [slot, k] of Object.entries(e.engines || {})) {
+    for (const [f, dir] of [['up', 1], ['down', -1]]) {
+      if (k[f] && clash(k[f], 'held', chord, kind) && !(keep.eng === slot && keep.dir === dir)) { moved.push({ eng: slot, dir, chord: k[f] }); k[f] = null; }
+    }
   }
-  if (gi < 0) {
-    if (!plain) return { store: out, moved: [] };   // nothing to clear: it moves with the all-engines keys
-    for (const g of e.groups) g.engines = g.engines.filter((i) => !E.includes(i));
-    e.groups.push({ engines: [], up: null, down: null });
-    gi = e.groups.length - 1;
-  } else for (const [hi, g] of e.groups.entries()) if (hi !== gi) g.engines = g.engines.filter((i) => !E.includes(i));
-  e.groups[gi].engines = [...new Set([...e.groups[gi].engines, ...E])].sort((a, b) => a - b);
-  const moved = plain ? takeAway(e, plain, { g: gi, dir }, PART_BINDINGS) : [];
-  e.groups[gi][dir > 0 ? 'up' : 'down'] = plain;
-  compact(e);
-  return { store: out, moved };
+  if (e.drop && clash(e.drop, 'action', chord, kind) && !keep.drop) { moved.push({ drop: true, chord: e.drop }); e.drop = null; }
+  return moved;
 }
-// "As the others": the engines leave their groups, back on the all-engines keys.
-export function engineAsOthers(store, { scope, base = null } = {}, engines) {
-  const { out, e } = own(store, scope, base);
-  for (const g of e.groups) g.engines = g.engines.filter((i) => !engines.includes(i));
-  compact(e);
+// Engine `slot`'s up (dir +1) or down (-1) key: a block key (held: the plain key). A key another part of this
+// aircraft had moves here. → { store, moved } or { error }.
+export function bindEngineKey(store, scope, slot, dir, chord) {
+  if (!scope) return { error: 'No aircraft' };
+  if (slot == null || slot === '') return { error: 'No engine' };
+  const r = checkChord(chord, 'held', 'block');
+  if (r.refused) return { error: r.refused };
+  const s = String(slot), { out, e } = own(store, scope);
+  const moved = takeAway(e, r.chord, 'held', { eng: s, dir: dir > 0 ? 1 : -1 });
+  const k = e.engines[s] || { up: null, down: null };
+  k[dir > 0 ? 'up' : 'down'] = r.chord;
+  e.engines[s] = k;
+  return { store: tidy(out, scope), moved };
+}
+export function clearEngineKey(store, scope, slot, dir) {
+  const s = String(slot), { out, e } = own(store, scope);
+  if (e.engines[s]) e.engines[s][dir > 0 ? 'up' : 'down'] = null;
+  return { store: tidy(out, scope), moved: [] };
+}
+// The aircraft's Drop (a wing tank's tab): a block key, or Shift with one.
+export function bindDropKey(store, scope, chord) {
+  if (!scope) return { error: 'No aircraft' };
+  const r = checkChord(chord, 'action', 'block');
+  if (r.refused) return { error: r.refused };
+  const { out, e } = own(store, scope);
+  const moved = takeAway(e, r.chord, 'action', { drop: true });
+  e.drop = r.chord;
+  return { store: tidy(out, scope), moved };
+}
+export function clearDropKey(store, scope) {
+  const { out, e } = own(store, scope);
+  e.drop = null;
+  return { store: tidy(out, scope), moved: [] };
+}
+// Engines gone: their keys go (`slots`), or every engine's but those kept (`keep`, a design's engines as saved). The
+// others keep theirs: nothing shifts (a design's are by part id).
+export function dropEngineKeys(store, scope, slots) {
+  const out = fresh(store), e = out.aircraft[scope];
+  if (!e) return { store: out, moved: [] };
+  for (const s of slots || []) delete e.engines[String(s)];
+  return { store: tidy(out, scope), moved: [] };
+}
+// drop: false when the design has no wing tank left (its Drop key goes with the last one; review, v0.5.7).
+export function keepEngineKeys(store, scope, keep, { drop = true } = {}) {
+  const out = fresh(store), e = out.aircraft[scope], K = new Set((keep || []).map(String));
+  if (!e) return { store: out, moved: [] };
+  for (const s of Object.keys(e.engines)) if (!K.has(s)) delete e.engines[s];
+  if (!drop) e.drop = null;
+  return { store: tidy(out, scope), moved: [] };
+}
+// A design copied: the copy takes its keys (its parts keep their ids).
+export function copyKeys(store, from, to) {
+  const out = fresh(store), e = out.aircraft[from];
+  if (e) out.aircraft[to] = clone(e); else delete out.aircraft[to];
   return { store: out, moved: [] };
 }
-// Mirror for a type's engines (the keys-only editor): the twin joins engine i's group (on), or leaves it (off: back
-// on the all-engines keys).
-export function setEngineTwin(store, { scope, base = null } = {}, i, twin, on) {
-  const { out, e } = own(store, scope, base);
-  const g = e.groups.find((x) => x.engines.includes(i));
-  if (g) {
-    if (on) { for (const h of e.groups) if (h !== g) h.engines = h.engines.filter((x) => x !== twin); if (!g.engines.includes(twin)) g.engines = [...g.engines, twin].sort((a, b) => a - b); }
-    else g.engines = g.engines.filter((x) => x !== twin);
+
+// What lost a key, as a sentence ('G was the key for the gear, which has none now.'), naming the key it lost (chord:
+// the key pressed, for a note without one). label(id) names a control; engine(slot) names an engine (null: one not
+// shown, whose key goes quietly).
+export function movedText(moved, chord, { label = (id) => BY_ID.get(id)?.short || id, engine = (slot) => `engine ${Number(slot) + 1}` } = {}) {
+  const out = [];
+  for (const m of moved || []) {
+    const K = keyLabel(m.chord || chord);
+    if (m.id) out.push(`${K} was the key for ${label(m.id)}${m.left === 0 ? ', which has none now' : ''}`);
+    else if (m.drop) out.push(`${K} was the key for dropping the wing tanks, which has none now`);
+    else if (m.eng != null) { const n = engine(m.eng); if (n) out.push(`${K} was the key for ${n}’s thrust ${m.dir > 0 ? 'up' : 'down'}, which has none now`); }
   }
-  compact(e);
-  return { store: out, moved: [] };
-}
-// What lost a key, as a sentence ('R was thrust up (all engines)'s: now it has no key.'). label(id) names a control.
-export function movedText(moved, chord, label = (id) => BY_ID.get(id)?.short || id) {
-  if (!moved?.length) return '';
-  return moved.map((m) => `${keyLabel(chord)} was ${m.id ? label(m.id) : `thrust ${m.dir > 0 ? 'up' : 'down'} for engine${m.engines?.length === 1 ? '' : 's'} ${(m.engines || []).map((i) => i + 1).join(' and ')}`}’s${m.left === 0 ? ': now it has no key' : ''}`).join('. ') + '.';
+  return out.length ? out.join('. ') + '.' : '';
 }
 
 // ---- engines, as the editor names them ----
@@ -454,11 +469,7 @@ export function enginesOf(def) {
     return { i, n: i + 1, side, label: `Engine ${i + 1} (${side})` };
   });
 }
-export function groupLabel(def, engines) {
-  const list = enginesOf(def), picked = (engines || []).filter((i) => list[i]);
-  if (!picked.length) return 'No engines';
-  const sides = [...new Set(picked.map((i) => list[i].side))];
-  const nums = picked.map((i) => String(i + 1));
-  const joined = nums.length === 1 ? nums[0] : `${nums.slice(0, -1).join(', ')} and ${nums[nums.length - 1]}`;
-  return `${picked.length === 1 ? 'Engine' : 'Engines'} ${joined}${sides.length === 1 ? ` (${sides[0]})` : ''}`;
+// The first key of each control and the block's (for text that names a key): fn(id) → its label, '' if unbound.
+export function keyNamesOf(resolved) {
+  return (id) => keyLabel(resolved?.bind?.[id]?.[0] || '');
 }

@@ -31,10 +31,10 @@ try {
   await page.screenshot({ path: path.join(OUT, 'gate-1-parked.png') });
   const st = () => page.evaluate(() => { const fs = window.__fs, s = fs.sim.state; return { phase: fs.gate.phase, status: fs.gate.status, gs: s.gs, x: s.pos.x, y: s.pos.y, crashed: s.crashed || fs.crashed, t: s.t }; });
 
-  await page.keyboard.press('KeyP');
+  await page.keyboard.press('Shift+KeyG');   // v0.5.7: the pushback is Shift+G (P is the warehouse's block)
   await page.waitForTimeout(4000);
   const mid = await st();
-  check('pushback moving after P', mid.phase === 'pushback' && mid.gs > 0.5 && !mid.crashed, JSON.stringify(mid));
+  check('pushback moving after Shift+G', mid.phase === 'pushback' && mid.gs > 0.5 && !mid.crashed, JSON.stringify(mid));
   await page.screenshot({ path: path.join(OUT, 'gate-2-pushback.png') });
   const t0 = Date.now();
   while ((await st()).phase === 'pushback' && Date.now() - t0 < 200000) await page.waitForTimeout(1000);

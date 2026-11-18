@@ -1,0 +1,173 @@
+/* v0.5.7: the home page (the main menu): the scene on the left (ui/home-scene.js, fsh-*), the panel on the right with
+   the saved-flight card, the rows and the Load scenario page (ui/menu.js). Barlow, white line art, the game's cyan.
+   menu.css keeps the Load list's rows and the Settings and Controls pages. */
+
+.fsm { --panel-w: clamp(420px, 38vw, 1000px);
+  position: fixed; inset: 0; z-index: 50; display: grid; grid-template-columns: minmax(0, 1fr) var(--panel-w); grid-template-rows: minmax(0, 1fr);
+  box-sizing: border-box; outline: none; font-family: var(--font); color: #eef3f7; background: #0b1428;
+  pointer-events: auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.fsm[hidden] { display: none; }
+
+/* ---- The scene ---- */
+.fsm-left { position: relative; min-width: 0; overflow: hidden; container-type: size;
+  --pad-x: clamp(36px, 6.2cqi, 120px); --ground-gap: clamp(38px, 6.4cqh, 72px); --sky-h: 150px; color: #fff; }
+.fsh-art, .fsh-art > * { position: absolute; pointer-events: none; }
+.fsh-art { inset: 0; }
+.fsh-stars, .fsh-route { inset: 0; overflow: visible; }
+.fsh-route { will-change: transform; }   /* its own layer: the plane's and the dashes' repaints stay off the sky */
+.fsh-stars { display: none; }
+.fsm-head { position: absolute; z-index: 2; left: var(--pad-x); top: clamp(44px, 10.5cqh, 150px); max-width: calc(100% - 2 * var(--pad-x)); }
+.fsm-eyebrow { margin: 0; font: 600 clamp(12px, 1.35cqi, 17px)/1 var(--font); text-transform: uppercase; letter-spacing: 0.34em; color: rgba(255, 255, 255, 0.78); }
+.fsm-title { margin: clamp(8px, 1.2cqi, 18px) 0 0; font: 700 clamp(56px, 11.4cqi, 176px)/0.86 var(--font); letter-spacing: 0.012em;
+  text-transform: uppercase; color: #fff; white-space: nowrap; text-shadow: 0 2px 30px rgba(3, 8, 20, 0.35); }
+.fsm-version { position: absolute; z-index: 2; left: var(--pad-x); bottom: calc(var(--ground-gap) / 2); transform: translateY(50%); margin: 0;
+  font: 600 clamp(12px, 1.05cqh, 15px)/1 var(--font); letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); }
+
+/* The line art: every line white, about 1.75 px (home-scene.js sets the widths; the skyline's stay that at any size). */
+.fsh-path { color: rgba(255, 255, 255, 0.72); }
+.fsh-dot { color: #fff; }
+.fsh-ring { color: rgba(255, 255, 255, 0.32); }
+.fsh-plane { color: #fff; }
+.fsh-float { color: rgba(255, 255, 255, 0.92); }
+.fsh-float .fsh-drift, .fsh-float .fsh-bob, .fsh-icon { width: 100%; height: 100%; display: block; }
+.fsh-icon { overflow: visible; }
+.fsh-ground { left: 0; right: 0; bottom: var(--ground-gap); height: var(--sky-h); overflow: hidden; color: rgba(255, 255, 255, 0.88); }
+/* Under the ground line: the ground, darker than the sky, so the city stands on it and the version reads there. */
+.fsh-earth { left: 0; right: 0; bottom: 0; height: var(--ground-gap); background: linear-gradient(180deg, rgba(5, 9, 22, 0.5), rgba(5, 9, 22, 0.7)); }
+.fsh-tape { position: absolute; left: 0; bottom: 0; display: block; overflow: visible; will-change: transform; }
+
+/* The motion: slow, steady, out of step (the periods differ); the tape slides one tile, left to right. Paused while the
+   scene is still (the menu covered or hidden: home-scene.js's is-still), none with reduced motion. */
+.fsh-tape { animation: fsh-tape var(--tape-dur, 240s) linear infinite; }
+@keyframes fsh-tape { from { transform: translate3d(calc(-1 * var(--tile, 0px)), 0, 0); } to { transform: translate3d(0, 0, 0); } }
+.fsh-pass .fsh-drift { animation: fsh-drift-a 19s ease-in-out infinite; }
+.fsh-pass .fsh-bob { animation: fsh-bob-a 7.4s ease-in-out infinite; }
+.fsh-case .fsh-drift { animation: fsh-drift-b 23s ease-in-out -6s infinite; }
+.fsh-case .fsh-bob { animation: fsh-bob-b 9.6s ease-in-out -2.5s infinite; }
+@keyframes fsh-drift-a { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(16px, 7px, 0); } }
+@keyframes fsh-bob-a { 0%, 100% { transform: translate3d(0, 0, 0) rotate(-4deg); } 50% { transform: translate3d(0, -11px, 0) rotate(2.5deg); } }
+@keyframes fsh-drift-b { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(-14px, -5px, 0); } }
+@keyframes fsh-bob-b { 0%, 100% { transform: translate3d(0, 0, 0) rotate(3deg); } 50% { transform: translate3d(0, -9px, 0) rotate(-2.5deg); } }
+.fsh.is-still .fsh-anim { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .fsh .fsh-anim { animation: none; } }
+
+/* ---- The backgrounds (home-scene.js's bg-*): calm, dark, the line art crisp on them ---- */
+/* Night: deep navy, a soft lift of light behind the title, a few faint stars. */
+.fsh.bg-night { background:
+  radial-gradient(ellipse 58% 46% at 20% 16%, rgba(98, 140, 222, 0.22), rgba(98, 140, 222, 0) 72%),
+  radial-gradient(ellipse 90% 50% at 60% 108%, rgba(40, 70, 140, 0.28), rgba(40, 70, 140, 0) 70%),
+  linear-gradient(180deg, #0e1d3c 0%, #0a1631 52%, #08122a 100%); }
+.fsh.bg-night .fsh-stars { display: block; }
+/* Dusk: navy above, deep indigo lower, a faint warm glow along the skyline, just after sunset. */
+.fsh.bg-dusk { background:
+  radial-gradient(ellipse 75% 30% at 52% 100%, rgba(255, 152, 112, 0.24), rgba(255, 152, 112, 0) 72%),
+  linear-gradient(0deg, rgba(255, 128, 96, 0.12) 0%, rgba(255, 128, 96, 0) 34%),
+  linear-gradient(180deg, #0b1633 0%, #121c43 34%, #1e1f4e 62%, #2c2356 84%, #36275a 100%); }
+.fsh.bg-dusk .fsh-stars { display: block; opacity: 0.75; }
+.fsh.bg-dusk .fsh-stars .low { display: none; }
+/* Blueprint: dark slate navy with a faint drafting grid. */
+.fsh.bg-blueprint { background-color: #0f1f34; background-image:
+  radial-gradient(ellipse 70% 60% at 26% 24%, rgba(86, 136, 206, 0.14), rgba(86, 136, 206, 0) 72%),
+  linear-gradient(rgba(150, 196, 255, 0.085) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 196, 255, 0.085) 1px, transparent 1px),
+  linear-gradient(rgba(150, 196, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 196, 255, 0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 120px 120px, 120px 120px, 24px 24px, 24px 24px; background-position: 0 0, -1px -1px, -1px -1px, -1px -1px, -1px -1px; }
+
+/* ---- The panel ---- */
+.fsm-right { position: relative; min-width: 0; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: clamp(22px, 5vh, 72px) clamp(28px, 3.4vw, 72px); overflow-y: auto;
+  background: linear-gradient(180deg, #131b25 0%, #10171f 100%); border-left: 1px solid rgba(255, 255, 255, 0.07); }
+.fsm-nav { width: 100%; max-width: clamp(360px, 29vw, 660px); display: flex; flex-direction: column; }
+.fsm-nav[hidden] { display: none; }
+:where(.fsm-nav button, .fsm-nav a) { font-family: var(--font); color: inherit; -webkit-tap-highlight-color: transparent; }
+
+/* The saved-flight card: a ticket. The top and the stub meet at a dashed tear line with a half-circle notch in
+   each edge (masks on the two halves, so the panel shows through). The whole card is the Continue button. */
+.fsh-card { --r: 16px; --notch: 13px; --card: #1c2734; --edge: rgba(255, 255, 255, 0.075); display: block; width: 100%; padding: 0;
+  margin: 0 0 clamp(16px, 3.2vh, 40px); border: 0; border-radius: var(--r); background: none; text-align: left; cursor: pointer; font: inherit; }
+.fsh-card[hidden] { display: none; }
+/* Its keyboard focus: the ring on the Resume button, inside the ticket's shape. */
+.fsm .fsh-card:focus-visible { outline: none; }
+.fsh-card:focus-visible .fsh-go { outline: 2px solid #2fe3ff; outline-offset: 3px; }
+.fsh-card-top, .fsh-card-stub { position: relative; display: block; background: var(--card); }
+.fsh-card-top { box-shadow: inset 1px 1px 0 var(--edge), inset -1px 0 0 var(--edge); }
+.fsh-card-stub { box-shadow: inset 1px -1px 0 var(--edge), inset -1px 0 0 var(--edge); }
+.fsh-card-top { border-radius: var(--r) var(--r) 0 0; padding: clamp(16px, 2.4vh, 26px) clamp(18px, 1.7vw, 30px) clamp(16px, 2.4vh, 26px);
+  -webkit-mask: radial-gradient(circle at 0 100%, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+    radial-gradient(circle at 100% 100%, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 100% 0 / 51% 100% no-repeat;
+  mask: radial-gradient(circle at 0 100%, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+    radial-gradient(circle at 100% 100%, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 100% 0 / 51% 100% no-repeat; }
+.fsh-card-stub { border-radius: 0 0 var(--r) var(--r); padding: clamp(16px, 2.4vh, 26px) clamp(18px, 1.7vw, 30px) clamp(18px, 2.6vh, 28px);
+  -webkit-mask: radial-gradient(circle at 0 0, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+    radial-gradient(circle at 100% 0, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 100% 0 / 51% 100% no-repeat;
+  mask: radial-gradient(circle at 0 0, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+    radial-gradient(circle at 100% 0, #0000 var(--notch), #000 calc(var(--notch) + 0.5px)) 100% 0 / 51% 100% no-repeat; }
+.fsh-card-stub::before { content: ''; position: absolute; top: 0; left: calc(var(--notch) + 8px); right: calc(var(--notch) + 8px); height: 2px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.24) 0 7px, transparent 7px 14px); }
+.fsh-kick { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fsh-kicker { font: 700 clamp(11px, 1.45vh, 15px)/1 var(--font); text-transform: uppercase; letter-spacing: 0.2em; color: #2fe3ff; }
+.fsh-card-plane { flex: none; width: clamp(46px, 5.6vh, 72px); height: auto; color: rgba(255, 255, 255, 0.62); }
+.fsh-card-title { display: block; margin-top: clamp(10px, 1.6vh, 16px); font: 700 clamp(26px, 3.7vh, 46px)/1.06 var(--font); color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsh-card-sub { display: block; margin-top: 6px; font: 500 clamp(14px, 1.85vh, 20px)/1.25 var(--font); color: #9eadbb;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsh-stats { display: grid; grid-template-columns: 1fr 1fr; margin-top: clamp(14px, 2.3vh, 24px); }
+.fsh-stats:empty { display: none; }
+.fsh-stat { display: block; min-width: 0; }
+.fsh-stat + .fsh-stat { padding-left: clamp(14px, 1.5vw, 24px); border-left: 1px solid rgba(255, 255, 255, 0.13); }
+.fsh-stat b { display: block; font: 700 clamp(22px, 3vh, 35px)/1.05 var(--font); color: #eef3f7; font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsh-stat small { display: block; margin-top: 5px; font: 600 clamp(10.5px, 1.3vh, 12.5px)/1 var(--font); text-transform: uppercase; letter-spacing: 0.14em; color: #7f909f; }
+.fsh-go { display: flex; align-items: center; justify-content: center; gap: 0.5em; height: clamp(46px, 6.6vh, 70px); border-radius: 10px;
+  background: #9ff0ff; color: #05232c; font: 700 clamp(17px, 2.4vh, 25px)/1 var(--font); letter-spacing: 0.01em; }
+.fsh-go svg, .fsh-row svg { flex: none; width: 1em; height: 1em; }
+.fsh-card:hover .fsh-go, .fsh-card:focus-visible .fsh-go { background: #c8f7ff; }
+.fsh-card:hover .fsh-go svg { transform: translateX(3px); }
+.fsh-go svg { transition: transform 0.15s; }
+
+/* The rows: large text, a chevron, thin rules between */
+.fsh-rows { display: flex; flex-direction: column; }
+.fsh-row { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: clamp(11px, 1.9vh, 22px) 2px;
+  border: 0; border-top: 1px solid rgba(255, 255, 255, 0.09); background: none; text-align: left; cursor: pointer;
+  font: 600 clamp(20px, 2.75vh, 34px)/1.1 var(--font); letter-spacing: 0.005em; color: #eef3f7; }
+.fsh-row[hidden] { display: none; }
+.fsh-row:first-child, .fsh-row.primary + .fsh-row { border-top-color: transparent; }
+.fsh-row:last-child { border-bottom: 1px solid rgba(255, 255, 255, 0.09); }
+.fsh-row > span { flex: 1; min-width: 0; }
+.fsh-row small { display: block; margin-top: 4px; font: 500 clamp(12.5px, 1.6vh, 15px)/1.2 var(--font); letter-spacing: 0; color: #7f909f;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsh-row svg { width: 0.62em; height: 0.62em; color: rgba(255, 255, 255, 0.42); transition: transform 0.15s, color 0.15s; }
+.fsh-row .arrow, .fsh-row.primary .chev { display: none; }
+.fsh-row.primary .arrow { display: block; width: 0.9em; height: 0.9em; }
+.fsh-row:hover { color: #fff; }
+.fsh-row:hover svg, .fsh-row:focus-visible svg { color: #2fe3ff; transform: translateX(3px); }
+.fsh-row:focus-visible, .fsh-pair button:focus-visible, .fsh-exit:focus-visible { border-radius: 6px; }
+/* With no saved flight, New scenario is the primary button (the card's light cyan). */
+.fsh-row.primary { justify-content: center; margin-bottom: clamp(8px, 1.6vh, 18px); padding: 0 20px; height: clamp(50px, 7vh, 74px);
+  border: 0; border-radius: 10px; background: #9ff0ff; color: #05232c; font-size: clamp(19px, 2.6vh, 26px); font-weight: 700; }
+.fsh-row.primary > span { flex: 0 1 auto; }
+.fsh-row.primary svg { color: currentColor; }
+.fsh-row.primary:hover, .fsh-row.primary:focus-visible { background: #c8f7ff; color: #05232c; }
+.fsh-pair { display: flex; align-items: center; gap: 14px; margin-top: clamp(12px, 2.6vh, 30px); }
+.fsh-pair button { padding: 6px 2px; border: 0; background: none; cursor: pointer; font: 600 clamp(16px, 2.15vh, 24px)/1 var(--font); color: #c6d2dc; }
+.fsh-pair button:hover { color: #fff; }
+.fsh-sep { width: 1px; height: 1.2em; background: rgba(255, 255, 255, 0.24); }
+.fsh-exit { align-self: flex-start; margin-top: clamp(8px, 1.8vh, 22px); padding: 6px 2px; text-decoration: none;
+  font: 500 clamp(14px, 1.8vh, 17px)/1 var(--font); color: #77848f; }
+.fsh-exit:hover { color: #b8c3cc; }
+
+/* ---- Load scenario, in the panel ---- */
+.fsm-right .fsm-load { flex: 1 1 auto; width: 100%; max-width: 640px; min-height: 0; max-height: none; padding: 0;
+  background: none; border: 0; border-radius: 0; box-shadow: none; }
+.fsm-right .fsm-load-bar h2 { font-size: clamp(22px, 3vh, 30px); font-weight: 700; }
+.fsm-right .fsm-list { flex: 0 1 auto; }
+.fsm-right .fsm-load .fsm-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main when" "act act"; background: #19222d; border-color: #273341; }
+.fsm-right .fsm-load .fsm-row:hover { background: #1e2935; border-color: #34424f; }
+.fsm-right .fsm-load .fsm-row:focus-visible { border-color: #2fe3ff; }
+.fsm-right .fsm-load .fsm-row.asking { background: #2a1a1e; border-color: #ff5a5a; }
+.fsm-right .fsm-load .fsm-row-act { justify-content: flex-start; }
+
+/* ---- Small windows (below the sizes it's made for): the panel alone ---- */
+@media (max-width: 860px) {
+  .fsm { grid-template-columns: minmax(0, 1fr); }
+  .fsm-left { display: none; }
+}

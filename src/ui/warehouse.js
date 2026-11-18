@@ -36,8 +36,8 @@ import { ENGINE_LIST, ENGINE_TYPES } from '../sim/engine-types.js';
 import { TYPES, TYPE_LIST } from '../sim/types.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
 import { designStore } from '../designs-store.js';
-import { partBindings, resolveKeys, engineKeys, keyLabel, scopeOf, bindingOf, chordFor, isModifier, bindKey, clearKeys, resetKeys,
-  bindEngineKey, engineAsOthers, setEngineTwin, movedText, keysFrom } from '../keys.js';
+import { resolveKeys, keyLabel, chordFor, isModifier, resetKeys, bindEngineKey, clearEngineKey, bindDropKey, clearDropKey,
+  engineKeysOf, aircraftKeys, keepEngineKeys, dropEngineKeys, copyKeys, movedText, BLOCK_TEXT } from '../keys.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const kg = (v) => `${Math.round(v).toLocaleString('en-US')} kg`;
@@ -1043,65 +1043,71 @@ async function createView(host, onStatus) {
 
 // ---- v0.5.6: the parts' keys (Shane: "you can attach keybindings by selecting plane parts like the engines, where
 // they open a little tab and you can change the key by pressing on top of a little key icon ... similar to Besiege") ----
-// The keys tab of the selected part or piece of airframe: each control a row of keycaps (src/keys.js). An engine's tab
-// has its own keys (with its mirror twin's) and the all-engines keys; a wing tank's, the drop; the wing's, the ailerons,
-// flaps and spoilers; the tailplane's, the elevator (and a Boeing's trim); the fin's, the rudder; the fuselage's, the
-// gear and brakes. The pure parts below are tested in node (tests/warehouse-keytab.test.mjs).
-export const KEY_PART = { wing: 'wing', tailplane: 'tailplane', fin: 'fin', body: 'fuselage' };
-// The keys' scope of what's open: a type (the stock aircraft's keys-only editor) or a design (its base type's keys
-// until one is changed for it).
-export const keyScopeOf = (design, stock = false) => (stock ? { scope: `type:${design.base}`, base: null } : scopeOf({ id: design.base, design: { id: design.id, base: design.base } }));
-// An engine part's index in the sim (designDef()'s order), and its mirror twin's (or null).
+// v0.5.7: only the block's keys are set here (7–0, U–P, J–; and M–/, and Shift with them), each aircraft's own (src/keys.js).
+// An engine's tab has its own thrust up and down, one engine at a time (a mirror twin is its own part, with keys of its
+// own), and a line naming the all-engines keys (the Controls page's: they move this one too); a wing tank's tab has the
+// aircraft's Drop. The wing, the tails and the fuselage have no keys here: theirs are the Controls page's, the same for
+// every aircraft. The pure parts below are tested in node (tests/warehouse-keytab.test.mjs).
+// The keys' scope of what's open: a type (the stock aircraft's keys-only editor) or a design (its own).
+export const keyScopeOf = (design, stock = false) => (stock ? { scope: `type:${design.base}`, base: null } : { scope: `design:${design.id}`, base: null });
+// An engine part's index in the sim (designDef()'s order: left outboard to right outboard, not the parts' order).
 export function engineIndex(def, partId) {
   const N = def?.geo?.NACELLES || [];
-  const i = N.findIndex((n) => n.part === partId);
-  return i;
+  return N.findIndex((n) => n.part === partId);
 }
-export function twinIndex(design, def, partId) {
-  const p = design.parts.find((q) => q.id === partId);
-  if (!p?.pair) return null;
-  const t = engineIndex(def, p.pair);
-  return t >= 0 ? t : null;
+// How an engine's keys are stored: a design's by its part id (they stay with it when the engines are moved, added or
+// removed), a stock type's by its index in the sim.
+export function engineSlotOf(design, def, partId, stock = false) {
+  if (!stock) return partId ? String(partId) : null;
+  const i = engineIndex(def, partId);
+  return i >= 0 ? String(i) : null;
 }
-// A flap detent's row names the type's detent (0, 1, 2, 3, FULL; UP, 5, 15, 20, 30).
-export function keyLabelOf(b, def) {
-  if (b.flap === undefined) return b.label;
-  const L = def?.data?.FLAP_LEVER, K = def?.data?.FLAP_KEYS;
-  return L && K && K[b.flap] !== undefined ? `Flaps to ${L[K[b.flap]]}` : b.label;
+// An engine named by its slot, for a note ('engine 2': its number in the sim), or null if the aircraft has none there
+// (a removed engine's keys go quietly).
+export function engineNamer(design, def, stock = false) {
+  const n = def?.geo?.ENGINES?.length || 0;
+  return (slot) => {
+    const i = stock ? Number(slot) : engineIndex(def, slot);
+    return Number.isInteger(i) && i >= 0 && i < n ? `engine ${i + 1}` : null;
+  };
 }
-const caps = (chords, id, more = true) => {
-  const out = (chords || []).map((c, i) => ({ cap: `${id}:${i}`, text: keyLabel(c), chord: c }));
-  if (!out.length) out.push({ cap: `${id}:0`, text: '', empty: true });
-  else if (more) out.push({ cap: `${id}:${out.length}`, text: '+', add: true });
-  return out;
+// The airframe's keys are the Controls page's (the same for every aircraft): its tab says where.
+const AF_KEYS_NOTE = {
+  wing: 'Its keys (the ailerons, flaps and spoilers) are on the Controls page, the same for every aircraft.',
+  tailplane: 'Its keys (the elevator, and the 787’s and 777’s trim) are on the Controls page, the same for every aircraft.',
+  fin: 'Its keys (the rudder) are on the Controls page, the same for every aircraft.',
+  body: 'Its keys (the gear and brakes) are on the Controls page, the same for every aircraft.',
 };
-// The tab: { title, rows: [{ id | eng, label, caps: [{ cap, text, chord?, empty?, add?, follow? }], ... }] }. what:
-// { part: partId } or { af: 'wing' | 'tailplane' | 'fin' | 'body' }. twinOn: an engine's twin takes its keys (a
-// design's: its mirror; a type's: the keys-only editor's Mirror).
-export function keyTab(design, def, store, sc, what, { twinOn = true } = {}) {
-  const fam = def?.family || TYPES[design.base]?.family || null;
-  const res = resolveKeys(store, { ...sc, nEngines: def?.geo?.ENGINES?.length ?? null });
-  const rowsOf = (part) => partBindings(part, fam).map((b) => ({ id: b.id, label: keyLabelOf(b, def), caps: caps(res.bind[b.id], b.id) }));
-  if (what.af) return { title: 'Keys', part: KEY_PART[what.af], rows: rowsOf(KEY_PART[what.af]) };
+const capOf = (id, chord) => (chord ? { cap: id, text: keyLabel(chord), chord } : { cap: id, text: '', empty: true });
+// The tab: { title, part, rows: [{ eng | drop, label, caps: [{ cap, text, chord?, empty? }] }], engine?, all?, note? }.
+// what: { part: partId } or { af: 'wing' | 'tailplane' | 'fin' | 'body' }. stock: a type's keys-only editor (its
+// engines by index). all: the all-engines keys (the Controls page's), for an engine's line (allEnginesLine()).
+export function keyTab(design, def, store, sc, what, { stock = false } = {}) {
+  if (what.af) return { title: 'Keys', part: null, rows: [], note: AF_KEYS_NOTE[what.af] || '' };
   const p = design.parts.find((q) => q.id === what.part);
-  if (!p) return { title: 'Keys', rows: [] };
-  if (p.kind === 'tank' && p.mount === 'wing') return { title: 'Keys', part: 'tank', rows: rowsOf('tank') };
+  if (!p) return { title: 'Keys', part: null, rows: [] };
+  if (p.kind === 'tank' && p.mount === 'wing') {
+    const drop = aircraftKeys(store, sc.scope).drop;
+    return { title: 'Keys', part: 'tank', rows: [{ drop: true, label: 'Drop the wing tanks (all of them, in the air)', caps: [capOf('drop', drop)] }] };
+  }
   if (p.kind !== 'engine') return { title: 'Keys', part: null, rows: [], note: 'No keys: it has nothing to move.' };
-  const i = engineIndex(def, p.id), t = twinIndex(design, def, p.id);
-  const engines = t !== null && twinOn ? [i, t] : [i];
-  const ek = engineKeys(store, sc, i);
-  const name = `Engine ${i + 1}${engines.length > 1 ? ` and ${t + 1} (its twin)` : ''}`;
-  const one = (dir) => {
-    const l = dir > 0 ? ek.up : ek.down;
-    return l.length ? { cap: `eng:${dir > 0 ? 'up' : 'down'}`, text: keyLabel(l[0]), chord: l[0], follow: !ek.own } : { cap: `eng:${dir > 0 ? 'up' : 'down'}`, text: '', empty: true };
-  };
+  const i = engineIndex(def, p.id), slot = engineSlotOf(design, def, p.id, stock);
+  const k = engineKeysOf(store, sc.scope, slot);
+  const res = resolveKeys(store);
   return {
-    title: 'Keys', part: 'engine', engine: { i, twin: t, engines, own: ek.own, with: ek.engines },
-    rows: [
-      { eng: true, label: ek.own ? `${name}: its own` : `${name}: as the others`, caps: [one(1), one(-1)], own: ek.own },
-      { all: true, label: 'All engines (on the ground at idle, down holds reverse)', up: caps(res.bind.thrustUp, 'thrustUp', false), down: caps(res.bind.thrustDown, 'thrustDown', false) },
-    ],
+    title: 'Keys', part: 'engine', engine: { i, slot },
+    rows: [{ eng: true, label: `Engine ${i + 1}: its own thrust`, caps: [capOf('eng:up', k.up), capOf('eng:down', k.down)] }],
+    all: { up: res.bind.thrustUp.slice(), down: res.bind.thrustDown.slice() },
   };
+}
+// The line under an engine's keys: the all-engines keys (the Controls page's) move it too. all: keyTab()'s.
+export function allEnginesLine(all) {
+  const name = (l) => (l || []).map(keyLabel).join(' or ');
+  const up = name(all?.up), dn = name(all?.down);
+  if (up && dn) return `${up} and ${dn} move all the engines, this one too (set on the Controls page).`;
+  if (up) return `${up} moves all the engines up, this one too (set on the Controls page).`;
+  if (dn) return `${dn} moves all the engines down, this one too (set on the Controls page).`;
+  return 'The all-engines thrust has no keys: set them on the Controls page.';
 }
 
 function linkCss() {
@@ -1126,9 +1132,9 @@ const HELP = {
   // v0.5.3, with the airframe on
   idleAf: 'Drag to go round · scroll to zoom · click a part, or the wing, tail, fin or fuselage, to change it · drag a part from the palette onto it · Z undo · Shift+Z redo',
   af: 'Drag a slider: the new outline shows in green, the model follows on release · Z undo · Esc lets go',
-  // v0.5.6: a stock aircraft's keys
-  keys: 'Drag to go round · scroll to zoom · click an engine, the wing, the tailplane, the fin or the fuselage: its keys · Esc goes back',
-  keySel: 'Click a keycap, then press the key · Esc lets go',
+  // v0.5.6: a stock aircraft's keys (v0.5.7: its engines')
+  keys: 'Drag to go round · scroll to zoom · click an engine: its keys · Esc goes back',
+  keySel: `Click a keycap, then press a key of the block (${BLOCK_TEXT}) · Esc lets go`,
 };
 // A rebuild this quick (ms) keeps 30 frames a second while a slider moves: the model follows live, not on release.
 const LIVE_BUILD_MS = 20;
@@ -1147,10 +1153,10 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     <section class="fsw-listpage" data-o="listPage" aria-label="Designs">
       <div class="fsw-listcard">
         <div class="fsw-new"><span>New design from the</span>${typesShown().map((t) => `<button class="fsui-b primary" data-new="${esc(t.id)}">${esc(t.name)}</button>`).join('')}</div>
-        <div class="fsw-new fsw-stock" data-o="stock"${keys ? '' : ' hidden'}><span>Stock aircraft</span>${typesShown().map((t) => `<button class="fsui-b" data-stock="${esc(t.id)}" title="The ${esc(t.name)}’s keys: click a part to set them">${esc(t.name)} · Keys</button>`).join('')}</div>
+        <div class="fsw-new fsw-stock" data-o="stock"${keys ? '' : ' hidden'}><span>Stock aircraft</span>${typesShown().map((t) => `<button class="fsui-b" data-stock="${esc(t.id)}" title="The ${esc(t.name)}’s engines’ keys: click an engine to set its own">${esc(t.name)} · Keys</button>`).join('')}</div>
         <p class="fsm-note" data-o="listMsg" aria-live="polite"></p>
         <div class="fsm-list" data-o="list"></div>
-        <p class="fsm-help">A design is one of the three types with parts attached: engines anywhere they fit, tanks and ballast, its weight, fuel and gear changed. Click one to open it. Saved designs fly from New scenario’s aircraft picker. A part’s keys (an engine’s thrust, the wing’s ailerons and flaps, the tail’s elevator and rudder, the gear and brakes) are set by clicking it: a stock aircraft’s with its Keys. Esc goes back.</p>
+        <p class="fsm-help">A design is one of the three types with parts attached: engines anywhere they fit, tanks and ballast, its weight, fuel and gear changed. Click one to open it. Saved designs fly from New scenario’s aircraft picker. Each engine can have its own thrust keys, and a wing tank the drop, from the block (${esc(BLOCK_TEXT)}): click the part to set them, a stock aircraft’s with its Keys. The other keys are on the Controls page, the same for every aircraft. Esc goes back.</p>
       </div>
     </section>
     <section class="fsw-editor" data-o="editor" hidden aria-label="Design">
@@ -1214,9 +1220,9 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   let selAf = null, hoverAf = null, afDrag = false;
   const hist = createHistory();
   // v0.5.6: the keys (`keys`: { load(), save(store), nameOf(scope) }: main.js's). keysOnly: a stock aircraft's keys
-  // editor (no palette, no sliders: a click on a part opens its keys tab). capKey: the keycap waiting for a key
-  // ({ cap, id, i } or { cap, eng: +1 | -1 }); keyMsg: the tab's line; stockTwin: a type's Mirror for its engines' keys.
-  let keysOnly = false, capKey = null, keyMsg = '', keyMsgBad = false, stockTwin = true;
+  // editor (no palette, no sliders: a click on an engine opens its keys tab). capKey: the keycap waiting for a key
+  // ({ cap, eng: +1 | -1 } or { cap, drop: true }); keyMsg: the tab's line.
+  let keysOnly = false, capKey = null, keyMsg = '', keyMsgBad = false;
 
   // ---- The list ----
   function rowHtml(d) {
@@ -1273,8 +1279,8 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
       editing = confirming = null;
       listMsgBad = !res.ok;
       listMsg = res.ok ? `Copied as “${res.design.name}”: at the top.` : res.error === 'quota' ? 'Browser storage is full: no copy was made.' : 'That design is gone.';
-      // v0.5.6: the copy takes the design's keys
-      if (res.ok && keys) { const st = keysFrom(keys.load()), own = st.scopes[`design:${id}`]; if (own) { st.scopes[`design:${res.design.id}`] = JSON.parse(JSON.stringify(own)); keys.save(st); } }
+      // v0.5.6: the copy takes the design's keys (v0.5.7: by part id: the copy's parts keep theirs)
+      if (res.ok && keys && keys.load()?.aircraft?.[`design:${id}`]) keys.save(copyKeys(keys.load(), `design:${id}`, `design:${res.design.id}`).store);
       renderList(res.ok ? res.design.id : id);
       if (res.ok) $('list').scrollTop = 0;
       return;
@@ -1317,7 +1323,20 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   function dropKeys(designId) {
     if (!keys) return;
     const st = keys.load();
-    if (st?.scopes?.[`design:${designId}`]) keys.save(resetKeys(st, { scope: `design:${designId}` }).store);
+    if (st?.aircraft?.[`design:${designId}`]) keys.save(resetKeys(st, { scope: `design:${designId}` }).store);
+  }
+  // v0.5.7: a design's engines' keys follow its saved parts. Saved: an engine removed takes its keys with it (the others
+  // keep theirs: they're by part id). Left without saving: the keys go back to the saved design's engines (one never
+  // saved takes them all with it).
+  function keepKeysOf(designId) {
+    if (!keys) return;
+    const saved = store.get(designId), sc = `design:${designId}`;
+    if (!saved) { dropKeys(designId); return; }
+    if (keys.load()?.aircraft?.[sc]) {
+      const wingTank = normalizeDesign(saved).parts.some((p) => p.kind === 'tank' && p.mount === 'wing');
+      const next = keepEngineKeys(keys.load(), sc, engineParts(saved).map((p) => p.id), { drop: wingTank }).store;
+      if (JSON.stringify(next) !== JSON.stringify(keys.load())) keys.save(next);
+    }
   }
 
   // ---- The editor: the side panel ----
@@ -1346,8 +1365,8 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     return o;
   }
   function partHtml(p) {
-    if (keysOnly) {
-      return `<div class="fsw-sel" data-o="sel"><h3>${esc(partLabel(p))}${p.pair ? ' <small>and its mirror twin</small>' : ''}</h3>
+    if (keysOnly) {   // v0.5.7: one engine at a time (its twin has keys of its own)
+      return `<div class="fsw-sel" data-o="sel"><h3>${esc(partLabel(p))}</h3>
         <p class="fsw-base">${esc(partWhere(p, cur.base, cur.airframe))}</p>${keysHtml({ part: p.id })}
         <div class="fsw-btns"><button type="button" class="fsui-b" data-a="done">Done</button></div></div>`;
     }
@@ -1384,7 +1403,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     const d = cur, T = TYPES[d.base], A = T.data;
     if (keysOnly) {
       return `<div class="fsw-sel" data-o="sel"><h3>The ${esc(T.name)}’s keys</h3>
-        <p class="fsw-base">Click a part to set its keys: an engine (its thrust), the wing (the ailerons, flaps and spoilers), the tailplane (the elevator${T.family === 'boeing' ? ' and trim' : ''}), the fin (the rudder) or the fuselage (the gear and brakes). A design on the ${esc(T.name)} flies these until one is changed for it. The views, time and autopilot keys are on the Controls page.</p>
+        <p class="fsw-base">Click an engine to give it thrust keys of its own, from the block (${esc(BLOCK_TEXT)}): they move its lever alone, and its down key held at idle on the ground its reverse. ${esc(allKeysName(true))} still move every engine. Designs on the ${esc(T.name)} have keys of their own. The other keys are on the Controls page, the same for every aircraft.</p>
         ${keysOwnHtml()}</div>`;
     }
     const shown = d.parts.filter((p, i) => !p.pair || d.parts.findIndex((q) => q.id === p.pair) > i);
@@ -1403,15 +1422,22 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
       ${slider('data-p', 'oewFrac', 'Structure’s weight', RANGES.oewFrac[0], RANGES.oewFrac[1], 0.005, (d.oewDeltaKg / A.OEW).toFixed(3), oewOut(d, A))}
       ${slider('data-p', 'fuelFrac', 'Wing and centre tanks', RANGES.fuelFrac[0], RANGES.fuelFrac[1], 0.01, (d.fuelCapacityKg / A.FUEL_MAX).toFixed(3), fuelOut(d, A))}
       ${slider('data-p', 'gearExtendM', 'Gear extension', RANGES.gearExtendM[0], RANGES.gearExtendM[1], 0.05, d.gearExtendM, `+${d.gearExtendM.toFixed(2)} m`)}
-      ${keys ? `<h3 class="fsw-h">Keys</h3><p class="fsw-base">Click a part to set its keys: an engine, a wing tank, the wing, the tailplane, the fin or the fuselage.</p>${keysOwnHtml()}` : ''}`;
+      ${keys ? `<h3 class="fsw-h">Keys</h3><p class="fsw-base">Click an engine to give it thrust keys of its own, or a wing tank for the drop, from the block (${esc(BLOCK_TEXT)}). The other keys are on the Controls page, the same for every aircraft.</p>${keysOwnHtml()}` : ''}`;
   }
-  // v0.5.6: whose keys these are, and the way back to the defaults (a type's) or the base type's (a design's).
+  // v0.5.7: the all-engines keys as the Controls page binds them ('R and F'), else what they are.
+  function allKeysName(start) {
+    const b = resolveKeys(keys?.load?.() || null).bind, u = keyLabel(b.thrustUp[0] || ''), d = keyLabel(b.thrustDown[0] || '');
+    return u && d ? `${u} and ${d}` : start ? 'The all-engines keys' : 'the all-engines keys';
+  }
+  // v0.5.6: whose keys these are, and the way back to none (v0.5.7: the block's keys are each aircraft's own).
   function keysOwnHtml() {
     if (!keys) return '';
-    const T = TYPES[cur.base], sc = keyScope(), own = !!keys.load()?.scopes?.[sc.scope];
-    const text = keysOnly ? (own ? 'Changed from the defaults.' : 'The default keys.')
-      : own ? 'This design has keys of its own.' : `It flies the ${T.name}’s keys until one is changed here.`;
-    return `<p class="fsw-base fsw-kown">${esc(text)}${own ? ` <button type="button" class="fsui-b fsw-kb" data-a="keysReset">${keysOnly ? 'Back to the defaults' : `Back to the ${esc(T.name)}’s`}</button>` : ''}</p>
+    const sc = keyScope(), ak = aircraftKeys(keys.load(), sc.scope);
+    const n = Object.keys(ak.engines).filter((s) => engineNamer(cur, designDef(cur), keysOnly)(s)).length;
+    const own = n > 0 || !!ak.drop;
+    const what = [n ? `${n === 1 ? 'an engine' : `${n} engines`} with keys of ${n === 1 ? 'its' : 'their'} own` : '', ak.drop ? 'a drop key' : ''].filter(Boolean).join(' and ');
+    const text = own ? `${keysOnly ? 'It has' : 'This design has'} ${what}.` : `No keys of its own yet: every engine moves with ${allKeysName(false)}.`;
+    return `<p class="fsw-base fsw-kown">${esc(text)}${own ? ' <button type="button" class="fsui-b fsw-kb" data-a="keysReset">Clear them</button>' : ''}</p>
       <p class="fsw-kmsg${keyMsgBad ? ' bad' : ''}" data-o="kmsg" aria-live="polite">${esc(keyMsg)}</p>`;
   }
   const oewOut = (d, A) => `${pct(d.oewDeltaKg / A.OEW, 1)} (${d.oewDeltaKg >= 0 ? '+' : '−'}${Math.abs(d.oewDeltaKg).toLocaleString('en-US')} kg)`;
@@ -1450,7 +1476,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     const note = { wing: 'The span from the fuselage’s side, the chord at every station, the sweep added to the quarter chord’s, the dihedral; and where the whole wing sits along the fuselage, with its engines, tanks and main gear (both sides).',
       tailplane: 'Its area, with its aspect ratio and sweep kept.', fin: 'Its area, with its aspect ratio and sweep kept.',
       body: 'Fuselage added ahead of and behind the wing (negative takes it out): the nose moves forward, the tail back.' }[what];
-    if (keysOnly) {
+    if (keysOnly) {   // v0.5.7: not picked in a stock aircraft's keys editor (its keys are the Controls page's)
       return `<div class="fsw-sel" data-o="sel" data-af-sel="${esc(what)}"><h3>${esc(what === 'wing' ? 'Wing' : afNames[what])}</h3>${keysHtml({ af: what })}
         <div class="fsw-btns"><button type="button" class="fsui-b" data-a="done">Done</button></div></div>`;
     }
@@ -1467,39 +1493,35 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     return h;
   }
 
-  // ---- v0.5.6: the keys tab ----
+  // ---- v0.5.6: the keys tab (v0.5.7: the block's keys: an engine's own thrust, a wing tank's drop) ----
   const keyScope = () => keyScopeOf(cur, keysOnly);
   function keysHtml(what) {
     if (!keys || !cur) return '';
-    const tab = keyTab(cur, designDef(cur), keys.load(), keyScope(), what, { twinOn: keysOnly ? stockTwin : true });
+    const tab = keyTab(cur, designDef(cur), keys.load(), keyScope(), what, { stock: keysOnly });
     if (!tab.rows.length) return tab.note ? `<div class="fsw-keys" data-o="keys"><h4>Keys</h4><p class="fsw-base">${esc(tab.note)}</p></div>` : '';
     const cap = (c) => {
       const on = capKey?.cap === c.cap;
-      const title = on ? 'Press a key: Esc cancels, Backspace or Delete clears it' : c.add ? 'Add another key' : c.empty ? 'No key: click, then press one' : c.follow ? 'The all-engines key: click, then press one of its own' : 'Click, then press the new key';
-      return `<button type="button" class="fsw-cap${c.empty ? ' empty' : ''}${c.add ? ' add' : ''}${c.follow ? ' follow' : ''}${on ? ' on' : ''}" data-cap="${esc(c.cap)}" title="${esc(title)}">${on ? 'Press a key' : esc(c.text || '·')}</button>`;
+      const title = on ? 'Press a key of the block: Esc cancels, Backspace or Delete clears it' : c.empty ? `No key: click, then press one of the block (${BLOCK_TEXT})` : 'Click, then press the new key';
+      return `<button type="button" class="fsw-cap${c.empty ? ' empty' : ''}${on ? ' on' : ''}" data-cap="${esc(c.cap)}" title="${esc(title)}">${on ? 'Press a key' : esc(c.text || '·')}</button>`;
     };
     let h = '<div class="fsw-keys" data-o="keys"><h4>Keys</h4>';
     for (const r of tab.rows) {
-      const kr = r.eng ? 'eng' : r.all ? 'all' : r.id;
-      h += `<div class="fsw-krow${r.eng ? ' eng' : ''}" data-krow="${esc(kr)}"><span class="lab">${esc(r.label)}</span><span class="fsw-caps">`;
-      if (r.eng) h += `<small>up</small>${cap(r.caps[0])}<small>down</small>${cap(r.caps[1])}`;
-      else if (r.all) h += `<small>up</small>${r.up.map(cap).join('')}<small>down</small>${r.down.map(cap).join('')}`;
-      else h += r.caps.map(cap).join('');
-      h += '</span>';
-      if (r.eng && r.own) h += '<button type="button" class="fsui-b fsw-kb" data-a="asOthers" title="Back on the all-engines keys">As the others</button>';
-      h += '</div>';
+      const kr = r.eng ? 'eng' : 'drop';
+      h += `<div class="fsw-krow${r.eng ? ' eng' : ''}" data-krow="${kr}"><span class="lab">${esc(r.label)}</span><span class="fsw-caps">`;
+      h += r.eng ? `<small>up</small>${cap(r.caps[0])}<small>down</small>${cap(r.caps[1])}` : r.caps.map(cap).join('');
+      h += '</span></div>';
     }
-    if (tab.engine && keysOnly && tab.engine.twin !== null) h += `<label class="fsw-check"><input type="checkbox" data-k="twin"${stockTwin ? ' checked' : ''}> Mirror: engine ${tab.engine.twin + 1} takes the same keys</label>`;
+    // An engine's tab: the all-engines keys move it too (the Controls page's; read only), and its own reverse.
+    if (tab.engine) h += `<p class="fsw-base fsw-kall" data-o="kall">${esc(allEnginesLine(tab.all))} Its own down key, held at idle on the ground, holds its reverse.</p>`;
     h += `<p class="fsw-kmsg${keyMsgBad ? ' bad' : ''}" data-o="kmsg" aria-live="polite">${esc(keyMsg)}</p></div>`;
     return h;
   }
-  // The engines a key on the selected engine changes (it, and its twin with Mirror on).
-  function keyEngines() {
+  // The selected engine's slot (how its keys are stored: a design's part id, a type's index), and its name in a note.
+  function keySlot() {
     const p = selPart();
-    if (!p || p.kind !== 'engine') return [];
-    const def = designDef(cur), i = engineIndex(def, p.id), t = twinIndex(cur, def, p.id);
-    return t !== null && (!keysOnly || stockTwin) ? [i, t] : [i];
+    return p && p.kind === 'engine' ? engineSlotOf(cur, designDef(cur), p.id, keysOnly) : null;
   }
+  const engineName = () => engineNamer(cur, designDef(cur), keysOnly);
   function setKeyMsg(text, bad = false) {
     keyMsg = text || ''; keyMsgBad = !!bad;
     const m = $('parts').querySelector('[data-o="kmsg"]');
@@ -1516,9 +1538,9 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   }
   function startCap(capId) {
     const [k, v] = capId.split(':');
-    capKey = k === 'eng' ? { cap: capId, eng: v === 'up' ? 1 : -1 } : { cap: capId, id: k, i: Number(v) || 0 };
-    const what = capKey.eng ? `thrust ${capKey.eng > 0 ? 'up' : 'down'} on ${keyEngines().map((i) => `engine ${i + 1}`).join(' and ')}` : `“${keyLabelOf(bindingOf(capKey.id), designDef(cur))}”`;
-    keyMsg = `Press the key for ${what}: Esc cancels, Backspace or Delete clears it.`; keyMsgBad = false;
+    capKey = k === 'eng' ? { cap: capId, eng: v === 'up' ? 1 : -1 } : { cap: capId, drop: true };
+    const what = capKey.eng ? `${engineName()(keySlot()) || 'this engine'}’s thrust ${capKey.eng > 0 ? 'up' : 'down'}` : 'dropping the wing tanks';
+    keyMsg = `Press a key of the block (${BLOCK_TEXT}) for ${what}: Esc cancels, Backspace or Delete clears it.`; keyMsgBad = false;
     document.addEventListener('keydown', onKeyCap, true);
     document.addEventListener('keyup', swallowKeyUp, true);
     redrawPanel();
@@ -1529,39 +1551,27 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     document.removeEventListener('keyup', swallowKeyUp, true);
   }
   const swallowKeyUp = (e) => { if (capKey) { e.stopPropagation(); e.stopImmediatePropagation(); } };
-  // A keycap waiting: the next key sets it (Shift with a tap), Esc cancels, Backspace or Delete clears it; a key a part
-  // of this aircraft has moves here (that one says so), a global one is refused.
+  // A keycap waiting: the next key of the block sets it (Shift with one for the drop; an engine's take the plain key),
+  // Esc cancels, Backspace or Delete clears it; a key another part of this aircraft has moves here (that one says so),
+  // any other key is refused (the Controls page's).
   function onKeyCap(e) {
     if (!capKey || el.hidden || !cur) return;
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
     if (e.repeat || isModifier(e.code)) return;
-    const c = capKey, st = keys.load(), sc = keyScope();
+    const c = capKey, st = keys.load(), sc = keyScope().scope, slot = keySlot();
     if (e.code === 'Escape') { stopCap(); keyMsg = ''; redrawPanel(); return; }
+    if (c.eng && slot == null) { stopCap(); keyMsg = ''; redrawPanel(); return; }
     if (e.code === 'Backspace' || e.code === 'Delete') {
       stopCap();
-      if (c.eng) {
-        const E = keyEngines();
-        if (!engineKeys(st, sc, E[0]).own) { keyMsg = 'It moves with the all-engines keys: press a key on it to give it its own.'; keyMsgBad = false; redrawPanel(); return; }
-        saveKeysNow(bindEngineKey(st, sc, E, c.eng, null).store, 'Cleared: it has no key there now.');
-      } else saveKeysNow(clearKeys(st, sc, c.id, { index: c.i }).store, 'Cleared.');
+      saveKeysNow((c.eng ? clearEngineKey(st, sc, slot, c.eng) : clearDropKey(st, sc)).store, 'Cleared.');
       return;
     }
-    const kind = c.eng ? 'held' : bindingOf(c.id)?.kind || 'action';
-    const r = chordFor(e, kind);
+    const r = chordFor(e, c.eng ? 'held' : 'action', 'block');
     if (r.refused) { setKeyMsg(`${r.refused}. Press another key, or Esc.`, true); return; }
-    const out = c.eng ? bindEngineKey(st, sc, keyEngines(), c.eng, r.chord) : bindKey(st, sc, c.id, r.chord, { index: c.i, nameOf: keys.nameOf });
+    const out = c.eng ? bindEngineKey(st, sc, slot, c.eng, r.chord) : bindDropKey(st, sc, r.chord);
     if (out.error) { setKeyMsg(`${out.error}. Press another key, or Esc.`, true); return; }
     stopCap();
-    saveKeysNow(out.store, movedText(out.moved, r.chord) || `${keyLabel(r.chord)} set.`);
-  }
-  // A type's engine selected: its Mirror shows whether its twin has the same keys.
-  function syncStockTwin() {
-    const p = selPart();
-    if (!keysOnly || !keys || p?.kind !== 'engine') return;
-    const def = designDef(cur), i = engineIndex(def, p.id), t = twinIndex(cur, def, p.id);
-    if (t === null) return;
-    const st = keys.load(), sc = keyScope(), a = engineKeys(st, sc, i), b = engineKeys(st, sc, t);
-    stockTwin = a.own ? a.engines.includes(t) : !b.own;
+    saveKeysNow(out.store, movedText(out.moved, r.chord, { engine: engineName() }) || `${keyLabel(r.chord)} set.`);
   }
 
   function numsHtml(r) {
@@ -1640,6 +1650,13 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   function commit(next, full = true) {
     if (!next || JSON.stringify(next) === JSON.stringify(cur)) return false;
     hist.push(cur);
+    // v0.5.7: a part new to the design starts with no keys, even with the id of one removed before it (designs.js
+    // reuses the highest id): the keys a removed engine left (kept until Save, for Z) don't pass to it.
+    if (keys && !keysOnly) {
+      const had = new Set(cur.parts.map((p) => p.id)), fresh = next.parts.filter((p) => !had.has(p.id)).map((p) => p.id);
+      const sc = keyScope().scope, ak = aircraftKeys(keys.load(), sc);
+      if (fresh.some((id) => ak.engines[id])) keys.save(dropEngineKeys(keys.load(), sc, fresh).store);
+    }
     cur = next;
     changed(full);
     return true;
@@ -1686,13 +1703,6 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   });
   $('parts').addEventListener('change', (e) => {
     const t = e.target;
-    if (t.dataset.k === 'twin' && keys && keysOnly) {
-      stockTwin = t.checked;
-      const p = selPart(), def = designDef(cur), i = p ? engineIndex(def, p.id) : -1, tw = p ? twinIndex(cur, def, p.id) : null;
-      if (i >= 0 && tw !== null && engineKeys(keys.load(), keyScope(), i).own) saveKeysNow(setEngineTwin(keys.load(), keyScope(), i, tw, stockTwin).store, stockTwin ? `Engine ${tw + 1} takes the same keys.` : `Engine ${tw + 1} is back on the all-engines keys.`);
-      else redrawPanel();
-      return;
-    }
     if (t.type === 'range') {
       sliding = false; syncParts(null); renderNumbers(); tools();
       if (afDrag) { afDrag = false; view?.setDesign(cur, true); drawOverlay(); }
@@ -1708,12 +1718,11 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   $('parts').addEventListener('click', (e) => {
     const row = e.target.closest('[data-sel]');
     if (row) { select(row.dataset.sel); return; }
-    // v0.5.6: a keycap (again: cancels), As the others, back to the defaults
+    // v0.5.6: a keycap (again: cancels), the aircraft's keys cleared
     const capB = e.target.closest('[data-cap]');
     if (capB && keys) { if (capKey?.cap === capB.dataset.cap) { stopCap(); keyMsg = ''; redrawPanel(); } else { stopCap(); startCap(capB.dataset.cap); } return; }
     const ka = e.target.closest('[data-a]')?.dataset.a;
-    if (keys && ka === 'asOthers') { stopCap(); saveKeysNow(engineAsOthers(keys.load(), keyScope(), keyEngines()).store, 'Back on the all-engines keys.'); return; }
-    if (keys && ka === 'keysReset') { stopCap(); saveKeysNow(resetKeys(keys.load(), { scope: keyScope().scope }).store, keysOnly ? 'Back to the default keys.' : `Back to the ${TYPES[cur.base].name}’s keys.`); return; }
+    if (keys && ka === 'keysReset') { stopCap(); saveKeysNow(resetKeys(keys.load(), { scope: keyScope().scope }).store, 'Cleared: no keys of its own now.'); return; }
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'remove') { removeSel(); return; }
     if (a === 'done') { select(null); return; }
@@ -1730,7 +1739,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   function select(id) {
     sel = id && cur.parts.some((p) => p.id === id) ? id : null;
     if (sel || !id) { selAf = null; afDrag = false; }
-    stopCap(); keyMsg = ''; keyMsgBad = false; syncStockTwin();   // v0.5.6
+    stopCap(); keyMsg = ''; keyMsgBad = false;   // v0.5.6
     $('parts').innerHTML = partsHtml();
     help();
     drawOverlay();
@@ -1953,8 +1962,9 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
       if (!cur || palDrag) return;   // v0.5.6: a drag from the palette shows its own ghost (onPalMove())
       if (tool) { handAt = { r, e }; showGhost(ghostFor(r, null), e); return; }
       const id = pickPart(cur, r.o, r.u);
-      // v0.5.3: the airframe under the pointer (no part in the way)
-      const h = afOn && !id ? pickAirframe(cur, r.o, r.u) : null, ha = h ? { what: h.on, side: h.side } : null;
+      // v0.5.3: the airframe under the pointer (no part in the way). v0.5.7: not in a stock aircraft's keys editor (the
+      // airframe's keys are the Controls page's).
+      const h = afOn && !id && !keysOnly ? pickAirframe(cur, r.o, r.u) : null, ha = h ? { what: h.on, side: h.side } : null;
       view?.setCursor(id || ha ? 'over' : null);
       const afChanged = (ha?.what ?? null) !== (hoverAf?.what ?? null) || (ha?.side ?? 0) !== (hoverAf?.side ?? 0);
       if (afChanged) hoverAf = ha;
@@ -1979,7 +1989,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     click(r, e) {
       if (!cur) return;
       if (!tool) {
-        const h = afOn ? pickAirframe(cur, r.o, r.u) : null;
+        const h = afOn && !keysOnly ? pickAirframe(cur, r.o, r.u) : null;   // v0.5.7: a stock aircraft's: engines only
         if (h) selectAf(h.on, h.side);
         else if (sel || selAf) select(null);
         return;
@@ -2000,6 +2010,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     const res = store.save(cur);
     if (!res.ok) { setMsg('Browser storage is full: the design was not saved.', 'bad'); return false; }
     cur = res.design; savedJson = JSON.stringify(cur); isNew = false;
+    keepKeysOf(cur.id);   // v0.5.7: an engine removed takes its keys with it
     renderNumbers();
     setMsg(`Saved. It’s in New scenario’s aircraft picker.`, 'ok');
     return true;
@@ -2007,7 +2018,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
   function setMsg(t, cls) { $('msg').textContent = t; $('msg').className = `fsw-msg ${cls || ''}`; }
 
   function openEditor(d, fresh, stock = false) {
-    keysOnly = !!stock && !!keys; stopCap(); keyMsg = ''; keyMsgBad = false; stockTwin = true;
+    keysOnly = !!stock && !!keys; stopCap(); keyMsg = ''; keyMsgBad = false;
     el.dataset.mode = keysOnly ? 'keys' : 'design';
     cur = normalizeDesign(d); savedJson = JSON.stringify(cur); isNew = !!fresh && !keysOnly;
     page = 'editor';
@@ -2045,7 +2056,8 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     if (!force && dirty()) { $('ask').hidden = false; act('keep').focus(); return false; }
     stopView(); stopCap();
     const id = cur?.id;
-    if (isNew && !keysOnly && id && !store.get(id)) dropKeys(id);   // v0.5.6: a new design never saved takes its keys with it
+    // v0.5.6: a new design never saved takes its keys with it. v0.5.7: one left unsaved goes back to its saved engines'.
+    if (!keysOnly && id) keepKeysOf(id);
     cur = null; savedJson = null; isNew = false; keysOnly = false;
     tool = toolKey = sel = hover = ghost = dragPart = null; hand = { ...HAND0 }; handCand = handAt = null;
     selAf = hoverAf = null; afDrag = false;
@@ -2119,7 +2131,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     close() {
       if (el.hidden) return;
       stopView(); stopCap();
-      if (isNew && cur && !store.get(cur.id)) dropKeys(cur.id);
+      if (cur && !keysOnly) keepKeysOf(cur.id);   // v0.5.7: as leaving the editor without saving
       keysOnly = false;
       cur = null; page = 'list';
       tool = toolKey = sel = hover = ghost = dragPart = null; hand = { ...HAND0 }; handCand = handAt = null;
@@ -2144,6 +2156,7 @@ export function createWarehouse(root, { store = designStore(), keys = null } = {
     openStock,
     get keysOnly() { return keysOnly; },
     get capturing() { return capKey ? { ...capKey } : null; },
+    selectPart: (id) => select(id),   // v0.5.7: a part selected by hand (the checks: a mirror twin isn't in the list)
   };
   window.__wh = api;   // for the browser checks
   return api;

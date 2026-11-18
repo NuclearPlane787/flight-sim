@@ -30,22 +30,22 @@ try {
   const haze = await page.evaluate(() => { const u = window.__fs.world.uniforms; return { sigma: u.uHazeSigma0.value, wet: u.uWet?.value }; });
   check('and the world', haze.sigma > 2.6e-5 * 3, JSON.stringify(haze));
 
-  // The L key closes it and brings the same tab back.
+  // The L window's key (\ since v0.5.7) closes it and brings the same tab back.
   await page.evaluate(() => window.__fs.toggleL());
   await page.waitForTimeout(150);
-  check('L closes it', await page.evaluate(() => !window.__fs.weatherWin.isOpen));
+  check('\\ closes it', await page.evaluate(() => !window.__fs.weatherWin.isOpen));
   await page.evaluate(() => window.__fs.toggleL());
   await page.waitForTimeout(150);
-  check('L brings the Weather tab back', await page.evaluate(() => window.__fs.weatherWin.isOpen));
+  check('\\ brings the Weather tab back', await page.evaluate(() => window.__fs.weatherWin.isOpen));
   await page.evaluate(() => window.__fs.toggleL());
 
-  // K: the local QNH.
+  // Shift+B (K before v0.5.7): the local QNH.
   await page.mouse.click(720, 450);
   const qnh = await page.evaluate(() => window.__fs.sim.weather.qnh);
-  await page.keyboard.press('KeyK');
+  await page.keyboard.press('Shift+KeyB');   // v0.5.7: the local QNH is Shift+B (K is the warehouse's block)
   await page.waitForTimeout(200);
   const hpa = await page.evaluate(() => window.__fs.sim.baro.hpa);
-  check('K sets the local QNH', Math.abs(hpa - qnh) < 1e-9, `${hpa} vs ${qnh}`);
+  check('Shift+B sets the local QNH', Math.abs(hpa - qnh) < 1e-9, `${hpa} vs ${qnh}`);
 
   // Saves.
   const saved = await page.evaluate(() => { const fs = window.__fs; const st = JSON.parse(JSON.stringify(fs.captureState())); fs.sim.setWeather(null); fs.applyState(st); return fs.sim.weather?.preset; });

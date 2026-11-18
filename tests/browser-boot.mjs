@@ -57,11 +57,11 @@ try {
   await page.mouse.move(820, 630, { steps: 6 }); await page.mouse.up();
   const look2 = await page.evaluate(() => JSON.stringify(window.__fs.rig.looks));
   check('one-finger drag over the 3D view moves the camera', look2 !== look1);
-  await page.keyboard.press('KeyM');
+  await page.keyboard.press('KeyN');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForTimeout(500);
   const mapHit = await page.evaluate(() => { const b = [...document.querySelectorAll('#map-root button')].find((x) => /Skip to 15/.test(x.textContent)); if (!b) return 'no button'; const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return e === b ? 'ok' : (e && (e.id || e.className)); });
   check('the map\'s buttons get the pointer', mapHit === 'ok', mapHit);
-  await page.keyboard.press('KeyM');
+  await page.keyboard.press('KeyN');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForTimeout(300);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);

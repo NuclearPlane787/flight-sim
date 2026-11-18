@@ -36,7 +36,7 @@ const STRIP = [
   ['b', 'loc', 'LOC', 'Localizer: arm and fly the runway’s centreline', 'loc'],
   ['b', 'app', 'APP', 'Approach: arm and fly the localizer and the glideslope, and land', 'app'],
   ['b', 'ap', 'A/P', 'Autopilot (Z)', null],
-  ['b', 'toga', 'TO/<br>GA', 'Take-off or go-around thrust and guidance (O)', 'toga'],
+  ['b', 'toga', 'TO/<br>GA', 'Take-off or go-around thrust and guidance (Shift+T)', 'toga'],
 ];
 const TIPS = {
   spd: 'Speed (kt, or Mach above FL260; 84 or .84 is a Mach)',
@@ -191,5 +191,14 @@ export function createMcp(root, hud) {
     }
   }
 
-  return { el, update, close: knobs.close, get editing() { return knobs.edit ? knobs.edit.k : null; } };
+  // v0.5.7: the buttons' tooltips name the keys as bound (main.js → hud.setKeyNames(): keys.js keyNamesOf()).
+  const KEYED = { at: 'athr', ap: 'ap', toga: 'toga' };
+  const tips0 = Object.fromEntries(Object.keys(KEYED).map((k) => [k, btns[k].el.title.replace(/ \([^)]*\)/, '')]));
+  function setKeyNames(fn) {
+    for (const [k, id] of Object.entries(KEYED)) {
+      const key = typeof fn === 'function' ? fn(id) : '';
+      btns[k].el.title = k === 'at' ? tips0[k].replace(': arm or off', `: arm or off${key ? ` (${key})` : ''}`) : `${tips0[k]}${key ? ` (${key})` : ''}`;
+    }
+  }
+  return { el, update, setKeyNames, close: knobs.close, get editing() { return knobs.edit ? knobs.edit.k : null; } };
 }

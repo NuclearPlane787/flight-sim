@@ -57,7 +57,7 @@ try {
   await shot('v020-logbook-dev-filtered.png');
   const k0 = await page.evaluate(() => window.__keys.length);
   await page.focus('.fslb-filter select');
-  for (const k of ['KeyW', 'Space', 'KeyP', 'Digit1']) await page.keyboard.press(k);
+  for (const k of ['KeyW', 'Space', 'KeyN', 'Digit1']) await page.keyboard.press(k);
   check(await page.evaluate((n) => window.__keys.length === n, k0), 'keys in the panel never reach the game');
 
   // A deleted scenario still filters, under the name it had

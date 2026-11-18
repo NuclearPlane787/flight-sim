@@ -53,7 +53,7 @@
     window.__closed = 0;
     win.onclose = () => window.__closed++;
     // the game's own key listeners: the lead's L toggle (capture), and input.js's (bubble)
-    addEventListener('keydown', (e) => { if (e.code === 'KeyL' && !e.repeat) { e.preventDefault(); win.toggle(); } }, true);
+    addEventListener('keydown', (e) => { if (e.code === 'Backslash' && !e.repeat) { e.preventDefault(); win.toggle(); } }, true);   // v0.5.7: the game's \ (L before)
     addEventListener('keydown', (e) => window.__keys.push(e.code));
     win.open();
 

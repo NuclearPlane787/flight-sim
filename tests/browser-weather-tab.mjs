@@ -81,7 +81,7 @@ try {
   check(!await page.isVisible(W), 'Esc from a field... closes it');
   await page.evaluate(() => window.__show('weather'));
 
-  // Buttons don't take the focus; L toggles; the seg controls.
+  // Buttons don't take the focus; \ toggles; the seg controls.
   await clickSeg('turbulence', 'severe');
   check(await name() === 'Custom' && await page.evaluate(() => !document.querySelector('.fswx').contains(document.activeElement)), 'a seg button leaves the focus alone');
   await page.click(`${W} [data-p="clear"]`);
@@ -131,10 +131,10 @@ try {
   check(await page.evaluate(() => window.__tab()) === 'sky', 'from Weather to Sky');
   await page.click('.fssw:not(.fslw):not(.fswx) [data-tab="weather"]');
   check(await page.isVisible(W), 'from Sky to Weather');
-  await page.keyboard.press('KeyL');
-  check(!await page.isVisible(W), 'L closes it');
-  await page.keyboard.press('KeyL');
-  check(await page.isVisible(W), 'L opens it again');
+  await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
+  check(!await page.isVisible(W), '\\ closes it');
+  await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
+  check(await page.isVisible(W), '\\ opens it again');
 
   // Crashed: no changes. A weather set elsewhere refills an unedited tab.
   await page.evaluate(() => { window.__crashed = true; }); await page.waitForTimeout(150);

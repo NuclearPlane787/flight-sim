@@ -73,7 +73,7 @@ try {
     try {
       await page.waitForFunction(() => window.__fs && window.__fs.sim, null, { timeout: 60000 });
       if (js) await page.evaluate(`(() => { const fs = window.__fs; ${js} })()`);
-      await page.keyboard.press('Backquote');
+      await page.keyboard.press('F3');   // v0.5.7: the readout is F3 only (` does nothing)
       await page.waitForTimeout(wait);
       const stats = await page.evaluate(() => window.__fsStats);
       await page.screenshot({ path: path.join(OUT, `lead-${name}.png`) });

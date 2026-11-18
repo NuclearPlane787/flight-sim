@@ -54,8 +54,10 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   // The stand that goes by this ref. Some of Incheon's refs name two positions: take one that fits.
   const standByRef = (ap, ref) => usable(ap).find((s) => s.ref === ref) || (ap.stands || []).find((s) => s.ref === ref);
 
+  // v0.5.7: the keys as bound for the aircraft flown (main.js: setKeyNames); before that, the defaults. '' if unbound.
+  const DEFAULT_NAMES = { pushback: 'Shift+G', yawLeft: 'Q', yawRight: 'E', faster: ']', parkingBrake: 'B' };
   let keyNameFn = null;
-  const keyName = (id, dflt) => { const k = keyNameFn ? keyNameFn(id) : null; return k || dflt; };
+  const keyName = (id) => (keyNameFn ? keyNameFn(id) || '' : DEFAULT_NAMES[id] || '');
   const flow = {
     onstatus: null,
     setType(typeDef) { forcedType = typeDef || null; },
@@ -126,7 +128,8 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     if (r) { r.kind = 'out'; r.stand = stand.ref; r.runway = depEnd.ident; r.text = taxiText(r, `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`); }
     show(r);
     phase = 'parked';
-    say(`Stand ${stand.ref}. Pushback: P to start` + (r ? '' : ' (no taxi route found)'));
+    const pk = keyName('pushback');
+    say(`Stand ${stand.ref}. Pushback: ${pk ? `${pk} to start` : 'give it a key on the Controls page'}` + (r ? '' : ' (no taxi route found)'));
     return r;
   }
 
@@ -167,9 +170,11 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   }
 
   // v0.5.6 (review): the keys as they're bound for the aircraft flown (main.js: setKeyNames), else the defaults.
+  // v0.5.7: a key left unbound drops out of the line.
   function pushingText() {
-    const p = keyName('pushback', 'P'), l = keyName('yawLeft', 'Q'), r = keyName('yawRight', 'E'), f = keyName('faster', ']');
-    return `Pushing back. ${p} holds, ${l}/${r} steer the turn, ${f} speeds it up`;
+    const p = keyName('pushback'), l = keyName('yawLeft'), r = keyName('yawRight'), f = keyName('faster');
+    const parts = [p && `${p} holds`, l && r ? `${l}/${r} steer the turn` : '', f && `${f} speeds it up`].filter(Boolean);
+    return `Pushing back.${parts.length ? ' ' + parts.join(', ') : ''}`;
   }
   function onKey(action) {
     if (action !== 'pushback') return null;
@@ -180,7 +185,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       say(pushingText());
     } else if (phase === 'pushback' && pb) {
       pb.toggle();
-      say(pb.state.running ? pushingText() : `Pushback held: ${keyName('pushback', 'P')} to continue`);
+      say(pb.state.running ? pushingText() : `Pushback held${keyName('pushback') ? `: ${keyName('pushback')} to continue` : ''}`);
     } else if (phase === 'taxi') say('Pushback complete. ' + (route ? route.text : ''));
     else say('No pushback here: only at a gate start');
     return status;
@@ -196,7 +201,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
         phase = 'taxi';
         sim.controls.parkingBrake = true;
         reroute();
-        say('Pushback complete. Release the parking brake (B). ' + (route ? route.text : 'No taxi route found'));
+        say(`Pushback complete. Release the parking brake${keyName('parkingBrake') ? ` (${keyName('parkingBrake')})` : ''}. ` + (route ? route.text : 'No taxi route found'));
       }
       return;
     }
@@ -214,7 +219,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       if (dist(nx, ny, route.standXY[0], route.standXY[1]) < 8 && s.gs < 1) {
         phase = 'arrived';
         line?.clear();
-        say(`At stand ${route.stand}. Set the parking brake (B)`);
+        say(`At stand ${route.stand}. Set the parking brake${keyName('parkingBrake') ? ` (${keyName('parkingBrake')})` : ''}`);
       }
     }
   }

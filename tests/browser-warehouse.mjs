@@ -50,7 +50,7 @@ try {
   check('the Warehouse button is on the menu (WAREHOUSE_ON)', await page.$eval('[data-k="warehouse"]', (b) => !b.hidden));
   await page.goto(BASE + '?warehouse=1');
   await page.waitForSelector('.fsm:not([hidden])', { timeout: 90000 });
-  const navOrder = await page.$$eval('.fsm-nav > :not([hidden])', (els) => els.map((e) => e.dataset.k));
+  const navOrder = await page.$$eval('.fsm-nav [data-k]:not([hidden])', (els) => els.map((e) => e.dataset.k));   // v0.5.7: the rows are nested
   check('with it, Warehouse comes after Load scenario', navOrder.indexOf('warehouse') === navOrder.indexOf('load') + 1, navOrder.join(','));
   await page.waitForTimeout(800);
   const rafMenu = await rafOver(page, 1500);
@@ -136,7 +136,8 @@ try {
   check('the menu is back', await page.$eval('.fsm-nav', (n) => !n.hidden));
   await page.waitForTimeout(500);
   const rafAfter = await rafOver(page, 1500);
-  check('no more frames requested than in the menu before', rafAfter <= rafMenu + 1, `menu ${rafMenu}, after ${rafAfter}`);
+  // v0.5.7: the home page's plane asks for up to 30 frames a second itself (before and after): a few frames of slack.
+  check('no more frames requested than in the menu before', rafAfter <= rafMenu + 4, `menu ${rafMenu}, after ${rafAfter}`);
   check('no canvas left in the warehouse', (await page.$$('.fsw canvas')).length === 0);
 
   // ---- Reload: still there; duplicate, rename, delete ----

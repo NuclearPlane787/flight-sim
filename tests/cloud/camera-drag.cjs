@@ -121,14 +121,14 @@ const DEG = Math.PI / 180;
   ok((await page.evaluate(() => window.__fs.rig.view.id)) === 'orbit', 'the view switch still clicks (3rd person)');
 
   // The map: dragging it pans the map, not the camera.
-  await page.keyboard.press('m');
+  await page.keyboard.press('n');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForTimeout(700);
   const m0 = await look('orbit');
   const mc = await page.evaluate(() => { const c = document.querySelector('.fsui-map canvas'); const r = c.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2, getComputedStyle(c).display]; });
   await drag(-150, 40, { from: [mc[0], mc[1]] });
   const m1 = await look('orbit');
   ok(m1.yaw === m0.yaw && m1.pitch === m0.pitch, `a drag on the map leaves the camera alone (map canvas ${mc[2]})`);
-  await page.keyboard.press('m');
+  await page.keyboard.press('n');   // v0.5.7: the map is N (M is the warehouse's block)
   await page.waitForTimeout(400);
 
   // The swipe and the pinch still work.

@@ -1,287 +1,310 @@
-// v0.5.6: the keys (src/keys.js), engine groups in the input (src/input.js) and the sim's split levers
-// (controls.thrustEng). Shane, 2026-11-18: "A keybindings selection per plane instead of general rule. That is, you can
-// give each engine or two their own keybinding for powering up and down, or change the default key settings like
-// ailerons, elevators, rudder, flaps." And: "change the default key bindings for flaps from 67890 to just -/=". Then:
-// "Move the keybinding settings thing to the warehouse, where you can attach keybindings by selecting plane parts like
-// the engines ... an engine would have r/f as the controls. This is similar to Besiege." The parts' keys are each
-// aircraft's (the warehouse); the rest are global (the Controls page).
+// v0.5.7: the keys (src/keys.js), the engines' own keys in the input (src/input.js) and the sim's split levers
+// (controls.thrustEng). Shane's decisions: a block of 16 keys under the right hand (7–0, U–P, J–;, M–/, and Shift with
+// them) is the warehouse's, each aircraft's own: each engine its own thrust up and down, a wing tank the drop; every
+// other key is the Controls page's, the same for every aircraft. Keys that do nothing on their own (` tab caps return
+// delete and the Shifts) can't be bound. The store is v3; v0.5.6's keeps its valid global changes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BINDINGS, GLOBAL_BINDINGS, PART_BINDINGS, KEYS_STORE, resolveKeys, keymapOf, bindKey, clearKeys, resetKeys, addGroup,
-  setGroupEngines, bindGroupKey, removeGroup, chordFor, keyLabel, loadKeys, saveKeys, emptyStore, scopeOf, enginesOf,
-  groupLabel, keysFrom, engineKeys, bindEngineKey, engineAsOthers, setEngineTwin, partBindings, movedText, clash,
-  isModifier } from '../src/keys.js';
+import { BINDINGS, SECTIONS, BLOCK, KEYS_STORE, RESERVED, resolveKeys, keymapOf, bindKey, clearKeys, resetKeys, chordFor,
+  checkChord, keyLabel, loadKeys, saveKeys, emptyStore, scopeOf, keysFrom, isModifier, isBlockKey, clash, movedText,
+  bindEngineKey, clearEngineKey, bindDropKey, clearDropKey, engineKeysOf, aircraftKeys, keepEngineKeys, dropEngineKeys,
+  copyKeys, engineSlots, enginesOf, keyNamesOf } from '../src/keys.js';
 import { airborne, run, KT } from './sim-helpers.mjs';
-import { resolveDef } from '../src/sim/designs.js';
+import { resolveDef, designDef, newDesign, addPart, removePart } from '../src/sim/designs.js';
 
-const A321 = { scope: 'type:a321neo' }, B777 = { scope: 'type:b777-300er' };
-const DESIGN = { scope: 'design:d1', base: 'type:a321neo' };
-const G = {};   // the global keys' scope (any: they're every aircraft's)
+const A321 = 'type:a321neo', B777 = 'type:b777-300er';
+const BLOCK_WHY = (k) => `${k} is in the warehouse’s block (7–0, U–P, J–;, M–/): set it on a part`;
+const ONLY_BLOCK = 'Only the block’s keys here: 7–0, U–P, J–; and M–/';
 
-test('the defaults: flaps on − and = a step a press, 6 to 0 free, time compression on [ and ], the tanks’ drop unbound', () => {
-  const r = resolveKeys(null, A321);
-  assert.deepEqual(r.bind.flapUp, ['Minus']);
-  assert.deepEqual(r.bind.flapDown, ['Equal']);
-  for (const id of ['flap0', 'flap1', 'flap2', 'flap3', 'flap4', 'dropTanks']) assert.deepEqual(r.bind[id], []);
-  assert.deepEqual(r.bind.faster, ['BracketRight', 'NumpadAdd']);
-  assert.deepEqual(r.bind.slower, ['BracketLeft', 'NumpadSubtract']);
-  const m = keymapOf(r);
-  assert.deepEqual(m.get('Minus'), { kind: 'action', id: 'flapUp' });
-  assert.deepEqual(m.get('Equal'), { kind: 'action', id: 'flapDown' });
-  assert.deepEqual(m.get('BracketRight'), { kind: 'action', id: 'faster' });
-  assert.equal(m.get('Digit6'), undefined);
-  assert.equal(m.get('Escape'), undefined);   // the menu's, outside the bindings
-  assert.equal(m.get('KeyL'), undefined);     // the Sky window's
-  assert.deepEqual(m.get('KeyW'), { kind: 'held', id: 'pitchDown' });
-  assert.deepEqual(m.get('Shift+KeyC'), { kind: 'action', id: 'spoilersArm' });
-  assert.deepEqual(m.get('KeyC'), { kind: 'action', id: 'speedbrake' });
-  // Every key appears once: the defaults don't clash.
+test('the defaults: every control on the Controls page, the moved keys, nothing in the block, every key once', () => {
+  const r = resolveKeys(null);
+  assert.equal(BINDINGS.length, 36);
+  assert.deepEqual(SECTIONS.map((s) => s.id), ['fly', 'thrust', 'wing', 'ground', 'auto', 'views', 'time']);
+  for (const b of BINDINGS) assert.ok(SECTIONS.some((s) => s.id === b.section), b.id);
+  const k = (id) => r.bind[id];
+  assert.deepEqual([k('pitchDown'), k('pitchUp'), k('rollLeft'), k('rollRight'), k('yawLeft'), k('yawRight'), k('trimDown'), k('trimUp')],
+    [['KeyW'], ['KeyS'], ['KeyA'], ['KeyD'], ['KeyQ'], ['KeyE'], ['KeyY'], ['KeyH']]);
+  assert.deepEqual([k('thrustUp'), k('thrustDown'), k('flapUp'), k('flapDown')], [['KeyR'], ['KeyF'], ['Minus'], ['Equal']]);
+  for (const id of ['flap0', 'flap1', 'flap2', 'flap3', 'flap4']) assert.deepEqual(k(id), []);
+  assert.deepEqual([k('speedbrake'), k('spoilersArm'), k('gear'), k('brakes'), k('parkingBrake')], [['KeyC'], ['Shift+KeyC'], ['KeyG'], ['Space'], ['KeyB']]);
+  assert.deepEqual([k('ap'), k('athr'), k('toga'), k('localQnh')], [['KeyZ'], ['KeyX'], ['Shift+KeyT'], ['Shift+KeyB']]);
+  assert.deepEqual([k('viewCockpit'), k('viewNose'), k('viewOrbit'), k('view')], [['Digit1'], ['Digit2'], ['Digit3'], ['KeyV']]);
+  assert.deepEqual([k('faster'), k('slower'), k('rewind'), k('map'), k('pushback'), k('perf')],
+    [['BracketRight', 'NumpadAdd'], ['BracketLeft', 'NumpadSubtract'], ['KeyT'], ['KeyN'], ['Shift+KeyG'], ['F3']]);
+  // No default is the block's (or Shift with one), and every key appears once.
   const all = BINDINGS.flatMap((b) => b.keys);
+  assert.ok(all.every((c) => !isBlockKey(c)), all.filter(isBlockKey).join());
   assert.equal(new Set(all).size, all.length);
-  assert.equal(r.groups.length, 0);
-  // The global keys are the Controls page's: the views, time, the AP, A/THR and TO/GA, map, pushback, rewind, QNH and the readout.
-  assert.deepEqual(GLOBAL_BINDINGS.map((b) => b.id).sort(), ['ap', 'athr', 'faster', 'localQnh', 'map', 'perf', 'pushback', 'rewind', 'slower', 'toga', 'view', 'viewCockpit', 'viewNose', 'viewOrbit'].sort());
-  // The parts': an engine R/F; the wing A/D, −/=, the detents, C, Shift+C; the tailplane W/S, Y/H; the fin Q/E; the
-  // fuselage G, Space, B; a wing tank its drop.
-  const of = (part) => partBindings(part).map((b) => b.id);
-  assert.deepEqual(of('engine'), ['thrustUp', 'thrustDown']);
-  assert.deepEqual(of('wing'), ['rollLeft', 'rollRight', 'flapUp', 'flapDown', 'flap0', 'flap1', 'flap2', 'flap3', 'flap4', 'speedbrake', 'spoilersArm']);
-  assert.deepEqual(of('tailplane'), ['pitchDown', 'pitchUp', 'trimDown', 'trimUp']);
-  assert.deepEqual(partBindings('tailplane', 'airbus').map((b) => b.id), ['pitchDown', 'pitchUp'], 'the trim rows are the Boeings’');
-  assert.deepEqual(of('fin'), ['yawLeft', 'yawRight']);
-  assert.deepEqual(of('fuselage'), ['gear', 'brakes', 'parkingBrake']);
-  assert.deepEqual(of('tank'), ['dropTanks']);
-  assert.equal(GLOBAL_BINDINGS.length + PART_BINDINGS.length, BINDINGS.length);
+  for (const b of BINDINGS) for (const c of b.keys) assert.equal(checkChord(c, b.kind, 'global').chord, c, `${b.id} ${c}`);
+  // The key map: the moved keys and the dead ones map to nothing; the new ones are there.
+  const m = keymapOf(r);
+  for (const c of ['KeyL', 'KeyM', 'KeyP', 'KeyO', 'KeyK', 'Backquote', 'Backslash', 'Tab', 'Enter', 'Backspace', 'Digit7', 'Escape']) assert.equal(m.get(c), undefined, c);
+  assert.deepEqual(m.get('KeyN'), { kind: 'action', id: 'map' });
+  assert.deepEqual(m.get('Shift+KeyG'), { kind: 'action', id: 'pushback' });
+  assert.deepEqual(m.get('KeyG'), { kind: 'action', id: 'gear' });
+  assert.deepEqual(m.get('Shift+KeyT'), { kind: 'action', id: 'toga' });
+  assert.deepEqual(m.get('KeyT'), { kind: 'action', id: 'rewind' });
+  assert.deepEqual(m.get('Shift+KeyB'), { kind: 'action', id: 'localQnh' });
+  assert.deepEqual(m.get('F3'), { kind: 'action', id: 'perf' });
+  assert.deepEqual(m.get('KeyW'), { kind: 'held', id: 'pitchDown' });
+  assert.deepEqual(m.get('KeyR'), { kind: 'held', id: 'thrustUp' });
+  assert.deepEqual(r.engines, []);
+  assert.equal(r.drop, null);
+  // The labels the notes use.
+  assert.equal(keyNamesOf(r)('pushback'), 'Shift+G');
+  assert.equal(keyNamesOf(r)('flap0'), '');
 });
 
-test('global keys are every aircraft’s; part keys each aircraft’s; a design flies its base type’s until it has its own', () => {
-  let st = emptyStore();
-  st = bindKey(st, G, 'map', 'KeyN').store;
-  for (const sc of [A321, B777, DESIGN]) assert.deepEqual(resolveKeys(st, sc).bind.map, ['KeyN']);
-  assert.deepEqual(st.global.bind, { map: ['KeyN'] }, 'only what differs is stored');
-  assert.deepEqual(st.scopes, {});
-  st = bindKey(st, B777, 'gear', 'KeyU').store;
-  assert.deepEqual(resolveKeys(st, B777).bind.gear, ['KeyU']);
-  assert.deepEqual(resolveKeys(st, A321).bind.gear, ['KeyG']);
-  assert.deepEqual(st.scopes['type:b777-300er'].bind, { gear: ['KeyU'] });
-  // The A321neo's part key shows on its design, until the design has its own.
-  st = bindKey(st, A321, 'flapUp', 'KeyJ').store;
-  let d = resolveKeys(st, DESIGN);
-  assert.deepEqual(d.bind.flapUp, ['KeyJ']);
-  assert.equal(d.own, false);
-  assert.equal(d.from, 'type:a321neo');
-  st = bindKey(st, DESIGN, 'yawLeft', 'KeyI').store;
-  d = resolveKeys(st, DESIGN);
-  assert.equal(d.own, true);
-  assert.deepEqual(d.bind.flapUp, ['KeyJ'], 'its own set starts from the base type’s');
-  assert.deepEqual(d.bind.yawLeft, ['KeyI']);
-  assert.deepEqual(d.bind.map, ['KeyN'], 'with the global keys');
-  assert.deepEqual(resolveKeys(st, A321).bind.yawLeft, ['KeyQ'], 'the type is untouched');
-  // Reset: the design goes back to its base type's; the type back to the defaults; 'global' the Controls page's.
-  st = resetKeys(st, DESIGN).store;
-  assert.deepEqual(resolveKeys(st, DESIGN).bind.yawLeft, ['KeyQ']);
-  assert.deepEqual(resolveKeys(st, DESIGN).bind.flapUp, ['KeyJ']);
-  st = resetKeys(st, A321).store;
-  assert.deepEqual(resolveKeys(st, A321).bind.flapUp, ['Minus']);
-  st = resetKeys(st, { scope: 'global' }).store;
-  assert.deepEqual(resolveKeys(st, A321).bind.map, ['KeyM']);
-  assert.deepEqual(resolveKeys(st, B777).bind.gear, ['KeyU'], 'the parts’ keys stay');
+test('the block: 16 keys under the right hand, Shift with them too', () => {
+  assert.deepEqual(BLOCK, ['Digit7', 'Digit8', 'Digit9', 'Digit0', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon',
+    'KeyM', 'Comma', 'Period', 'Slash']);
+  assert.ok(isBlockKey('KeyU') && isBlockKey('Shift+KeyU') && isBlockKey('Slash') && isBlockKey('Digit0'));
+  assert.ok(!isBlockKey('Digit6') && !isBlockKey('KeyY') && !isBlockKey('Quote') && !isBlockKey('BracketLeft') && !isBlockKey('KeyN'));
 });
 
-test('within a side a key moves: that control loses it (and has none left if it was its only one)', () => {
-  let st = emptyStore();
-  const r = bindKey(st, A321, 'flapUp', 'KeyG');
-  assert.deepEqual(r.moved, [{ id: 'gear', chord: 'KeyG', left: 0 }]);
-  assert.match(movedText(r.moved, 'KeyG'), /^G was the gear’s: now it has no key\.$/);
-  st = r.store;
-  const k = resolveKeys(st, A321);
-  assert.deepEqual(k.bind.flapUp, ['KeyG']);
-  assert.deepEqual(k.bind.gear, []);
-  assert.deepEqual(keymapOf(k).get('KeyG'), { kind: 'action', id: 'flapUp' });
-  // A second key (add, or an index past the end), one key replaced (index), one cleared.
-  st = bindKey(st, A321, 'flapUp', 'Minus', { add: true }).store;
-  assert.deepEqual(resolveKeys(st, A321).bind.flapUp, ['KeyG', 'Minus']);
-  st = bindKey(st, A321, 'flapUp', 'KeyJ', { index: 0 }).store;
-  assert.deepEqual(resolveKeys(st, A321).bind.flapUp, ['KeyJ', 'Minus']);
-  st = bindKey(st, A321, 'flapUp', 'KeyU', { index: 2 }).store;
-  assert.deepEqual(resolveKeys(st, A321).bind.flapUp, ['KeyJ', 'Minus', 'KeyU']);
-  st = clearKeys(st, A321, 'flapUp', { index: 1 }).store;
-  assert.deepEqual(resolveKeys(st, A321).bind.flapUp, ['KeyJ', 'KeyU']);
-  st = clearKeys(st, A321, 'flapUp').store;
-  assert.deepEqual(resolveKeys(st, A321).bind.flapUp, []);
-  // The global side: a global key moves among the global ones.
-  const m2 = bindKey(emptyStore(), G, 'map', 'NumpadAdd');
-  assert.deepEqual(m2.moved, [{ id: 'faster', chord: 'NumpadAdd', left: 1 }]);
-  assert.deepEqual(resolveKeys(m2.store, A321).bind.faster, ['BracketRight']);
-  st = clearKeys(emptyStore(), G, 'ap').store;
-  assert.deepEqual(resolveKeys(st, B777).bind.ap, []);
-  assert.equal(keymapOf(resolveKeys(st, A321)).get('KeyZ'), undefined);
+test('the block refused on the Controls page, anything else refused in the warehouse, naming the rule', () => {
+  // The Controls page: a block key, or Shift with one, is the warehouse's.
+  assert.equal(bindKey(emptyStore(), 'map', 'KeyU').error, BLOCK_WHY('U'));
+  assert.equal(bindKey(emptyStore(), 'gear', 'Shift+KeyL').error, BLOCK_WHY('Shift+L'));
+  assert.equal(bindKey(emptyStore(), 'pitchDown', 'Semicolon').error, BLOCK_WHY(';'));
+  assert.deepEqual(chordFor({ code: 'KeyU' }, 'action', 'global'), { refused: BLOCK_WHY('U') });
+  assert.deepEqual(chordFor({ code: 'Slash', shiftKey: true }, 'action', 'global'), { refused: BLOCK_WHY('Shift+/') });
+  // The warehouse: only the block.
+  assert.equal(bindEngineKey(emptyStore(), A321, '0', 1, 'KeyR').error, ONLY_BLOCK);
+  assert.equal(bindEngineKey(emptyStore(), A321, '0', 1, 'Digit6').error, ONLY_BLOCK);
+  assert.equal(bindDropKey(emptyStore(), 'design:d1', 'KeyN').error, ONLY_BLOCK);
+  assert.deepEqual(chordFor({ code: 'KeyW' }, 'held', 'block'), { refused: ONLY_BLOCK });
+  // Free keys are fine where they belong.
+  assert.ok(bindKey(emptyStore(), 'map', 'Digit4').store);
+  assert.ok(bindEngineKey(emptyStore(), A321, '0', 1, 'KeyU').store);
 });
 
-test('between the sides a key is refused, naming its control: a part can’t take a global key, nor the Controls page a part’s', () => {
-  // A part's key wanting a global one.
-  let r = bindKey(emptyStore(), A321, 'gear', 'KeyM');
-  assert.equal(r.store, undefined);
-  assert.equal(r.error, 'M is the key for the map: change it on the Controls page');
-  r = bindEngineKey(emptyStore(), A321, [0, 1], 1, 'KeyT');
-  assert.match(r.error, /^T is the key for rewind: change it on the Controls page$/);
-  r = bindGroupKey(addGroup(emptyStore(), A321, [0]).store, A321, 0, 1, 'KeyZ');
-  assert.match(r.error, /the autopilot/);
-  // A global key wanting a part's: by default ...
-  r = bindKey(emptyStore(), G, 'map', 'KeyR');
-  assert.match(r.error, /^R is the key for thrust up \(all engines\), on an engine: change it in the warehouse first/);
-  r = bindKey(emptyStore(), G, 'map', 'Shift+KeyW');   // W is held (the elevator): Shift+W would press it too
-  assert.match(r.error, /pitch down, on the tailplane/);
-  // ... or as stored (an aircraft's own key, an engine's group), named.
-  let st = bindKey(emptyStore(), B777, 'flapUp', 'KeyJ').store;
-  r = bindKey(st, G, 'map', 'KeyJ', { nameOf: (sc) => (sc === 'type:b777-300er' ? 'the 777-300ER' : null) });
-  assert.match(r.error, /^J is the key for flaps up a step, on the wing on the 777-300ER: change it in the warehouse first/);
-  st = bindEngineKey(emptyStore(), DESIGN, [0], 1, 'KeyU').store;
-  r = bindKey(st, G, 'perf', 'KeyU');
-  assert.match(r.error, /^U is an engine’s own thrust key on one of your aircraft/);
-  // A free key is fine both ways (and Shift+ a part's tapped key is free for a global tap).
-  assert.ok(bindKey(emptyStore(), G, 'map', 'KeyN').store);
-  assert.ok(bindKey(emptyStore(), G, 'map', 'Shift+KeyG').store);
-  assert.ok(bindKey(emptyStore(), A321, 'gear', 'Shift+KeyM').store);
+test('Shift with a block key: an action takes it (the drop); a held one (an engine’s thrust) takes the plain key', () => {
+  assert.deepEqual(chordFor({ code: 'KeyP', shiftKey: true }, 'action', 'block'), { chord: 'Shift+KeyP' });
+  assert.deepEqual(chordFor({ code: 'KeyU', shiftKey: true }, 'held', 'block'), { chord: 'KeyU' });
+  let st = bindDropKey(emptyStore(), 'design:d1', 'Shift+KeyP').store;
+  assert.equal(aircraftKeys(st, 'design:d1').drop, 'Shift+KeyP');
+  st = bindEngineKey(st, 'design:d1', 'p1', 1, 'Shift+KeyU').store;
+  assert.deepEqual(engineKeysOf(st, 'design:d1', 'p1'), { up: 'KeyU', down: null });
+  // A held engine key and the drop on Shift with it would take one press: the drop moves it.
+  const r = bindDropKey(st, 'design:d1', 'Shift+KeyU');
+  assert.deepEqual(r.moved, [{ eng: 'p1', dir: 1, chord: 'KeyU' }]);   // the key it lost
+  assert.deepEqual(engineKeysOf(r.store, 'design:d1', 'p1'), { up: null, down: null });
+  assert.equal(clash('Shift+KeyU', 'action', 'KeyU', 'held'), true);
   assert.equal(clash('Shift+KeyG', 'action', 'KeyG', 'action'), false);
-  assert.equal(clash('Shift+KeyW', 'action', 'KeyW', 'held'), true);
 });
 
-test('a held control reads its key with or without Shift: X held and Shift+X tapped can’t both be bound', () => {
-  let r = bindKey(emptyStore(), A321, 'gear', 'Shift+KeyW');
-  assert.deepEqual(r.moved, [{ id: 'pitchDown', chord: 'Shift+KeyW', left: 0 }]);
-  r = bindKey(emptyStore(), A321, 'pitchUp', 'Shift+KeyC');   // a held control takes the plain key
-  const k = resolveKeys(r.store, A321);
-  assert.deepEqual(k.bind.pitchUp, ['KeyC']);
-  assert.deepEqual(k.bind.speedbrake, []);
-  assert.deepEqual(k.bind.spoilersArm, []);
-});
-
-test('Esc, L, Tab and the modifiers are refused, and so is anything with Ctrl, Cmd or Alt', () => {
-  assert.ok(chordFor({ code: 'Escape' }).refused);
-  assert.ok(chordFor({ code: 'KeyL' }).refused);
-  assert.ok(chordFor({ code: 'Tab' }).refused);
-  assert.ok(chordFor({ code: 'ShiftLeft', shiftKey: true }).refused);
-  assert.ok(isModifier('ShiftLeft') && !isModifier('KeyS'));
-  assert.ok(chordFor({ code: 'KeyW', ctrlKey: true }).refused);
-  assert.ok(chordFor({ code: 'KeyW', metaKey: true }).refused);
-  assert.ok(chordFor({ code: 'KeyW', altKey: true }).refused);
+test('keys that do nothing on their own, and the fixed ones, can’t be bound anywhere', () => {
+  for (const code of ['Backquote', 'Tab', 'CapsLock', 'Enter', 'Backspace', 'Delete', 'Escape', 'Backslash', 'F5', 'F11', 'F12']) {
+    assert.ok(RESERVED.has(code), code);
+    for (const where of ['global', 'block']) {
+      const r = chordFor({ code }, 'action', where);
+      assert.ok(r.refused, `${code} ${where}`);
+      assert.equal(r.refused, RESERVED.get(code));
+    }
+    assert.ok(bindKey(emptyStore(), 'map', code).error, code);
+  }
+  assert.match(RESERVED.get('Backquote'), /^` does nothing on its own/);
+  assert.match(RESERVED.get('Backslash'), /Sky window/);
+  assert.match(RESERVED.get('Escape'), /menu/);
+  for (const code of ['ShiftLeft', 'ShiftRight']) { assert.ok(isModifier(code)); assert.ok(chordFor({ code, shiftKey: true }).refused); }
+  assert.ok(!isModifier('KeyS'));
+  for (const mod of ['ctrlKey', 'metaKey', 'altKey']) {
+    assert.ok(chordFor({ code: 'KeyW', [mod]: true }).refused);
+    assert.ok(chordFor({ code: 'KeyU', [mod]: true }, 'held', 'block').refused);
+  }
+  assert.ok(checkChord('Ctrl+KeyW', 'action').refused);
   assert.deepEqual(chordFor({ code: 'KeyC', shiftKey: true }, 'action'), { chord: 'Shift+KeyC' });
   assert.deepEqual(chordFor({ code: 'KeyC', shiftKey: true }, 'held'), { chord: 'KeyC' });
-  assert.ok(bindKey(emptyStore(), A321, 'gear', 'KeyL').error);
-  assert.ok(bindKey(emptyStore(), A321, 'gear', 'Escape').error);
-  assert.ok(bindKey(emptyStore(), G, 'map', 'KeyL').error);
-  assert.ok(bindEngineKey(emptyStore(), A321, [0], 1, 'Escape').error);
   assert.equal(keyLabel('Shift+KeyC'), 'Shift+C');
   assert.equal(keyLabel('Minus'), '−');
-  assert.equal(keyLabel('BracketLeft'), '[');
-  assert.equal(keyLabel('Digit6'), '6');
+  assert.equal(keyLabel('Backslash'), '\\');
+  assert.equal(keyLabel('Semicolon'), ';');
   assert.equal(keyLabel('NumpadAdd'), 'Num +');
 });
 
-test('the store round-trips under gamedump:flight-sim:keys; a bad one reads as empty; v0.5.6’s first shape reads leniently', () => {
+test('on the Controls page a key another control had moves, and says so; keys added, replaced, cleared', () => {
+  let r = bindKey(emptyStore(), 'flapUp', 'KeyG');
+  assert.deepEqual(r.moved, [{ id: 'gear', chord: 'KeyG', left: 0 }]);
+  assert.equal(movedText(r.moved, 'KeyG'), 'G was the key for the gear, which has none now.');
+  let st = r.store;
+  let k = resolveKeys(st);
+  assert.deepEqual(k.bind.flapUp, ['KeyG']);
+  assert.deepEqual(k.bind.gear, []);
+  assert.deepEqual(keymapOf(k).get('KeyG'), { kind: 'action', id: 'flapUp' });
+  assert.deepEqual(st.global.bind, { gear: [], flapUp: ['KeyG'] }, 'only what differs is stored');
+  // add (an index past the end), replace one, clear one, clear all
+  st = bindKey(st, 'flapUp', 'Digit4', { index: 1 }).store;
+  assert.deepEqual(resolveKeys(st).bind.flapUp, ['KeyG', 'Digit4']);
+  st = bindKey(st, 'flapUp', 'Digit5', { index: 0 }).store;
+  assert.deepEqual(resolveKeys(st).bind.flapUp, ['Digit5', 'Digit4']);
+  st = clearKeys(st, 'flapUp', { index: 1 }).store;
+  assert.deepEqual(resolveKeys(st).bind.flapUp, ['Digit5']);
+  st = clearKeys(st, 'flapUp').store;
+  assert.deepEqual(resolveKeys(st).bind.flapUp, []);
+  // a second key moving from another that keeps one: no "none now"
+  r = bindKey(emptyStore(), 'map', 'NumpadAdd');
+  assert.deepEqual(r.moved, [{ id: 'faster', chord: 'NumpadAdd', left: 1 }]);
+  assert.equal(movedText(r.moved, 'NumpadAdd'), 'Num + was the key for time faster.');
+  // a held control reads its key with or without Shift: Shift+W tapped takes W from pitch down
+  r = bindKey(emptyStore(), 'gear', 'Shift+KeyW');
+  assert.deepEqual(r.moved, [{ id: 'pitchDown', chord: 'KeyW', left: 0 }]);
+  assert.equal(movedText(r.moved, 'Shift+KeyW'), 'W was the key for pitch down, which has none now.', 'naming the key it lost');
+  k = resolveKeys(bindKey(emptyStore(), 'pitchUp', 'Shift+KeyC').store);
+  assert.deepEqual(k.bind.pitchUp, ['KeyC']);
+  assert.deepEqual(k.bind.speedbrake, []);
+  assert.deepEqual(k.bind.spoilersArm, []);
+  // Reset: the Controls page's defaults back; the block's keys stay.
+  st = bindEngineKey(bindKey(emptyStore(), 'map', 'Digit4').store, A321, '0', 1, 'KeyU').store;
+  st = resetKeys(st, { scope: 'global' }).store;
+  assert.deepEqual(resolveKeys(st).bind.map, ['KeyN']);
+  assert.deepEqual(engineKeysOf(st, A321, '0'), { up: 'KeyU', down: null });
+});
+
+test('the store: v3 round-trips under gamedump:flight-sim:keys; a bad one reads as empty; a hand-edited one is cleaned', () => {
   const mem = new Map();
   const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => { mem.set(k, String(v)); } };
-  let st = bindKey(emptyStore(), B777, 'gear', 'KeyJ').store;
-  st = bindEngineKey(st, B777, [0], 1, 'KeyU').store;
-  st = bindKey(st, G, 'toga', 'KeyN').store;
+  let st = bindKey(emptyStore(), 'map', 'Digit4').store;
+  st = bindEngineKey(st, B777, '1', -1, 'KeyJ').store;
+  st = bindDropKey(st, 'design:d9', 'Shift+KeyP').store;
+  assert.deepEqual(st, { v: 3, global: { bind: { map: ['Digit4'] } }, aircraft: { [B777]: { engines: { 1: { up: null, down: 'KeyJ' } } }, 'design:d9': { engines: {}, drop: 'Shift+KeyP' } } });
   assert.equal(saveKeys(storage, st), true);
-  assert.ok(KEYS_STORE.startsWith('gamedump:flight-sim:'));
+  assert.ok(KEYS_STORE === 'gamedump:flight-sim:keys');
   assert.deepEqual(loadKeys(storage), st);
   mem.set(KEYS_STORE, '{not json');
   assert.deepEqual(loadKeys(storage), emptyStore());
   assert.deepEqual(loadKeys(null), emptyStore());
-  // v0.5.6's first shape: every key per aircraft, the Controls page's `last`. The non-part keys in a scope are dropped.
-  mem.set(KEYS_STORE, JSON.stringify({ v: 1, last: 'type:a321neo', scopes: {
-    'type:a321neo': { bind: { map: ['KeyR'], ap: ['KeyU'], flapUp: ['KeyJ'] }, groups: [{ engines: [0], up: 'KeyI', down: null }, { engines: [], up: 'KeyO', down: null }] },
-    junk: { bind: { gear: ['KeyN'] } },
-  } }));
-  const old = loadKeys(storage);
-  assert.deepEqual(old, { v: 2, global: { bind: {} }, scopes: { 'type:a321neo': { bind: { flapUp: ['KeyJ'] }, groups: [{ engines: [0], up: 'KeyI', down: null }] } } });
-  const k = resolveKeys(old, A321);
-  assert.deepEqual(k.bind.map, ['KeyM']);
-  assert.deepEqual(k.bind.ap, ['KeyZ']);
-  assert.deepEqual(k.bind.flapUp, ['KeyJ']);
-  // keysFrom() reads a given store the same way (window.__fs.setKeys()).
-  assert.deepEqual(keysFrom(JSON.parse(mem.get(KEYS_STORE))), old);
   assert.deepEqual(keysFrom(null), emptyStore());
-  // A store edited by hand with a part's key on a global one: the global key wins (the part's is left out).
-  const hand = keysFrom({ global: { bind: { map: ['KeyG'] } }, scopes: { 'type:a321neo': { groups: [{ engines: [1], up: 'KeyG', down: 'KeyJ' }] } } });
-  const h = resolveKeys(hand, A321);
-  assert.deepEqual(h.bind.gear, []);
-  assert.deepEqual(h.groups, [{ engines: [1], up: null, down: 'KeyJ' }]);
-  assert.deepEqual(keymapOf(h).get('KeyG'), { kind: 'action', id: 'map' });
+  // By hand: a block key on the Controls page's side, a global key on an engine, a junk scope: dropped.
+  const hand = keysFrom({ v: 3, global: { bind: { map: ['KeyM'], ap: ['KeyZ', 'Digit4'] } },
+    aircraft: { [A321]: { engines: { 0: { up: 'KeyR', down: 'KeyJ' } }, drop: 'KeyN' }, junk: { engines: { 0: { up: 'KeyU' } } } } });
+  assert.deepEqual(hand, { v: 3, global: { bind: { map: [], ap: ['KeyZ', 'Digit4'] } }, aircraft: { [A321]: { engines: { 0: { up: null, down: 'KeyJ' } } } } });
 });
 
-test('an engine’s keys: the all-engines keys until one is changed; then a group of its own, with its twin', () => {
-  let st = emptyStore();
-  assert.deepEqual(engineKeys(st, A321, 0), { own: false, gi: -1, engines: [0], up: ['KeyR'], down: ['KeyF'] });
-  // Changing its up key (with its mirror twin): the two become a group; the down key stays unbound until set.
-  let r = bindEngineKey(st, A321, [0, 1], 1, 'KeyU');
-  st = r.store;
-  assert.deepEqual(engineKeys(st, A321, 1), { own: true, gi: 0, engines: [0, 1], up: ['KeyU'], down: [] });
-  assert.deepEqual(resolveKeys(st, { ...A321, nEngines: 2 }).groups, [{ engines: [0, 1], up: 'KeyU', down: null }]);
-  st = bindEngineKey(st, A321, [0, 1], -1, 'KeyJ').store;
-  assert.deepEqual(st.scopes['type:a321neo'].groups, [{ engines: [0, 1], up: 'KeyU', down: 'KeyJ' }]);
-  // Mirror off: engine 0 alone leaves the pair's group for one of its own (its other key unbound).
-  st = bindEngineKey(st, A321, [0], 1, 'KeyI').store;
-  assert.deepEqual(st.scopes['type:a321neo'].groups, [{ engines: [1], up: 'KeyU', down: 'KeyJ' }, { engines: [0], up: 'KeyI', down: null }]);
-  // A key another part has moves here (the all-engines up key).
-  r = bindEngineKey(st, A321, [0], -1, 'KeyR');
-  assert.deepEqual(r.moved, [{ id: 'thrustUp', chord: 'KeyR', left: 0 }]);
-  assert.match(movedText(r.moved, 'KeyR'), /^R was thrust up \(all engines\)’s: now it has no key\.$/);
-  // ... and a group's key taken by another moves off it.
-  r = bindEngineKey(st, A321, [1], 1, 'KeyI');
-  assert.deepEqual(r.moved, [{ g: 1, engines: [0], dir: 1, chord: 'KeyI', left: 0 }]);
-  assert.match(movedText(r.moved, 'KeyI'), /^I was thrust up for engine 1’s/);
-  // Cleared: no key there (the group stays); As the others: back on the all-engines keys.
-  st = bindEngineKey(st, A321, [1], -1, null).store;
-  assert.deepEqual(engineKeys(st, A321, 1).down, []);
-  st = engineAsOthers(st, A321, [1]).store;
-  assert.equal(engineKeys(st, A321, 1).own, false);
-  assert.deepEqual(st.scopes['type:a321neo'].groups, [{ engines: [0], up: 'KeyI', down: null }]);
-  // Clearing an engine with no keys of its own does nothing.
-  assert.deepEqual(bindEngineKey(st, A321, [1], 1, null).store, st);
-  // A type's Mirror: its twin joins its group, or leaves it.
-  st = setEngineTwin(st, A321, 0, 1, true).store;
-  assert.deepEqual(engineKeys(st, A321, 1).engines, [0, 1]);
-  st = setEngineTwin(st, A321, 0, 1, false).store;
-  assert.deepEqual(engineKeys(st, A321, 1).own, false);
-  // A design flies its base type's engine keys until it has its own.
-  assert.deepEqual(engineKeys(st, DESIGN, 0).up, ['KeyI']);
-  st = engineAsOthers(st, DESIGN, [0]).store;
-  assert.equal(engineKeys(st, DESIGN, 0).own, false);
-  assert.equal(engineKeys(st, A321, 0).own, true, 'the type keeps its');
+test('v0.5.6’s stores migrate: the global changes still valid stay; the parts’ keys and engine groups go', () => {
+  const v2 = { v: 2,
+    global: { bind: {
+      ap: ['KeyU'],                 // a block key now: back to its default (Z)
+      map: ['KeyJ', 'F4'],          // J is the block's: F4 stays
+      perf: ['Backquote'],          // ` does nothing now: back to F3
+      toga: [],                     // cleared: still cleared
+      view: ['KeyN'],               // N is the map's new default: the map loses it, as the Controls page would do
+    } },
+    scopes: { [A321]: { bind: { flapUp: ['KeyJ'], gear: ['KeyU'] }, groups: [{ engines: [0], up: 'KeyI', down: null }] } } };
+  const st = keysFrom(v2);
+  assert.deepEqual(st, { v: 3, global: { bind: { toga: [], view: ['KeyN'], map: ['F4'] } }, aircraft: {} });
+  const r = resolveKeys(st, { scope: A321, slots: ['0', '1'] });
+  assert.deepEqual([r.bind.ap, r.bind.map, r.bind.perf, r.bind.toga, r.bind.view, r.bind.flapUp, r.bind.gear],
+    [['KeyZ'], ['F4'], ['F3'], [], ['KeyN'], ['Minus'], ['KeyG']]);
+  assert.deepEqual(r.engines, []);
+  // Without the map's own change, the map keeps N, its new default, and the view goes back to V (review).
+  const r2 = resolveKeys(keysFrom({ v: 2, global: { bind: { view: ['KeyN'] } }, scopes: {} }));
+  assert.deepEqual([r2.bind.map, r2.bind.view], [['KeyN'], ['KeyV']]);
+  // The same for the others that moved: next view onto Shift+T or Shift+G gives way to TO/GA and pushback; an old
+  // change keeping another key keeps that one.
+  const r3 = resolveKeys(keysFrom({ v: 2, global: { bind: { faster: ['Shift+KeyT'], localQnh: ['Shift+KeyG', 'F6'] } }, scopes: {} }));
+  assert.deepEqual([r3.bind.toga, r3.bind.faster, r3.bind.pushback, r3.bind.localQnh], [['Shift+KeyT'], ['BracketRight', 'NumpadAdd'], ['Shift+KeyG'], ['F6']]);
+  // The same from localStorage.
+  const mem = new Map([[KEYS_STORE, JSON.stringify(v2)]]);
+  assert.deepEqual(loadKeys({ getItem: (k) => mem.get(k) ?? null }), st);
+  // v0.5.6's first shape (every key per aircraft, no global): nothing to keep.
+  assert.deepEqual(keysFrom({ v: 1, last: A321, scopes: { [A321]: { bind: { map: ['KeyR'], ap: ['KeyU'] }, groups: [] } } }), emptyStore());
 });
 
-test('engine groups (the v0.5.6 helpers): their keys, conflicts with the other keys, engines the aircraft hasn’t dropped', () => {
-  let st = addGroup(emptyStore(), A321, [0]).store;
-  st = bindGroupKey(st, A321, 0, 1, 'KeyU').store;
-  const r = bindGroupKey(st, A321, 0, -1, 'KeyR');   // the all-engines up key
-  assert.deepEqual(r.moved, [{ id: 'thrustUp', chord: 'KeyR', left: 0 }]);
+test('an engine’s own keys, one engine at a time: a key another part of the aircraft has moves, with a note', () => {
+  let st = bindEngineKey(emptyStore(), A321, '0', 1, 'KeyU').store;
+  st = bindEngineKey(st, A321, '0', -1, 'KeyJ').store;
+  assert.deepEqual(engineKeysOf(st, A321, '0'), { up: 'KeyU', down: 'KeyJ' });
+  assert.deepEqual(engineKeysOf(st, A321, '1'), { up: null, down: null }, 'its twin has none: engines start with none');
+  // U on engine 2's up: it moves from engine 1.
+  const r = bindEngineKey(st, A321, '1', 1, 'KeyU');
+  assert.deepEqual(r.moved, [{ eng: '0', dir: 1, chord: 'KeyU' }]);
+  assert.equal(movedText(r.moved, 'KeyU'), 'U was the key for engine 1’s thrust up, which has none now.');
+  assert.equal(movedText(r.moved, 'KeyU', { engine: () => null }), '', 'an engine not shown goes quietly');
   st = r.store;
-  let k = resolveKeys(st, { ...A321, nEngines: 2 });
-  assert.deepEqual(k.groups, [{ engines: [0], up: 'KeyU', down: 'KeyR' }]);
-  const m = keymapOf(k);
-  assert.deepEqual(m.get('KeyU'), { kind: 'group', g: 0, dir: 1 });
-  assert.deepEqual(m.get('KeyR'), { kind: 'group', g: 0, dir: -1 });
-  // A key taken by a control comes off the group.
-  st = bindKey(st, A321, 'gear', 'KeyU').store;
-  assert.equal(resolveKeys(st, A321).groups[0].up, null);
-  // Engines past the aircraft's count go; a group left with none is dropped.
-  st = setGroupEngines(st, A321, 0, [1, 5]).store;
-  assert.deepEqual(resolveKeys(st, { ...A321, nEngines: 2 }).groups[0].engines, [1]);
-  assert.equal(resolveKeys(st, { ...A321, nEngines: 1 }).groups.length, 0);
-  st = removeGroup(st, A321, 0).store;
-  assert.equal(resolveKeys(st, A321).groups.length, 0);
-  // Names from the geometry (y to the left).
-  const def = resolveDef('b777-300er');
-  assert.equal(enginesOf(def).length, 2);
-  assert.deepEqual(enginesOf(def).map((e) => e.side).sort(), ['left', 'right']);
-  assert.match(groupLabel(def, [0, 1]), /^Engines 1 and 2$/);
-  assert.match(groupLabel(def, [enginesOf(def).find((e) => e.side === 'left').i]), /\(left\)$/);
-  assert.deepEqual(scopeOf(def), { scope: 'type:b777-300er', base: null });
-  assert.deepEqual(scopeOf({ id: 'x', design: { id: 'd9', base: 'b787-9' } }), { scope: 'design:d9', base: 'type:b787-9' });
+  assert.deepEqual(engineKeysOf(st, A321, '0'), { up: null, down: 'KeyJ' });
+  assert.deepEqual(engineKeysOf(st, A321, '1'), { up: 'KeyU', down: null });
+  // Each aircraft its own: the 777 has none.
+  assert.deepEqual(resolveKeys(st, { scope: B777, slots: ['0', '1'] }).engines, []);
+  // Cleared; an aircraft left with nothing isn't stored.
+  st = clearEngineKey(st, A321, '0', -1).store;
+  st = clearEngineKey(st, A321, '1', 1).store;
+  assert.deepEqual(st.aircraft, {});
+  // The drop and an engine on one aircraft: the drop takes U from the engine.
+  st = bindEngineKey(emptyStore(), 'design:d1', 'p2', 1, 'KeyU').store;
+  const d = bindDropKey(st, 'design:d1', 'KeyU');
+  assert.equal(movedText(d.moved, 'KeyU', { engine: (s) => (s === 'p2' ? 'engine 2' : null) }), 'U was the key for engine 2’s thrust up, which has none now.');
+  assert.equal(clearDropKey(d.store, 'design:d1').store.aircraft['design:d1'], undefined);
+});
+
+test('a design’s engines by part id: the sim’s order isn’t the parts’, and deleting one engine shifts no other’s keys', () => {
+  // Four engines: p1/p2 the base pair, p3/p4 outboard. The sim orders them left outboard to right outboard.
+  let d = newDesign('a321neo', { id: 'dk' });
+  d = addPart(d, { kind: 'engine', engine: d.parts[0].engine, mount: 'wing', side: 1, s: 10 }, { mirror: true });
+  const def = designDef(d);
+  assert.deepEqual(d.parts.map((p) => p.id), ['p1', 'p2', 'p3', 'p4']);
+  const slots = engineSlots(def);
+  assert.deepEqual(slots, ['p3', 'p1', 'p2', 'p4']);
+  assert.deepEqual(engineSlots(resolveDef('a321neo')), ['0', '1'], 'a type’s by index');
+  assert.deepEqual(scopeOf(def), { scope: 'design:dk', base: 'type:a321neo' });
+  let st = bindEngineKey(emptyStore(), 'design:dk', 'p3', 1, 'KeyI').store;
+  st = bindEngineKey(st, 'design:dk', 'p4', 1, 'KeyO').store;
+  st = bindEngineKey(st, 'design:dk', 'p1', 1, 'KeyU').store;
+  let r = resolveKeys(st, { scope: 'design:dk', slots });
+  assert.deepEqual(r.engines.map((e) => [e.i, e.slot, e.up]), [[0, 'p3', 'KeyI'], [1, 'p1', 'KeyU'], [3, 'p4', 'KeyO']]);
+  // p1 removed (and its twin p2): saved, its keys go (keepEngineKeys with the engines left); p3's and p4's stay theirs.
+  const d2 = removePart(d, 'p1');
+  assert.deepEqual(d2.parts.map((p) => p.id), ['p3', 'p4']);
+  st = keepEngineKeys(st, 'design:dk', d2.parts.map((p) => p.id)).store;
+  assert.deepEqual(Object.keys(aircraftKeys(st, 'design:dk').engines).sort(), ['p3', 'p4']);
+  r = resolveKeys(st, { scope: 'design:dk', slots: engineSlots(designDef(d2)) });
+  assert.deepEqual(r.engines.map((e) => [e.i, e.slot, e.up]), [[0, 'p3', 'KeyI'], [1, 'p4', 'KeyO']]);
+  // A new part with a removed one's id starts with none (the warehouse drops the stale keys: dropEngineKeys).
+  st = dropEngineKeys(st, 'design:dk', ['p4']).store;
+  assert.deepEqual(engineKeysOf(st, 'design:dk', 'p4'), { up: null, down: null });
+  assert.deepEqual(engineKeysOf(st, 'design:dk', 'p3'), { up: 'KeyI', down: null });
+});
+
+test('v0.5.7 review: the Drop key goes with the last wing tank; it stays while one is left', () => {
+  let st = bindDropKey(emptyStore(), 'design:dt', 'KeyP').store;
+  st = bindEngineKey(st, 'design:dt', 'p1', 1, 'KeyU').store;
+  // Saved with a wing tank still on: the Drop key stays.
+  assert.equal(aircraftKeys(keepEngineKeys(st, 'design:dt', ['p1'], { drop: true }).store, 'design:dt').drop, 'KeyP');
+  // Saved with none: it goes, the engine's keys stay.
+  const left = keepEngineKeys(st, 'design:dt', ['p1'], { drop: false }).store;
+  assert.equal(aircraftKeys(left, 'design:dt').drop ?? null, null);
+  assert.deepEqual(engineKeysOf(left, 'design:dt', 'p1'), { up: 'KeyU', down: null });
+  // With nothing left at all, the aircraft's entry goes.
+  assert.equal(keepEngineKeys(bindDropKey(emptyStore(), 'design:dz', 'KeyP').store, 'design:dz', [], { drop: false }).store.aircraft['design:dz'], undefined);
+});
+
+test('a design duplicated takes its keys; deleted, they go', () => {
+  let st = bindEngineKey(emptyStore(), 'design:a', 'p1', 1, 'KeyU').store;
+  st = bindDropKey(st, 'design:a', 'Shift+KeyP').store;
+  st = copyKeys(st, 'design:a', 'design:b').store;
+  assert.deepEqual(aircraftKeys(st, 'design:b'), aircraftKeys(st, 'design:a'));
+  st = resetKeys(st, { scope: 'design:a' }).store;
+  assert.equal(st.aircraft['design:a'], undefined);
+  assert.deepEqual(engineKeysOf(st, 'design:b', 'p1'), { up: 'KeyU', down: null });
+  // the engines' names for a stock type's tabs
+  assert.deepEqual(enginesOf(resolveDef('b777-300er')).map((e) => e.side).sort(), ['left', 'right']);
+});
+
+test('the flight’s key map: the aircraft’s engines and drop with the Controls page’s keys', () => {
+  let st = bindEngineKey(emptyStore(), A321, '1', 1, 'KeyU').store;
+  st = bindEngineKey(st, A321, '1', -1, 'KeyJ').store;
+  st = bindKey(st, 'map', 'Digit4').store;
+  const m = keymapOf(resolveKeys(st, { scope: A321, slots: ['0', '1'] }));
+  assert.deepEqual(m.get('KeyU'), { kind: 'engine', i: 1, dir: 1 });
+  assert.deepEqual(m.get('KeyJ'), { kind: 'engine', i: 1, dir: -1 });
+  assert.deepEqual(m.get('Digit4'), { kind: 'action', id: 'map' });
+  assert.equal(m.get('KeyN'), undefined);
+  // An engine the aircraft doesn't have (slots) has no keys in flight.
+  assert.equal(keymapOf(resolveKeys(st, { scope: A321, slots: ['0'] })).get('KeyU'), undefined);
+  // The drop is the design's.
+  const sd = bindDropKey(emptyStore(), 'design:d1', 'Shift+KeyP').store;
+  assert.deepEqual(keymapOf(resolveKeys(sd, { scope: 'design:d1', slots: [] })).get('Shift+KeyP'), { kind: 'action', id: 'dropTanks' });
+  assert.equal(keymapOf(resolveKeys(sd, { scope: A321, slots: ['0', '1'] })).get('Shift+KeyP'), undefined);
 });
 
 // ---- the input, driven by fake key events ----
@@ -297,72 +320,131 @@ function fakeInput() {
   });
 }
 const controls0 = () => ({ pitch: 0, roll: 0, yaw: 0, thrust: 0, trim: 0, brakeL: 0, brakeR: 0, thrustEng: null });
+const hold = (input, c, secs, onGround = false, athr = false) => { for (let i = 0; i < Math.round(secs * 30); i++) input.update(1 / 30, c, onGround, athr); };
 
-test('input: the bindings decide the actions; Esc is always the menu; 6 is nothing by default', async () => {
+test('input: the moved keys; Esc is always the menu; L, M, P, O, K and ` do nothing by default', async () => {
   const { input, down } = await fakeInput();
   const seen = [];
   input.onAction((a) => seen.push(a));
-  down('Minus'); down('Equal'); down('Digit6'); down('BracketRight'); down('Escape'); down('KeyC', { shiftKey: true }); down('KeyC');
-  assert.deepEqual(seen, ['flapUp', 'flapDown', 'faster', 'pause', 'spoilersArm', 'speedbrake']);
-  // Rebound: G is flaps up a step, Escape still the menu.
-  input.setBindings(resolveKeys(bindKey(emptyStore(), A321, 'flapUp', 'KeyG').store, A321));
+  for (const c of ['KeyL', 'KeyM', 'KeyP', 'KeyO', 'KeyK', 'Backquote', 'Backslash', 'Digit7']) down(c);
+  assert.deepEqual(seen, []);
+  down('KeyN'); down('KeyG', { shiftKey: true }); down('KeyG'); down('KeyT', { shiftKey: true }); down('KeyT'); down('KeyB', { shiftKey: true }); down('F3'); down('Escape');
+  assert.deepEqual(seen, ['map', 'pushback', 'gear', 'toga', 'rewind', 'localQnh', 'perf', 'pause']);
+  // Rebound (a Controls page key): Digit4 is the map, N nothing.
+  input.setBindings(resolveKeys(bindKey(emptyStore(), 'map', 'Digit4').store, { scope: A321, slots: ['0', '1'] }));
   seen.length = 0;
-  down('KeyG'); down('Escape'); down('Minus');
-  assert.deepEqual(seen, ['flapUp', 'pause']);
-  // v0.5.6: a wing tank's key is the drop action (main.js: dropWingTanks()); a global key changed is every aircraft's.
-  let st = bindKey(emptyStore(), DESIGN, 'dropTanks', 'KeyU').store;
-  st = bindKey(st, G, 'map', 'KeyN').store;
-  input.setBindings(resolveKeys(st, DESIGN));
+  down('Digit4'); down('KeyN');
+  assert.deepEqual(seen, ['map']);
+  // A design's drop key (main.js: dropWingTanks()).
+  input.setBindings(resolveKeys(bindDropKey(emptyStore(), 'design:d1', 'Shift+KeyP').store, { scope: 'design:d1', slots: ['p1', 'p2'] }));
   seen.length = 0;
-  down('KeyU'); down('KeyN'); down('KeyM');
-  assert.deepEqual(seen, ['dropTanks', 'map']);
-  input.setBindings(resolveKeys(st, A321));
-  seen.length = 0;
-  down('KeyU'); down('KeyN');
-  assert.deepEqual(seen, ['map'], 'the drop key is the design’s');
+  down('KeyP', { shiftKey: true }); down('KeyP');
+  assert.deepEqual(seen, ['dropTanks']);
 });
 
-test('input: an engine group’s keys move only its engines’ levers; the all-engines keys move them all alike', async () => {
+test('input: with no engine keys used, the lever takes the single-lever path exactly (thrustEng stays null)', async () => {
+  const a = await fakeInput(), b = await fakeInput();
+  b.input.setEngineCount(2);
+  b.input.setBindings(resolveKeys(bindEngineKey(emptyStore(), A321, '0', 1, 'KeyU').store, { scope: A321, slots: ['0', '1'] }));
+  const ca = controls0(), cb = controls0();
+  const seq = [['KeyR', 1.4, false], [null, 0.3, false], ['KeyF', 2.5, true], [null, 0.2, true], ['KeyR', 0.5, true]];
+  for (const [k, secs, ground] of seq) {
+    if (k) { a.down(k); b.down(k); }
+    hold(a.input, ca, secs, ground); hold(b.input, cb, secs, ground);
+    if (k) { a.up(k); b.up(k); }
+    assert.equal(cb.thrustEng, null);
+    assert.equal(cb.thrust, ca.thrust);
+  }
+  assert.ok(ca.thrust !== 0);
+});
+
+test('input: R and F move every lever, the keyed engine’s too; an engine’s own keys move its lever alone', async () => {
   const { input, down, up } = await fakeInput();
-  let st = addGroup(emptyStore(), A321, [0]).store;
-  st = bindGroupKey(st, A321, 0, 1, 'KeyU').store;
-  st = bindGroupKey(st, A321, 0, -1, 'KeyJ').store;
+  const st = bindEngineKey(bindEngineKey(emptyStore(), A321, '0', 1, 'KeyU').store, A321, '0', -1, 'KeyJ').store;
   input.setEngineCount(2);
-  input.setBindings(resolveKeys(st, { ...A321, nEngines: 2 }));
+  input.setBindings(resolveKeys(st, { scope: A321, slots: ['0', '1'] }));
+  assert.deepEqual(input.engines, [{ i: 0, up: ['KeyU'], down: ['KeyJ'] }]);
   const c = controls0();
-  down('KeyU');
-  for (let i = 0; i < 30; i++) input.update(1 / 30, c, false, false);
-  up('KeyU');
+  down('KeyU'); hold(input, c, 0.8); up('KeyU');
   assert.ok(Array.isArray(c.thrustEng) && c.thrustEng.length === 2, JSON.stringify(c));
-  // v0.5.6 (review): apart, the all-engines lever reads the highest of them (the A/THR's modes and MAN TOGA go by it).
-  assert.ok(c.thrustEng[0] > 0.3 && c.thrustEng[1] === 0 && c.thrust === c.thrustEng[0], JSON.stringify(c));
-  assert.ok(input.leverHeld() === false);
-  // The all-engines key: both by the same amount.
+  assert.ok(c.thrustEng[0] > 0.3 && c.thrustEng[1] === 0, JSON.stringify(c.thrustEng));
+  assert.equal(c.thrust, c.thrustEng[0], 'apart, the all-engines lever is the highest');
+  assert.equal(input.leverHeld(), false);
+  // R: both (engine 1 too), at the same rate while no detent stops one.
   const before = c.thrustEng.slice();
-  // (From the highest lever, which the group left at a detent: past its pause, then on.)
-  down('KeyR');
-  for (let i = 0; i < 24; i++) input.update(1 / 30, c, false, false);
-  up('KeyR');
+  down('KeyR'); hold(input, c, 0.1); up('KeyR');
   const d0 = c.thrustEng[0] - before[0], d1 = c.thrustEng[1] - before[1];
-  assert.ok(d1 > 0.05 && Math.abs(d0 - d1) < 1e-9, `${d0} ${d1}`);
-  // The group's down key stops at idle (reverse is the all-engines keys').
-  down('KeyJ');
-  for (let i = 0; i < 120; i++) input.update(1 / 30, c, true, false);
-  up('KeyJ');
-  assert.equal(c.thrustEng[0], 0);
-  // The A/THR driving: the levers follow it, together.
+  assert.ok(d1 > 0.04 && Math.abs(d0 - d1) < 1e-9, `${d0} ${d1}`);
+  // Engine 1 at full: R still lifts engine 2 (each lever moves on its own, pausing at its own detents).
+  down('KeyU'); hold(input, c, 3); up('KeyU');
+  assert.equal(c.thrustEng[0], 1);
+  const e1 = c.thrustEng[1];
+  down('KeyR'); hold(input, c, 0.3); up('KeyR');
+  assert.ok(c.thrustEng[0] === 1 && c.thrustEng[1] > e1 + 0.1, JSON.stringify(c.thrustEng));
+  assert.equal(c.thrust, 1);
+  // Holding R and engine 1's own down key: engine 1 goes down (its own keys first), engine 2 up.
+  const both = c.thrustEng.slice();
+  down('KeyR'); down('KeyJ'); hold(input, c, 0.1); up('KeyJ'); up('KeyR');
+  assert.ok(c.thrustEng[0] < both[0] && c.thrustEng[1] > both[1], JSON.stringify([both, c.thrustEng]));
+  // F in the air: every lever down to idle; none below it.
+  down('KeyF'); hold(input, c, 5); up('KeyF');
+  assert.deepEqual(c.thrustEng, [0, 0]);
+  // Engine 1's own up key again, then its down key: its lever alone, back to idle.
+  down('KeyU'); hold(input, c, 0.6); up('KeyU');
+  const e0 = c.thrustEng[0];
+  assert.ok(e0 > 0.2 && c.thrustEng[1] === 0);
+  down('KeyJ'); hold(input, c, 0.2); up('KeyJ');
+  assert.ok(c.thrustEng[0] < e0 && c.thrustEng[1] === 0);
+  // Setting the lever (a new flight, a skip to final) brings them together.
+  input.lever = 0;
+  assert.equal(input.levers, null);
+});
+
+test('input: an engine’s own down key held at idle on the ground holds its reverse; F the reverse of all; not in the air', async () => {
+  const { input, down, up } = await fakeInput();
+  input.setEngineCount(2);
+  input.setBindings(resolveKeys(bindEngineKey(emptyStore(), A321, '1', -1, 'KeyJ').store, { scope: A321, slots: ['0', '1'] }));
+  const c = controls0();
+  // In the air: it stops at idle.
+  down('KeyJ'); hold(input, c, 1.5, false); up('KeyJ');
+  assert.ok(c.thrustEng === null || c.thrustEng.every((x) => x === 0), JSON.stringify(c.thrustEng));
+  // On the ground, held at idle: after the reverse delay, engine 2's lever alone into reverse.
+  down('KeyJ'); hold(input, c, 0.2, true);
+  assert.ok(!c.thrustEng || c.thrustEng[1] === 0, 'not before the delay');
+  hold(input, c, 1.5, true); up('KeyJ');
+  assert.ok(c.thrustEng[1] < -0.5 && c.thrustEng[0] === 0, JSON.stringify(c.thrustEng));
+  assert.equal(c.thrust, 0, 'the all-engines lever (the highest) at idle');
+  // F held at idle on the ground: every lever into reverse.
+  down('KeyF'); hold(input, c, 2, true); up('KeyF');
+  assert.ok(c.thrustEng.every((x) => x < -0.5), JSON.stringify(c.thrustEng));
+  // R: out of reverse, each stopping at idle.
+  down('KeyR'); hold(input, c, 3, true); up('KeyR');
+  assert.ok(c.thrustEng.every((x) => x >= 0), JSON.stringify(c.thrustEng));
+});
+
+test('input: the A/THR driving; an engine’s own key takes the levers (engineTook: main.js disconnects a Boeing’s A/T), R/F don’t flag it', async () => {
+  const { input, down, up } = await fakeInput();
+  input.setEngineCount(2);
+  input.setBindings(resolveKeys(bindEngineKey(emptyStore(), A321, '0', 1, 'KeyU').store, { scope: A321, slots: ['0', '1'] }));
+  const c = controls0();
   c.thrust = 0.5;
   input.update(1 / 30, c, false, true);
   assert.equal(c.thrustEng, null);
   assert.equal(c.thrust, 0.5);
-  // A group key while it drives takes the levers from where they are (the sim then hands them over).
+  assert.equal(input.engineTook, false);
   down('KeyU');
   input.update(0.2, c, false, true);
+  assert.equal(input.engineTook, true);
+  assert.equal(input.groupTook, true, 'v0.5.6’s name');
   up('KeyU');
   assert.ok(Array.isArray(c.thrustEng) && c.thrustEng[1] === 0.5 && c.thrustEng[0] > 0.5, JSON.stringify(c));
-  // Setting the lever (a new flight, a skip to final) brings them together.
-  input.lever = 0;
-  assert.equal(input.levers, null);
+  input.update(1 / 30, c, false, false);
+  assert.equal(input.engineTook, false);
+  // R while it drives: the lever is taken (the sim disconnects the A/THR), but not as an engine's key.
+  c.thrustEng = null; c.thrust = 0.5;
+  down('KeyR'); input.update(0.2, c, false, true); up('KeyR');
+  assert.equal(input.engineTook, false);
+  assert.ok(c.thrust > 0.5);
 });
 
 // ---- the sim's split levers ----
@@ -372,16 +454,13 @@ test('sim: levers apart but equal fly exactly as together; apart, the engines an
   run(a, 20, (s) => { s.controls.thrust = lever; s.controls.thrustEng = null; });
   run(b, 20, (s) => { s.controls.thrust = lever; s.controls.thrustEng = [lever, lever]; });
   assert.deepEqual(JSON.parse(JSON.stringify(b.state)), JSON.parse(JSON.stringify(a.state)));
-  // Apart: engine 1 full, engine 2 at idle.
   const c = airborne({ altFt: 8000, iasKt: 250 });
   run(c, 15, (s) => { s.controls.thrust = 0.3; s.controls.thrustEng = [1, 0]; });
   const [e0, e1] = c.state.engines;
   assert.ok(e0.n1 > e1.n1 + 15 && e0.thrustN > 2 * e1.thrustN, `${e0.n1} ${e1.n1}`);
   assert.ok(e0.leverN1 > e1.leverN1 + 15 && c.state.engines.every((e) => Number.isFinite(e.leverN1)), `${e0.leverN1} ${e1.leverN1}`);
-  // The yaw: towards the idle engine's side (engine 1's y to the left: positive N, the nose right).
   const y0 = c.type.geo.ENGINES[0].y;
   assert.ok(Math.sign(c.state.r) === Math.sign(y0) || Math.sign(c.state.beta) === -Math.sign(y0), `r ${c.state.r} beta ${c.state.beta} y0 ${y0}`);
-  // Together, each engine's ring is the lever's.
   const d = airborne({ altFt: 8000, iasKt: 250 });
   run(d, 2, (s) => { s.controls.thrust = 0.5; });
   for (const e of d.state.engines) assert.equal(e.leverN1, d.state.leverN1);
@@ -402,7 +481,6 @@ test('sim: a snapshot carries the levers apart; a reset and an old save bring th
   assert.equal(t.controls.thrustEng, null);
   t.reset({ x: 0, y: 0, hdg: 0, onGround: false, z: 2000, iasMs: 130, flapLever: 0, gearDown: false, fuelKg: 8000, payloadKg: 10000 });
   assert.equal(t.controls.thrustEng, null);
-  // previewControls (paused): each engine's ring from its own lever, nothing stepped.
   t.controls.thrust = 0.3; t.controls.thrustEng = [1, 0];
   const n1 = t.state.engines.map((e) => e.n1), time = t.state.t;
   t.previewControls();
@@ -415,12 +493,10 @@ test('sim: the A/THR driving brings the levers together; a hand on one of them t
   const s = airborne({ altFt: 10000, iasKt: 250, ap: { ap: true, athr: true, spdKt: 250 } });
   run(s, 2, () => {});
   assert.equal(s.state.athrActive, true);
-  // Levers apart, equal to the A/THR's: they go back together.
   s.controls.thrustEng = [s.controls.thrust, s.controls.thrust];
   s.step(1 / 120);
   assert.equal(s.controls.thrustEng, null);
   assert.equal(s.state.athrActive, true);
-  // One moved: a hand on the levers. The A321's A/THR disconnects and each engine flies its own.
   const evs = [];
   s.controls.thrustEng = [1, s.controls.thrust];
   s.step(1 / 120);
@@ -431,4 +507,13 @@ test('sim: the A/THR driving brings the levers together; a hand on one of them t
   run(s, 8, () => {});
   assert.ok(s.state.engines[0].n1 > s.state.engines[1].n1 + 5, `${s.state.engines[0].n1} ${s.state.engines[1].n1}`);
   void KT;
+});
+
+test('sim: one engine in its own reverse on the ground, the other at idle: only that one reverses', () => {
+  const s = airborne({ altFt: 8000, iasKt: 250 });
+  // on the runway, rolling: a reset on the ground
+  s.reset({ x: 0, y: 0, hdg: 0, onGround: true, iasMs: 60, flapLever: 0, gearDown: true, fuelKg: 8000, payloadKg: 10000 });
+  run(s, 3, (x) => { x.controls.thrust = 0; x.controls.thrustEng = [-1, 0]; });
+  const [e0, e1] = s.state.engines;
+  assert.ok(e0.rev > 0.5 && !(e1.rev > 0.05), `${e0.rev} ${e1.rev}`);
 });

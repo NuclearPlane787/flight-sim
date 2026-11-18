@@ -16,11 +16,12 @@ import * as store from './store.js';
 import { createGateFlow } from './ground/gate-flow.js';
 import { standHeading } from './world/traffic-layout.js';
 import { VERSION } from './version.js';
-import { ScenarioStore, whereText, legacyId } from './scenarios.js';
+import { ScenarioStore, whereText, flightFields, legacyId } from './scenarios.js';
 import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js';
+import { shortPlace } from './ui/home-card.js';
 import { createClock, afternoonOf } from './clock.js';
 import { typeById, DEFAULT_TYPE, TYPE_LIST } from './sim/types.js';
-import { loadKeys, saveKeys, resolveKeys, scopeOf, keyLabel, keysFrom } from './keys.js';
+import { loadKeys, saveKeys, resolveKeys, scopeOf, keysFrom, engineSlots, keyNamesOf } from './keys.js';
 import { designStore } from './designs-store.js';
 import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
@@ -36,7 +37,6 @@ const PHYSICS_BUDGET_MS = 7;    // per frame; beyond it, steps are dropped and t
 const FRAME_MS = 1000 / 60;
 const REWIND_S = 30;
 const AUTOSAVE_MS = 60000;      // autosave every 60 s in flight, as in Satisfactory
-const MENU_STILLS = ['assets/menu/gimpo-gate.jpg', 'assets/menu/jeju-final.jpg', 'assets/menu/seoul.jpg', 'assets/menu/seoul-night.jpg'];
 
 const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
@@ -166,30 +166,38 @@ async function boot() {
   let prediction = null, terrainToastKey = null;
 
   const input = createInput(window);
-  // v0.5.6: the keys, per aircraft (src/keys.js): read once here, changed by the Controls page, applied to the
-  // aircraft flown (useType) and again whenever its keys change.
+  // v0.5.6: the keys (src/keys.js): read once here, changed by the Controls page and the warehouse, applied to the
+  // aircraft flown (useType) and again whenever they change. v0.5.7: the Controls page's are every aircraft's; the
+  // block's (each engine's own thrust, the wing tanks' drop) are the aircraft flown's, a design's by its engines' part
+  // ids (engineSlots(): the sim's engine order isn't the parts').
   let keysStorage = null;
   try { keysStorage = window.localStorage; } catch { keysStorage = null; }
   let keysStore = loadKeys(keysStorage);
   let flyingDef = null;
   function applyKeys(def = flyingDef) {
     if (!def) return;
-    const { scope, base } = scopeOf(def), n = def.geo?.ENGINES?.length || 2;
+    const { scope } = scopeOf(def), n = def.geo?.ENGINES?.length || 2;
     input.setEngineCount(n);
-    const resolved = resolveKeys(keysStore, { scope, base, nEngines: n });
+    const resolved = resolveKeys(keysStore, { scope, slots: engineSlots(def) });
     input.setBindings(resolved);
-    // v0.5.6 (review): the pushback's messages name the keys as bound (their first key; the default if unbound).
-    gate.setKeyNames?.((id) => keyLabel(resolved.bind?.[id]?.[0] || ''));
+    // v0.5.6 (review): the messages that name a key name it as bound (its first key; '' if unbound). v0.5.7: the
+    // pushback's, the map's, the setup's and the MCP's.
+    const names = keyNamesOf(resolved);
+    keyName = names;
+    gate.setKeyNames?.(names);
+    map?.setKeyNames?.(names);
+    setup?.setKeyNames?.(names);
+    hud?.setKeyNames?.(names);
   }
-  // The aircraft that have keys: the three types, then the saved designs (each flies its base type's part keys until
-  // it has its own).
+  let keyName = () => '';
+  // The aircraft that have keys: the three types, then the saved designs.
   function keyAircraft() {
     const out = TYPE_LIST().map((t) => ({ scope: `type:${t.id}`, base: null, name: t.name, def: () => resolveDef(t.id) }));
     for (const d of designStore().list()) out.push({ scope: `design:${d.id}`, base: `type:${d.base}`, name: d.name || 'A design', def: () => resolveDef(d) });
     return out;
   }
-  // v0.5.6: the keys as the Controls page (the global ones) and the warehouse (the parts') change them: kept and applied
-  // at once (it may be the aircraft flown). nameOf(scope) names an aircraft in a refusal.
+  // v0.5.6: the keys as the Controls page (the global ones) and the warehouse (the block's) change them: kept and
+  // applied at once (it may be the aircraft flown). nameOf(scope) names an aircraft.
   const keysApi = {
     load: () => keysStore,
     save: (next) => { keysStore = next; const ok = saveKeys(keysStorage, next); applyKeys(); return ok; },
@@ -464,11 +472,14 @@ async function boot() {
     const s = sim.state, a = nearAirport(s);
     let distNm = null;
     if (dest) distNm = Math.hypot(dest.end.x - s.pos.x, dest.end.y - s.pos.y) / NM;
+    const at = { onGround: s.onGround, altFt: s.pos.z * FT, distNm, phase: gate.phase, icao: a ? a.icao : plan.origin,
+      stand: gate.phase === 'arrived' ? (gate.route?.stand ?? gate.stand?.ref) : (gate.phase === 'parked' ? (gate.stand?.ref ?? plan.stand) : null), crashed: !!crashed };
     return {
       route: `${plan.origin}–${plan.dest}`,
       ...(sim.design ? { design: sim.design.name, designId: sim.design.id } : {}),   // v0.5.0: the Load list names the design; v0.5.4: and its id, for a rename
-      where: whereText({ onGround: s.onGround, altFt: s.pos.z * FT, distNm, destIcao: plan.dest, phase: gate.phase,
-        icao: a ? a.icao : plan.origin, stand: gate.phase === 'arrived' ? (gate.route?.stand ?? gate.stand?.ref) : (gate.phase === 'parked' ? (gate.stand?.ref ?? plan.stand) : null), crashed: !!crashed }),
+      where: whereText({ ...at, destIcao: plan.dest }),
+      // v0.5.7: the same as fields, for the home page's card (ui/home-card.js): the phase, the altitude, the distance left
+      ...flightFields({ ...at, origin: plan.origin, dest: plan.dest, landed }),
     };
   }
   function captureState() {
@@ -861,6 +872,7 @@ async function boot() {
   // ---- Settings and Controls (from the main menu and the pause menu) ----
   function setCallouts(on) { callouts.muted = !on; saveSetting('muted', callouts.muted); }
   const settingsPage = createSettingsPage($('pages-root'), {
+    keyName: (id) => keyName(id),   // v0.5.7: the readout's key as bound
     get: () => ({ volume: callouts.volume ?? 1, callouts: !callouts.muted, showPerf: !ui.perf.hidden, ...flightOpts }),
     onVolume: (v) => { setVolume(v); previewVolume(); },
     onCallouts: (on) => setCallouts(on),
@@ -996,7 +1008,7 @@ async function boot() {
       // it goes quietly, as before).
       if (e.type === 'athrDisconnect') {
         clearPrediction();
-        if (e.reason === 'lever') toast('A/THR off: the thrust levers are yours (X turns it back on)', 2500);
+        if (e.reason === 'lever') toast(`A/THR off: the thrust levers are yours (${keyName('athr') ? `${keyName('athr')} turns it back on` : 'the autothrust key turns it back on'})`, 2500);
       }
     }
     const res = scorer.update(sim.state, evs);
@@ -1067,11 +1079,11 @@ async function boot() {
   // A pinch over a panel or dialog must not zoom the page (the canvas handles its own).
   window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
-  // v0.5.6 (review): an engine group's key that takes the levers from a driving A/T disconnects a Boeing's A/T, as the
+  // v0.5.6 (review): an engine's own key that takes the levers from a driving A/T disconnects a Boeing's A/T, as the
   // A321's A/THR disconnects (in the sim): the Boeing's hand-on-lever override would take the levers back a second
   // later while the key is still held, and part them again, over and over.
   function groupTakesAthr() {
-    if (input.groupTook && sim.state.athrActive && flyingDef?.family === 'boeing' && ap.athr) ap.toggleAthr();
+    if (input.engineTook && sim.state.athrActive && flyingDef?.family === 'boeing' && ap.athr) ap.toggleAthr();
   }
   function frame(now) {
     raf = 0;
@@ -1247,7 +1259,7 @@ async function boot() {
     if (!ui.perf.hidden && paused) ui.perf.textContent = perfLine();
   }
 
-  // ---- The performance readout (F3 or `, or the pause menu) ----
+  // ---- The performance readout (F3, or the pause menu; v0.5.7: ` no longer) ----
   // One line across the top, as in Satisfactory, refreshed twice a second. The HUD moves
   // down by its height while it shows.
   const PERF_BAR_H = 22;
@@ -1283,7 +1295,8 @@ async function boot() {
   // ---- The main menu ----
   const menu = createMenu($('menu-root'), {
     version: VERSION.label,
-    backdrops: MENU_STILLS.map((u) => new URL('../' + u, import.meta.url).href),
+    // v0.5.7: the home page's card names the airports ("En route to Jeju"): the data's shortName, else its name made short
+    place: (icao) => { const a = byIcao(icao); return a ? (a.shortName || shortPlace(a.name)) : null; },
     scenarios: scenarios || { list: () => [], rename: () => ({ ok: false, error: 'storage' }), duplicate: () => ({ ok: false, error: 'storage' }), remove: () => false, newest: () => null },
     onContinue: (id) => loadScenario(id),
     onLoad: (id) => loadScenario(id),
@@ -1295,8 +1308,8 @@ async function boot() {
     onControls: () => controlsPage.open(),
   });
 
-  // ---- The L window (L, or Cmd/Ctrl+L as in Satisfactory): the Sky window, and from v0.3.2 the
-  // Weight window as its second tab. Both stand at the bottom-left; L opens the tab last shown. ----
+  // ---- The L window (\ since v0.5.7, L before it, or Cmd/Ctrl+L as in Satisfactory): the Sky window, and from v0.3.2
+  // the Weight window as its second tab. Both stand at the bottom-left; \ opens the tab last shown. ----
   if (skyWinMod?.createSkyWindow) {
     skyWin = skyWinMod.createSkyWindow($('skywin-root'), { clock, place: placeNow,
       tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }, WEATHER_TAB] });
@@ -1343,9 +1356,12 @@ async function boot() {
     if (skyWin?.isOpen || loadWin?.isOpen || weatherWin?.isOpen) closeLWindow();
     else showLTab(lTab === 'sky' && !skyWin ? 'load' : lTab);
   }
-  // Cmd/Ctrl+L is the one Ctrl binding (PLAN.md): it can't lose anything, so it's the exception.
+  // Cmd/Ctrl+L is the one Ctrl binding (PLAN.md): it can't lose anything, so it's the exception. v0.5.7: the plain key
+  // is \ (fixed, as L was: keys.js reserves it); plain L is one of the warehouse's block keys now.
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyL' || e.altKey || e.repeat) return;
+    const sky = e.code === 'Backslash' && !e.ctrlKey && !e.metaKey && !e.altKey;
+    const cmdL = e.code === 'KeyL' && (e.ctrlKey || e.metaKey) && !e.altKey;
+    if (!(sky || cmdL) || e.repeat) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (inMenu || !plan || setup.isOpen) return;
@@ -1408,7 +1424,7 @@ async function boot() {
     get paused() { return paused; },
     get menuOpen() { return menuOpen; }, setMenu,   // v0.5.5
     // v0.5.6: the key bindings for checks (not stored): the store as keys.js keeps it, applied to the flight at once.
-    setKeys(next) { keysStore = keysFrom(next); applyKeys(); }, get keys() { return keysStore; },   // v0.5.6: { global, scopes }
+    setKeys(next) { keysStore = keysFrom(next); applyKeys(); }, get keys() { return keysStore; },   // v0.5.7: { v: 3, global, aircraft } (v0.5.6's read as keys.js reads them)
     get crashed() { return crashed; },
     get dest() { return dest; },
     startFlight, skipToFinal, jumpTo, changeRoute, selectView, scenarios, clock, captureState, applyState, saveNow, loadScenario, exitToMenu, newScenario,
@@ -1427,7 +1443,7 @@ async function boot() {
       // v0.5.0: a design for the checks, as JSON (sim/designs.js's shape)
       ...(params.get('design') ? (() => { const d = JSON.parse(params.get('design')); return { design: d, type: d.base }; })() : {}) });
   } else {
-    // The main menu, over a still: nothing renders or steps behind it (PLAN.md → CPU at runtime).
+    // The main menu (v0.5.7: line art, no 3D): nothing renders or steps behind it (PLAN.md → CPU at runtime).
     paused = true;
     showMenu();
   }
