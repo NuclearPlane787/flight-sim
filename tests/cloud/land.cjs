@@ -18,7 +18,7 @@ const BASE = process.env.FS_BASE || 'http://127.0.0.1:8765/games/flight-sim/';
   // How far back to move the controller's threshold (it aims 400 m past it).
   const back = mode === 'low' ? 1400 - ((Number(p) || 150) * 0.3048) / tan3 : mode === 'short' ? 400 + (Number(p) || 150) : 0;
   const viewport = { width: 1280, height: 800 };
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));

@@ -11,7 +11,7 @@ const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/fl
 const BASE = process.env.FS_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 let fails = 0;
 const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
 const errors = [];

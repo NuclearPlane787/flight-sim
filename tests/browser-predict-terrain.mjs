@@ -12,7 +12,7 @@ const SHOT = process.env.SHOT || decodeURIComponent(new URL('../../../Claude out
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();

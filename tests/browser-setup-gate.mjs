@@ -7,7 +7,7 @@ import path from 'node:path';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
 const BASE = process.env.E2E_URL || 'http://localhost:8001/games/flight-sim/';
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 const errors = [];
 let ok = false;
 try {

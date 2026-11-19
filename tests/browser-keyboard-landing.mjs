@@ -22,7 +22,7 @@ const XWIND = Number(process.env.E2E_XWIND || 0);
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const wrapDeg = (a) => ((a + 540) % 360) - 180;
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 let exitCode = 0;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

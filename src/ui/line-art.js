@@ -688,6 +688,45 @@ function skytree(g) {
   g.line(cx - 2.8, 164, cx + 2.8, 164); g.line(cx - 1.6, 182, cx + 1.6, 182);
 }
 
+// v0.6.0: Shanghai's Oriental Pearl Tower (about 468 m), our own drawing from its public shape: three slanted legs
+// splayed at its foot, three columns rising through the big lower sphere (50 m across, its centre about 93 m up), the
+// five small spheres between the columns, the upper sphere (45 m, about 272 m up) with its deck, the shaft to the small
+// top sphere (about 350 m) and the antenna. At about 0.34 px a metre, as the strip's towers are drawn.
+function orientalPearl(g) {
+  const cx = 25, s = 0.34;
+  const m = (h) => h * s;
+  // the three legs: the outer two splayed in profile (each a pair of lines), the third one coming at us, short
+  for (const k of [-1, 1]) {
+    const X = (dx) => cx + k * dx;
+    g.poly([[X(22), 0], [X(9.5), m(78)]]); g.poly([[X(17.5), 0], [X(6.5), m(74)]]);
+    g.line(X(21), 0.01, X(16.5), 0.01);
+  }
+  g.poly([[cx - 2.4, 0], [cx - 1.6, m(60)]]); g.poly([[cx + 2.4, 0], [cx + 1.6, m(60)]]);
+  // the base: a low podium under the columns
+  g.rect(cx - 11, 0, 22, 4.5);
+  // the columns from the podium to the lower sphere
+  g.line(cx - 5.2, 4.5, cx - 5.2, m(70)); g.line(cx + 5.2, 4.5, cx + 5.2, m(70));
+  // the lower sphere, with its band of windows
+  const r1 = 9.2, c1 = m(93);
+  g.circle(cx, c1, r1);
+  g.path().M(cx - r1, c1).Q(cx, c1 - 2.6, cx + r1, c1).end();
+  g.path().M(cx - r1 * 0.94, c1 + 3).Q(cx, c1 + 0.6, cx + r1 * 0.94, c1 + 3).end();
+  // the columns on to the upper sphere, the five small spheres between them
+  const top1 = c1 + r1, r2 = 8.2, c2 = m(272), bot2 = c2 - r2;
+  g.line(cx - 4.2, top1 - 0.6, cx - 3.4, bot2 + 0.4); g.line(cx + 4.2, top1 - 0.6, cx + 3.4, bot2 + 0.4);
+  for (let i = 0; i < 5; i++) g.circle(cx, lerp(top1 + 4.5, bot2 - 4.5, i / 4), 2);
+  // the upper sphere, its deck's ring
+  g.circle(cx, c2, r2);
+  g.rect(cx - r2 - 1.6, c2 - 1.4, 2 * r2 + 3.2, 2.8);
+  // the shaft to the top sphere, the antenna
+  const r3 = 3.2, c3 = m(352);
+  g.line(cx - 2.2, c2 + r2 - 0.3, cx - 1.5, c3 - r3 + 0.2); g.line(cx + 2.2, c2 + r2 - 0.3, cx + 1.5, c3 - r3 + 0.2);
+  g.circle(cx, c3, r3);
+  g.poly([[cx - 1.3, c3 + r3 - 0.2], [cx - 0.5, m(468) - 6]]); g.poly([[cx + 1.3, c3 + r3 - 0.2], [cx + 0.5, m(468) - 6]]);
+  g.line(cx - 1.2, c3 + r3 + 9, cx + 1.2, c3 + r3 + 9); g.line(cx - 0.9, c3 + r3 + 19, cx + 0.9, c3 + r3 + 19);
+  g.line(cx, m(468) - 6, cx, m(468));
+}
+
 // Generic buildings between the landmarks: a stepped block outline with a few window strokes.
 function rng(seed) {
   return () => {
@@ -756,6 +795,7 @@ const LANDMARKS = [
   ['St Basil\'s Cathedral', 150, stBasils],
   ['Lotte World Tower', 60, lotteTower],
   ['Tower Bridge', 230, towerBridge],
+  ['Oriental Pearl Tower', 50, orientalPearl],   // v0.6.0
   ['Christ the Redeemer', 162, christRedeemer],
   ['Petronas Towers', 110, petronas],
   ['Leaning Tower of Pisa', 52, pisa],
@@ -766,15 +806,19 @@ const LANDMARKS = [
   ['Tokyo Skytree', 52, skytree],
 ];
 
+// v0.6.0: landmarks added after v0.5.7's strip draw their gap and its buildings from a random stream of their own, so
+// every other building stays as it was drawn (only moved along by the new ones' width). The Pearl Tower's gap is a
+// narrow 15 px (no buildings fit), keeping the strip within its 4,000 px.
+const ADDED = new Map([['Oriental Pearl Tower', 15]]);
 function buildSkyline() {
-  const rnd = rng(57);
+  const rnd = rng(57), own = rng(60);
   const paths = [], landmarks = [];
   // the gap after each landmark, filled with generic buildings; the last one is split across the seam, half at the
   // strip's end and half at its start, each half filled on its own side
-  const gaps = LANDMARKS.map(() => 40 + Math.round(rnd() * 32));
+  const gaps = LANDMARKS.filter(([name]) => !ADDED.has(name)).map(() => 40 + Math.round(rnd() * 32));
   const head = Math.round(gaps[gaps.length - 1] / 2), tail = gaps[gaps.length - 1] - head;
-  let x = 0;
-  const fill = (w) => { const f = pen((lx, h) => [x + lx, B - h]); fillers(f, w, rnd); paths.push(...f.out); x += w; };
+  let x = 0, j = 0;
+  const fill = (w, r = rnd) => { const f = pen((lx, h) => [x + lx, B - h]); fillers(f, w, r); paths.push(...f.out); x += w; };
   fill(head);
   LANDMARKS.forEach(([name, w, draw], i) => {
     const g = pen((lx, h) => [x + lx, B - h]);
@@ -782,7 +826,9 @@ function buildSkyline() {
     paths.push(...g.out);
     landmarks.push({ name, x0: x, x1: x + w });
     x += w;
-    fill(i === LANDMARKS.length - 1 ? tail : gaps[i]);
+    if (ADDED.has(name)) { fill(ADDED.get(name) ?? 40 + Math.round(own() * 32), own); return; }
+    const gap = gaps[j++];
+    fill(i === LANDMARKS.length - 1 ? tail : gap);
   });
   const width = Math.round(x);
   paths.unshift(`M0 ${B}H${width}`);

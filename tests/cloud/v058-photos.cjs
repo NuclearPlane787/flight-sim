@@ -100,7 +100,7 @@ const SHOTS = {
 const VIEWS = process.env.VIEWS ? JSON.parse(process.env.VIEWS) : {};   // { name: [views…] } overrides, for trying angles
 
 (async () => {
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   for (const name of only || Object.keys(SHOTS)) {
     const shot = SHOTS[name];
     const t0 = Date.now();

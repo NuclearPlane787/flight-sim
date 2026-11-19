@@ -4,6 +4,8 @@
 //   - instanced simple trees in forest cover, placed on the GPU around the camera.
 
 import * as THREE from '../../vendor/three.module.js';
+import { GROUND_ON } from './region.js';
+import { FINE_GLSL } from './finecover.js';
 
 // ------------------------------------------------------------------ field plots (GLSL)
 
@@ -64,6 +66,14 @@ const TREE_LEVELS = [
   { spacing: 28, half: 40, scale: 1.6 },
 ];
 export const TREE_MAX_AGL = 1000;   // m above the ground: no trees above this
+// v0.6.0 Part 7 (behind GROUND_ON): two more rings (clumps, to 2.2 and 4.5 km), trees to 3,000 m
+// above the ground, and near the camera the fine cover's own tree pixels (woodlots, the woods'
+// real edges) instead of the 250 m forest share.
+const TREE_LEVELS_FAR = [
+  { spacing: 56, half: 40, scale: 1.7 },
+  { spacing: 112, half: 40, scale: 2.0 },
+];
+const TREE_MAX_AGL_GROUND = 3000;
 
 // A low-poly tree: a short trunk and a 6-sided cone crown (two tiers). Unit height ~1.
 function treeGeometry() {
@@ -116,15 +126,25 @@ export function createTrees(scene, uniforms, chunks) {
   const group = new THREE.Group();
   group.name = 'trees';
   const levels = [];
-  TREE_LEVELS.forEach((L, k) => {
+  let shown = 0;
+  const G = GROUND_ON;                                   // fixed at page load: compiled in or not
+  const LEVELS = G ? TREE_LEVELS.concat(TREE_LEVELS_FAR) : TREE_LEVELS;
+  const MAX_AGL = G ? TREE_MAX_AGL_GROUND : TREE_MAX_AGL;
+  LEVELS.forEach((L, k) => {
     const geo = new THREE.InstancedBufferGeometry();
     geo.index = null;
     geo.setAttribute('position', base.getAttribute('position'));
     geo.setAttribute('normal', base.getAttribute('normal'));
     geo.setAttribute('kind', base.getAttribute('kind'));
-    const cells = ringCells(L.half, k === 0 ? 0 : L.half / 2);
+    const ring = ringCells(L.half, k === 0 ? 0 : L.half / 2);
+    // v0.6.0 Part 7: a ring can also fill its own hole (the cells after the ring's), for when the
+    // finer ring inside it is switched off with height (update() below).
+    const fill = G && k > 0 ? ringCells(L.half / 2, 0) : null;
+    let cells = ring;
+    if (fill) { cells = new Float32Array(ring.length + fill.length); cells.set(ring); cells.set(fill, ring.length); }
+    const ringCount = ring.length / 2, fullCount = cells.length / 2;
     geo.setAttribute('cell', new THREE.InstancedBufferAttribute(cells, 2));
-    geo.instanceCount = cells.length / 2;
+    geo.instanceCount = ringCount;
     const u = {
       ...uniforms,
       uGridBase: { value: new THREE.Vector2() },     // scene position of cell (0,0) of the snapped grid
@@ -133,7 +153,7 @@ export function createTrees(scene, uniforms, chunks) {
       uTreeScale: { value: L.scale },
       uRange: { value: L.spacing * L.half },
       uInner: { value: k === 0 ? 0 : L.spacing * L.half / 2 },
-      uOuter: { value: k === TREE_LEVELS.length - 1 ? 1 : 0 },
+      uOuter: { value: k === LEVELS.length - 1 ? 1 : 0 },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: u,
@@ -141,6 +161,7 @@ export function createTrees(scene, uniforms, chunks) {
         ${chunks.UNIFORMS_GLSL}
         ${chunks.NOISE_GLSL}
         ${chunks.HEIGHT_GLSL}
+        ${G ? FINE_GLSL : ''}
         uniform vec2 uGridBase, uGridCell;
         uniform float uSpacing, uTreeScale, uRange, uInner, uOuter;
         attribute vec2 cell;
@@ -165,6 +186,12 @@ export function createTrees(scene, uniforms, chunks) {
           float forest = uHasCover > 0.5 ? cov.r : smoothstep(0.06, 0.2, slope) * step(30.0, raw);
           float wob = vnoise(m * 0.012) - 0.5 + 0.5 * (vnoise(m * 0.05) - 0.5);
           forest = smoothstep(0.35, 0.65, forest + wob * 0.5);
+          ${G ? `// The fine cover's own pixel, where the window holds one: a tree pixel or not.
+          vec2 tfp = finePos(wp.xz);
+          if (uFineOn > 0.5 && fineInside(tfp) > 1.0 && cov.a < 0.2) {   // (not inside an airfield)
+            int fc = fineTexel(ivec2(floor(tfp)) + uFineOrg);
+            if (fc != 0) forest = fc == 2 ? 1.0 : 0.0;
+          }` : ''}
           float sea = seaDistance(m, raw), inl = inlandDistance(m);
           float keep = step(r2, forest * 0.92) * step(4.0, sea) * step(4.0, inl) * step(zone, 0.001) * step(cov.b, 0.5);
           // Thin out towards the edge of the ring and with height above the ground.
@@ -182,7 +209,7 @@ export function createTrees(scene, uniforms, chunks) {
             edge = step(ihash(ic, 5u), thin) * mix(0.55, 1.0, thin);
           }
           float inner = uInner > 0.0 ? smoothstep(uInner * 0.9, uInner * 1.02, d) : 1.0;
-          float sc = keep * edge * inner * uTreeScale * (8.0 + 9.0 * r3) * (1.0 - smoothstep(${(TREE_MAX_AGL * 0.6).toFixed(1)}, ${TREE_MAX_AGL.toFixed(1)}, uCamAgl));
+          float sc = keep * edge * inner * uTreeScale * (8.0 + 9.0 * r3) * (1.0 - smoothstep(${(MAX_AGL * 0.6).toFixed(1)}, ${MAX_AGL.toFixed(1)}, uCamAgl));
           float w = 1.0 + 0.5 * r0;
           vec3 p = position * vec3(sc * w, sc, sc * w);
           float a = r1 * 6.2832;
@@ -197,7 +224,8 @@ export function createTrees(scene, uniforms, chunks) {
           // Pines and broadleaf, some in autumn colours.
           vec3 green = mix(vec3(0.022, 0.040, 0.016), vec3(0.040, 0.058, 0.024), r2);
           vec3 autumn = mix(vec3(0.13, 0.045, 0.015), vec3(0.15, 0.10, 0.02), r0);
-          vCol = mix(green, autumn, step(0.80, r3) * step(r1, 0.6));
+          ${G ? 'autumn = mix(green, autumn, 0.5) * 0.85;   // Part 7: russet, not orange: against the new ground the bright ones read as traffic cones' : ''}
+          vCol = mix(green, autumn, step(0.80, r3) * step(r1, 0.6)${G ? ' * (uSpacing > 30.0 ? 0.35 : 1.0)' : ''});
           vCol = mix(vCol, vec3(0.040, 0.056, 0.025), (1.0 - thin) * 0.6);
           gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
           #include <logdepthbuf_vertex>
@@ -224,27 +252,40 @@ export function createTrees(scene, uniforms, chunks) {
     mesh.frustumCulled = false;
     mesh.name = `trees${k}`;
     group.add(mesh);
-    levels.push({ L, mesh, u, tris: (base.getAttribute('position').count / 3) * geo.instanceCount });
+    levels.push({ L, mesh, u, geo, ringCount, fullCount, inner: u.uInner.value, per: base.getAttribute('position').count / 3, tris: (base.getAttribute('position').count / 3) * geo.instanceCount });
   });
   scene.add(group);
 
   return {
     group,
     update(camMap, origin, agl) {
-      const on = agl < TREE_MAX_AGL;
+      const on = agl < MAX_AGL;
       group.visible = on;
       let tris = 0;
       if (!on) return 0;
-      for (const { L, mesh, u, tris: t } of levels) {
+      let innerOff = false;
+      for (let k = 0; k < levels.length; k++) {
+        const { L, mesh, u, tris: t } = levels[k];
         // Snap the grid to whole cells; the instance cell index is relative to it.
         const cx = Math.floor(camMap.x / L.spacing), cy = Math.floor(camMap.y / L.spacing);
         u.uGridCell.value.set(cx, cy);
         u.uGridBase.value.set(cx * L.spacing - origin.x, cy * L.spacing - origin.y);
-        mesh.visible = true;
-        tris += t;
+        if (!G) { mesh.visible = true; tris += t; continue; }
+        // v0.6.0 Part 7 (trees now show up to 3,000 m above the ground): a ring is drawn only while
+        // the camera is lower than the ring is wide, and the next ring out fills its place.
+        // From above, the rings' different densities showed as squares under the aircraft; and a
+        // ring of 7 m trees is nothing from 1,000 m up.
+        const lv = levels[k];
+        const off = k < levels.length - 1 && agl > L.spacing * L.half;
+        mesh.visible = !off;
+        lv.geo.instanceCount = innerOff ? lv.fullCount : lv.ringCount;
+        u.uInner.value = innerOff ? 0 : lv.inner;
+        if (!off) tris += lv.per * lv.geo.instanceCount;
+        innerOff = off;
       }
+      shown = G ? levels.filter((l) => l.mesh.visible).length : levels.length;
       return tris;
     },
-    get drawCalls() { return group.visible ? levels.length : 0; },
+    get drawCalls() { return group.visible ? shown : 0; },
   };
 }

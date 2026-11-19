@@ -6,7 +6,7 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 
 const BASE = process.env.FS_URL || 'http://localhost:8014/games/flight-sim/';
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 try {

@@ -25,7 +25,7 @@ const FT = 3.28084, KT = 1.943844;
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 let page;
@@ -89,7 +89,9 @@ try {
     const el = document.querySelector('#menu-root'), cs = [...el.querySelectorAll('*')].map((e) => getComputedStyle(e).backgroundImage).find((b) => b && b.includes('url('));
     return cs || '';
   });
-  check('menu shows a still', /assets\/menu\/.+\.jpg/.test(bg), bg.slice(0, 120));
+  // v0.5.7: the home page draws its scene (home-scene.js's line art, .fsh-art) instead of a still.
+  const art = await page.evaluate(() => !!document.querySelector('#menu-root .fsh-art'));
+  check('menu shows a still', /assets\/menu\/.+\.jpg/.test(bg) || art, bg.slice(0, 120) || (art ? 'home scene .fsh-art' : ''));
   const f0 = await page.evaluate(() => window.__fs.frames);
   await page.waitForTimeout(3000);
   const f1 = await page.evaluate(() => window.__fs.frames);
@@ -120,7 +122,8 @@ try {
   await exitToMenu();
   const savedA = await st();
   const saveInfo = await page.evaluate(() => window.__fsLastSave);
-  check('Exit to menu saved Test A', saveInfo && saveInfo.ok && saveInfo.reason === 'exit to menu', JSON.stringify(saveInfo));
+  // v0.5.5: Exit to menu saves ('exit to menu'), then its setPaused(true) saves again ('pause'): either is the exit's save.
+  check('Exit to menu saved Test A', saveInfo && saveInfo.ok && (saveInfo.reason === 'exit to menu' || saveInfo.reason === 'pause'), JSON.stringify(saveInfo));
   check('a save takes a few ms', saveInfo && saveInfo.ms < 10, `${saveInfo?.ms.toFixed(2)} ms`);
 
   // ---- 3. Test B: a Jeju gate, start the pushback ----
@@ -146,11 +149,13 @@ try {
   // ---- 4. Load Test A: exactly where it was, flies on, land ----
   await loadByName('Test A');
   const loadedA = await page.evaluate(() => { const fs = window.__fs; fs.setPaused(true, true); const s = fs.sim.state;
-    return { t: s.t, x: s.pos.x, y: s.pos.y, z: s.pos.z, vx: s.vel.x, vy: s.vel.y, vz: s.vel.z, pitch: s.pitch, roll: s.roll, hdg: s.hdg, fuel: s.fuelKg, ap: fs.ap.ap, apHdg: fs.ap.hdgDeg, apAlt: fs.ap.altFt }; });
+    return { t: s.t, x: s.pos.x, y: s.pos.y, z: s.pos.z, vx: s.vel.x, vy: s.vel.y, vz: s.vel.z, pitch: s.pitch, roll: s.roll, hdg: s.hdg, fuel: s.fuelKg, ff: s.fuelFlowKgS, ap: fs.ap.ap, apHdg: fs.ap.hdgDeg, apAlt: fs.ap.altFt }; });
   // The load can step a frame before the pause above; take back that motion.
   const dt = loadedA.t - savedA.t;
+  // v0.6.0: the load now steps up to a few frames (Δt 0.067 s seen) while the start airport is built; take back the
+  // fuel burnt in them too (fuel flow × Δt), as for the position, instead of comparing the raw fuel.
   const miss = Math.hypot(loadedA.x - loadedA.vx * dt - savedA.x, loadedA.y - loadedA.vy * dt - savedA.y);
-  check('Test A loads exactly where it was', dt >= 0 && dt < 0.1 && miss < 0.01 && same(loadedA, savedA, ['ap', 'apHdg', 'apAlt']) && Math.abs(loadedA.fuel - savedA.fuel) < 0.05,
+  check('Test A loads exactly where it was', dt >= 0 && dt < 0.1 && miss < 0.01 && same(loadedA, savedA, ['ap', 'apHdg', 'apAlt']) && Math.abs(loadedA.fuel + loadedA.ff * dt - savedA.fuel) < 0.05,
     `Δt ${dt.toFixed(4)} s, position ${miss.toExponential(2)} m off after taking back Δt, AP ${loadedA.ap} HDG ${loadedA.apHdg} ALT ${loadedA.apAlt}, fuel ${savedA.fuel.toFixed(2)} → ${loadedA.fuel.toFixed(2)}`);
   await page.evaluate(() => window.__fs.setPaused(false));
   const t0 = (await st()).t;

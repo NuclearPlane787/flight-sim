@@ -13,7 +13,7 @@ const BASE = process.env.FS_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 mkdirSync(OUT, { recursive: true });
 const ids = process.argv.slice(2).length ? process.argv.slice(2) : ['a321neo'];
 const DIST = { a321neo: 58, 'b787-9': 80, 'b777-300er': 92 };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=800,560'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=800,560'] });
 let failed = 0;
 try {
   for (const id of ids) {

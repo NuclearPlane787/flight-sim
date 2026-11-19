@@ -15,7 +15,7 @@ const URL0 = (process.env.E2E_URL || 'http://localhost:8014/games/flight-sim/') 
 const ONLY = process.env.ONLY || '';
 
 const profile = mkdtempSync(path.join(tmpdir(), 'fs-precip-'));
-const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1440, height: 900 }, args: ['--window-size=1440,960'] });
+const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1440, height: 900 }, args: ['--mute-audio', '--window-size=1440,960'] });
 let code = 0;
 try {
   const page = ctx.pages()[0] || await ctx.newPage();

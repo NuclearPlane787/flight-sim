@@ -19,7 +19,7 @@ const ok = (c, m) => { if (!c) fails++; console.log((c ? 'PASS ' : 'FAIL ') + m)
 const SIZES = [[1440, 900], [1280, 720], [1920, 1080], [1100, 700], [2560, 1440]];   // the three asked for, and the range's ends
 
 (async () => {
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   // Every requestAnimationFrame the page asks for.
   await ctx.addInitScript(() => {

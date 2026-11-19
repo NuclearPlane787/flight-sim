@@ -8,8 +8,17 @@
 // Frames: the wind is the velocity of the air, in NED (n, e, d: d is down), m/s. Directions on the panel
 // are degrees magnetic, "from", as the tower gives them; they're converted once, at the settings' reference
 // point (refX, refY: the arrival airport), so the wind is one vector everywhere.
+//
+// v0.6.0 (V060.md, "The wind, true everywhere"): with EAST_ASIA_ON, the wind keeps its true
+// direction as set at the arrival (its magnetic direction there plus the variation there) and is
+// turned into grid coordinates at each point by the local convergence: the mean wind (surface,
+// aloft, the shear) and the gusts' direction turn by windTurnAt(C, x, y), exactly 0 at
+// (refX, refY), so the arrival's wind is v0.5.8's to the bit. A function of position, no state.
+// With the flag off the one vector of v0.5.8 holds everywhere. (The turbulence's frozen waves
+// and the microbursts don't turn: they have no direction to keep.)
 
-import { magToGrid } from '../world/frame.js';
+import { magToGrid, convergenceAt } from '../world/frame.js';
+import { eastAsiaOn } from '../world/region.js';
 
 const KT = 0.514444, FT = 0.3048, DEG = Math.PI / 180;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -46,7 +55,7 @@ export function normalizeWeather(s) {
   const dir = (a) => ((num(a, 0) % 360) + 360) % 360;
   const speed = (v) => Math.max(0, num(v, 0));
   const w = s.wind || d.wind, a = s.aloft || w;
-  return {
+  const o = {
     seed: num(s.seed, d.seed) | 0, preset: typeof s.preset === 'string' ? s.preset : d.preset,
     refX: num(s.refX, 0), refY: num(s.refY, 0),
     wind: { fromDeg: dir(w.fromDeg), kt: speed(w.kt), gustKt: speed(w.gustKt) },
@@ -65,6 +74,11 @@ export function normalizeWeather(s) {
     runway: RUNWAY_STATES.includes(s.runway) ? s.runway : 'auto',
     tempC: clamp(num(s.tempC, ISA_TEMP_C), -60, 60), qnh: clamp(num(s.qnh, STD_QNH), 900, 1100),
   };
+  // v0.6.0: weather made with the region on keeps its wind's true direction across the map
+  // (windTurnAt). Settings without the tag are v0.5.8's (a save's): their wind keeps its grid
+  // direction everywhere, so an old save in weather flies as it did.
+  if (s.trueWind === true) o.trueWind = true;
+  return o;
 }
 
 // The runway's state: as set on the panel, or from the precipitation and the temperature. 'dry' | 'wet' | 'snow' | 'ice'.
@@ -99,7 +113,9 @@ export function runwayTyresOf(s) {
 
 // Nothing to fly in and nothing to draw: the sim then skips the weather altogether.
 export function isDefaultWeather(s) {
-  return JSON.stringify(normalizeWeather(s)) === JSON.stringify(calmWeather());
+  const n = normalizeWeather(s);
+  delete n.trueWind;   // the tag alone is no weather
+  return JSON.stringify(n) === JSON.stringify(calmWeather());
 }
 
 // ---- the boundary layer ----
@@ -253,6 +269,7 @@ export function compileWeather(settings) {
   const adv = Math.max(sp, GUST_MIN_ADV);
   const C = {
     settings: s, seed: s.seed | 0,
+    refConv: convergenceAt(s.refX, s.refY), trueWind: s.trueWind === true,
     sfN: sf.n, sfE: sf.e, alN: al.n, alE: al.e,
     bDen: Math.pow(PROFILE_TOP_M / 10, PROFILE_ALPHA) - 1,
     gustAmp: Math.max(0, s.wind.gustKt - s.wind.kt) * KT, gustN, gustE,
@@ -312,10 +329,19 @@ function fillWeights(weights, f, sigma, L) {
   }
 }
 
+// The angle (rad, clockwise) by which the wind compiled at (refX, refY) turns on the map at (x, y):
+// convergence there minus convergence here, 0 with the flag off, for v0.5.8's settings (no
+// `trueWind` tag) and exactly 0 at the reference.
+export function windTurnAt(C, x, y) {
+  return C.trueWind && eastAsiaOn() ? C.refConv - convergenceAt(x, y) : 0;
+}
+
 // Fills W with the air's velocity at map point (x, y), height z (metres above sea level), agl above the
 // ground, at sim time t: n, e, d (the whole wind), meanN, meanE (without gusts, turbulence and bursts),
 // and p, the roll-rate gust (rad/s) across a span `span` whose right wing points along (rn, re).
 export function windAt(C, x, y, z, agl, t, rn, re, span, W) {
+  const turn = windTurnAt(C, x, y);
+  const tc = turn === 0 ? 1 : Math.cos(turn), ts = turn === 0 ? 0 : Math.sin(turn);
   const h = agl > 0 ? agl : 0;
   let n, e;
   if (h >= PROFILE_TOP_M) { n = C.alN; e = C.alE; }
@@ -331,11 +357,13 @@ export function windAt(C, x, y, z, agl, t, rn, re, span, W) {
     const on = smooth((h - sh.z + 30) / 60) * (1 - smooth((h - sh.z - 300) / 600));
     n += sh.n * on; e += sh.e * on;
   }
+  if (turn !== 0) { const n0 = n; n = n0 * tc - e * ts; e = e * tc + n0 * ts; }
   W.meanN = n; W.meanE = e;
   let d = 0, p = 0;
   if (C.gustAmp > 0) {
     const g = gustField(C, x, y, t) * C.gustAmp * (h < 10 ? Math.pow(Math.max(h, 1) / 10, PROFILE_ALPHA) : 1) * (1 - smooth((h - 600) / 900));
-    n += C.gustN * g; e += C.gustE * g;
+    if (turn === 0) { n += C.gustN * g; e += C.gustE * g; }
+    else { n += (C.gustN * tc - C.gustE * ts) * g; e += (C.gustE * tc + C.gustN * ts) * g; }
   }
   for (let i = 0; i < C.bursts.length; i++) {
     const b = C.bursts[i];

@@ -10,7 +10,12 @@ const CALLS = [
 const WARNINGS = [['pullUp', 'pull up'], ['tooLowGear', 'too low, gear'], ['sinkRate', 'sink rate']];
 
 export function createCallouts() {
-  const synth = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null;
+  // The speech voice is the system's (the Web Speech API), which a browser's own mute doesn't
+  // reach: Chrome's --mute-audio leaves it talking. So under automation (navigator.webdriver:
+  // the headless test runs) nothing is spoken; `heard` still records every call for the checks.
+  // (Shane, 2026-11-19: "I randomly hear '100 50 40 ...'": the test landings, on his speakers.)
+  const automated = typeof navigator !== 'undefined' && navigator.webdriver === true;
+  const synth = typeof speechSynthesis !== 'undefined' && !automated ? speechSynthesis : null;
   let voice = null;
   let lastFt = Infinity;
   const armed = new Set();

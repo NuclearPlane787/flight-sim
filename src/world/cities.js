@@ -14,10 +14,17 @@
 // picture is the same, without the sea, fields and forest submitting empty boxes.
 
 import * as THREE from '../../vendor/three.module.js';
+import { coverReader } from './clipwindow.js';
+import { EAST_ASIA_ON, CITIES_ON, countryAt } from './region.js';
 
 const BLOCK = 400;          // m
 const HALF = 20;            // blocks each side of the camera: ±8 km
-const SLOTS = 15;           // 3 columns x 5 rows per block
+const SLOTS = 15;           // 3 columns x 5 rows per block (Korea's)
+// v0.6.0 Part 6 (behind CITIES_ON): each country's own mix. A block's country goes to the shader in
+// its slot index (slot + 64 x code); Japan's blocks have 30 slots (5 x 6), China's 20 (4 x 5).
+const COUNTRY_CODE = { KR: 0, KP: 0, other: 0, JP: 1, CN: 2 };
+const COUNTRY_SLOTS = [SLOTS, 30, 20];
+const MAX_SLOTS = 30;
 export const CITY_MAX_AGL = 4500;   // m above the ground: no buildings above this
 
 // A unit box (x, z in -0.5..0.5, y 0..1) without a bottom; normals per face.
@@ -37,11 +44,15 @@ function boxGeometry() {
 }
 
 export function createCities(scene, uniforms, chunks) {
+  // v0.6.0 Part 6: the countries' mixes are compiled in only when Part 6 is on (the flags are
+  // fixed at page load), so with it off the shader's text is v0.5.8's and Korea's pixels with it.
+  const MIX = EAST_ASIA_ON && CITIES_ON;
+  const SK = MIX ? 'sk' : 'bc * 16 + ivec2(si, 0)';
   const box = boxGeometry();
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute('position', box.getAttribute('position'));
   geo.setAttribute('normal', box.getAttribute('normal'));
-  const n = (2 * HALF) ** 2 * SLOTS;
+  const n = (2 * HALF) ** 2 * MAX_SLOTS;
   const inst = new Float32Array(n * 3);
   const slotAttr = new THREE.InstancedBufferAttribute(inst, 3);
   slotAttr.setUsage(THREE.DynamicDrawUsage);
@@ -52,36 +63,45 @@ export function createCities(scene, uniforms, chunks) {
   // the cover's built-up share, plus at most 0.15 of noise, reaches 0.18: so 0.03 (8/255).
   // Buildings sit within ~230 m of the block centre, and the bilinear sample reaches one
   // cell further, so any texel centred within 240 m + a cell of the centre counts.
-  const covTex = uniforms.uCover && uniforms.uCover.value;
-  const cov = uniforms.uHasCover && uniforms.uHasCover.value > 0.5 && covTex && covTex.image && covTex.image.data;
-  const nat = uniforms.uNat.value, nsz = uniforms.uNatSize.value;
+  // v0.6.0: the cover through clipwindow.js's coverReader (the grid itself over Korea; in a
+  // following clip window only the cells it holds, and the blocks listed again when it refills).
+  const cov = coverReader(uniforms);
+  const nat = uniforms.uNat.value;
   const blockCache = new Map();
+  let coverVer = cov ? cov.version() : 0;
   function blockBuilt(bx, by) {
     if (!cov) return true;
     const key = bx * 1e6 + by;
     let v = blockCache.get(key);
     if (v !== undefined) return v;
-    const cell = nat.z, nx = nsz.x, ny = nsz.y, r = 240 + cell;
+    const cell = nat.z, r = 240 + cell, [lx, ly] = cov.lo, [hx, hy] = cov.hi, at = cov.at;
     const cxm = (bx + 0.5) * BLOCK - nat.x, cym = (by + 0.5) * BLOCK - nat.y;
-    const i0 = Math.max(Math.ceil((cxm - r) / cell - 0.5), 0), i1 = Math.min(Math.floor((cxm + r) / cell - 0.5), nx - 1);
-    const j0 = Math.max(Math.ceil((cym - r) / cell - 0.5), 0), j1 = Math.min(Math.floor((cym + r) / cell - 0.5), ny - 1);
+    const i0 = Math.max(Math.ceil((cxm - r) / cell - 0.5), lx), i1 = Math.min(Math.floor((cxm + r) / cell - 0.5), hx);
+    const j0 = Math.max(Math.ceil((cym - r) / cell - 0.5), ly), j1 = Math.min(Math.floor((cym + r) / cell - 0.5), hy);
     v = false;
     // Off the map the texture clamps to its edge texel; those are in range after clamping.
-    for (let j = Math.min(j0, ny - 1); j <= Math.max(j1, 0) && !v; j++) {
-      for (let i = Math.min(i0, nx - 1); i <= Math.max(i1, 0); i++) if (cov[(j * nx + i) * 4 + 2] >= 7) { v = true; break; }
+    for (let j = Math.min(j0, hy); j <= Math.max(j1, ly) && !v; j++) {
+      for (let i = Math.min(i0, hx); i <= Math.max(i1, lx); i++) if (at(i, j) >= 7) { v = true; break; }
     }
     if (blockCache.size > 200000) blockCache.clear();
     blockCache.set(key, v);
     return v;
   }
   let gridX = NaN, gridY = NaN, blocks = 0;
+  // v0.6.0 Part 6: where the real centres' buildings stand (centres.js's maskAt), no procedural block.
+  let maskAt = null, maskVersion = null, maskVer = 0;
   function fill(cx, cy) {
     let k = 0;
     blocks = 0;
+    const mix = MIX;
     for (let j = -HALF; j < HALF; j++) for (let i = -HALF; i < HALF; i++) {
       if (!blockBuilt(cx + i, cy + j)) continue;
+      if (maskAt && maskAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)) continue;
       blocks++;
-      for (let s = 0; s < SLOTS; s++) { inst[k++] = i; inst[k++] = j; inst[k++] = s; }
+      // The block's country, by its centre (0, Korea's mix, everywhere unless Part 6 is on).
+      const code = mix ? COUNTRY_CODE[countryAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)] || 0 : 0;
+      const ns = COUNTRY_SLOTS[code];
+      for (let s = 0; s < ns; s++) { inst[k++] = i; inst[k++] = j; inst[k++] = s + 64 * code; }
     }
     geo.instanceCount = k / 3;
     slotAttr.needsUpdate = true;
@@ -103,14 +123,16 @@ export function createCities(scene, uniforms, chunks) {
       attribute vec3 slot;            // block i, j (relative to the snapped grid), slot index
       varying vec3 vRel, vN, vLocal, vTint, vRoof;
       varying float vKind, vDist, vApt, vSeed, vFace;
+      ${MIX ? 'varying float vSeg;' : ''}
       #include <logdepthbuf_pars_vertex>
       const float BLOCK = ${BLOCK.toFixed(1)};
       void main() {
         ivec2 bc = ivec2(uGridCell + slot.xy);              // the block's map index
-        int si = int(slot.z);
+        ${MIX ? `int sz = int(slot.z), ctry = sz / 64, si = sz - ctry * 64;   // the block's country (0 Korea, 1 Japan, 2 China)
+        ivec2 sk = bc * 16 + ivec2(si & 15, si >> 4);          // the slot's hash cell (bc * 16 + (si, 0) for Korea's 15)` : 'int si = int(slot.z);'}
         float bh = ihash(bc, 21u), ba = ihash(bc, 22u), bt = ihash(bc, 23u);
-        float sh0 = ihash(bc * 16 + ivec2(si, 0), 31u), sh1 = ihash(bc * 16 + ivec2(si, 0), 32u);
-        float sh2 = ihash(bc * 16 + ivec2(si, 0), 33u), sh3 = ihash(bc * 16 + ivec2(si, 0), 34u);
+        float sh0 = ihash(${SK}, 31u), sh1 = ihash(${SK}, 32u);
+        float sh2 = ihash(${SK}, 33u), sh3 = ihash(${SK}, 34u);
         vec2 centre = uGridBase + (slot.xy + 0.5) * BLOCK;   // map metres relative to the origin
         // Block centre on the map, for the cover.
         vec2 mc = uOrigin + centre;
@@ -123,6 +145,50 @@ export function createCities(scene, uniforms, chunks) {
         vec2 lp;
         vec3 size;                                           // length (local x), height, depth
         float rot = ang;
+        ${MIX ? `        float seg = 0.0;                                     // a row of houses: the length of one (m); 0: one building
+        if (ctry == 1) {
+          // Japan: dense low-rise as most of it (rows of two- and three-storey houses under dark
+          // tiled roofs), mid-rise "pencil" buildings along the arterials (the block's rim: the
+          // streets run between blocks), and a cluster of towers where it is densest.
+          col = si % 5; row = si / 5;
+          bool rim = col == 0 || col == 4 || row == 0 || row == 5;
+          bool core = dense > 0.62 && bt > 0.88;
+          ang = (ba - 0.5) * 1.2; rot = ang;
+          lp = vec2((float(col) - 2.0) * 76.0, (float(row) - 2.5) * 62.0) + (vec2(sh0, sh1) - 0.5) * vec2(26.0, 22.0);
+          if (core && sh2 > 0.45) {
+            kind = 5.0;                                      // a tower: 18 to 42 floors
+            size = vec3(26.0 + 14.0 * sh0, (18.0 + floor(24.0 * sh3 * sh3)) * 3.6, 24.0 + 12.0 * sh1);
+          } else if ((rim && dense > 0.35 && sh1 > 0.35) || (dense > 0.6 && sh2 > 0.55) || core) {
+            kind = 4.0;                                      // mid-rise: 4 to 11 floors, narrow
+            size = vec3(12.0 + 12.0 * sh2, (4.0 + floor(8.0 * sh3 * sh3)) * 3.1, 11.0 + 9.0 * sh0);
+            rot += sh0 > 0.5 ? 1.5708 : 0.0;
+          } else {
+            kind = 3.0;                                      // a row of houses: 2 or 3 floors
+            seg = 8.0 + 3.0 * sh2;
+            size = vec3(seg * (5.0 + floor(4.0 * sh0)), (2.0 + floor(1.6 * sh3)) * 2.9, 9.0 + 3.5 * sh1);   // five to eight houses in a row
+            rot += sh1 > 0.6 ? 1.5708 : 0.0;
+          }
+        } else if (ctry == 2) {
+          // China: compounds of tall residential point towers (25 to 35 floors, all of a height),
+          // rows of older six-storey slabs and sheds in the outer and older parts, and clusters of
+          // skyscrapers where it is densest.
+          col = si % 4; row = si / 4;
+          ang = (ba - 0.5) * 0.5; rot = ang;
+          lp = vec2((float(col) - 1.5) * 95.0, (float(row) - 2.0) * 76.0) + (vec2(sh0, sh1) - 0.5) * vec2(14.0, 10.0);
+          if (dense > 0.6 && bt > 0.9) {
+            kind = 8.0;                                      // skyscrapers: 28 to 62 floors
+            size = vec3(34.0 + 12.0 * sh2, (28.0 + floor(34.0 * sh3 * sh3)) * 3.9, 32.0 + 12.0 * sh1);
+            if (sh0 > 0.7) size.y *= 0.35;                   // podiums and lower neighbours
+          } else if (dense > 0.42 && bt < 0.40) {
+            kind = 6.0;                                      // point towers, one height a compound: older ones 14 to 20 floors, newer 25 to 35
+            size = vec3(27.0 + 5.0 * sh2, ((bh < 0.45 ? 14.0 + floor(13.0 * bh) : 25.0 + floor(18.0 * (bh - 0.45))) + floor(2.0 * sh3)) * 2.9, 22.0 + 4.0 * sh0);
+            if (sh1 > 0.93) size = vec3(40.0, 9.0, 24.0);    // a kindergarten or shops
+          } else {
+            kind = 7.0;                                      // older slabs, 5 to 7 floors, in rows
+            size = vec3(46.0 + 22.0 * sh2, (5.0 + floor(2.5 * sh3)) * 3.0, 12.0 + 1.5 * sh0);
+            if (sh1 > 0.88) size = vec3(60.0 + 30.0 * sh2, 8.0 + 4.0 * sh3, 28.0 + 14.0 * sh0);   // a shed (the blue roofs)
+          }
+        } else` : ''}
         if (kind == 0.0) {
           lp = vec2((float(col) - 1.0) * 125.0, (float(row) - 2.0) * 72.0) + (vec2(sh0, sh1) - 0.5) * vec2(16.0, 8.0);
           size = vec3(58.0 + 36.0 * sh2, (15.0 + floor(16.0 * sh3)) * 2.9, 13.0 + 2.0 * sh0);
@@ -193,15 +259,30 @@ export function createCities(scene, uniforms, chunks) {
                   : kind == 1.0 ? (sh0 < 0.4 ? mix(vec3(0.22, 0.12, 0.08), vec3(0.28, 0.17, 0.11), sh2)   // brick
                                 : mix(vec3(0.24, 0.23, 0.21), vec3(0.36, 0.32, 0.27), sh2))               // render, tile
                   : mix(vec3(0.12, 0.16, 0.20), vec3(0.30, 0.31, 0.32), sh0);
+        ${MIX ? `        if (kind > 2.5) {
+          // v0.6.0: Japan's pale render and tile, its towers' glass and pale concrete; China's
+          // beige, pink-grey and white towers, its older slabs' cream and brick.
+          tint = kind == 3.0 ? mix(vec3(0.34, 0.33, 0.30), vec3(0.27, 0.24, 0.20), sh2)
+               : kind == 4.0 ? (sh0 < 0.3 ? mix(vec3(0.24, 0.16, 0.12), vec3(0.30, 0.22, 0.16), sh2) : mix(vec3(0.30, 0.30, 0.29), vec3(0.38, 0.36, 0.33), sh2))
+               : kind == 5.0 ? mix(vec3(0.16, 0.20, 0.24), vec3(0.34, 0.34, 0.33), sh0)
+               : kind == 6.0 ? (sc < 0.4 ? vec3(0.36, 0.33, 0.28) : sc < 0.7 ? vec3(0.34, 0.29, 0.27) : vec3(0.33, 0.34, 0.35)) * (0.9 + 0.15 * sh2)
+               : kind == 7.0 ? (sh0 < 0.35 ? mix(vec3(0.25, 0.15, 0.11), vec3(0.30, 0.20, 0.15), sh2) : mix(vec3(0.30, 0.29, 0.26), vec3(0.36, 0.34, 0.29), sh2))
+               : mix(vec3(0.10, 0.17, 0.22), vec3(0.24, 0.29, 0.31), sh0);
+        }` : ''}
         vTint = tint;
-        float rr = ihash(bc * 16 + ivec2(si, 0), 35u);
+        float rr = ihash(${SK}, 35u);
         vRoof = rr < 0.55 ? vec3(0.17, 0.17, 0.165) * (0.8 + 0.4 * sh1)
               : rr < 0.75 ? vec3(0.10, 0.14, 0.11)            // green waterproofing
               : rr < 0.88 ? vec3(0.20, 0.10, 0.07)            // terracotta / red
               : vec3(0.26, 0.26, 0.25);                       // pale concrete
-        vApt = kind == 0.0 ? 1.0 : 0.0;
+        ${MIX ? `// v0.6.0: Japan's houses under dark tile (slate, brown, some blue, some pale metal);
+        // China's sheds under blue steel, its slabs under red-brown or grey.
+        if (kind == 3.0) vRoof = rr < 0.45 ? vec3(0.085, 0.09, 0.105) : rr < 0.70 ? vec3(0.12, 0.085, 0.065) : rr < 0.82 ? vec3(0.07, 0.10, 0.17) : vec3(0.24, 0.24, 0.245);
+        else if (kind == 7.0) vRoof = size.z > 20.0 ? (rr < 0.7 ? vec3(0.07, 0.15, 0.32) : vec3(0.20, 0.20, 0.20)) : (rr < 0.5 ? vec3(0.19, 0.09, 0.07) : vec3(0.17, 0.17, 0.165));
+        vSeg = seg;` : ''}
+        vApt = kind == 0.0${MIX ? ' || kind == 6.0' : ''} ? 1.0 : 0.0;
         // Night windows: a seed per building, and which face (so opposite faces differ).
-        vSeed = ihash(bc * 16 + ivec2(si, 0), 36u);
+        vSeed = ihash(${SK}, 36u);
         vFace = normal.x + 2.0 * normal.z;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
         #include <logdepthbuf_vertex>
@@ -212,6 +293,7 @@ export function createCities(scene, uniforms, chunks) {
       ${chunks.NOISE_GLSL}
       varying vec3 vRel, vN, vLocal, vTint, vRoof;
       varying float vKind, vDist, vApt, vSeed, vFace;
+      ${MIX ? 'varying float vSeg;' : ''}
       #include <logdepthbuf_pars_fragment>
       void main() {
         #include <logdepthbuf_fragment>
@@ -268,6 +350,17 @@ export function createCities(scene, uniforms, chunks) {
         } else {
           alb = vRoof;
         }
+        ${MIX ? `        if (vSeg > 0.0) {
+          // v0.6.0: a row of houses (Japan): each house its own shade of the wall and the roof,
+          // with a dark gap between neighbours, averaged out once a house is a pixel wide.
+          float hx = vLocal.x / vSeg, hw = fwidth(hx) + 1e-4;
+          float hid = floor(hx);
+          float shade = 0.78 + 0.44 * hash12(vec2(hid, vSeed * 311.0));
+          float gap = smoothstep(0.0, 0.06 + hw, fract(hx)) * (1.0 - smoothstep(0.94 - hw, 1.0, fract(hx)));
+          float far = smoothstep(0.35, 1.2, hw);
+          alb *= mix(shade * mix(0.45, 1.0, gap), 0.93, far);
+          if (vKind < 0.5) alb *= mix(0.80 + 0.2 * step(0.5, fract(vLocal.z / 12.0 + 0.5)), 0.9, far);   // the ridge: one slope in the light
+        }` : ''}
         if (uSnow > 0.0) alb = mix(alb, vec3(0.55, 0.57, 0.60), uSnow * 0.75 * smoothstep(0.55, 0.9, n.y));   // v0.4.0: snow on the roofs
         float ndl = max(dot(n, uSunDir), 0.0);
         vec3 col = alb * (uSunColor * ndl * 2.2 + uSkyAmb * (0.55 + 0.45 * n.y) * 1.1) + glow;
@@ -284,11 +377,15 @@ export function createCities(scene, uniforms, chunks) {
 
   return {
     mesh,
+    // The real centres' mask: at(x, y) true where a block is left out; version() rises when it changes.
+    setMask(at, version) { maskAt = at || null; maskVersion = version || null; maskVer = version ? version() : 0; gridX = NaN; },
     update(camMap, origin, agl) {
       const on = agl < CITY_MAX_AGL;
       mesh.visible = on;
       if (!on) return { instances: 0, tris: 0, drawCalls: 0 };
       const cx = Math.floor(camMap.x / BLOCK), cy = Math.floor(camMap.y / BLOCK);
+      if (cov && cov.version() !== coverVer) { coverVer = cov.version(); blockCache.clear(); gridX = NaN; }
+      if (maskVersion && maskVersion() !== maskVer) { maskVer = maskVersion(); gridX = NaN; }
       if (cx !== gridX || cy !== gridY) { gridX = cx; gridY = cy; fill(cx, cy); }
       mesh.visible = geo.instanceCount > 0;
       u.uGridCell.value.set(cx, cy);

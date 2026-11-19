@@ -61,7 +61,7 @@ const SCENES = {
 
 const tag = process.argv[2] || 'x';
 const names = process.argv.slice(3).length ? process.argv.slice(3) : Object.keys(SCENES);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 let bad = 0;
 try {
   for (const name of names) {

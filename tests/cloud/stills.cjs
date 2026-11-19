@@ -48,7 +48,7 @@ window.__seat = (id = 'captain', yawDeg = 0, pitchDeg = -6, fov = 62) => {
   const list = JSON.parse(process.argv[2]);
   const out = process.argv[3] || 'shots';
   require('fs').mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1200, height: 750 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));

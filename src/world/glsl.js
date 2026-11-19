@@ -10,9 +10,15 @@ import { PATCH_BLEND, FLAT_MARGIN_U, FLAT_MARGIN_V, FLAT_BLEND, PAVE_BLEND_M } f
 import { RUNWAY_SHOULDER_M } from './runways.js';
 import { EARTH_RADIUS } from './frame.js';
 import { HAZE_SIGMA0, HAZE_HEIGHT } from './sky.js';
+import { createClipWindow } from './clipwindow.js';
 
 export const MAX_PATCHES = 4;
 export const MAX_RUNWAYS = 12;
+
+// v0.6.0 (V060.md Part 1 step 3): the 250 m textures as a toroidal clip window over the tiles
+// (clipwindow.js) instead of one Korea-sized texture assembled from them. Off: the textures are
+// tiles.assemble(), as since checkpoint 1.
+export const CLIP_WINDOW = true;
 
 const f = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 
@@ -24,7 +30,7 @@ function dataTex(data, w, h, format, type, opts = {}) {
   t.minFilter = opts.mip ? THREE.LinearMipmapLinearFilter : (opts.linear ? THREE.LinearFilter : THREE.NearestFilter);
   t.magFilter = opts.linear || opts.mip ? THREE.LinearFilter : THREE.NearestFilter;
   t.generateMipmaps = !!opts.mip;
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.wrapS = t.wrapT = opts.repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
   t.flipY = false;
   t.unpackAlignment = 1;
   if (opts.aniso) t.anisotropy = opts.aniso;
@@ -33,7 +39,7 @@ function dataTex(data, w, h, format, type, opts = {}) {
 }
 
 // Normals (map ENU x, y packed as RG8 around 128) from a height grid, by central differences.
-function normalsRG(h, nx, ny, cell, scale, out = new Uint8Array(nx * ny * 2), rowOff = 0) {
+export function normalsRG(h, nx, ny, cell, scale, out = new Uint8Array(nx * ny * 2), rowOff = 0) {
   const k = scale / (2 * cell);
   for (let j = 0; j < ny; j++) {
     const jm = j > 0 ? j - 1 : 0, jp = j < ny - 1 ? j + 1 : ny - 1;
@@ -64,64 +70,59 @@ function atlasLayout(grids) {
 export function createWorldUniforms(hf) {
   const L = hf.layers || {};
   const scale = L.heightScale || 0.25;
-  const nat = L.national || { x0: -400000, y0: -400000, cell: 250, nx: 3200, ny: 3200 };
+  // v0.6.0: over the tiles, the textures are the extent assembled from them (Korea's grid,
+  // cell for cell) until the clip window replaces them.
   const has = hf.info || {};
+  // With the clip window (clipwindow.js): over Korea, which fits, the extent itself, fixed, with
+  // ClampToEdge (the national texture to the bit); else a toroidal N² window (global cell g at
+  // texel g & (N − 1), the texture coordinate (m − lattice origin) / (N · cell), RepeatWrapping).
+  const cw = CLIP_WINDOW && !L.national && L.tiles && has.height ? createClipWindow(L.tiles, { heightScale: scale, lean: true }) : null;
+  const nat = cw
+    ? { x0: cw.win.x0 + cw.win.bi * cw.win.cell, y0: cw.win.y0 + cw.win.bj * cw.win.cell, cell: cw.win.cell, nx: cw.nx, ny: cw.ny, height: cw.h, normal: cw.n, water: cw.w, cover: cw.c }
+    : L.national || (L.tiles ? L.tiles.assemble() : null) || { x0: -400000, y0: -400000, cell: 250, nx: 3200, ny: 3200 };
+  const rep = !!cw && !cw.fit;
 
-  const heightTex = has.height
-    ? dataTex(nat.height, nat.nx, nat.ny, THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I' })
+  // A lean window (the region) keeps no CPU copy of its heights, normals and water: those
+  // textures are storage only, filled a block at a time (attachClip).
+  const lean = !!cw && cw.lean;
+  const bare = (t) => { t.source.dataReady = false; return t; };
+  const heightTex = lean ? bare(dataTex(null, nat.nx, nat.ny, THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I', repeat: rep })) : has.height
+    ? dataTex(nat.height, nat.nx, nat.ny, THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I', repeat: rep })
     : dataTex(new Int16Array([-80]), 1, 1, THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I' });
-  const normalTex = has.height
-    ? dataTex(normalsRG(nat.height, nat.nx, nat.ny, nat.cell, scale), nat.nx, nat.ny, THREE.RGFormat, THREE.UnsignedByteType, { mip: true, aniso: 8 })
+  const normalTex = lean ? bare(dataTex(null, nat.nx, nat.ny, THREE.RGFormat, THREE.UnsignedByteType, { mip: true, aniso: 8, repeat: rep })) : has.height
+    ? dataTex(nat.normal || normalsRG(nat.height, nat.nx, nat.ny, nat.cell, scale), nat.nx, nat.ny, THREE.RGFormat, THREE.UnsignedByteType, { mip: true, aniso: 8, repeat: rep })
     : dataTex(new Uint8Array([128, 128]), 1, 1, THREE.RGFormat, THREE.UnsignedByteType, { linear: true });
-  const waterTex = has.water
-    ? dataTex(nat.water, nat.nx, nat.ny, THREE.RGFormat, THREE.UnsignedByteType, { mip: true, aniso: 8 })
+  const waterTex = lean && has.water ? bare(dataTex(null, nat.nx, nat.ny, THREE.RGFormat, THREE.UnsignedByteType, { mip: true, aniso: 8, repeat: rep })) : has.water
+    ? dataTex(nat.water, nat.nx, nat.ny, THREE.RGFormat, THREE.UnsignedByteType, { mip: true, aniso: 8, repeat: rep })
     : dataTex(new Uint8Array([0, 255]), 1, 1, THREE.RGFormat, THREE.UnsignedByteType, { linear: true });
   const coverTex = has.cover
-    ? dataTex(nat.cover, nat.nx, nat.ny, THREE.RGBAFormat, THREE.UnsignedByteType, { mip: true, aniso: 8 })
+    ? dataTex(nat.cover, nat.nx, nat.ny, THREE.RGBAFormat, THREE.UnsignedByteType, { mip: true, aniso: 8, repeat: rep })
     : dataTex(new Uint8Array([0, 0, 0, 0]), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType, { linear: true });
 
-  // 30 m height patches: one R16I atlas plus a normal atlas.
-  const patches = (L.patches || []).slice(0, MAX_PATCHES);
-  const pl = atlasLayout(patches);
-  const pH = new Int16Array(pl.w * pl.h), pN = new Uint8Array(pl.w * pl.h * 2).fill(128);
-  const patchRect = [], patchDim = [];
-  patches.forEach((p, k) => {
-    for (let j = 0; j < p.ny; j++) pH.set(p.height.subarray(j * p.nx, (j + 1) * p.nx), (pl.offs[k] + j) * pl.w);
-    const n = normalsRG(p.height, p.nx, p.ny, p.cell, scale);
-    for (let j = 0; j < p.ny; j++) pN.set(n.subarray(j * p.nx * 2, (j + 1) * p.nx * 2), (pl.offs[k] + j) * pl.w * 2);
-    patchRect.push(new THREE.Vector4(p.x0, p.y0, p.cell, pl.offs[k]));
-    patchDim.push(new THREE.Vector4(p.nx, p.ny, pl.w, pl.h));
-  });
-  while (patchRect.length < MAX_PATCHES) { patchRect.push(new THREE.Vector4(1e9, 1e9, 1, 0)); patchDim.push(new THREE.Vector4(1, 1, 1, 1)); }
-  const patchHTex = dataTex(pH, pl.w, pl.h, THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I' });
-  const patchNTex = dataTex(pN, pl.w, pl.h, THREE.RGFormat, THREE.UnsignedByteType, { linear: true });
-
-  // 10 m coast patches: one R8 atlas.
-  const coast = (L.coastPatches || []).slice(0, MAX_PATCHES);
-  const cl = atlasLayout(coast);
-  const cA = new Uint8Array(cl.w * cl.h).fill(255);
-  const coastRect = [], coastDim = [];
-  coast.forEach((p, k) => {
-    for (let j = 0; j < p.ny; j++) cA.set(p.coast.subarray(j * p.nx, (j + 1) * p.nx), (cl.offs[k] + j) * cl.w);
-    coastRect.push(new THREE.Vector4(p.x0, p.y0, p.cell, cl.offs[k]));
-    coastDim.push(new THREE.Vector4(p.nx, p.ny, cl.w, cl.h));
-  });
-  while (coastRect.length < MAX_PATCHES) { coastRect.push(new THREE.Vector4(1e9, 1e9, 1, 0)); coastDim.push(new THREE.Vector4(1, 1, 1, 1)); }
-  const coastTex = dataTex(cA, cl.w, cl.h, THREE.RedFormat, THREE.UnsignedByteType, { linear: true });
-
-  // Runway flattening rects (the same list heightAt uses).
-  const rects = (hf.runwayRects || []).slice(0, MAX_RUNWAYS);
-  // (In rank order, as heightAt runs them.) rwyC: a runway's two bends where it meets a longer one.
+  // 30 m height patches (one R16I atlas plus a normal atlas) and 10 m coast patches (one R8
+  // atlas), and the runway flattening rects: v0.6.0, the nearest MAX_PATCHES / MAX_RUNWAYS to
+  // the camera (refreshed by nearUpdate() below; heightAt on the CPU keeps them all). With no
+  // more than the cap, every one in its own order, as before.
+  const allPatches = L.patches || [], allCoast = L.coastPatches || [], allRects = hf.runwayRects || [];
+  // With more patches than the cap (the region), the atlases have MAX_PATCHES fixed slots and a
+  // patch that comes into the nearest set is uploaded into a free one (slotAtlas below): nothing
+  // is rebuilt, so no frame pays for an atlas (the first version rebuilt it: up to 41 ms).
+  const dynP = allPatches.length > MAX_PATCHES, dynC = allCoast.length > MAX_PATCHES;
+  const patchSel = dynP ? [] : nearest(allPatches, MAX_PATCHES, null, rectDist);
+  const coastSel = dynC ? [] : nearest(allCoast, MAX_PATCHES, null, rectDist);
+  const rectSel = nearest(allRects, MAX_RUNWAYS, null, rwyDist);
+  const slotsP = dynP ? slotAtlas(allPatches, [['h', THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I' }], ['n', THREE.RGFormat, THREE.UnsignedByteType, { linear: true }]]) : null;
+  const slotsC = dynC ? slotAtlas(allCoast, [['c', THREE.RedFormat, THREE.UnsignedByteType, { linear: true }]]) : null;
+  const P = dynP ? { hTex: slotsP.tex.h, nTex: slotsP.tex.n, ...emptyRects() } : buildPatchAtlas(patchSel, scale);
+  const C = dynC ? { tex: slotsC.tex.c, ...emptyRects() } : buildCoastAtlas(coastSel);
+  const patchRect = P.rect, patchDim = P.dim, coastRect = C.rect, coastDim = C.dim;
+  const patches = patchSel, coast = coastSel, rects = rectSel;
+  const patchHTex = P.hTex, patchNTex = P.nTex, coastTex = C.tex;
   const rwyA = [], rwyB = [], rwyC = [];
-  for (const r of rects) {
-    rwyA.push(new THREE.Vector4(r.cx, r.cy, r.dx, r.dy));
-    rwyB.push(new THREE.Vector4(r.halfLen, r.halfWid, r.e0, r.e1));
-    const k = r.knots || [], k1 = k[k.length > 1 ? 1 : 0];
-    rwyC.push(k.length ? new THREE.Vector4(k[0][0], k[0][1], k1[0], k1[1]) : new THREE.Vector4(1e9, 0, 1e9, 0));
-  }
-  while (rwyA.length < MAX_RUNWAYS) { rwyA.push(new THREE.Vector4(1e9, 1e9, 1, 0)); rwyB.push(new THREE.Vector4(0, 0, 0, 0)); rwyC.push(new THREE.Vector4(1e9, 0, 1e9, 0)); }
+  for (let k = 0; k < MAX_RUNWAYS; k++) { rwyA.push(new THREE.Vector4()); rwyB.push(new THREE.Vector4()); rwyC.push(new THREE.Vector4()); }
+  fillRunways(rects, rwyA, rwyB, rwyC);
 
-  return {
+  const out = {
     // data
     uHeight: { value: heightTex },
     uNormal: { value: normalTex },
@@ -173,6 +174,307 @@ export function createWorldUniforms(hf) {
     uSunVis: { value: 1 },                                                   // how much of the disc shows through the cloud
     uWet: { value: 0 }, uSnow: { value: 0 }, uRwySnow: { value: 0 },         // the ground: wet, snow on the land, snow on the runways
   };
+  if (cw) attachClip(out, cw, [heightTex, normalTex, waterTex, coverTex]);
+  // The nearest patches and runways to the camera: terrain.js calls update() every frame and
+  // flush() from a mesh's onBeforeRender (where the renderer is). Only when a list is longer than
+  // its cap does anything ever change.
+  const sel = { p: patchSel, c: coastSel, r: rectSel, x: NaN, y: NaN };
+  const writeSlots = (S, list, rect, dim, count) => {
+    for (let k = 0; k < MAX_PATCHES; k++) {
+      const p = list[k];
+      if (p) { rect[k].set(p.x0, p.y0, p.cell, S.offs[S.slotOf.get(p)]); dim[k].set(p.nx, p.ny, S.w, S.h); }
+      else { rect[k].set(1e9, 1e9, 1, 0); dim[k].set(1, 1, 1, 1); }
+    }
+    count.value = list.length;
+  };
+  // A slot atlas follows the wanted set: the ones that left are dropped from the uniforms at
+  // once; a newcomer gets a free slot, its normals are made a slice a frame (all at once when the
+  // camera is nearly on it: a new flight, a jump), its rows are uploaded, and only then is it
+  // listed. `all` gives the CPU's order, which the uniforms keep.
+  function follow(S, all, want, rect, dim, count, camMap, key) {
+    let changed = false;
+    const active = sel[key];
+    const keep = active.filter((p) => want.includes(p));
+    if (keep.length !== active.length) {
+      for (const p of active) if (!want.includes(p)) S.free(p);
+      sel[key] = keep; changed = true;
+      writeSlots(S, keep, rect, dim, count);
+    }
+    S.pending = S.pending.filter((q) => { if (want.includes(q.p)) return true; S.free(q.p); return false; });
+    for (const p of want) {
+      if (sel[key].includes(p) || S.pending.some((q) => q.p === p)) continue;
+      if (!S.take(p)) {
+        // No free slot tall enough (the slots are the tallest patches' sizes, so a fresh
+        // assignment always fits): start again with the wanted set, tallest first.
+        for (const q of sel[key]) S.free(q);
+        for (const q of S.pending) S.free(q.p);
+        sel[key] = []; S.pending = []; changed = true;
+        writeSlots(S, [], rect, dim, count);
+        for (const q of want.slice().sort((a, b) => b.ny - a.ny)) { S.take(q); S.pending.push({ p: q, row: 0, up: 0 }); }
+        break;
+      }
+      S.pending.push({ p, row: 0, up: 0 });
+    }
+    // The normals of the first one waiting (the 30 m patches only), in slices.
+    const q = S.pending[0];
+    if (q && S.tex.n && q.row < q.p.ny) {
+      const p = q.p, near = rectDist(p, camMap) < 30000;
+      if (!p._normal) p._normal = new Uint8Array(p.nx * p.ny * 2);
+      const j1 = near ? p.ny : Math.min(p.ny, q.row + Math.max(8, Math.floor(130000 / p.nx)));
+      normalsRows(p.height, p.nx, p.ny, p.cell, scale, p._normal, q.row, j1);
+      q.row = j1;
+    }
+    return changed;
+  }
+  // Upload the first waiting patch's layers (one layer a frame; all of them when it is near),
+  // then list it. Returns true when the uniforms changed.
+  function upload(S, all, rect, dim, count, key, renderer, camMap) {
+    const q = S.pending[0];
+    if (!q || (S.tex.n && q.row < q.p.ny)) return false;
+    const p = q.p, layers = Object.keys(S.tex), near = camMap && rectDist(p, camMap) < 30000;
+    do {
+      const name = layers[q.up], t = S.tex[name];
+      const data = name === 'h' ? p.height : name === 'n' ? p._normal : p.coast;
+      const src = new THREE.DataTexture(data, p.nx, p.ny, t.format, t.type);
+      src.unpackAlignment = 1;
+      renderer.copyTextureToTexture(src, t, null, _at.set(0, S.offs[S.slotOf.get(p)]));
+      src.dispose();
+      q.up++;
+    } while (near && q.up < layers.length);
+    if (q.up < layers.length) return false;
+    S.pending.shift();
+    sel[key] = all.filter((e) => e === p || sel[key].includes(e));
+    writeSlots(S, sel[key], rect, dim, count);
+    return true;
+  }
+  const near = {
+    update(camMap) {
+      // The slot atlases' waiting work goes on every frame; the wanted sets after 2 km.
+      const moved = !(Math.abs(camMap.x - sel.x) < 2000 && Math.abs(camMap.y - sel.y) < 2000);
+      let changed = false;
+      if (dynP && (moved || slotsP.pending.length)) changed = follow(slotsP, allPatches, moved ? (slotsP.want = nearest(allPatches, MAX_PATCHES, camMap, rectDist)) : slotsP.want, patchRect, patchDim, out.uPatchCount, camMap, 'p') || changed;
+      if (dynC && (moved || slotsC.pending.length)) changed = follow(slotsC, allCoast, moved ? (slotsC.want = nearest(allCoast, MAX_PATCHES, camMap, rectDist)) : slotsC.want, coastRect, coastDim, out.uCoastCount, camMap, 'c') || changed;
+      near.cam = camMap;
+      if (!moved) return changed;
+      sel.x = camMap.x; sel.y = camMap.y;
+      if (allRects.length > MAX_RUNWAYS) {
+        const s2 = nearest(allRects, MAX_RUNWAYS, camMap, rwyDist);
+        if (!sameList(s2, sel.r)) { sel.r = s2; changed = true; fillRunways(s2, rwyA, rwyB, rwyC); out.uRwyCount.value = s2.length; }
+      }
+      return changed;
+    },
+    flush(renderer) {
+      let changed = false;
+      if (dynP) changed = upload(slotsP, allPatches, patchRect, patchDim, out.uPatchCount, 'p', renderer, near.cam) || changed;
+      if (dynC) changed = upload(slotsC, allCoast, coastRect, coastDim, out.uCoastCount, 'c', renderer, near.cam) || changed;
+      return changed;
+    },
+    get pending() { return (dynP ? slotsP.pending.length : 0) + (dynC ? slotsC.pending.length : 0); },
+    get selection() { return { patches: sel.p, coast: sel.c, runways: sel.r }; },
+  };
+  Object.defineProperty(out, '__near', { value: near, enumerable: false });
+  // The highest ground in the data the GPU holds (m), for the clipmap's horizon cull (PEAK).
+  const patchPeak = highest(null, allPatches, scale);
+  Object.defineProperty(out, '__peak', { value: { m: Math.max(patchPeak, lean ? -Infinity : highest(nat.height, [], scale)), patches: patchPeak, scale }, enumerable: false });
+  return out;
+}
+
+// Up to n of list nearest to cam (by dist), in the list's own order (the CPU's order: the
+// patches blend and the runways rank in it). With no more than n, or no camera, the first n.
+export function nearest(list, n, cam, dist) {
+  if (list.length <= n || !cam) return list.slice(0, n);
+  const idx = list.map((e, i) => [dist(e, cam), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).slice(0, n).map((e) => e[1]).sort((a, b) => a - b);
+  return idx.map((i) => list[i]);
+}
+const sameList = (a, b) => a.length === b.length && a.every((e, i) => e === b[i]);
+// Distance (m) from cam to a patch's rectangle, and to a runway's flattening rect.
+function rectDist(p, cam) {
+  const dx = Math.max(p.x0 - cam.x, 0, cam.x - (p.x0 + p.nx * p.cell)), dy = Math.max(p.y0 - cam.y, 0, cam.y - (p.y0 + p.ny * p.cell));
+  return Math.hypot(dx, dy);
+}
+function rwyDist(r, cam) {
+  const dx = cam.x - r.cx, dy = cam.y - r.cy, u = dx * r.dx + dy * r.dy, v = -dx * r.dy + dy * r.dx;
+  return Math.hypot(Math.max(Math.abs(u) - r.halfLen, 0), Math.max(Math.abs(v) - r.halfWid, 0));
+}
+function highest(h, patches, scale) {
+  let m = -Infinity;
+  if (!h && !patches.length) return -Infinity;
+  if (h) for (let k = 0; k < h.length; k++) if (h[k] > m) m = h[k];
+  for (const p of patches) if (p.height) for (let k = 0; k < p.height.length; k++) if (p.height[k] > m) m = p.height[k];
+  return m === -Infinity ? -Infinity : m * scale;
+}
+
+const _at = new THREE.Vector2();
+const emptyRects = () => {
+  const rect = [], dim = [];
+  for (let k = 0; k < MAX_PATCHES; k++) { rect.push(new THREE.Vector4(1e9, 1e9, 1, 0)); dim.push(new THREE.Vector4(1, 1, 1, 1)); }
+  return { rect, dim };
+};
+
+// An atlas of MAX_PATCHES fixed slots, stacked like atlasLayout()'s rows: the slots are as wide
+// as the widest grid of the list and as tall as its MAX_PATCHES tallest, so any set of that many
+// fits (the k-th tallest of a set is never taller than the k-th tallest of all). The textures
+// are allocated without data (zeroed by WebGL) and filled a patch at a time by
+// renderer.copyTextureToTexture from the patch's own arrays: no CPU copy of the atlas.
+function slotAtlas(all, layers) {
+  const cap = all.map((p) => p.ny).sort((a, b) => b - a).slice(0, MAX_PATCHES);
+  const w = Math.max(...all.map((p) => p.nx));
+  const offs = [];
+  let rows = 0;
+  for (const c of cap) { offs.push(rows); rows += c + 2; }
+  const tex = {};
+  for (const [name, format, type, opts] of layers) {
+    const t = dataTex(null, w, rows, format, type, opts);
+    t.source.dataReady = false;          // storage only: the slots come by copyTextureToTexture
+    tex[name] = t;
+  }
+  const used = cap.map(() => null), slotOf = new Map();
+  return {
+    w, h: rows, offs, cap, tex, used, slotOf, pending: [], want: [],
+    // The smallest free slot that holds p; false when none does.
+    take(p) {
+      let best = -1;
+      for (let k = 0; k < cap.length; k++) if (!used[k] && cap[k] >= p.ny && (best < 0 || cap[k] < cap[best])) best = k;
+      if (best < 0) return false;
+      used[best] = p; slotOf.set(p, best);
+      return true;
+    },
+    free(p) { const k = slotOf.get(p); if (k !== undefined) { used[k] = null; slotOf.delete(p); } },
+  };
+}
+
+// normalsRG() for rows [j0, j1) of a grid (the same arithmetic), into out at the grid's own rows.
+export function normalsRows(h, nx, ny, cell, scale, out, j0, j1) {
+  const k = scale / (2 * cell);
+  for (let j = j0; j < j1; j++) {
+    const jm = j > 0 ? j - 1 : 0, jp = j < ny - 1 ? j + 1 : ny - 1;
+    for (let i = 0; i < nx; i++) {
+      const im = i > 0 ? i - 1 : 0, ip = i < nx - 1 ? i + 1 : nx - 1;
+      let a = h[j * nx + im], b = h[j * nx + ip], c = h[jm * nx + i], d = h[jp * nx + i];
+      if (a < 0) a = 0; if (b < 0) b = 0; if (c < 0) c = 0; if (d < 0) d = 0;
+      const gx = (b - a) * k, gy = (d - c) * k;
+      const inv = 1 / Math.sqrt(gx * gx + gy * gy + 1);
+      const o = (j * nx + i) * 2;
+      out[o] = Math.round(128 - 127 * gx * inv);
+      out[o + 1] = Math.round(128 - 127 * gy * inv);
+    }
+  }
+  return out;
+}
+
+function buildPatchAtlas(patches, scale) {
+  const pl = atlasLayout(patches);
+  const pH = new Int16Array(pl.w * pl.h), pN = new Uint8Array(pl.w * pl.h * 2).fill(128);
+  const rect = [], dim = [];
+  patches.forEach((p, k) => {
+    for (let j = 0; j < p.ny; j++) pH.set(p.height.subarray(j * p.nx, (j + 1) * p.nx), (pl.offs[k] + j) * pl.w);
+    const n = normalsRG(p.height, p.nx, p.ny, p.cell, scale);
+    for (let j = 0; j < p.ny; j++) pN.set(n.subarray(j * p.nx * 2, (j + 1) * p.nx * 2), (pl.offs[k] + j) * pl.w * 2);
+    rect.push(new THREE.Vector4(p.x0, p.y0, p.cell, pl.offs[k]));
+    dim.push(new THREE.Vector4(p.nx, p.ny, pl.w, pl.h));
+  });
+  while (rect.length < MAX_PATCHES) { rect.push(new THREE.Vector4(1e9, 1e9, 1, 0)); dim.push(new THREE.Vector4(1, 1, 1, 1)); }
+  const hTex = dataTex(pH, pl.w, pl.h, THREE.RedIntegerFormat, THREE.ShortType, { internal: 'R16I' });
+  const nTex = dataTex(pN, pl.w, pl.h, THREE.RGFormat, THREE.UnsignedByteType, { linear: true });
+  return { hTex, nTex, rect, dim };
+}
+
+function buildCoastAtlas(coast) {
+  const cl = atlasLayout(coast);
+  const cA = new Uint8Array(cl.w * cl.h).fill(255);
+  const rect = [], dim = [];
+  coast.forEach((p, k) => {
+    for (let j = 0; j < p.ny; j++) cA.set(p.coast.subarray(j * p.nx, (j + 1) * p.nx), (cl.offs[k] + j) * cl.w);
+    rect.push(new THREE.Vector4(p.x0, p.y0, p.cell, cl.offs[k]));
+    dim.push(new THREE.Vector4(p.nx, p.ny, cl.w, cl.h));
+  });
+  while (rect.length < MAX_PATCHES) { rect.push(new THREE.Vector4(1e9, 1e9, 1, 0)); dim.push(new THREE.Vector4(1, 1, 1, 1)); }
+  const tex = dataTex(cA, cl.w, cl.h, THREE.RedFormat, THREE.UnsignedByteType, { linear: true });
+  return { tex, rect, dim };
+}
+
+// Runway flattening rects (the same list heightAt uses, in rank order, as heightAt runs them).
+// rwyC: a runway's two bends where it meets a longer one. Writes the uniforms' vectors in place.
+function fillRunways(rects, rwyA, rwyB, rwyC) {
+  for (let k = 0; k < MAX_RUNWAYS; k++) {
+    const r = rects[k];
+    if (!r) { rwyA[k].set(1e9, 1e9, 1, 0); rwyB[k].set(0, 0, 0, 0); rwyC[k].set(1e9, 0, 1e9, 0); continue; }
+    rwyA[k].set(r.cx, r.cy, r.dx, r.dy);
+    rwyB[k].set(r.halfLen, r.halfWid, r.e0, r.e1);
+    const kn = r.knots || [], k1 = kn[kn.length > 1 ? 1 : 0];
+    if (kn.length) rwyC[k].set(kn[0][0], kn[0][1], k1[0], k1[1]); else rwyC[k].set(1e9, 0, 1e9, 0);
+  }
+}
+
+// The clip window's uniforms and its refill (terrain.js calls update() every frame and flush()
+// from the fill mesh's onBeforeRender, where it has the renderer). uNatExt: the window ∩ the
+// extent in cells from uNat's origin (lo.xy, hi.xy inclusive), where the heights clamp;
+// uNatExtUv: the same in natUv() units (its cells' outer edges), outside which the ground is
+// open sea, as natUv() outside 0..1 was (over Korea exactly 0 and 1); uNatMask: the texel
+// index mask (−1 when the window is the extent, N − 1 when toroidal). Korea fits, so they are
+// fixed and nothing refills.
+function attachClip(u, cw, texs) {
+  const ext = { lo: null };
+  const W = cw.win;
+  const setExt = (v) => {
+    u.uNatExt.value.set(v[0] - W.bi, v[1] - W.bj, v[2] - 1 - W.bi, v[3] - 1 - W.bj);
+    u.uNatExtUv.value.set((v[0] - W.bi) / cw.nx, (v[1] - W.bj) / cw.ny, (v[2] - W.bi) / cw.nx, (v[3] - W.bj) / cw.ny);
+  };
+  u.uNatExt = { value: new THREE.Vector4() };
+  u.uNatExtUv = { value: new THREE.Vector4() };
+  u.uNatMask = { value: W.mask };
+  setExt(cw.valid());
+  // Staging textures over the CPU mirrors: never uploaded themselves, copyTextureToTexture
+  // texSubImages a rectangle of them (UNPACK_ROW_LENGTH N) and regenerates the mips.
+  // A lean window: the heights, normals and water come from its one-block scratch instead.
+  const scratch = cw.lean ? [cw.h, cw.n, cw.w, null] : null;
+  const staging = texs.map((t, k) => {
+    const s = scratch && scratch[k] ? new THREE.DataTexture(scratch[k], cw.tile, cw.tile, t.format, t.type) : new THREE.DataTexture(t.image.data, cw.nx, cw.ny, t.format, t.type);
+    s.unpackAlignment = 1;
+    return s;
+  });
+  const box = new THREE.Box2(), at = new THREE.Vector2();
+  const clip = {
+    window: cw, renderer: null,
+    uploadsDone: 0,
+    // Camera's map position: move the window if it must, and fill at most one block (a tile's
+    // cells); while nothing round the camera is valid yet (a new flight, a jump), up to nine.
+    update(camMap) {
+      if (cw.fit) return;
+      cw.moveTo(camMap.x, camMap.y);
+      let v = cw.valid();
+      const catching = v[2] - v[0] <= 0 || v[3] - v[1] <= 0;
+      // (Lean: a block must be on the GPU before the next is filled, so several a frame only
+      // once the renderer is known, each flushed as it comes.)
+      if (cw.lean && cw.uploads.length) { if (!clip.renderer) return; clip.flush(clip.renderer); }
+      let n = catching && (!cw.lean || clip.renderer) ? 9 : 1, did = false;
+      // (A 1 km block comes in strips, a strip a step: one step a frame in flight; whole blocks,
+      // however many strips, only while catching up.)
+      for (let r, guard = 0; n > 0 && guard < 80 && (r = cw.step()); guard++) { did = true; if (r.length || !catching) n--; if (cw.lean && r.length && n > 0) clip.flush(clip.renderer); }
+      if (did) v = cw.valid();
+      if (!ext.lo || v[0] !== ext.lo[0] || v[1] !== ext.lo[1] || v[2] !== ext.lo[2] || v[3] !== ext.lo[3]) {
+        setExt(v); ext.lo = v;
+        const pk = u.__peak, top = cw.peak();
+        if (pk) pk.m = Math.max(pk.patches, top);
+      }
+    },
+    flush(renderer) {
+      clip.renderer = renderer;
+      if (!cw.uploads.length) return;
+      for (const r of cw.uploads) {
+        box.min.set(r.x, r.y); box.max.set(r.x + r.w, r.y + r.h); at.set(r.x, r.y);
+        for (let k = 0; k < texs.length; k++) {
+          if (texs[k].image.width !== cw.nx) continue;
+          if (scratch && scratch[k]) renderer.copyTextureToTexture(staging[k], texs[k], null, at);   // the block's scratch, whole
+          else renderer.copyTextureToTexture(staging[k], texs[k], box, at);
+        }
+        clip.uploadsDone++;
+      }
+      cw.uploads.length = 0;
+    },
+  };
+  ext.lo = cw.valid();
+  Object.defineProperty(u, '__clip', { value: clip, enumerable: false });
 }
 
 // ------------------------------------------------------------------ GLSL
@@ -184,6 +486,7 @@ uniform sampler2D uNormal, uWater, uCover, uPatchN, uCoast;
 uniform highp isampler2D uPatchH;
 uniform vec4 uNat;
 uniform vec2 uNatSize, uNatSizeM;
+${CLIP_WINDOW ? 'uniform vec4 uNatExt, uNatExtUv;\nuniform int uNatMask;' : ''}
 uniform float uHasHeight, uHasWater, uHasCover;
 uniform vec4 uPatchRect[${MAX_PATCHES}], uPatchDim[${MAX_PATCHES}];
 uniform int uPatchCount;
@@ -282,6 +585,20 @@ float bilinI(highp isampler2D t, vec2 fxy, vec2 lo, vec2 hi) {
   return ab + ((c + (d - c) * tt.x) - ab) * tt.y;
 }
 
+${CLIP_WINDOW ? `
+// The clip window's heights: bilinI's arithmetic, each cell at its texel (& uNatMask: wrapped when toroidal).
+float bilinWin(vec2 fxy, vec2 lo, vec2 hi) {
+  fxy = clamp(fxy, lo, hi);
+  vec2 i = min(floor(fxy), hi - 1.0);
+  i = max(i, lo);
+  vec2 tt = fxy - i;
+  ivec2 p = ivec2(i), M = ivec2(uNatMask);
+  float a = float(texelFetch(uHeight, p & M, 0).r), b = float(texelFetch(uHeight, (p + ivec2(1, 0)) & M, 0).r);
+  float c = float(texelFetch(uHeight, (p + ivec2(0, 1)) & M, 0).r), d = float(texelFetch(uHeight, (p + ivec2(1, 1)) & M, 0).r);
+  float ab = a + (b - a) * tt.x;
+  return ab + ((c + (d - c) * tt.x) - ab) * tt.y;
+}
+` : ''}
 float patchWeight(vec4 r, vec4 dim, vec2 m) {
   vec2 lo = m - r.xy, hi = r.xy + dim.xy * r.z - m;
   float e = min(min(lo.x, hi.x), min(lo.y, hi.y)) - r.z;
@@ -294,7 +611,7 @@ float rawHeight(vec2 m, out float pw) {
   pw = 0.0;
   if (uHasHeight > 0.5) {
     vec2 fxy = (m - uNat.xy) / uNat.z - 0.5;
-    h = bilinI(uHeight, fxy, vec2(0.0), uNatSize - 1.0) * H_SCALE;
+    h = ${CLIP_WINDOW ? 'bilinWin(fxy, uNatExt.xy, uNatExt.zw)' : 'bilinI(uHeight, fxy, vec2(0.0), uNatSize - 1.0)'} * H_SCALE;
   } else {
     h = -20.0;
   }
@@ -355,6 +672,12 @@ float terrainHeight(vec2 m) {
 }
 
 vec2 natUv(vec2 m) { return (m - uNat.xy) / uNatSizeM; }
+// Outside the baked data (open sea): beyond the national texture's 0..1, or with the clip
+// window beyond the extent ∩ the window.
+bool natOutside(vec2 m) {
+${CLIP_WINDOW ? '  vec2 uv = natUv(m);\n  return any(lessThan(uv, uNatExtUv.xy)) || any(greaterThan(uv, uNatExtUv.zw));'
+  : '  vec2 uv = natUv(m);\n  return any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)));'}
+}
 
 // Signed distance to the sea coast (m, + on land): 10 m patches near the airports win.
 // The field must stay continuous: the shaders antialias the coast and the beach with

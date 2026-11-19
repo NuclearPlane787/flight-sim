@@ -15,7 +15,7 @@ const DAY = KST(2026, 11, 10, 13), NIGHT = KST(2026, 11, 9, 23);
 const PRESETS = ['clear', 'few', 'overcast', 'rain', 'thunderstorm', 'snow', 'fog', 'crosswind'];
 const mode = process.argv[2] || 'all';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 const errors = [];
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };

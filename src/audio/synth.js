@@ -371,7 +371,12 @@ export function createSynth({ context = null } = {}) {
     const wander = wanderBuffer();
     const fanWave = harmonicWave(fanAmps(), 11), buzzWave = harmonicWave(buzzAmps(), 23);
     const master = gain(vol);
-    master.connect(ctx.destination);
+    // Under automation (the headless test runs) a live context plays to nothing: the graph still
+    // runs and the checks still read it, but nothing reaches the speakers whatever the browser's
+    // flags (Shane, 2026-11-19). An offline render (tests/audio-render.mjs) is unaffected.
+    const silent = typeof navigator !== 'undefined' && navigator.webdriver === true && !(typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext);
+    if (!silent) master.connect(ctx.destination);
+    else { const hush = ctx.createGain(); hush.gain.value = 0; master.connect(hush); hush.connect(ctx.destination); }   // the graph keeps running, at zero
     // Limiter: transparent at normal levels, catches everything-at-once. (Chrome adds its own
     // make-up gain, about +5 dB here; the source levels below allow for it.)
     const limiter = ctx.createDynamicsCompressor();

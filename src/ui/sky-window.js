@@ -13,9 +13,15 @@
 // The lead calls update() every few frames while it's open; it redraws only when the minute,
 // the place, or the clock's running or speed change. Styles: sky-window.css (fssw-*), which
 // this module links itself if the page hasn't. The pure helpers below are tested in Node.
+// v0.6.0: with the region on, the window's day, times and labels are the zone's where the aircraft is (clock.js's
+// zoneAt(): KST, JST or CST), the day running from that zone's midnight; off, KST as v0.5.8 (the same functions).
+// astro.js's day events are for the KST day holding the local midnight: an event outside the local day is dropped
+// (at Shanghai only the hour from 23:00 CST differs, and the sun never rises, peaks or sets in it there).
 
-import { startOfKstDay, kstParts, kstMs, fmtKst, fmtKstDate } from '../clock.js';
+import { startOfKstDay, kstParts, kstMs, fmtKst, fmtKstDate, zoneAt, zoneLabel, startOfZoneDay, fmtZone, fmtZoneDate } from '../clock.js';
 import { sunHorizontal, moonHorizontal, moonPhase, sunEvents, moonEvents } from '../astro.js';
+import { eastAsiaOn } from '../world/region.js';
+import { toMap } from '../world/frame.js';
 
 const DAY_MS = 86400e3;
 const MIN_MS = 60e3;
@@ -169,6 +175,12 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
         + `<span class="fssw-ico${on ? '' : ` fssw-ico--${t.id}`}">${on ? ICON.sun : t.icon || ''}</span>${t.label}</button>`;
     }).join('')}</div>`
     : `<span class="fssw-ico">${ICON.sun}</span><h2>Sky</h2>`;
+  // v0.6.0: the zone at the aircraft (null with the region off: KST, as v0.5.8)
+  let zone = null;
+  const zoneFor = (p) => (eastAsiaOn() ? zoneAt(...toMap(p.lat, p.lon)) : null);
+  const hhmm = (ms) => (zone ? fmtZone(ms, zone) : fmtKst(ms));
+  const dayText = (ms) => (zone ? fmtZoneDate(ms, zone) : fmtKstDate(ms));
+  const dayStart = (ms) => (zone ? startOfZoneDay(ms, zone) : startOfKstDay(ms));
   el.innerHTML = `
     <div class="fssw-head">${title}<span class="fssw-sub">Time of day · KST</span>
       <button class="fssw-x" data-a="close" title="Close (\\ or Esc)">${ICON.x}</button></div>
@@ -231,7 +243,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
   // ---- the day's sky, cached per KST day and place (0.1 degree) ----
   let day = null;
   function dayData(ms, p) {
-    const t0 = startOfKstDay(ms);
+    const t0 = dayStart(ms);
     const key = `${t0}|${p.lat.toFixed(1)}|${p.lon.toFixed(1)}`;
     if (day?.key === key) return day;
     const sun = [], moon = [];
@@ -247,15 +259,22 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
       const mid = c.zenith.map((v, k) => (v + c.horizon[k]) / 2);
       stops.push(`${rgb(mid)} ${((i / 96) * 100).toFixed(2)}%`);
     }
-    day = { key, t0, sun, moon, ev: sunEvents(t0, p.lat, p.lon), moonEv: moonEvents(t0, p.lat, p.lon), next: null,
+    day = { key, t0, sun, moon, ev: inDay(sunEvents(t0, p.lat, p.lon), t0), moonEv: inDay(moonEvents(t0, p.lat, p.lon), t0), next: null,
       trackBg: `linear-gradient(90deg, ${stops.join(', ')})` };
     return day;
+  }
+  // v0.6.0: a local day other than KST's: the events outside it dropped (KST's day: all of them, as before)
+  function inDay(ev, t0) {
+    if (!zone) return ev;
+    const out = { ...ev };
+    for (const k of ['rise', 'set', 'noon']) if (k in out && out[k] !== null && (out[k] < t0 || out[k] >= t0 + DAY_MS)) out[k] = null;
+    return out;
   }
   // tomorrow's sunrise, for "Sunrise at ... in ..." after today's sunset
   let tomorrow = null;
   function tomorrowEvents(d, p) {
     const key = d.key;
-    if (tomorrow?.key !== key) tomorrow = { key, ev: sunEvents(d.t0 + DAY_MS, p.lat, p.lon) };
+    if (tomorrow?.key !== key) tomorrow = { key, ev: inDay(sunEvents(d.t0 + DAY_MS, p.lat, p.lon), d.t0 + DAY_MS) };
     return tomorrow.ev;
   }
 
@@ -264,6 +283,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
     if (!open || !clock) return;
     const p = getPlace();
     const ms = clock.ms;
+    setZone(zoneFor(p));
     const minute = Math.floor(ms / MIN_MS);
     const key = `${minute}|${p.lat.toFixed(2)}|${p.lon.toFixed(2)}|${canvas.clientWidth}x${canvas.clientHeight}`;
     const ctl = `${clock.running}|${clock.speed}`;
@@ -285,22 +305,22 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
     const rising = sunLater.altDeg > sunNow.altDeg;
 
     // text
-    o('time').textContent = fmtKst(ms);
-    o('date').textContent = fmtKstDate(ms);
+    o('time').textContent = hhmm(ms);
+    o('date').textContent = dayText(ms);
     const phase = phaseOf(sunNow.altRefractedDeg, rising);
     const tag = o('tag');
     tag.textContent = phase.name; tag.className = `fssw-tag fssw-tag--${phase.cls}`;
     const evs = [['Sunrise', d.ev.rise], ['Sunset', d.ev.set]].filter(([, t]) => t !== null && t > ms);
     if (!evs.length) { const tm = tomorrowEvents(d, p); if (tm.rise !== null) evs.push(['Sunrise tomorrow', tm.rise]); }
-    o('next').textContent = evs.length ? `${evs[0][0]} ${fmtKst(evs[0][1])} · in ${fmtDur(evs[0][1] - ms)}` + (clock.running ? '' : ' · stopped') : '';
-    const hm = (t) => (t === null ? '–' : fmtKst(t));
+    o('next').textContent = evs.length ? `${evs[0][0]} ${hhmm(evs[0][1])} · in ${fmtDur(evs[0][1] - ms)}` + (clock.running ? '' : ' · stopped') : '';
+    const hm = (t) => (t === null ? '–' : hhmm(t));
     o('tRise').textContent = hm(d.ev.rise); o('tNoon').textContent = hm(d.ev.noon); o('tSet').textContent = hm(d.ev.set);
-    o('tNow').textContent = fmtKst(Date.now());
+    o('tNow').textContent = hhmm(Date.now());
     btn('sunrise').disabled = d.ev.rise === null; btn('sunset').disabled = d.ev.set === null; btn('noon').disabled = d.ev.noon === null;
     if (track.dataset.bg !== d.key) { track.style.background = d.trackBg; track.dataset.bg = d.key; }
-    o('now').style.left = `${(trackFraction(ms) * 100).toFixed(2)}%`;
+    o('now').style.left = `${((zone ? (ms - d.t0) / DAY_MS : trackFraction(ms)) * 100).toFixed(2)}%`;
     o('noonMark').style.left = `${(((d.ev.noon ?? d.t0 + DAY_MS / 2) - d.t0) / DAY_MS * 100).toFixed(2)}%`;
-    o('noonMark').title = d.ev.noon ? `Noon ${fmtKst(d.ev.noon)}` : '';
+    o('noonMark').title = d.ev.noon ? `Noon ${hhmm(d.ev.noon)}` : '';
 
     drawSky(d, sunNow, moonNow, ph);
   }
@@ -376,7 +396,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
     // sunrise and sunset as text, and the Moon's phase
     ctx.font = '600 11px Barlow, sans-serif'; ctx.textBaseline = 'top';
     ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    const hm = (t) => (t === null ? '–' : fmtKst(t));
+    const hm = (t) => (t === null ? '–' : hhmm(t));
     ctx.fillText(`↑ ${hm(d.ev.rise)}  ↓ ${hm(d.ev.set)}`, w - 6, 5);
     ctx.textAlign = 'left';
     ctx.fillText(`${moonName(ph.illum, ph.waxing)} · ${Math.round(ph.illum * 100)}%`, 6, 5);
@@ -417,6 +437,22 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
     ctx.restore();
   }
 
+  // v0.6.0: a new zone (the aircraft crossed into one) relabels the window: the title's zone, the time's and the tips'.
+  let zoneKey = '';
+  function setZone(z) {
+    zone = z;
+    const k = z ? z.timeZone + '|' + zoneLabel(z) : '';
+    if (k === zoneKey) return;
+    zoneKey = k;
+    if (!z) return;   // the region off: v0.5.8's markup, untouched
+    const zn = zoneLabel(z);
+    el.querySelector('.fssw-sub').textContent = `Time of day · ${zn}`;
+    el.querySelector('.fssw-time small').textContent = zn;
+    btn('today').title = `Today's date here (${zn}), same time of day`;
+    btn('now').title = `The real time here (${zn})`;
+    day = null; tomorrow = null; lastKey = '';
+  }
+
   // ---- input ----
   // Any change to the clock tells the lead (win.onchange), so the 3D view follows at once,
   // also while the game is paused and draws only on demand.
@@ -434,7 +470,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
       case 'faster': clock.faster(); changed(); break;
       case 'dayback': set(shiftDays(clock.ms, -1)); break;
       case 'dayfwd': set(shiftDays(clock.ms, 1)); break;
-      case 'today': set(todayKeepingTime(clock.ms, Date.now())); break;
+      case 'today': set(zone ? dayStart(Date.now()) + (clock.ms - dayStart(clock.ms)) : todayKeepingTime(clock.ms, Date.now())); break;
       case 'sunrise': if (d.ev.rise !== null) set(d.ev.rise); break;
       case 'noon': if (d.ev.noon !== null) set(d.ev.noon); break;
       case 'sunset': if (d.ev.set !== null) set(d.ev.set); break;
@@ -450,7 +486,7 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
   };
   track.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    drag = { t0: startOfKstDay(clock.ms), id: e.pointerId };
+    drag = { t0: dayStart(clock.ms), id: e.pointerId };
     try { track.setPointerCapture(e.pointerId); } catch {}
     seek(e);
   });

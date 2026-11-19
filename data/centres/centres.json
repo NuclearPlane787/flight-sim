@@ -1,0 +1,259 @@
+{
+ "version": 1,
+ "credit": "\u00a9 OpenStreetMap contributors (ODbL)",
+ "cell": 500.0,
+ "centres": [
+  {
+   "id": "tokyo",
+   "name": "Tokyo",
+   "file": "tokyo.bin.gz",
+   "origin": [
+    1105834,
+    32496
+   ],
+   "box": [
+    1097532,
+    24521,
+    1114136,
+    40471
+   ],
+   "latlon": [
+    35.59179,
+    139.65557,
+    35.75314,
+    139.85959
+   ],
+   "cols": 34,
+   "rows": 32,
+   "count": 39911,
+   "vertices": 271578,
+   "maxHeightM": 634.0,
+   "minKeepHeightM": 15.0,
+   "bytes": 978902
+  },
+  {
+   "id": "yokohama",
+   "name": "Yokohama",
+   "file": "yokohama.bin.gz",
+   "origin": [
+    1097538,
+    7450
+   ],
+   "box": [
+    1094613,
+    4975,
+    1100463,
+    9925
+   ],
+   "latlon": [
+    35.4321,
+    139.59715,
+    35.48289,
+    139.66786
+   ],
+   "cols": 12,
+   "rows": 10,
+   "count": 2705,
+   "vertices": 20639,
+   "maxHeightM": 295.8,
+   "minKeepHeightM": 12.0,
+   "bytes": 76105
+  },
+  {
+   "id": "shanghai",
+   "name": "Shanghai",
+   "file": "shanghai.bin.gz",
+   "origin": [
+    -574050,
+    -512596
+   ],
+   "box": [
+    -580005,
+    -517585,
+    -568095,
+    -507607
+   ],
+   "latlon": [
+    31.17189,
+    121.41702,
+    31.26809,
+    121.54793
+   ],
+   "cols": 24,
+   "rows": 20,
+   "count": 9992,
+   "vertices": 70900,
+   "maxHeightM": 630.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 258600
+  },
+  {
+   "id": "qingdao",
+   "name": "Qingdao",
+   "file": "qingdao.bin.gz",
+   "origin": [
+    -640712,
+    30912
+   ],
+   "box": [
+    -647445,
+    27595,
+    -633979,
+    34229
+   ],
+   "latlon": [
+    36.03576,
+    120.29771,
+    36.10421,
+    120.45225
+   ],
+   "cols": 27,
+   "rows": 14,
+   "count": 5449,
+   "vertices": 35898,
+   "maxHeightM": 369.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 131229
+  },
+  {
+   "id": "seoul",
+   "name": "Seoul",
+   "file": "seoul.bin.gz",
+   "origin": [
+    -43294,
+    170336
+   ],
+   "box": [
+    -53897,
+    164234,
+    -32691,
+    176438
+   ],
+   "latlon": [
+    37.47947,
+    126.88957,
+    37.59041,
+    127.13026
+   ],
+   "cols": 43,
+   "rows": 25,
+   "count": 28757,
+   "vertices": 192144,
+   "maxHeightM": 554.5,
+   "minKeepHeightM": 12.0,
+   "bytes": 704245
+  },
+  {
+   "id": "songdo",
+   "name": "Songdo",
+   "file": "songdo.bin.gz",
+   "origin": [
+    -75683,
+    154469
+   ],
+   "box": [
+    -78781,
+    151696,
+    -72585,
+    157242
+   ],
+   "latlon": [
+    37.36475,
+    126.60972,
+    37.41523,
+    126.68025
+   ],
+   "cols": 13,
+   "rows": 12,
+   "count": 1931,
+   "vertices": 13024,
+   "maxHeightM": 305.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 49120
+  },
+  {
+   "id": "busan",
+   "name": "Busan",
+   "file": "busan.bin.gz",
+   "origin": [
+    146772,
+    -91912
+   ],
+   "box": [
+    140174,
+    -94129,
+    153370,
+    -89695
+   ],
+   "latlon": [
+    35.139,
+    129.03964,
+    35.18095,
+    129.18539
+   ],
+   "cols": 27,
+   "rows": 9,
+   "count": 3943,
+   "vertices": 27770,
+   "maxHeightM": 411.6,
+   "minKeepHeightM": 12.0,
+   "bytes": 102758
+  },
+  {
+   "id": "osaka",
+   "name": "Osaka",
+   "file": "osaka.bin.gz",
+   "origin": [
+    732012,
+    -117435
+   ],
+   "box": [
+    729046,
+    -121578,
+    734978,
+    -113292
+   ],
+   "latlon": [
+    34.63307,
+    135.46657,
+    34.71192,
+    135.53847
+   ],
+   "cols": 12,
+   "rows": 17,
+   "count": 26121,
+   "vertices": 150235,
+   "maxHeightM": 300.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 524788
+  },
+  {
+   "id": "fukuoka",
+   "name": "Fukuoka",
+   "file": "fukuoka.bin.gz",
+   "origin": [
+    267669,
+    -263507
+   ],
+   "box": [
+    263495,
+    -265446,
+    271843,
+    -261568
+   ],
+   "latlon": [
+    33.56891,
+    130.33944,
+    33.60607,
+    130.43058
+   ],
+   "cols": 17,
+   "rows": 8,
+   "count": 8982,
+   "vertices": 63500,
+   "maxHeightM": 143.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 230156
+  }
+ ]
+}

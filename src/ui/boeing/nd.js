@@ -6,7 +6,7 @@
 // Same interface as ../nd.js: createBoeingNd(cv, { airports, coast }) -> { range, setRange, zoom,
 // cycle, coast, draw(view) }, and it reads the same view (waypoints, dest, taxiRoute).
 
-import { C, font, KT, NM, DEG, clamp, wrap360, angDiff, magDeg, airportList, thresholdOf, traceRings, route } from '../common.js';
+import { C, font, KT, NM, DEG, clamp, wrap360, angDiff, magDeg, airportList, thresholdOf, traceRings, traceLand, traceCoastLines, screenBox, route } from '../common.js';
 import { ND_RANGES, windReadout, drawWindArrow, WIND_MIN_TAS_KT } from '../nd.js';
 
 // The wind's digits read above 100 kt TAS and blank in calm air; the arrow goes under 6 kt.
@@ -56,10 +56,19 @@ export function createBoeingNd(cv, { airports, coast }) {
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
     if (nd.coast) {
       const lod = nd.coast.lod(1 / k);
-      ctx.beginPath(); traceRings(ctx, nd.coast.land, lod, box, tf, 2 / k);
-      ctx.fillStyle = '#10201a'; ctx.fill('evenodd');
-      ctx.strokeStyle = '#35604a'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
-      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, box, tf, 3 / k);
+      // v0.6.0: the region's coast, only its cells under the arc on the screen (common.js).
+      const cbox = nd.coast.region ? screenBox(px, py, ch, sh, k, Math.max(-cx, -R), Math.min(s - cx, R), -Math.min(s - cy, R), Math.min(cy, R)) : box;
+      if (nd.coast.region) {
+        ctx.beginPath(); traceLand(ctx, nd.coast, lod, cbox, tf, 2 / k);
+        ctx.fillStyle = '#10201a'; ctx.fill('evenodd');
+        ctx.beginPath(); traceCoastLines(ctx, nd.coast, lod, cbox, tf, 2 / k);
+        ctx.strokeStyle = '#35604a'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
+      } else {
+        ctx.beginPath(); traceRings(ctx, nd.coast.land, lod, box, tf, 2 / k);
+        ctx.fillStyle = '#10201a'; ctx.fill('evenodd');
+        ctx.strokeStyle = '#35604a'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
+      }
+      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, cbox, tf, 3 / k);
       ctx.fillStyle = '#0a1622'; ctx.fill('evenodd');
     }
     // The range arcs, dashed, at each quarter.

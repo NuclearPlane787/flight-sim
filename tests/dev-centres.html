@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: dense centres dev page</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: 8px; top: 8px; color: #dfe; font: 12px/1.35 ui-monospace, Menlo, monospace;
+         background: rgba(0,0,0,.45); padding: 6px 8px; border-radius: 4px; white-space: pre; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">loading…</div>
+<script type="module">
+// The dense centres (src/world/centres.js) beside the world, without touching world.js: the world
+// as dev-world.html makes it, plus createCentres() created and updated next to it.
+//   ?x=&y= | ?lat=&lon=   ?alt= (ft MSL) | ?agl= (ft)   ?hdg=&pitch=   ?hud=0   ?fov=
+//   ?cities=1 (needed: the centres exist only with CITIES_ON) &eastasia=1 (for the six outside Korea)
+//   ?hideprocedural=1   hide cities.js's procedural blocks (cities.js doesn't read the mask yet)
+//   ?centres=0          no centres (the "off" numbers)    ?centresLater=1  made only by __dev.startCentres()
+// Keys: WASD move, R/F up/down, arrows turn/pitch, Shift = 10x.
+import * as THREE from '../vendor/three.module.js';
+import { createWorld } from '../src/world/world.js';
+import { toMap } from '../src/world/frame.js';
+import { createCentres } from '../src/world/centres.js';
+import { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, MAX_PATCHES, MAX_RUNWAYS } from '../src/world/glsl.js';
+import { ATMOS_GLSL } from '../src/world/sky.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const FT = 0.3048, DEG = Math.PI / 180;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(num('fov', 55), 1, 0.5, 500000);
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const t0 = performance.now();
+const world = await createWorld({ renderer, scene, baseUrl: '../data/' });
+const loadMs = performance.now() - t0;
+const chunks = { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, ATMOS_GLSL, MAX_PATCHES, MAX_RUNWAYS };
+let centres = null;
+const startCentres = () => {
+  if (!centres) centres = createCentres(scene, world.uniforms, chunks, { heightfield: world.heightfield, renderer, baseUrl: '../data/' });
+  window.__dev.centres = centres;
+  return centres;
+};
+
+const cam = { x: 0, y: 0, z: 1000, hdg: 0, pitch: 0 };
+if (q.has('lat')) [cam.x, cam.y] = toMap(num('lat'), num('lon'));
+cam.x = num('x', cam.x); cam.y = num('y', cam.y);
+cam.hdg = num('hdg', 0) * DEG; cam.pitch = num('pitch', 0) * DEG;
+if (q.has('alt')) cam.z = num('alt') * FT;
+if (q.has('agl')) cam.z = world.heightAt(cam.x, cam.y) + num('agl') * FT;
+
+const keys = new Set();
+addEventListener('keydown', (e) => keys.add(e.code));
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+const hud = document.getElementById('hud');
+if (q.get('hud') === '0') hud.style.display = 'none';
+const origin = { x: 0, y: 0 };
+const camScene = new THREE.Vector3(), camMap = { x: 0, y: 0 };
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+const frameTimes = [];
+window.__dev = { world, renderer, camera, cam, loadMs, frameTimes, ready: false, startCentres, centres: null, hideProcedural: q.get('hideprocedural') === '1' };
+// A picture of the current frame: drawn and read in the same task (the renderer keeps no buffer).
+// The cost of one frame's drawing, synchronised (a 1-pixel read after each render): ms per render.
+window.__dev.renderCost = (n = 12) => {
+  const gl = renderer.getContext(), px = new Uint8Array(4);
+  renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  const t = performance.now();
+  for (let i = 0; i < n; i++) { renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+  return (performance.now() - t) / n;
+};
+window.__dev.capture = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
+if (q.get('centres') !== '0' && q.get('centresLater') !== '1') startCentres();
+
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  const sp = (keys.has('ShiftLeft') ? 10 : 1) * Math.max(20, (cam.z - world.heightAt(cam.x, cam.y)) * 0.5) * dt;
+  const fx = Math.sin(cam.hdg), fy = Math.cos(cam.hdg);
+  if (keys.has('KeyW')) { cam.x += fx * sp; cam.y += fy * sp; }
+  if (keys.has('KeyS')) { cam.x -= fx * sp; cam.y -= fy * sp; }
+  if (keys.has('KeyA')) { cam.x -= fy * sp; cam.y += fx * sp; }
+  if (keys.has('KeyD')) { cam.x += fy * sp; cam.y -= fx * sp; }
+  if (keys.has('KeyR')) cam.z += sp;
+  if (keys.has('KeyF')) cam.z -= sp;
+  if (keys.has('ArrowLeft')) cam.hdg -= dt * 0.8;
+  if (keys.has('ArrowRight')) cam.hdg += dt * 0.8;
+  if (keys.has('ArrowUp')) cam.pitch += dt * 0.5;
+  if (keys.has('ArrowDown')) cam.pitch -= dt * 0.5;
+
+  origin.x = cam.x; origin.y = cam.y;
+  camera.position.set(0, cam.z, 0);
+  camera.rotation.set(cam.pitch, -cam.hdg, 0, 'YXZ');
+  const c0 = performance.now();
+  world.update({ camera, origin, state: null, dt });
+  if (window.__dev.hideProcedural && world.cities.mesh) world.cities.mesh.visible = false;
+  let cs = null;
+  if (centres) {
+    camScene.setFromMatrixPosition(camera.matrixWorld);
+    camMap.x = origin.x + camScene.x; camMap.y = origin.y - camScene.z;
+    cs = centres.update({ camMap, origin, camScene, agl: world.stats.agl });
+  }
+  const cpuUpd = performance.now() - c0;
+  renderer.render(scene, camera);
+  const cpu = performance.now() - c0;
+  frameTimes.push(dt * 1000);
+  if (frameTimes.length > 600) frameTimes.shift();
+  if (window.__dev.frameLog) window.__dev.frameLog.push({ t: now, cpu, upd: cpuUpd, staging: cs ? cs.staging : '' });
+  frames++;
+  if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  const i = renderer.info.render, s = world.stats;
+  window.__dev.info = { fps, calls: i.calls, triangles: i.triangles, cpuMs: cpu, updMs: cpuUpd, stats: { ...s }, centres: cs ? { ...cs } : null };
+  hud.textContent =
+    `${fps.toFixed(0)} fps  cpu ${cpu.toFixed(2)} ms  load ${loadMs.toFixed(0)} ms\n` +
+    `draw calls ${i.calls}  triangles ${(i.triangles / 1000).toFixed(0)}k\n` +
+    `centres: ${cs ? `${cs.drawCalls} draws ${(cs.triangles / 1000).toFixed(0)}k tris ${cs.buildings} tall  ready ${cs.ready || '-'}` : 'off'}\n` +
+    `x ${cam.x.toFixed(0)}  y ${cam.y.toFixed(0)}  alt ${(cam.z / FT).toFixed(0)} ft  agl ${(s.agl / FT).toFixed(0)} ft\n` +
+    `hdg ${(((cam.hdg / DEG) % 360 + 360) % 360).toFixed(0)}  pitch ${(cam.pitch / DEG).toFixed(1)}`;
+  window.__dev.ready = true;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

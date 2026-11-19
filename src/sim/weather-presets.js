@@ -10,6 +10,12 @@
 
 import { calmWeather, normalizeWeather, isDefaultWeather } from './weather.js';
 import { magToGrid } from '../world/frame.js';
+import { EAST_ASIA_ON, eastAsiaOn, rulesAt } from '../world/region.js';
+import { hpaToInHg } from './atmosphere.js';
+
+// v0.6.0: new weather is tagged so that its wind keeps its true direction across the region
+// (weather.js's windTurnAt); with the region off the settings are v0.5.8's, key for key.
+const TRUE_WIND = () => (eastAsiaOn() ? { trueWind: true } : {});
 
 const DEG = Math.PI / 180, NM_M = 1852;
 const wrap = (d) => ((d % 360) + 360) % 360;
@@ -59,7 +65,7 @@ function stormCells(seed, ctx) {
 
 export function presetWeather(id, ctx) {
   if (!PRESETS.some((p) => p.id === id) || id === 'clear') return calmWeather();
-  const base = (o) => ({ ...calmWeather(), preset: id, refX: ctx?.refX ?? 0, refY: ctx?.refY ?? 0, ...o, seed: ctx?.seed ?? o.seed });
+  const base = (o) => ({ ...calmWeather(), preset: id, refX: ctx?.refX ?? 0, refY: ctx?.refY ?? 0, ...o, seed: ctx?.seed ?? o.seed, ...TRUE_WIND() });
   const layer = (okta, baseFt, topFt) => ({ okta, baseFt, topFt });
   let s;
   switch (id) {
@@ -187,7 +193,7 @@ export function weatherFromForm(form, base, ctx) {
   });
   if (JSON.stringify(s) === JSON.stringify(b)) return b;
   if (isDefaultWeather({ ...s, preset: 'clear', seed: 1, refX: 0, refY: 0 })) return calmWeather();
-  return normalizeWeather({ ...s, preset: 'custom', refX: ctx?.refX ?? s.refX, refY: ctx?.refY ?? s.refY });
+  return normalizeWeather({ ...s, preset: 'custom', refX: ctx?.refX ?? s.refX, refY: ctx?.refY ?? s.refY, ...TRUE_WIND() });
 }
 
 const inRange = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
@@ -235,6 +241,25 @@ function windGroup(w) {
   const dir = Math.round(wrap(w.fromDeg) / 10) * 10 || 360;
   return `${pad(dir, 3)}${pad(kt, 2)}${gust > kt ? `G${pad(gust, 2)}` : ''}KT`;
 }
+// v0.6.0: China's METARs give the wind in metres per second (22004MPS).
+const MPS_PER_KT = 1852 / 3600;
+function windGroupMps(w) {
+  const ms = Math.round(w.kt * MPS_PER_KT), gust = Math.round(w.gustKt * MPS_PER_KT);
+  if (ms < 1 && gust < 1) return '00000MPS';
+  const dir = Math.round(wrap(w.fromDeg) / 10) * 10 || 360;
+  return `${pad(dir, 3)}${pad(ms, 2)}${gust > ms ? `G${pad(gust, 2)}` : ''}MPS`;
+}
+// v0.6.0: whose form the line takes ('kr' | 'jp' | 'cn'): Korea's everywhere with the region's flag off; else by
+// the ICAO's prefix (RJ, RO: Japan; Z: China; RK: Korea), or the country at the arrival when the code says nothing.
+export function metarFormOf(icao, ctx) {
+  if (!EAST_ASIA_ON) return 'kr';
+  const c = String(icao || '').toUpperCase();
+  if (/^R[JO]/.test(c)) return 'jp';
+  if (/^Z/.test(c)) return 'cn';
+  if (/^RK/.test(c)) return 'kr';
+  const a = ctx?.arrival;
+  return a && Number.isFinite(a.x) && Number.isFinite(a.y) ? rulesAt(a.x, a.y).metar : 'kr';
+}
 function visGroup(m) {
   if (m >= 10000) return '9999';
   const step = m < 800 ? 50 : m < 5000 ? 100 : 1000;
@@ -260,7 +285,8 @@ function dewpoint(s) {
 
 export function metarOf(settings, icao, ctx) {
   const s = normalizeWeather(settings);
-  const parts = [icao || 'ZZZZ', windGroup(s.wind)];
+  const form = metarFormOf(icao, ctx);
+  const parts = [icao || 'ZZZZ', form === 'cn' ? windGroupMps(s.wind) : windGroup(s.wind)];
   const wx = weatherGroup(s), layers = s.clouds.filter((c) => c.okta > 0).sort((a, b) => a.baseFt - b.baseFt);
   if (s.visM >= 10000 && !wx && layers.every((c) => c.baseFt >= 5000)) parts.push('CAVOK');
   else {
@@ -271,5 +297,8 @@ export function metarOf(settings, icao, ctx) {
   }
   parts.push(`${tempText(s.tempC)}/${tempText(dewpoint(s))}`, `Q${pad(Math.floor(s.qnh), 4)}`);   // Q0998: always four digits
   if (s.shear || finalMicroburst(s, ctx)) parts.push('WS ALL RWY');
+  // v0.6.0: Japan's give the hPa, with the inches in the remarks (Q1014 ... RMK A2997), to the nearest 0.01 inHg as
+  // the BARO window shows them (1014.9 hPa: Q1014, A2997).
+  if (form === 'jp') parts.push(`RMK A${pad(Math.round(hpaToInHg(s.qnh) * 100), 4)}`);
   return parts.join(' ');
 }

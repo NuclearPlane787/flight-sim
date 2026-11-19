@@ -33,7 +33,7 @@ const SHOTS = {
   'snow-night': { wx: { precip: { kind: 'snow', rate: 0.4 }, tempC: -4, runway: 'snow', clouds: [{ okta: 5, baseFt: 6000, topFt: 9000 }], visM: 9000 }, ms: NIGHT, setup: AIR(-55000, 165000, 900, 100, 200), look: { yaw: 0, pitch: -0.15, fov: 62 } },
 };
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1280,800'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1280,800'] });
 const errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

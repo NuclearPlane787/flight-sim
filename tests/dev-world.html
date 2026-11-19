@@ -50,6 +50,8 @@ addEventListener('resize', resize);
 resize();
 
 const t0 = performance.now();
+// v0.6.0: the local rules (the country raster, WMM) as main.js installs them; nothing with the region off.
+await (await import('../src/world/region.js')).loadLocalRules(new URL('../data/', location.href).href);
 const world = await createWorld({ renderer, scene, baseUrl: '../data/' });
 const loadMs = performance.now() - t0;
 

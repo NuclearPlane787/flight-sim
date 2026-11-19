@@ -29,6 +29,7 @@
 
 import { buildTaxiGraph } from '../ground/taxi.js';
 import { holdShortSites, runwayLines, nearestRunway, segmentIndex, segDist, pointInRing, openRing, TAXI_W } from './apron-geom.js';
+import { sliceTimer } from './airport-set.js';
 
 export const SIGN = {
   back: 32,          // m before the junction (along the taxiway) for an array
@@ -77,6 +78,13 @@ function walk(g, n, e, dist) {
 
 // opts: { index, holds }, the segment index and hold-short sites apron.js has already made.
 export function taxiSignSites(airport, opts = {}) {
+  const gen = taxiSignSitesInSteps(airport, opts);
+  for (;;) { const r = gen.next(); if (r.done) return r.value; }
+}
+
+// v0.6.0: the same in slices (a generator that yields after the taxi graph and inside its loops, and returns
+// taxiSignSites's result), for the airports built near the camera (world.js).
+export function* taxiSignSitesInSteps(airport, opts = {}, tick = sliceTimer()) {
   const out = { arrays: [], mandatory: [], exits: [], distance: [], painted: [] };
   if (!airport || !(airport.taxiways || []).length) return out;
   const lines = runwayLines(airport);
@@ -105,8 +113,10 @@ export function taxiSignSites(airport, opts = {}) {
 
   let g = null;
   try { g = buildTaxiGraph(airport); } catch { g = null; }
+  yield 'signs: graph';
   if (g) {
     for (const node of g.nodes) {
+      if (tick()) yield 'signs: arrays';
       const named = node.edges.filter((e) => usable(e) && e.ref);
       if (new Set(named.map((e) => e.ref)).size < 2) continue;
       if (nearestRunway(lines, node.x, node.y).d < SIGN.runwayClear) continue;

@@ -5,6 +5,11 @@ import assert from 'node:assert/strict';
 import { lightingAt, luminance, createSky, bvColor, SUN_ELEVATION_DEG } from '../src/world/sky.js';
 import * as THREE from '../vendor/three.module.js';
 import { kstMs } from '../src/clock.js';
+import { setEastAsia } from '../src/world/region.js';
+// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
+// flag is set off here whatever the shipped default (the region's own behaviour is checked in
+// tests/v060-*.test.mjs). No assertion below changed.
+setEastAsia(false);
 
 const near = (a, b, eps = 1e-9) => a.every((x, i) => Math.abs(x - b[i]) < eps);
 

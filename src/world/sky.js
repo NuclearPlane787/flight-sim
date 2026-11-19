@@ -14,6 +14,8 @@
 import * as THREE from '../../vendor/three.module.js';
 import { sunHorizontal, moonHorizontal, moonPhase, j2000ToEnuMatrix, galacticToEquatorial } from '../astro.js';
 import { runwayStateOf } from '../sim/weather.js';
+import { convergence } from './frame.js';
+import { eastAsiaOn } from './region.js';
 
 // v0.1.4's fixed afternoon sun: azimuth 230° true (south-west), 35° up.
 export const SUN_AZIMUTH_DEG = 230;
@@ -36,6 +38,13 @@ export function azElToScene(azDeg, elDeg, out = new THREE.Vector3()) {
 }
 export function sunDirection(out = new THREE.Vector3()) {
   return azElToScene(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, out);
+}
+
+// v0.6.0 (V060.md, "The sky's north"): the map's north is the grid's, so a true azimuth turns by
+// the grid convergence at the camera (grid azimuth = true azimuth - convergence): -0.41° at
+// Gimpo, +7.13° at Haneda. Degrees; 0 with EAST_ASIA_ON off, so the flag-off sky is v0.5.8's.
+export function skyNorthDeg(lonDeg) {
+  return eastAsiaOn() ? convergence(lonDeg) * 180 / Math.PI : 0;
 }
 
 // ------------------------------------------------------------------ the light (pure)
@@ -767,12 +776,21 @@ export function createSky(scene, uniforms, chunks) {
       const s = sunHorizontal(ms, latDeg, lonDeg);
       const m = moonHorizontal(ms, latDeg, lonDeg);
       const ph = moonPhase(ms);
-      azElToScene(s.azDeg, s.altRefractedDeg, sun);
+      const turn = skyNorthDeg(lonDeg);   // 0 with the region off
+      azElToScene(s.azDeg - turn, s.altRefractedDeg, sun);
       uniforms.uSunDir.value.copy(sun);
-      azElToScene(m.azDeg, m.altRefractedDeg, moonDir);
+      azElToScene(m.azDeg - turn, m.altRefractedDeg, moonDir);
       own.uMoonR.value = m.semiDiameterDeg * MOON_SCALE * RAD;
       // J2000 -> east, north, up; the scene is east, up, south.
       const E = j2000ToEnuMatrix(ms, latDeg, lonDeg);
+      if (turn !== 0) {
+        // True east and north to the grid's: e' = e cos c - n sin c, n' = n cos c + e sin c.
+        const c = Math.cos(turn * RAD), sn = Math.sin(turn * RAD);
+        for (let k = 0; k < 3; k++) {
+          const e = E[k], n = E[3 + k];
+          E[k] = e * c - n * sn; E[3 + k] = n * c + e * sn;
+        }
+      }
       own.uStarMat.value.set(E[0], E[1], E[2], E[6], E[7], E[8], -E[3], -E[4], -E[5]);
       own.uSkyToJ.value.copy(m3.copy(own.uStarMat.value).transpose());
       own.uMoonPole.value.set(E[2], E[8], -E[5]);

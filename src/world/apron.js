@@ -32,7 +32,8 @@ import {
   drawnRunwayRects, clipSoupOutside, splitPolyline, refineSoup, refineLine,
 } from './apron-geom.js';
 import { floodMasts } from './taxilights.js';
-import { taxiSignSites, SIGN, panelWidth, arrayWidth } from './taxisigns.js';
+import { taxiSignSites, taxiSignSitesInSteps, SIGN, panelWidth, arrayWidth } from './taxisigns.js';
+import { sliceTimer, awaitPrep } from './airport-set.js';
 
 export const APRON_RANGE = 25000;          // m from the airport's bounds
 export const APRON_MAX_ALT = 15000 * 0.3048;
@@ -376,18 +377,35 @@ function buf() { return { a: [], push(...v) { for (const x of v) this.a.push(x);
 
 // Exported for tests/apron.test.mjs (v0.2.1), like buildPaint.
 export function buildPavement(a, ox, oy, groundAt, aprons) {
+  return runSteps(buildPavementInSteps(a, ox, oy, groundAt, aprons));
+}
+
+// v0.6.0: buildPavement in slices (yields after the taxiways and after the aprons; returns the geometry).
+export function* buildPavementInSteps(a, ox, oy, groundAt, aprons, tick = sliceTimer()) {
   const P = buf(), M = buf();
   // Nothing under the runways (see apron-geom.js → drawnRunwayRects).
   const rects = drawnRunwayRects(a, RUNWAY_OVERLAP);
-  const add = (whole, mat, layer) => {
-    // Then split wherever the flat triangles would stray from the ground (apron-geom.js → refineSoup).
-    const soup = refineSoup(clipSoupOutside(whole, rects), groundAt);
-    for (let i = 0; i < soup.length; i += 2) {
-      const x = soup[i], y = soup[i + 1];
-      P.push(x - ox, groundAt(x, y) + 0.08, -(y - oy));
-      M.push(mat, layer);
+  // Then split wherever the flat triangles would stray from the ground (apron-geom.js → refineSoup).
+  // v0.6.0: in chunks of triangles, so a big apron can be built over several slices. The result is the
+  // same as refineSoup(clipSoupOutside(whole)) in one go: clipping works triangle by triangle in order,
+  // and refineSoup's stack takes the triangles last first, so the chunks are refined last first too.
+  const CHUNK = 6 * 16;
+  function* add(whole, mat, layer) {
+    const clipped = [];
+    for (let i = 0; i < whole.length; i += CHUNK) {
+      clipSoupOutside(whole.length <= CHUNK ? whole : whole.slice(i, i + CHUNK), rects, clipped);
+      if (tick()) yield 'pavement: clip';
     }
-  };
+    for (let end = clipped.length; end > 0; end -= CHUNK) {
+      const soup = refineSoup(clipped.length <= CHUNK ? clipped : clipped.slice(Math.max(0, end - CHUNK), end), groundAt);
+      for (let i = 0; i < soup.length; i += 2) {
+        const x = soup[i], y = soup[i + 1];
+        P.push(x - ox, groundAt(x, y) + 0.08, -(y - oy));
+        M.push(mat, layer);
+      }
+      if (tick()) yield 'pavement: refine';
+    }
+  }
   // The triangles are drawn in the order they're added, each over the last (see "Depth"
   // above): taxilanes first, so a taxilane's rounded end stays under the taxiway it joins,
   // then the taxiways, then the aprons and stand pads on top.
@@ -395,9 +413,11 @@ export function buildPavement(a, ox, oy, groundAt, aprons) {
     for (const tw of a.taxiways || []) {
       if (!tw.points || tw.points.length < 2 || (tw.kind === 'taxilane') !== lanes) continue;
       const soup = strokeTriangles(densify(tw.points, 50), (tw.widthM || TAXI_W) / 2, [], 4);
-      add(soup, lanes ? 1 : 0, 2);
+      yield* add(soup, lanes ? 1 : 0, 2);
+      if (tick()) yield 'pavement: taxiways';
     }
   }
+  yield 'pavement: taxiways';
   for (const ap of aprons) {
     let ring = openRing(ap.points);
     if (ring.length < 3) continue;
@@ -406,8 +426,10 @@ export function buildPavement(a, ox, oy, groundAt, aprons) {
     const faces = THREE.ShapeUtils.triangulateShape(v2, []);
     const soup = [];
     for (const f of faces) for (const k of f) soup.push(ring[k][0], ring[k][1]);
-    add(subdivideSoup(soup, 30), 1, 1);   // 30 m: follow the 30 m height patches
+    yield* add(subdivideSoup(soup, 30), 1, 1);   // 30 m: follow the 30 m height patches
+    if (tick()) yield 'pavement: aprons';
   }
+  yield 'pavement: aprons';
   const terminals = (a.buildings || []).filter((b) => b.kind === 'terminal').map((b) => openRing(b.points));
   // A concrete pad under every stand (OSM's aprons don't always reach the stands or the
   // terminal): 52 m along the heading by 40 m.
@@ -415,16 +437,18 @@ export function buildPavement(a, ox, oy, groundAt, aprons) {
     const [dx, dy] = hdgVec(s.hdgGridDeg), rx = dy, ry = -dx;
     const c = (f, r) => [s.x + dx * f + rx * r, s.y + dy * f + ry * r];
     const p = [c(-28, -20), c(-28, 20), c(24, 20), c(24, -20)];
-    add(subdivideSoup([...p[0], ...p[1], ...p[2], ...p[0], ...p[2], ...p[3]], 30), 1, 1);
+    yield* add(subdivideSoup([...p[0], ...p[1], ...p[2], ...p[0], ...p[2], ...p[3]], 30), 1, 1);
     // At a gate, pave on to the terminal wall under the jet bridge.
     const jb = s.gate ? jetBridge(s, terminals) : null;
     if (jb) {
       const ux = (jb.root.x - jb.cab.x) / jb.length, uy = (jb.root.y - jb.cab.y) / jb.length;
       const nx = -uy * 25, ny = ux * 25, ex = jb.root.x + ux * 4, ey = jb.root.y + uy * 4;
       const q = [[jb.cab.x + nx, jb.cab.y + ny], [jb.cab.x - nx, jb.cab.y - ny], [ex - nx, ey - ny], [ex + nx, ey + ny]];
-      add(subdivideSoup([...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]], 30), 1, 1);
+      yield* add(subdivideSoup([...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]], 30), 1, 1);
     }
+    if (tick()) yield 'pavement: stands';
   }
+  yield 'pavement: built';
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P.a, 3));
   g.setAttribute('pm', new THREE.Float32BufferAttribute(M.a, 2));
@@ -432,6 +456,11 @@ export function buildPavement(a, ox, oy, groundAt, aprons) {
 }
 
 export function buildPaint(a, ox, oy, groundAt, aprons, chars, signs = null) {
+  return runSteps(buildPaintInSteps(a, ox, oy, groundAt, aprons, chars, signs));
+}
+
+// v0.6.0: buildPaint in slices (yields after the centrelines, the edge lines and the stands; returns its result).
+export function* buildPaintInSteps(a, ox, oy, groundAt, aprons, chars, signs = null, tick = sliceTimer(), preEdges = null) {
   const P = buf(), S = buf(), L = buf(), K = buf(), Y = buf();
   const idx = [];
   let nv = 0;
@@ -484,14 +513,21 @@ export function buildPaint(a, ox, oy, groundAt, aprons, chars, signs = null) {
       line(run.inside ? densify(run.pts, 4) : refineLine(run.pts, groundAt), LINE_HW);
     }
     lead = 0;
+    if (tick()) yield 'paint: centrelines';
   }
+  yield 'paint: centrelines';
   // Edge lines where the taxiway borders unpaved ground; none on the runways.
   const index = segmentIndex(a.taxiways || []);
-  for (const e of taxiwayEdges(a, index, aprons)) {
+  const edges = preEdges || taxiwayEdges(a, index, aprons);
+  yield 'paint: edges found';
+  for (const e of edges) {
     for (const run of splitPolyline(simplify(e, 0.05), rects)) if (!run.inside) line(refineLine(run.pts, groundAt), EDGE_HW, 4);
+    if (tick()) yield 'paint: edges';
   }
+  yield 'paint: edges';
   // Hold-short markings.
   const holds = holdShortSites(a, index);
+  yield 'paint: holds found';
   for (const h of holds) {
     // The bar's foot (y = 0) is on the holding side; it extends HOLD_DEPTH towards the runway.
     const w = h.w - 1.2;     // between the edge lines
@@ -509,7 +545,9 @@ export function buildPaint(a, ox, oy, groundAt, aprons, chars, signs = null) {
     line([[stop.x - rx * 3, stop.y - ry * 3], [stop.x + rx * 3, stop.y + ry * 3]], 0.25);
     labels.push([s, m]);
     stands++;
+    if (tick()) yield 'paint: stands';
   }
+  yield 'paint: stands';
   // v0.4.1: the taxiway's name before each sign array (taxisigns.js), yellow on black, reading the way the traffic goes.
   for (const pt of signs?.painted || []) {
     const ref = String(pt.text).toUpperCase().slice(0, 4), n = ref.length, tw = n * GLYPH_W + (n - 1) * GLYPH_GAP;
@@ -572,6 +610,11 @@ const FACE = {   // background, letters, border (null: none)
   dist: [SIGN_COL.black, SIGN_COL.white, null],   // v0.4.2: distance remaining
 };
 export function buildSigns(sites, ox, oy, groundAt, chars) {
+  return runSteps(buildSignsInSteps(sites, ox, oy, groundAt, chars));
+}
+
+// v0.6.0: buildSigns in slices (yields inside its loop when tick() says; returns its result).
+export function* buildSignsInSteps(sites, ox, oy, groundAt, chars, tick = () => false) {
   const P = buf(), N = buf(), C = buf(), B = buf(), K = buf(), U = buf();
   const idx = [];
   let nv = 0;
@@ -601,6 +644,7 @@ export function buildSigns(sites, ox, oy, groundAt, chars) {
   let arrays = 0, mandatory = 0, exits = 0, distance = 0;
   const all = [...(sites?.arrays || []), ...(sites?.mandatory || []), ...(sites?.exits || []), ...(sites?.distance || [])];
   for (const site of all) {
+    if (tick()) yield 'signs';
     if (site.panels[0].kind === 'mand') mandatory++;
     else if (site.panels[0].kind === 'dist') distance++;
     else if (sites?.exits?.includes(site)) exits++;
@@ -651,6 +695,7 @@ export function buildSigns(sites, ox, oy, groundAt, chars) {
   g.setAttribute('scol', new THREE.Float32BufferAttribute(C.a, 3));
   g.setAttribute('sbor', new THREE.Float32BufferAttribute(B.a, 3));
   g.setAttribute('sk', new THREE.Float32BufferAttribute(K.a, 4));
+  yield 'signs: built';
   g.setAttribute('suv', new THREE.Float32BufferAttribute(U.a, 4));
   g.setIndex(idx);
   return { geo: g, arrays, mandatory, exits, distance, triangles: idx.length / 3 };
@@ -658,7 +703,7 @@ export function buildSigns(sites, ox, oy, groundAt, chars) {
 
 const KIND = { terminal: 0, hangar: 1 };
 
-function buildBuildings(a, ox, oy, groundAt) {
+function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false) {
   const P = buf(), N = buf(), B = buf();
   const v = (x, y, h, n, kind, band, along, hy) => {
     P.push(x - ox, h, -(y - oy));
@@ -688,6 +733,7 @@ function buildBuildings(a, ox, oy, groundAt) {
   };
 
   for (const b of a.buildings || []) {
+    if (tick()) yield 'buildings';
     let ring = openRing(b.points || []);
     if (ring.length < 3) continue;
     if (signedArea(ring) < 0) ring = ring.slice().reverse();     // counter-clockwise: outward = right
@@ -739,6 +785,7 @@ function buildBuildings(a, ox, oy, groundAt) {
     for (const k of [0, 2, 1, 0, 3, 2]) v(fp[k][0], fp[k][1], fp[k][2], floorN, 3, 0, 0, 0);
   };
   for (const s of a.stands || []) {
+    if (tick()) yield 'buildings: bridges';
     if (!s.gate) continue;
     const jb = jetBridge(s, terminals);
     if (!jb) continue;
@@ -770,6 +817,7 @@ function buildBuildings(a, ox, oy, groundAt) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(P.a, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(N.a, 3));
   g.setAttribute('bk', new THREE.Float32BufferAttribute(B.a, 4));
+  yield 'buildings: built';
   return { geo: g, bridges, buildings: (a.buildings || []).length };
 }
 
@@ -778,8 +826,9 @@ function buildBuildings(a, ox, oy, groundAt) {
 // The floodlights' pools as a light texture (R8, FLOOD_CELL m texels) over the masts, with
 // a blank border so the clamped edge reads as dark. Each pool: 1 / (1 + (r / 28 m)^2),
 // fading out by 120 m; the sum is clamped to FLOOD_MAX.
-function floodTexture(a, ox, oy) {
+function* floodTextureInSteps(a, ox, oy, tick = () => false) {
   const masts = floodMasts(a);
+  yield 'floodlights: masts';
   if (!masts.length) {
     const t = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
     t.needsUpdate = true;
@@ -793,6 +842,7 @@ function floodTexture(a, ox, oy) {
   const acc = new Float32Array(nx * ny);
   const rc = Math.ceil(R / FLOOD_CELL);
   for (const m of masts) {
+    if (tick()) yield 'floodlights';
     const ci = Math.floor((m.x - x0) / FLOOD_CELL), cj = Math.floor((m.y - y0) / FLOOD_CELL);
     for (let j = Math.max(0, cj - rc); j <= Math.min(ny - 1, cj + rc); j++) {
       for (let i = Math.max(0, ci - rc); i <= Math.min(nx - 1, ci + rc); i++) {
@@ -817,6 +867,19 @@ function floodTexture(a, ox, oy) {
 // ------------------------------------------------------------------ public
 
 export function createAprons(scene, uniforms, chunks, airports, heightfield = null) {
+  return runSteps(apronsInSteps(scene, uniforms, chunks, airports, heightfield));
+}
+
+// Run a builder to its end (a generator that yields between slices of the work and returns the result).
+export function runSteps(gen) {
+  for (;;) { const r = gen.next(); if (r.done) return r.value; }
+}
+
+// v0.6.0: createAprons in slices, for the airports built near the camera (world.js): a generator that
+// yields after each airport's pavement, paint, buildings and signs, and returns createAprons's
+// result. The objects are made in the same order either way; the group joins the scene at the end.
+// pre: the airports' preparation from the worker (airport-set.js awaitPrep), or null.
+export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = null, pre = null) {
   const group = new THREE.Group();
   group.name = 'aprons';
   // Every character used in a stand number, for the glyph atlas; v0.4.1: and in the signs (taxiway names, runway
@@ -841,33 +904,41 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
     const ox = a.origin ? a.origin[0] : 0, oy = a.origin ? a.origin[1] : 0;
     const groundAt = (x, y) => (heightfield ? heightfield.heightAt(x, y) : a.elevM || 0);
     const aprons = dedupePolys(a.aprons || []);
-    const flood = floodTexture(a, ox, oy);
+    const flood = yield* floodTextureInSteps(a, ox, oy, sliceTimer());
+    yield 'floodlights';
     const u = Object.assign({}, uniforms, { uRelA: { value: new THREE.Vector2() }, uGlyphs: { value: glyphs },
       uFlood: { value: flood.tex }, uFloodBox: { value: flood.box } });
 
     const meshes = [];
-    const pave = buildPavement(a, ox, oy, groundAt, aprons);
+    const tick = sliceTimer();
+    const pave = yield* buildPavementInSteps(a, ox, oy, groundAt, aprons, tick);
     const paveMesh = new THREE.Mesh(pave, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + PAVE_VERT, fragmentShader: fhead + PAVE_FRAG, side: THREE.DoubleSide,
       depthWrite: false,
     }));
     paveMesh.renderOrder = 1;     // after the terrain and the runways (see "Depth")
     meshes.push(paveMesh);
+    yield 'pavement';
     // v0.4.1: the signs, and their names painted on the taxiways.
     let signSites = null;
-    try { signSites = taxiSignSites(a); } catch { signSites = null; }
-    const paint = buildPaint(a, ox, oy, groundAt, aprons, chars, signSites);
+    const prep = yield* awaitPrep(pre, a.icao);
+    if (prep) signSites = prep.signSites;
+    else try { signSites = yield* taxiSignSitesInSteps(a); } catch { signSites = null; }
+    yield 'signs: sites';
+    const paint = yield* buildPaintInSteps(a, ox, oy, groundAt, aprons, chars, signSites, tick, prep ? prep.apronEdges : null);
     const paintMesh = new THREE.Mesh(paint.geo, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + PAINT_VERT, fragmentShader: fhead + PAINT_FRAG(chars.length),
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
     }));
     paintMesh.renderOrder = 2;
     meshes.push(paintMesh);
-    const bl = buildBuildings(a, ox, oy, groundAt);
+    yield 'paint';
+    const bl = yield* buildBuildingsInSteps(a, ox, oy, groundAt, tick);
     meshes.push(new THREE.Mesh(bl.geo, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + BLDG_VERT, fragmentShader: fhead + BLDG_FRAG,
     })));
-    const signs = buildSigns(signSites, ox, oy, groundAt, chars);
+    yield 'buildings';
+    const signs = yield* buildSignsInSteps(signSites, ox, oy, groundAt, chars, tick);
     const signMesh = signs.triangles ? new THREE.Mesh(signs.geo, new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + SIGN_VERT, fragmentShader: fhead + SIGN_FRAG(chars.length),
     })) : null;
@@ -898,6 +969,7 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
       info: { holds: paint.holds, syntheticHolds: paint.synthetic, stands: paint.stands, bridges: bl.bridges, buildings: bl.buildings, aprons: aprons.length,
         signArrays: signs.arrays, signsMandatory: signs.mandatory, signsExit: signs.exits, signsDistance: signs.distance },
     });
+    yield 'signs';
   }
   scene.add(group);
 

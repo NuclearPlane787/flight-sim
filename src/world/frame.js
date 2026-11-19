@@ -55,11 +55,43 @@ export function scaleFactor(latDeg) {
 export function convergence(lonDeg) {
   return N * (lonDeg - LON0) * DEG;
 }
+// The same from map metres, without toGeo(): the cone's angle at (x, y), which is what
+// convergence(toGeo(x, y)[1]) computes, to roundoff. The wind's turn (weather.js, clouds.js)
+// uses this one, so that a point always gets the same double.
+export function convergenceAt(x, y) {
+  return Math.atan2(x, RHO0 - y);
+}
 
 // Magnetic declination (degrees, east positive) for 2026, a plane fitted to WMM2025
 // at Seoul (-9.1), Busan (-8.0), Jeju (-7.6) and Gangneung (-8.9). Good to ~0.3°.
+//
+// v0.6.0 (V060.md, "Magnetic variation"): the region's model, once installed, takes over
+// outside South Korea: setMagModel(fn) with fn(x, y, plane) -> degrees, which region.js
+// installs from geo-rules.js (magVarAt: the plane exactly inside south-korea.poly, WMM2025
+// beyond a 50 km band, blended across it; and the plane everywhere while EAST_ASIA_ON is off).
+// With no model (v0.5.8, and the flag off) magVar is the plane alone, the same doubles.
+// fn must be a function of position only: the page, the prediction worker and node all
+// install the same one.
+let magModel = null;
+let lastLat = NaN, lastLon = NaN, lastVar = 0;      // a last-point cache for magVar(lat, lon)
+export function setMagModel(fn) {
+  magModel = typeof fn === 'function' ? fn : null;
+  lastLat = lastLon = NaN;
+}
+export const magModelInstalled = () => magModel !== null;
 export function magVar(latDeg, lonDeg) {
-  return -8.46 - 0.378 * (latDeg - 36) + 0.082 * (lonDeg - 127.5);
+  const plane = -8.46 - 0.378 * (latDeg - 36) + 0.082 * (lonDeg - 127.5);
+  if (magModel === null) return plane;
+  if (latDeg === lastLat && lonDeg === lastLon) return lastVar;
+  const xy = toMap(latDeg, lonDeg);
+  lastVar = magModel(xy[0], xy[1], plane);
+  lastLat = latDeg; lastLon = lonDeg;
+  return lastVar;
+}
+// The heading conversions have the map point already: no toMap() (the same plane expression).
+function magVarXY(latDeg, lonDeg, x, y) {
+  const plane = -8.46 - 0.378 * (latDeg - 36) + 0.082 * (lonDeg - 127.5);
+  return magModel === null ? plane : magModel(x, y, plane);
 }
 
 const wrap2pi = (a) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -67,8 +99,8 @@ const wrap2pi = (a) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 // Heading conversions, radians, clockwise from north, at map point (x, y).
 export function gridToTrue(hdg, x, y) { return wrap2pi(hdg + convergence(toGeo(x, y)[1])); }
 export function trueToGrid(hdg, x, y) { return wrap2pi(hdg - convergence(toGeo(x, y)[1])); }
-export function trueToMag(hdg, x, y) { const [la, lo] = toGeo(x, y); return wrap2pi(hdg - magVar(la, lo) * DEG); }
-export function magToTrue(hdg, x, y) { const [la, lo] = toGeo(x, y); return wrap2pi(hdg + magVar(la, lo) * DEG); }
+export function trueToMag(hdg, x, y) { const [la, lo] = toGeo(x, y); return wrap2pi(hdg - magVarXY(la, lo, x, y) * DEG); }
+export function magToTrue(hdg, x, y) { const [la, lo] = toGeo(x, y); return wrap2pi(hdg + magVarXY(la, lo, x, y) * DEG); }
 export function gridToMag(hdg, x, y) { return trueToMag(gridToTrue(hdg, x, y), x, y); }
 export function magToGrid(hdg, x, y) { return trueToGrid(magToTrue(hdg, x, y), x, y); }
 

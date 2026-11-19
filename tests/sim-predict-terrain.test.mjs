@@ -7,23 +7,16 @@ import { readFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createSim } from '../src/sim/sim.js';
 import { predictSync, createPredictionRun, terrainGround, TERRAIN_CLEAR_M } from '../src/sim/predict-core.js';
-import { createHeightfield } from '../src/world/heightfield.js';
+import { tiledTerrain } from './tile-terrain.mjs';
 import { toMap } from '../src/world/frame.js';
 import { airborne, run, KT } from './sim-helpers.mjs';
 
 const DATA = new URL('../data/', import.meta.url);
-const HAVE = existsSync(new URL('terrain/height.i16.gz', DATA));
+const HAVE = existsSync(new URL('manifest.json', DATA)) && !!JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8')).tiles;
 
-// The worker's layers: national heights, the 30 m patches, the runway flattening.
-function loadHf() {
-  const m = JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8'));
-  const i16 = (f) => { const b = gunzipSync(readFileSync(new URL(f, DATA))); return new Int16Array(b.buffer, b.byteOffset, b.byteLength / 2); };
-  const n = m.national;
-  const patches = (m.patches || []).map((p) => ({ id: p.id, x0: p.x0, y0: p.y0, cell: p.cell, nx: p.nx, ny: p.ny, height: i16(p.height) }));
-  const airports = (m.airports || []).map((f) => JSON.parse(readFileSync(new URL(f, DATA), 'utf8')));
-  return createHeightfield({ heightScale: m.heightScale, national: { ...n, height: i16(n.height), water: null, cover: null }, patches, coastPatches: [] }, { airports });
-}
-const hf = HAVE ? loadHf() : null;
+// The worker's layers: heights from the tiles (v0.6.0; the same doubles as the national grid's),
+// the 30 m patches, the runway flattening.
+const hf = HAVE ? (await tiledTerrain({ layers: ['h'], coasts: false })).hf : null;
 
 // Level at altFt with the AP in ALT and HDG, at (x, y).
 function cruise(x, y, { altFt, hdg, hdgDeg, iasKt = 250 }) {

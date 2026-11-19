@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(here, '../../../Claude outputs/flight-sim');
 const BASE = process.env.FS_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const type = process.argv[2] || 'b787-9';
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 let bad = 0;
 const check = (n, ok, d = '') => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n} ${d}`); };
 try {

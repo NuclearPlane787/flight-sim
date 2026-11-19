@@ -8,10 +8,11 @@ import { createInput } from './input.js';
 import { createCameraRig } from './camera.js';
 import { createCallouts } from './audio/callouts.js';
 import { createScorer, runwayFrame, aimingPoint, landingRunway, runwayEndRefs } from './score.js';
-import { createLogbook } from './ui/logbook.js';
+import { createLogbook, logTimes } from './ui/logbook.js';
 import { createWeatherWindow, WEATHER_TAB, addWeatherTab } from './ui/weather-window.js';
 import { presetWeather, weatherContext } from './sim/weather-presets.js';
 import { createScorePanel } from './ui/score-panel.js';
+import { baroValueText } from './ui/fcu.js';   // v0.6.0: Shift+B's toast in the BARO's unit (inches in Japan)
 import * as store from './store.js';
 import { createGateFlow } from './ground/gate-flow.js';
 import { standHeading } from './world/traffic-layout.js';
@@ -27,6 +28,7 @@ import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
 import { runwayStateOf } from './sim/weather.js';
+import { createTerrainLoader, eastAsiaOn } from './world/region.js';
 
 const STEP = 1 / 120;
 const KT = 1.943844, FT = 3.28084, NM = 1852, DEG = Math.PI / 180;
@@ -91,9 +93,12 @@ async function boot() {
   const base = new URL('../data/', import.meta.url).href;
   const [hf, rw, coast] = await Promise.all([
     hfMod.loadHeightfield(base), rwMod.loadAirports(base),
-    fetch(base + 'coast.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    import('./world/region.js').then((m) => fetch(base + (m.EAST_ASIA_ON ? 'coast-region.json' : 'coast.json'))).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    import('./world/region.js').then((m) => m.loadLocalRules(base)),   // v0.6.0: the local rules (WMM, the country) installed before the first step; null at once with the region off
   ]);
   rw.setHeightfield(hf);
+  // v0.6.0: the terrain loader (region.js): the tiles the flight reads, and the sim's waits.
+  const terrainLoader = createTerrainLoader(hf);
   const airports = rw.airports;
   // Stand refs repeat in OSM (73 at Incheon, numbered per terminal or apron; "18" twice at
   // Gimpo), and they're distinct stands 46 m to 4 km apart. Make each ref unique ("511-2"),
@@ -425,6 +430,7 @@ async function boot() {
     callouts.reset();
     ui.crash.hidden = true; ui.score.hidden = true;
     setTimeScale(1);
+    world.ensureNear?.(sim.state.pos.x, sim.state.pos.y);   // v0.6.0: the airports here built before the first frame shows them
     setMenu(false);   // v0.5.5
     setPaused(false);
   }
@@ -515,6 +521,7 @@ async function boot() {
     useType(st.sim?.design || st.sim?.type || plan.design || plan.type);   // a save from before v0.3.0 is the A321neo; v0.5.0: a design whole
     gate.deserialize(st.gate, plan);          // may reset the sim (a gate start), so before restore
     sim.restore(st.sim);
+    world.ensureNear?.(sim.state.pos.x, sim.state.pos.y);   // v0.6.0: the airports where the scenario resumes
     applyFlightOpts();                        // v0.4.1: the settings', not the save's
     gate.afterLoad();
     const f = st.flight || {};
@@ -643,12 +650,16 @@ async function boot() {
   }
 
   function jumpTo(sample) {
+    // v0.6.0: the target's tiles load behind the fade, and the fade waits for them (with the
+    // region off they are all resident: no wait, v0.5.8's timing).
+    const tilesIn = terrainLoader.whenReadyAt(sample.x, sample.y), ready = eastAsiaOn() ? tilesIn : null;
     fadeThen(() => {
       sim.restore(sample.snap, { keepWeather: true });
+      world.ensureNear?.(sim.state.pos.x, sim.state.pos.y);   // v0.6.0: behind the fade
       applyFlightOpts();
       setTimeScale(1);
       afterJump(); // a new prediction runs from the new spot
-    });
+    }, ready);
   }
 
   // ---- Changing the route (v0.2.1) ----
@@ -692,12 +703,22 @@ async function boot() {
     if (paused) renderOnce();
   }
 
-  function fadeThen(fn) {
+  // `ready` (v0.6.0): a promise the fade waits for before fn runs and the fade lifts (a jump's
+  // tiles), for at most FADE_WAIT_MS: after that the frame loop's own wait holds the steps.
+  const FADE_WAIT_MS = 4000;
+  function fadeThen(fn, ready) {
     ui.fade.classList.add('on');
     setTimeout(() => {
-      fn();
-      requestFrame();
-      setTimeout(() => ui.fade.classList.remove('on'), 120);
+      const go = () => {
+        fn();
+        requestFrame();
+        setTimeout(() => ui.fade.classList.remove('on'), 120);
+      };
+      if (!ready) { go(); return; }
+      let done = false;
+      const once = () => { if (!done) { done = true; go(); } };
+      ready.then(once, once);
+      setTimeout(once, FADE_WAIT_MS);
     }, 360);
   }
 
@@ -830,7 +851,7 @@ async function boot() {
       case 'ap': if (ap.ap) ap.disconnectAp('pilot'); else ap.engageAp(); break;
       case 'toga': ap.toga?.(); break;
       case 'athr': ap.toggleAthr(); break;
-      case 'localQnh': sim.setLocalQnh(); toast(`QNH ${Math.round(sim.baro.hpa)} set`, 1200); break;
+      case 'localQnh': sim.setLocalQnh(); toast(`QNH ${baroValueText(sim.baro)} set`, 1200); break;
       case 'faster': changeRate(1); break;
       case 'slower': changeRate(-1); break;
       case 'map': map.toggle(); if (map.isOpen) apKey = ''; else predictor.cancel(); break;
@@ -1044,6 +1065,7 @@ async function boot() {
       score: { points: res.points, grade: res.grade, parts: res.parts, ...(res.offRunway ? { offRunway: true } : {}) },
       wind: res.touchdown?.wind && res.touchdown.wind.kt >= 1 ? res.touchdown.wind : null,   // v0.4.0
       ...(res.indestructible ? { indestructible: true } : {}),   // v0.4.1
+      ...logTimes({ clockMs: clock.ms, speed: clock.running ? clock.speed : 0, nowT: s.t, touchdownT: res.touchdown?.t, liftoffT, origin: byIcao(plan.origin), dest: arr || byIcao(plan.dest) }),   // v0.6.0: local times and names (the region on)
     });
     window.__fsLastScore = res;
     saveNow('landed');   // so a reload never scores (and logs) the same landing again
@@ -1113,6 +1135,10 @@ async function boot() {
     acc += dt * timeScale;
     let steps = Math.floor(acc / STEP);
     acc -= steps * STEP;
+    // v0.6.0: the sim never reads a tile that isn't in: this frame's steps wait for it.
+    terrainLoader.update(s, null, [dest && dest.end]);
+    if (steps > 0 && !terrainLoader.ready(s, steps * STEP)) { steps = 0; acc = 0; }
+    if (terrainLoader.showWaiting()) toast('Loading terrain…');
     let done = 0;
     const tSim = performance.now();
     for (; done < steps; done++) {

@@ -2,7 +2,7 @@
 // magenta line to the destination through any waypoints, the heading bug, track,
 // GS/TAS, the wind and the destination's bearing, distance and time. Range 10…160 nm.
 
-import { C, font, KT, NM, DEG, clamp, wrap360, angDiff, magDeg, airportList, thresholdOf, traceRings, route } from './common.js';
+import { C, font, KT, NM, DEG, clamp, wrap360, angDiff, magDeg, airportList, thresholdOf, traceRings, traceLand, traceCoastLines, screenBox, route } from './common.js';
 
 export const ND_RANGES = [10, 20, 40, 80, 160];
 
@@ -82,10 +82,19 @@ export function createNd(cv, { airports, coast }) {
     ctx.beginPath(); ctx.rect(0, 0, s, cy + 0.2 * s); ctx.clip();
     if (nd.coast) {
       const lod = nd.coast.lod(1 / k);
-      ctx.beginPath(); traceRings(ctx, nd.coast.land, lod, box, tf, 2 / k);
-      ctx.fillStyle = '#16231c'; ctx.fill('evenodd');
-      ctx.strokeStyle = '#3e6b4f'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
-      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, box, tf, 3 / k);
+      // v0.6.0: the region's coast, only its cells under the arc on the screen (common.js).
+      const cbox = nd.coast.region ? screenBox(px, py, ch, sh, k, Math.max(-cx, -1.04 * R), Math.min(s - cx, 1.04 * R), -Math.min(0.2 * s, 1.04 * R), Math.min(cy, 1.04 * R)) : box;
+      if (nd.coast.region) {
+        ctx.beginPath(); traceLand(ctx, nd.coast, lod, cbox, tf, 2 / k);
+        ctx.fillStyle = '#16231c'; ctx.fill('evenodd');
+        ctx.beginPath(); traceCoastLines(ctx, nd.coast, lod, cbox, tf, 2 / k);
+        ctx.strokeStyle = '#3e6b4f'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
+      } else {
+        ctx.beginPath(); traceRings(ctx, nd.coast.land, lod, box, tf, 2 / k);
+        ctx.fillStyle = '#16231c'; ctx.fill('evenodd');
+        ctx.strokeStyle = '#3e6b4f'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
+      }
+      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, cbox, tf, 3 / k);
       ctx.fillStyle = '#0d1a2a'; ctx.fill('evenodd');
     }
     // Range rings: half range dashed.

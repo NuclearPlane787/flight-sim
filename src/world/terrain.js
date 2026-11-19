@@ -8,12 +8,15 @@
 // One material for every ring: a ring's step and centre come from its model matrix.
 
 import * as THREE from '../../vendor/three.module.js';
+import { EAST_ASIA_ON, GROUND_ON } from './region.js';
+import { FINE_GLSL, createFineCover, setFineOrigin } from './finecover.js';
+import { GROUND_GLSL } from './ground.js';
 
 export const GRID = 128;          // quads per ring side
 export const LEVELS = 13;         // steps 2 m .. 8192 m; the outer ring reaches ~520 km
 export const STEP0 = 2;           // m, the finest step
 const EARTH_R = 6371000;          // m, as curveDrop() (frame.js's EARTH_RADIUS)
-const PEAK = 2000;                // m, above the highest ground in the map (Hallasan 1,947 m)
+const PEAK = 2000;                // m, at least: above Korea's highest ground (Hallasan 1,947 m); v0.6.0 raises it to the data's highest
 
 // A grid of GRID x GRID quads with integer vertex coordinates -GRID/2..GRID/2 (scene x, z),
 // leaving out the quads inside |i|,|j| < hole (hole 0 = a full grid).
@@ -40,10 +43,20 @@ function gridGeometry(n, hole) {
 }
 
 export function createTerrain(scene, uniforms, chunks) {
+  // v0.6.0: the high ground's rock and snow are compiled in only with the region on (the flag is
+  // fixed at page load), so with it off the shader's text is v0.5.8's, and Korea's pixels with it.
+  const HIGH = EAST_ASIA_ON;
+  // v0.6.0 Part 7 (behind GROUND_ON, compiled in only with it): the fine cover's window round the
+  // camera (finecover.js) and the field mosaic (ground.js). Its uniforms go into the shared set
+  // before any material copies it.
+  const GROUND = GROUND_ON;
+  const fine = GROUND ? createFineCover(uniforms, { baseUrl: new URL('../../data/', import.meta.url).href }) : null;
+  if (GROUND) setFineOrigin(uniforms, { x: 0, y: 0 });
   const ringGeo = gridGeometry(GRID, GRID / 4 - 1);
   const fillGeo = gridGeometry(GRID / 2, 0);
   const extra = {
     uGridHalf: { value: GRID / 2 },
+    uHighGround: { value: 0 },   // v0.6.0: 1 when the ground the GPU holds passes 2,100 m (rock and snow up there)
   };
   const mat = new THREE.ShaderMaterial({
     uniforms: Object.assign({}, uniforms, extra),
@@ -55,6 +68,7 @@ export function createTerrain(scene, uniforms, chunks) {
       varying vec2 vMap;
       varying vec3 vRel;
       varying float vRawH, vPw, vZone;
+      ${HIGH ? 'centroid varying float vHighH;' : ''}
       #include <logdepthbuf_pars_vertex>
       void main() {
         float s = modelMatrix[0][0];                     // this ring's step (m)
@@ -71,14 +85,14 @@ export function createTerrain(scene, uniforms, chunks) {
         float raw = rawHeight(m, pw);
         float h = max(flattenRunways(m, raw, zone), 0.0);
         // Outside the baked map: open sea.
-        vec2 uv = natUv(m);
-        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) { h = 0.0; raw = -40.0; }
+        if (natOutside(m)) { h = 0.0; raw = -40.0; }
         wp.y = h;
         vec3 rel = wp - uCamPos;
         wp.y -= curveDrop(rel.xz);
         vMap = m;
         vRel = wp - uCamPos;
         vRawH = raw;
+        ${HIGH ? 'vHighH = raw;' : ''}
         vPw = pw;
         vZone = zone;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
@@ -91,10 +105,12 @@ export function createTerrain(scene, uniforms, chunks) {
       ${chunks.ATMOS_GLSL}
       ${chunks.WATER_GLSL}
       ${chunks.FIELDS_GLSL}
+      ${GROUND ? FINE_GLSL + GROUND_GLSL : ''}
       ${chunks.AIRCRAFT_LIGHTS_GLSL || 'vec3 aircraftLights(vec3 p, vec3 n) { return vec3(0.0); }'}
       varying vec2 vMap;
       varying vec3 vRel;
       varying float vRawH, vPw, vZone;
+      ${HIGH ? 'centroid varying float vHighH;\n      uniform float uHighGround;' : ''}
       #include <logdepthbuf_pars_fragment>
 
       vec2 decodeN(vec2 rg) { return rg * (255.0 / 127.0) - (128.0 / 127.0); }
@@ -105,7 +121,7 @@ export function createTerrain(scene, uniforms, chunks) {
         vec3 rel = vRel;
         float dist = length(rel);
         vec2 uv = natUv(m);
-        bool outside = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)));
+        bool outside = natOutside(m);
 
         // Normal (map ENU), from the national normal map, the 30 m patches where present.
         vec2 nn = decodeN(texture(uNormal, uv).rg);
@@ -140,6 +156,21 @@ export function createTerrain(scene, uniforms, chunks) {
           cov.r = smoothstep(0.06, 0.2, slope) * step(30.0, vRawH);
           cov.g = (1.0 - cov.r) * (1.0 - smoothstep(0.02, 0.06, slope)) * (1.0 - smoothstep(150.0, 400.0, vRawH));
         }
+        ${GROUND ? `// v0.6.0 Part 7: the fine cover (31 m) near the camera, while one of its pixels is
+        // still a screen pixel or so; the 250 m cover beyond, and where there is none.
+        vec2 gfp = finePos(uCamPos.xz + rel.xz);
+        float glod = max(length(dFdx(gfp)), length(dFdy(gfp))) * 31.25;      // metres a screen pixel covers here
+        float fineW = uFineOn * smoothstep(0.0, 48.0, fineInside(gfp)) * (1.0 - smoothstep(24.0, 64.0, glod));
+        fineW *= 1.0 - smoothstep(0.25, 0.75, cov.a);                         // not inside an airfield (airport-mask.js marks it)
+        vec4 fLo = vec4(0.0), fHi = vec4(0.0);
+        vec4 cov250 = cov;                                                    // the 250 m shares, before the fine cover
+        if (fineW > 0.0) {
+          fineMix(gfp, fLo, fHi);
+          fineW *= 1.0 - fHi.w;
+          cov.r = mix(cov.r, fLo.x, fineW);
+          cov.g = mix(cov.g, fLo.y, fineW);
+          cov.b = mix(cov.b, fLo.z, fineW);
+        }` : ''}
         // Break the 250 m cells up with noise so the cover edges look natural.
         float wob = vnoise(m * 0.012) - 0.5 + 0.5 * (vnoise(m * 0.05) - 0.5);
         float forest = smoothstep(0.35, 0.65, cov.r + wob * 0.5);
@@ -160,7 +191,7 @@ export function createTerrain(scene, uniforms, chunks) {
         canopy *= 0.75 + 0.5 * mix(0.5, tex3 * 0.6 + tex2 * 0.4, near + detailFade * 0.5);
         // Fields and paddies (paddies on flat, low valley floors).
         float paddy = (1.0 - smoothstep(0.015, 0.04, slope)) * (1.0 - smoothstep(120.0, 350.0, vRawH));
-        vec3 fields = fieldColor(m, paddy, detailFade);
+        ${GROUND ? 'float treeLine;\n        vec3 fields = fieldMosaic(gfp, paddy, m, glod, slope, vRawH, treeLine);' : 'vec3 fields = fieldColor(m, paddy, detailFade);'}
         // Built-up ground: concrete and asphalt with a street grid.
         vec3 city = mix(vec3(0.085, 0.085, 0.083), vec3(0.14, 0.135, 0.125), tex2);
         city = mix(city, canopy * 1.2, 0.35 * smoothstep(0.45, 0.75, vnoise(m * 0.02 + 9.0)));   // parks and street trees
@@ -172,12 +203,45 @@ export function createTerrain(scene, uniforms, chunks) {
 
         vec3 alb = grass;
         alb = mix(alb, fields, farm);
+        ${GROUND ? `// Grassland and scrub (the fine cover's): not a lawn. Patches of taller, darker growth and
+        // scattered bushes over it, a paler dry sward between.
+        float rough = fineW * smoothstep(0.45, 0.65, fHi.x + wob * 0.3);
+        if (rough > 0.0) {
+          float clump = smoothstep(0.50, 0.68, vnoise(m * 0.028 + 3.0)) * 0.55 + smoothstep(0.62, 0.74, vnoise(m * 0.11 + 11.0)) * 0.35;
+          vec3 sward = mix(vec3(0.105, 0.105, 0.052), vec3(0.085, 0.10, 0.045), vnoise(m * 0.006 + 1.0));
+          alb = mix(alb, mix(sward, canopy * 1.25, clump), rough * 0.85);
+        }
+        alb = mix(alb, canopy * 0.9, treeLine * farm);                       // the tree lines between districts
+        // Bare ground (river bars, tidal flats, quarries) and marsh, where the fine cover has them.
+        alb = mix(alb, mix(vec3(0.14, 0.13, 0.105), vec3(0.19, 0.175, 0.14), tex2), fineW * smoothstep(0.4, 0.6, fHi.y + wob * 0.3));
+        alb = mix(alb, mix(vec3(0.07, 0.085, 0.045), vec3(0.11, 0.10, 0.05), tex1), fineW * smoothstep(0.4, 0.6, fHi.z + wob * 0.3));` : ''}
+        ${GROUND ? 'canopy *= canopyCrowns(gfp, glod, normalize(vec2(uSunDir.x, -uSunDir.z) + 1e-4));' : ''}
         alb = mix(alb, canopy, forest);
+        ${GROUND ? `// Built-up pixels in farm country, outside the towns: glass (the land cover maps the plains'
+        // greenhouses as built-up), not concrete.
+        float glassy = fineW * (1.0 - smoothstep(0.12, 0.30, cov250.b)) * smoothstep(0.10, 0.30, cov250.g + cov250.a * 0.0) * (1.0 - smoothstep(0.03, 0.06, slope));
+        glassy *= smoothstep(0.50, 0.58, vnoise(m * 0.0045 + 17.0));          // about two built-up patches in five are glass; the others are villages
+        if (glassy > 0.0) city = mix(city, greenhouseGround(gfp, glod), glassy);
+        // Villages and the towns' edges: lots with yards and gardens, not one sheet of concrete.
+        // (Everywhere but the densest centres: the suburbs' 250 m cells are nearly all built-up too.)
+        float village = fineW * (1.0 - glassy) * (1.0 - smoothstep(0.80, 0.97, cov250.b));
+        if (village > 0.0) city = mix(city, villageGround(gfp, glod), village);` : ''}
         alb = mix(alb, city, urban);
         alb = mix(alb, rock, smoothstep(0.55, 0.75, slope + 0.15 * (tex1 - 0.5)));
         alb = mix(alb, mix(vec3(0.075, 0.095, 0.035), vec3(0.10, 0.11, 0.045), tex2), smoothstep(0.3, 0.9, vZone));
         // Mountain tops above ~1,400 m: thinner, browner vegetation.
         alb = mix(alb, vec3(0.13, 0.10, 0.06), smoothstep(1300.0, 1800.0, vRawH) * 0.6);
+        ${HIGH ? `        // v0.6.0: above anything in Korea (Hallasan 1,947 m): bare rock from about 2,300 m and
+        // November's snow from about 2,700 m, less on the steepest faces (Fuji, the Japan Alps).
+        // Only when the ground the GPU holds reaches that high (uHighGround: never over Korea
+        // alone), and from a centroid-sampled height: at a ridge seen edge-on the plain varying
+        // extrapolates past the triangle and would sprinkle snow on the skyline.
+        if (uHighGround > 0.5) {
+          float bare = smoothstep(2200.0, 2600.0, vHighH + 200.0 * (tex1 - 0.5));
+          alb = mix(alb, rock * 0.85, bare);
+          float cap = smoothstep(2650.0, 3050.0, vHighH + 300.0 * (tex2 - 0.5)) * (1.0 - 0.7 * smoothstep(0.55, 0.9, slope));
+          alb = mix(alb, vec3(0.60, 0.63, 0.68) * (0.92 + 0.12 * tex1), cap);
+        }` : ''}
 
         // Water: the sea (with beaches) and inland water.
         float sea = outside ? -5000.0 : seaDistance(m, vRawH);
@@ -201,6 +265,7 @@ export function createTerrain(scene, uniforms, chunks) {
         float wSea = 1.0 - smoothstep(-aa, aa, sea);
         float aai = max(fwidth(inl), 0.5);
         float wInl = (1.0 - smoothstep(-aai, aai, inl)) * (1.0 - wSea);
+        ${GROUND ? '// Ponds, canals and reservoirs too small for the 250 m water field.\n        wInl = max(wInl, fineW * smoothstep(0.42, 0.58, fLo.w + wob * 0.15) * (1.0 - wSea) * (1.0 - smoothstep(0.3, 0.9, vZone)));' : ''}
         if (wSea + wInl > 0.001) {
           float depth = wSea > 0.0 ? clamp(-sea / 1500.0, 0.0, 1.0) : clamp(-inl / 150.0, 0.0, 1.0);
           vec3 wc = waterShade(m, rel, depth, wInl / max(wSea + wInl, 1e-3));
@@ -232,6 +297,13 @@ export function createTerrain(scene, uniforms, chunks) {
   group.add(fill);
   scene.add(group);
 
+  // v0.6.0: the clip window (glsl.js, CLIP_WINDOW) refills round the camera; the uploads go
+  // to the GPU from the fill mesh's onBeforeRender (it draws every frame), where the renderer is.
+  const clip = uniforms.__clip || null;
+  // v0.6.0: the nearest patches and runways (glsl.js), and the highest ground the GPU holds.
+  const near = uniforms.__near || null, peakOf = uniforms.__peak || null;
+  if (clip || near || fine) fill.onBeforeRender = (renderer) => { if (clip) clip.flush(renderer); if (near && near.flush) near.flush(renderer); if (fine) fine.flush(renderer); };
+
   const ringTris = ringGeo.index.count / 3, fillTris = fillGeo.index.count / 3;
   const place = (mesh, s, camMap, origin) => {
     const cx = Math.floor(camMap.x / (2 * s) + 0.5) * 2 * s;
@@ -242,10 +314,13 @@ export function createTerrain(scene, uniforms, chunks) {
   };
 
   return {
-    group, material: mat,
+    group, material: mat, fine,
     finest: 0,
     // camMap: the camera's map position; agl: its height above the ground (m).
     update(camMap, origin, agl) {
+      if (clip) clip.update(camMap);
+      if (fine) { fine.update(camMap); setFineOrigin(uniforms, origin); }
+      if (near) near.update(camMap);
       // Skip the rings that are small compared with the height above the ground.
       let f = 0;
       while (f < LEVELS - 3 && GRID / 2 * STEP0 * 2 ** f < agl * 1.5) f++;
@@ -255,7 +330,10 @@ export function createTerrain(scene, uniforms, chunks) {
       // at least (GRID/4 - 2) steps from the camera. Ground past that is hidden behind the
       // Earth's curve (the sea is in this mesh), so the picture doesn't change.
       const alt = Math.max(mat.uniforms.uCamAlt ? mat.uniforms.uCamAlt.value : agl, agl, 0);
-      const sight = (Math.sqrt(2 * EARTH_R * alt) + Math.sqrt(2 * EARTH_R * PEAK)) * 1.05;
+      // v0.6.0: PEAK, or the highest ground in the data the GPU holds when that's higher (Fuji).
+      const peak = peakOf && peakOf.m > PEAK ? peakOf.m : PEAK;
+      mat.uniforms.uHighGround.value = peak > 2100 ? 1 : 0;
+      const sight = (Math.sqrt(2 * EARTH_R * alt) + Math.sqrt(2 * EARTH_R * peak)) * 1.05;
       let last = LEVELS - 1;
       while (last > f + 2 && (GRID / 4 - 2) * STEP0 * 2 ** last > sight) last--;
       this.coarsest = last;

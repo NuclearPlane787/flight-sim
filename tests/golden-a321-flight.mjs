@@ -8,19 +8,16 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { createSim } from '../src/sim/sim.js';
-import { createHeightfield } from '../src/world/heightfield.js';
+import { tiledTerrain } from './tile-terrain.mjs';
 
 const DATA = new URL('../data/', import.meta.url);
 const KT = 0.514444, FT = 0.3048, DEG = Math.PI / 180;
 export const FIXTURE = new URL('./fixtures/golden-a321.json.gz', import.meta.url);
 
+// v0.6.0: the terrain from the tiles (the same heights to the bit as manifest.national's grid).
+export const TILED = await tiledTerrain({ layers: ['h'], coasts: false, game: true });   // the terrain the game reads (the region's once EAST_ASIA_ON is on)
 function loadTerrain() {
-  const m = JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8'));
-  const i16 = (f) => { const b = gunzipSync(readFileSync(new URL(f, DATA))); return new Int16Array(b.buffer, b.byteOffset, b.byteLength / 2); };
-  const n = m.national;
-  const patches = (m.patches || []).map((p) => ({ id: p.id, x0: p.x0, y0: p.y0, cell: p.cell, nx: p.nx, ny: p.ny, height: i16(p.height) }));
-  const airports = (m.airports || []).map((f) => JSON.parse(readFileSync(new URL(f, DATA), 'utf8')));
-  return { hf: createHeightfield({ heightScale: m.heightScale, national: { ...n, height: i16(n.height), water: null, cover: null }, patches, coastPatches: [] }, { airports }), airports };
+  return TILED;
 }
 
 const row = (sim) => {

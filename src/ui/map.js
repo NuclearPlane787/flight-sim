@@ -8,8 +8,9 @@
 //   setPrediction(samples), onjump(sample), onskipfinal(), onroute(icao, ident) -> { ok, error? },
 //   openRoute(icao?), setCoast(coast), waypoints, setWaypoints(list) }
 
-import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, route, setWaypoints, altLabel, magDeg } from './common.js';
+import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg } from './common.js';
 import { MAP_EXTENT } from '../world/frame.js';
+import { EAST_ASIA_ON, mapExtent, fineExtent } from '../world/region.js';
 import { fuelEstimate } from './setup.js';
 
 const PRED = '#c6ff2e';      // the predicted path: bright lime
@@ -73,9 +74,14 @@ export function createMap(root, { airports, coast } = {}) {
     // Dev hook: open the jump confirm at a fraction along the path.
     _devScreen(x, y) { const r = canvas.getBoundingClientRect(); return [r.left + X(x), r.top + Y(y)]; },
     _devConfirm(f) { const i = Math.floor(clamp(f, 0, 1) * (ahead().length - 1)); const s = ahead()[i]; if (s) showConfirm(s); },
+    // Dev hooks (v0.6.0): centre the view on a map point at a scale; time n full draws (ms each).
+    _devView(x, y, mPerPx) { cx = x; cy = y; k = 1 / mPerPx; layoutSig = ''; if (isOpen) draw(); },
+    _devDrawMs(n = 20) { const t = performance.now(); for (let i = 0; i < n; i++) draw(); return (performance.now() - t) / n; },
     // Dev hook: a point on an airport's label (its ICAO code), in page px.
     _devLabel(icao) {
-      const a = airportList(airports).find((x) => x.icao === icao), L = a && labelOf(a), r = canvas.getBoundingClientRect();
+      const a = airportList(airports).find((x) => x.icao === icao), r = canvas.getBoundingClientRect();
+      if (EAST_ASIA_ON) { const B = a && labelLayout().get(a); return B ? [r.left + B.x0 + 12, r.top + B.y0 + 7] : null; }
+      const L = a && labelOf(a);
       return L ? [r.left + L.x + (L.left ? -12 : 12), r.top + L.y] : null;
     },
   };
@@ -101,7 +107,10 @@ export function createMap(root, { airports, coast } = {}) {
 
   function fit() {
     const pts = routePts();
-    if (!pts.length) { cx = 0; cy = 0; k = Math.min(W, H) / 800000; return; }
+    if (!pts.length) {
+      if (EAST_ASIA_ON) { const E = mapExtent(); cx = (E.x0 + E.x1) / 2; cy = (E.y0 + E.y1) / 2; k = Math.min((W - 40) / (E.x1 - E.x0), (H - 120) / (E.y1 - E.y0)); return; }
+      cx = 0; cy = 0; k = Math.min(W, H) / 800000; return;
+    }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of pts.concat(ahead().map((s) => [s.x, s.y]))) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     const span = Math.max(x1 - x0, y1 - y0, 60000);
@@ -143,15 +152,32 @@ export function createMap(root, { airports, coast } = {}) {
     const tf = (x, y, o) => { o[0] = X(x); o[1] = Y(y); return o; };
     if (coastL) {
       const lod = coastL.lod(1 / k);
-      ctx.beginPath(); traceRings(ctx, coastL.land, lod, box, tf, 1.5 / k);
-      ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd');
-      ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
+      if (coastL.region) {
+        // v0.6.0: the region's coast, by level of detail and only the cells in view (common.js).
+        ctx.beginPath(); traceLand(ctx, coastL, lod, box, tf, 1.5 / k);
+        ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd');
+        ctx.beginPath(); traceCoastLines(ctx, coastL, lod, box, tf, 1.5 / k);
+        ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
+      } else {
+        ctx.beginPath(); traceRings(ctx, coastL.land, lod, box, tf, 1.5 / k);
+        ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd');
+        ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
+      }
       ctx.beginPath(); traceRings(ctx, coastL.water, lod, box, tf, 2 / k);
       ctx.fillStyle = '#0b2236'; ctx.fill('evenodd');
     }
     // The edge of the world data.
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
-    ctx.strokeRect(X(MAP_EXTENT.x0), Y(MAP_EXTENT.y1), (MAP_EXTENT.x1 - MAP_EXTENT.x0) * k, (MAP_EXTENT.y1 - MAP_EXTENT.y0) * k);
+    if (EAST_ASIA_ON) {
+      // v0.6.0: the region's rectangle, and inside it, fainter, the 250 m data's.
+      const E = mapExtent(), F = fineExtent();
+      ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.setLineDash([3, 7]);
+      ctx.strokeRect(X(F.x0), Y(F.y1), (F.x1 - F.x0) * k, (F.y1 - F.y0) * k);
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
+      ctx.strokeRect(X(E.x0), Y(E.y1), (E.x1 - E.x0) * k, (E.y1 - E.y0) * k);
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
+      ctx.strokeRect(X(MAP_EXTENT.x0), Y(MAP_EXTENT.y1), (MAP_EXTENT.x1 - MAP_EXTENT.x0) * k, (MAP_EXTENT.y1 - MAP_EXTENT.y0) * k);
+    }
     ctx.setLineDash([]);
 
     drawAirports();
@@ -221,6 +247,7 @@ export function createMap(root, { airports, coast } = {}) {
   }
 
   function drawAirports() {
+    if (EAST_ASIA_ON) { drawAirportsRegion(); return; }
     for (const apt of airportList(airports)) {
       const rws = apt.runways || [];
       ctx.lineCap = 'butt';
@@ -254,9 +281,88 @@ export function createMap(root, { airports, coast } = {}) {
     const off = Math.max(12, 2200 * k);
     return { x: X(ox) + (left ? -off : off), y: Y(oy) - off, left };
   }
+  // ---- v0.6.0: eleven airports across 2,250 km (EAST_ASIA_ON) ----
+  // Each airport's label (its ICAO code over its short name) goes in the first of four places
+  // round it (up right, up left, down right, down left) that overlaps no label placed before it
+  // and no other airport; if none is free, the code alone; if that isn't free either, no label
+  // (its runways still pick it). The destination is placed first. Close pairs (Pudong and
+  // Hongqiao, Haneda and Narita) take opposite sides. Laid out once per view and reused by the
+  // drawing and the pointer.
+  const LBL_ICAO = font(13, true), LBL_NAME = font(11);
+  let layoutSig = '', layoutMap = new Map();
+  const originOf = (apt) => apt.origin || [apt.runways?.[0]?.ends[0].x || 0, apt.runways?.[0]?.ends[0].y || 0];
+  function labelLayout() {
+    const list = airportList(airports), dest = destAirport();
+    const sig = [W, H, cx, cy, k, list.length, dest?.icao].join();
+    if (sig === layoutSig) return layoutMap;
+    layoutSig = sig; layoutMap = new Map();
+    const order = dest ? [dest, ...list.filter((a) => a !== dest)] : list.slice();
+    const dots = list.map((a) => { const [ox, oy] = originOf(a); return [X(ox), Y(oy)]; });
+    const placed = [];
+    const free = (b, self) => placed.every((q) => b.x1 < q.x0 || b.x0 > q.x1 || b.y1 < q.y0 || b.y0 > q.y1)
+      && dots.every(([dx, dy], i) => i === self || dx < b.x0 - 6 || dx > b.x1 + 6 || dy < b.y0 - 6 || dy > b.y1 + 6);
+    for (const apt of order) {
+      const self = list.indexOf(apt), [px, py] = dots[self];
+      ctx.font = LBL_ICAO; const wi = ctx.measureText(apt.icao).width;
+      const name = nameOf(apt);
+      ctx.font = LBL_NAME; const wn = ctx.measureText(name).width;
+      const off = Math.max(10, 2200 * k);
+      let got = null;
+      for (const withName of [true, false]) {
+        const w = withName ? Math.max(wi, wn) : wi, h = withName ? 30 : 16;
+        for (const [sxs, sys] of [[1, -1], [-1, -1], [1, 1], [-1, 1]]) {
+          const x0 = sxs > 0 ? px + off : px - off - w;
+          const y0 = sys < 0 ? py - off - h + 7 : py + off - 7;
+          const b = { x0: x0 - 3, y0: y0 - 2, x1: x0 + w + 3, y1: y0 + h };
+          if (free(b, self)) { got = { ...b, tx: x0, ty: y0, left: sxs < 0, name: withName ? name : '' }; break; }
+        }
+        if (got) break;
+      }
+      if (got) { placed.push(got); layoutMap.set(apt, got); }
+    }
+    return layoutMap;
+  }
+  function drawAirportsRegion() {
+    const list = airportList(airports), lay = labelLayout();
+    for (const apt of list) {
+      const rws = apt.runways || [];
+      ctx.lineCap = 'butt';
+      let longest = 0;
+      for (const rw of rws) {
+        const [a, b] = rw.ends;
+        longest = Math.max(longest, Math.hypot(b.x - a.x, b.y - a.y) * k);
+        ctx.strokeStyle = '#d8d8d8'; ctx.lineWidth = Math.max(2.5, (rw.widthM || 45) * k);
+        ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke();
+        if (k > 0.012) { // closer in than Korea's 0.004: Pudong's and Haneda's parallels pile up
+          ctx.fillStyle = C.white; ctx.font = font(11); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          for (const [e, o] of [[a, b], [b, a]]) {
+            const L = Math.hypot(o.x - e.x, o.y - e.y) || 1, d = 14 / k;
+            ctx.fillText(e.ident, X(e.x - (o.x - e.x) / L * d), Y(e.y - (o.y - e.y) / L * d));
+          }
+        }
+      }
+      const isDest = view?.dest && rws.some((r) => r.ends.includes(view.dest));
+      const [ox, oy] = originOf(apt);
+      if (longest < 8) { // far out: a dot, so the airport reads
+        ctx.fillStyle = isDest ? C.magenta : C.cyan;
+        ctx.beginPath(); ctx.arc(X(ox), Y(oy), 3, 0, Math.PI * 2); ctx.fill();
+      }
+      const B = lay.get(apt);
+      if (!B) continue;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.font = LBL_ICAO; ctx.fillStyle = isDest ? C.magenta : C.cyan;
+      ctx.fillText(apt.icao, B.tx, B.ty + 7);
+      if (B.name) { ctx.font = LBL_NAME; ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fillText(B.name, B.tx, B.ty + 21); }
+    }
+  }
+
   // The airport whose label is under the pointer. Labels come first, ahead of the lines over
   // them: they're what you aim at to pick an airport.
   function hitLabel(sx, sy) {
+    if (EAST_ASIA_ON) {
+      for (const [apt, B] of labelLayout()) if (sx >= B.x0 - 2 && sx <= B.x1 + 2 && sy >= B.y0 - 2 && sy <= B.y1 + 2) return apt;
+      return null;
+    }
     for (const apt of airportList(airports)) {
       const L = labelOf(apt);
       ctx.font = font(13, true);
@@ -324,6 +430,18 @@ export function createMap(root, { airports, coast } = {}) {
   const fmtMin = (m) => `${Math.floor(m / 60)}:${String(Math.floor(m % 60)).padStart(2, '0')}`;
 
   // ---- interaction ----
+  // Zoomed out to 4 km a pixel (v0.5.8), or with the region on, far enough to see all of it.
+  function kMin() {
+    if (!EAST_ASIA_ON) return 1 / 4000;
+    const E = mapExtent();
+    return Math.min(1 / 4000, 0.8 * Math.min(W / (E.x1 - E.x0), H / (E.y1 - E.y0)));
+  }
+  // With the region on, the view's centre stays over the region (a long swipe can't lose it).
+  function keepInRegion() {
+    if (!EAST_ASIA_ON) return;
+    const E = mapExtent();
+    cx = clamp(cx, E.x0, E.x1); cy = clamp(cy, E.y0, E.y1);
+  }
   function hitWaypoint(sx, sy) {
     const wps = route.waypoints;
     for (let i = wps.length - 1; i >= 0; i--) if (Math.hypot(X(wps[i][0]) - sx, Y(wps[i][1]) - sy) < 10) return i;
@@ -408,7 +526,7 @@ export function createMap(root, { airports, coast } = {}) {
     }
     if (Math.hypot(sx - drag.sx, sy - drag.sy) > 4) drag.moved = true;
     if (!drag.moved) return;
-    if (drag.kind === 'pan') { cx = drag.cx0 - (sx - drag.sx) / k; cy = drag.cy0 + (sy - drag.sy) / k; redraw(); }
+    if (drag.kind === 'pan') { cx = drag.cx0 - (sx - drag.sx) / k; cy = drag.cy0 + (sy - drag.sy) / k; keepInRegion(); redraw(); }
     else if (drag.kind === 'seg') {
       const wps = route.waypoints.slice(); wps.splice(drag.seg, 0, toMapXY(sx, sy)); setWaypoints(wps);
       drag = { kind: 'wp', i: drag.seg, sx, sy, moved: true }; redraw();
@@ -443,11 +561,11 @@ export function createMap(root, { airports, coast } = {}) {
     if (e.ctrlKey || mouse) {
       const before = toMapXY(sx, sy);
       const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.0025) * (e.deltaMode === 1 ? 33 : 1));
-      k = clamp(k * f, 1 / 4000, 1 / 2);
+      k = clamp(k * f, kMin(), 1 / 2);
       const after = toMapXY(sx, sy);
       cx += before[0] - after[0]; cy += before[1] - after[1];
     } else { cx += e.deltaX / k; cy -= e.deltaY / k; }
-    hideConfirm(); redraw();
+    keepInRegion(); hideConfirm(); redraw();
   }, { passive: false });
   for (const t of ['mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu', 'touchstart']) el.addEventListener(t, (e) => e.stopPropagation());
   el.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); }); // buttons never take focus
@@ -495,6 +613,8 @@ export function createMap(root, { airports, coast } = {}) {
   let tipAirport = false;     // the tip is showing an airport's hint
   const destAirport = () => airportList(airports).find((a) => a.runways?.some((r) => r.ends.includes(view?.dest))) || null;
   const shortName = (a) => (a.name || '').replace(/ International Airport$| Airport$/, '').replace(/^Seoul /, '');
+  // v0.6.0: the airports' own short names (Haneda, Pudong) with the region on.
+  const nameOf = (a) => (EAST_ASIA_ON && a.shortName) || shortName(a);
   const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   // The runway end you'd fly straight in to from here: the one whose landing direction is
   // nearest the bearing from the aircraft to its threshold.
@@ -524,7 +644,7 @@ export function createMap(root, { airports, coast } = {}) {
     if (!pick) return;
     const list = airportList(airports), apt = list.find((a) => a.icao === pick.icao);
     routeEl.querySelector('[data-r="apt"]').innerHTML = list.map((a) =>
-      `<button data-icao="${a.icao}" class="${a.icao === pick.icao ? 'on' : ''}" tabindex="-1">${a.icao}<small>${shortName(a)}</small></button>`).join('');
+      `<button data-icao="${a.icao}" class="${a.icao === pick.icao ? 'on' : ''}" tabindex="-1">${a.icao}<small>${nameOf(a)}</small></button>`).join('');
     const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r })));
     routeEl.querySelector('[data-r="rwy"]').innerHTML = ends.map(({ e, r }) =>
       `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}" tabindex="-1">${e.ident}</button>`).join('');

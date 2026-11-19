@@ -58,7 +58,7 @@ async function canvas(page, name, expr) {
 (async () => {
   const rkss = JSON.parse(require('fs').readFileSync(__dirname + '/../../data/airports/RKSS.json', 'utf8'));
   const r0 = rkss.runways[0], e0 = r0.ends[0];
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   const BASE = ROOT + 'flight-sim/', BASE042 = ROOT + 'flight-sim-042/';
   const report = [];
   for (const [tag, base] of [['042', BASE042], ['043', BASE]]) {

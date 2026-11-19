@@ -11,7 +11,7 @@ import path from 'node:path';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 const errors = [];
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra !== '' ? ` (${extra})` : ''}`); if (!ok) fails++; };
@@ -117,7 +117,8 @@ try {
   await setRange(page, '.fsw [data-p="gearExtendM"]', 1.5);
   await viewReady(page);
   await page.waitForTimeout(400);
-  check('with 1.5 m of gear nothing is red', (await badCells(page)) === 0 && (await worst(page)) !== 'bad', await worst(page));
+  // v0.5.6 added VMC, which stays red on a GE90 A321 whatever the gear: the gear clears the scrape (no red cell, no scrape warning).
+  check('with 1.5 m of gear nothing is red', (await badCells(page)) === 0 && !/would\s+scrape/.test(await page.$eval('.fsw', (e) => e.innerText)), await worst(page));
   await typeIn(page, 'name', 'GE90 A321');
   await shot(page, 'v050-warehouse-a321-ge90-gear.png');
   // Back with unsaved changes asks first.

@@ -32,7 +32,7 @@ const SHOTS = {
 const LIGHTNING = { 'storm-night': { ms: NIGHT, z: 1200, clouds: [{ okta: 7, baseFt: 6000, topFt: 12000 }], view: 'nose', l: look(4) } };
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : [...Object.keys(SHOTS), ...Object.keys(LIGHTNING)];
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 try {

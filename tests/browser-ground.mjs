@@ -14,7 +14,7 @@ const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/f
 const BASE = process.env.E2E_URL || 'http://localhost:8001/games/flight-sim/';
 const STAND = process.argv[2] || '3', DEP = process.argv[3] || '14R';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 const errors = [];
 let ok = true;
 try {

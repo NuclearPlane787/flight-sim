@@ -14,7 +14,7 @@ const parts = process.argv.slice(2);
 const want = (p) => !parts.length || parts.includes(p);
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 
 const D = {
   six787: { base: 'b787-9', id: 'chk-6x787', name: 'Six-engine 787', registration: 'HL7896', count: 6 },
@@ -63,7 +63,11 @@ async function fps() {
   const measure = async (label) => {
     await page.waitForTimeout(5000);
     const r = await page.evaluate(() => ({ ...window.__fsStats }));
-    const ok = r.fps > 55 && r.triangles < 1.2e6 && r.calls <= 300;
+    // v0.6.0: Seoul's real centre and landmarks add ~0.35-0.4 M triangles in view from Gimpo and over Seoul
+    // (v0.5.8: 0.86 M / 0.79 M; v0.6.0: 1.21 M / 1.18 M), so the triangle cap is 1.3 M (was 1.2 M); fps and draws unchanged.
+    // v0.6.0 Part 7: the new ground (countryside houses, two more tree rings) adds ~0.35-0.4 M more (1.60 M / 1.53 M),
+    // so the triangle cap is 1.7 M (was 1.3 M); fps and draws unchanged.
+    const ok = r.fps > 55 && r.triangles < 1.7e6 && r.calls <= 300;
     check(`${label}: 60 fps within budget`, ok, `${r.fps.toFixed(0)} fps, ${(r.triangles / 1e6).toFixed(2)} M tris, ${r.calls} draws, cpu ${r.cpuMs?.toFixed?.(1)} ms`);
   };
   await measure('six engines on Gimpo 14R');

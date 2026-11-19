@@ -33,7 +33,7 @@ if (CLOSE) argv.splice(closeAt, 1);
 const names = argv.length ? argv : Object.keys(DESIGNS);
 const short = { 'b787-9': '787', 'b777-300er': '777' };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 let fails = 0;
 try {
   for (const type of TYPES) {

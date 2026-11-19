@@ -37,7 +37,7 @@ export const SHOTS = {
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
 mkdirSync(OUT, { recursive: true });
 mkdirSync('/tmp/flight-sim/apron', { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 const results = [];
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

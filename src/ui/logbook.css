@@ -78,6 +78,8 @@
 .fslb-row .route { font-weight: 600; letter-spacing: 0.03em; }
 .fslb-row .route small.sc { font-weight: 400; letter-spacing: 0; color: #2fe3ff; opacity: 0.85;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* v0.6.0 (the region on): the airports' names under the route's codes */
+.fslb-row .route small.pl { font-weight: 400; letter-spacing: 0; color: #c9ced2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fslb-row .type { white-space: nowrap; color: #c9ced2; }
 .fslb-row .type small { color: #ffa515; }
 .fslb-row .num { text-align: right; font-variant-numeric: tabular-nums; }

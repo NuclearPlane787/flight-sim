@@ -6,7 +6,7 @@ import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 
 const BASE = (process.env.FLIGHT_SIM_BASE || 'http://localhost:8014/games/flight-sim/') + 'tests/dev-logbook.html';
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', import.meta.url).pathname);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 let fails = 0;
 const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fails++; };
 try {

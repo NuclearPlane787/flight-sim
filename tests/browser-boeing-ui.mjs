@@ -11,7 +11,7 @@ const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', im
 const CROPS = process.env.FS_CROPS || '';   // a folder for each panel's close-up (for looking, not kept)
 if (CROPS) mkdirSync(CROPS, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), 'fs-boeing-ui-'));
-const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, args: ['--window-size=1440,960'] });
+const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, args: ['--mute-audio', '--window-size=1440,960'] });
 let fails = 0;
 const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fails++; };
 try {

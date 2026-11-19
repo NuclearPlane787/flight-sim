@@ -24,7 +24,7 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 
-const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 let r, wx, eng = null;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

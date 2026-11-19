@@ -63,7 +63,7 @@ async function canvas(page, name, expr) {
   const { taxiSignSites } = await import('../../src/world/taxisigns.js');
   const rkss = JSON.parse(require('fs').readFileSync(__dirname + '/../../data/airports/RKSS.json', 'utf8'));
   const sites = taxiSignSites(rkss);
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   const BASE = ROOT + 'flight-sim/', BASE041 = ROOT + 'flight-sim-041/';
   const report = [];
 

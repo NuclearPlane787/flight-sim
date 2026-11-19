@@ -6,7 +6,7 @@ import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim', import.meta.url).pathname);
-const BASE = 'http://localhost:8001/games/flight-sim/tests/dev-world.html';
+const BASE = (process.env.E2E_URL || 'http://localhost:8001/games/flight-sim/') + 'tests/dev-world.html';
 
 export const SHOTS = {
   'gimpo-14r': 'rwy=RKSS:14R&eye=4&pitch=-1.2',
@@ -24,7 +24,7 @@ export const SHOTS = {
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 const results = [];
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -64,4 +64,5 @@ try {
 } finally {
   await browser.close();
 }
+mkdirSync('/tmp/flight-sim/world', { recursive: true });
 writeFileSync('/tmp/flight-sim/world/last-run.json', JSON.stringify(results, null, 2));

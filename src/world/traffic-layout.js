@@ -232,7 +232,14 @@ function apronCover(aprons, x, y, h) {
 // Choose the parked aircraft for one airport. Returns a list of
 // { stand (ref), type (index into AIRLINER_TYPES), livery, x, y (nose tip), z, hdg, lenScale, fp }.
 // `wide`: whether widebodies park here (Incheon). Seeded by the ICAO code.
-export function placeParked(airport, { heightAt = null, wide = airport.icao === 'RKSI', fill = FILL } = {}) {
+export function placeParked(airport, opts = {}) {
+  const gen = placeParkedInSteps(airport, opts);
+  for (;;) { const r = gen.next(); if (r.done) return r.value; }
+}
+
+// v0.6.0: placeParked in slices (yields inside its stand loop when tick() says; returns the same list),
+// for the airports built near the camera (traffic.js trafficInSteps).
+export function* placeParkedInSteps(airport, { heightAt = null, wide = airport.icao === 'RKSI', fill = FILL } = {}, tick = () => false) {
   const R = rng(hashString(`parked:${airport.icao}`));
   const stands = (airport.stands || []).slice();
   // Seeded shuffle (Fisher–Yates).
@@ -243,8 +250,10 @@ export function placeParked(airport, { heightAt = null, wide = airport.icao === 
   const placed = [];
   const aprons = apronIndex(airport);
   const fits = (fp) => !blocked(fp, obs) && !placed.some((p) => footprintsOverlap(fp, p.fp));
+  yield 'parked: ready';
   for (const s of stands) {
     if (placed.length >= target) break;
+    if (tick()) yield 'parked';
     const h = standHeading(airport, s, aprons);
     const r0 = R(), r1 = R(), r2 = R();
     // Widebodies at about half of Incheon's stands that are big enough; else a narrowbody.

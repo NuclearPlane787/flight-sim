@@ -13,7 +13,7 @@ let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra !== '' ? ` (${extra})` : ''}`); if (!ok) fails++; };
 
 (async () => {
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await ctx.addInitScript(() => {
     window.__raf = 0;

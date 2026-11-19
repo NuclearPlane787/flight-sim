@@ -4,6 +4,11 @@ import assert from 'node:assert/strict';
 import { ilsDeviation, findEnd, buildCoast, thresholdOf, NM } from '../src/ui/common.js';
 import { fuelEstimate, LIMITS } from '../src/ui/setup.js';
 import { mockAirports } from './dev-ui-mock.js';
+import { setEastAsia } from '../src/world/region.js';
+// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
+// flag is set off here whatever the shipped default (the region's own behaviour is checked in
+// tests/v060-*.test.mjs). No assertion below changed.
+setEastAsia(false);
 
 const DEG = Math.PI / 180;
 const airports = mockAirports();

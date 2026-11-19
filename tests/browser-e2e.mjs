@@ -20,7 +20,7 @@ const FT = 3.28084, KT = 1.943844, DEG = Math.PI / 180;
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 let exitCode = 0;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

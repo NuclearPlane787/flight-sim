@@ -10,7 +10,7 @@ const URL0 = (process.env.E2E_URL || 'http://localhost:8001/games/flight-sim/') 
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
@@ -39,11 +39,11 @@ try {
   const fps = await page.evaluate(() => window.__fsStats.fps);
   check('running: sim advances, frames are capped at 60', run.simS > 2.5 && fps <= 61, `sim ${run.simS.toFixed(2)} s in 3 s, ${fps.toFixed(0)} fps rendered, ${run.rafPerS.toFixed(0)} rAF/s, main-thread CPU ${run.cpuPct.toFixed(0)}%`);
 
-  await page.keyboard.press('Escape');
+  await page.click('.fsui-pause-btn');   // v0.5.5: only the HUD's Pause button pauses (Esc opens the menu, which doesn't)
   await page.waitForTimeout(500);
   const paused = await sample(3000);
   check('paused: no frames, no sim time', paused.rafPerS === 0 && paused.simS === 0, `${paused.rafPerS} rAF/s, sim ${paused.simS} s, main-thread CPU ${paused.cpuPct.toFixed(1)}%`);
-  await page.keyboard.press('Escape');
+  await page.click('.fsui-pause-btn');
   await page.waitForTimeout(500);
   const resumed = await sample(1500);
   check('resumed after pause', resumed.simS > 1, `sim ${resumed.simS.toFixed(2)} s in 1.5 s`);

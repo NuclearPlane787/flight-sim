@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: the region's ND and map (v0.6.0 dev page)</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../src/ui/ui.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #nds { position: absolute; left: 8px; top: 8px; display: flex; gap: 8px; }
+  #nds > div { position: relative; width: 330px; height: 330px; background: #000; }
+  #map-root { position: absolute; inset: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="nds"><div id="nd-a"></div><div id="nd-b"></div></div>
+<div id="map-root"></div>
+<script type="module">
+// The two NDs and the path map over the region's coast (?eastasia=1) or Korea's, with all the
+// airports in data/airports/ (the region's eleven, or Korea's three with the flag off), for
+// pictures and timing without WebGL (tests/browser-v060-map.mjs drives it through window.__dev).
+import { EAST_ASIA_ON } from '../src/world/region.js';
+import { hidpiCanvas, buildCoast } from '../src/ui/common.js';
+import { createNd, ND_RANGES } from '../src/ui/nd.js';
+import { createBoeingNd } from '../src/ui/boeing/nd.js';
+import { createMap } from '../src/ui/map.js';
+import { makeState, makeAp, derive, toMap, magToGrid } from './dev-ui-mock.js';
+
+const KOREA = ['RKSS', 'RKSI', 'RKPC'];
+const REGION = [...KOREA, 'RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD'];
+const airports = (await Promise.all((EAST_ASIA_ON ? REGION : KOREA).map(async (i) => (await fetch(`../data/airports/${i}.json`)).json())))
+  .map((a) => ({ ...a, runways: a.runways.map((r) => ({ ...r, ends: r.ends.map((e, j) => ({ ...e, hdgGridDeg: e.hdgGridDeg ?? Math.atan2(r.ends[1 - j].x - e.x, r.ends[1 - j].y - e.y) * 180 / Math.PI })) })) }));
+const coast = await (await fetch(EAST_ASIA_ON ? '../data/coast-region.json' : '../data/coast.json')).json();
+if (document.fonts?.load) await Promise.all(['400 16px B612', '700 16px B612'].map((f) => document.fonts.load(f))).catch(() => {});
+const t0 = performance.now();
+const built = buildCoast(coast);
+const buildMs = performance.now() - t0;
+const cvA = hidpiCanvas(document.getElementById('nd-a')), cvB = hidpiCanvas(document.getElementById('nd-b'));
+cvA.size(330, 330); cvB.size(330, 330);
+const ndA = createNd(cvA, { airports, coast: built }), ndB = createBoeingNd(cvB, { airports, coast: built });
+const map = createMap(document.getElementById('map-root'), { airports, coast });
+const st = makeState(2), ap = makeAp(st);
+st.onGround = false; st.ias = 280 * 0.514444; st.pos.z = 30000 * 0.3048; derive(st);
+const view = { state: st, ap, dest: null, timeScale: 1, timeScaleActual: 1, paused: false, controls: { law: 'normal' } };
+ND_RANGES.includes(320) || ND_RANGES.push(320);   // timing only: the screens' ranges stop at 160 nm
+
+function place(lat, lon, hdgMagDeg = 0) {
+  const [x, y] = toMap(lat, lon);
+  st.pos.x = x; st.pos.y = y; st.hdg = magToGrid(hdgMagDeg * Math.PI / 180, x, y); derive(st);
+}
+window.__dev = {
+  EAST_ASIA_ON, buildMs, map, view, airports, ndA, ndB,
+  place, draw(range) { ndA.setRange(range); ndB.setRange(range); ndA.draw(view); ndB.draw(view); },
+  // ms per ND draw, with and without the coast (the difference is the coast's cost).
+  time(which, range, n = 60) {
+    const nd = which === 'b' ? ndB : ndA, cv = which === 'b' ? cvB : cvA; nd.setRange(range);
+    // getImageData makes each draw finish its rasterising inside the timing.
+    const run = () => { const t = performance.now(); for (let i = 0; i < n; i++) { nd.draw(view); cv.ctx.getImageData(0, 0, 1, 1); } return (performance.now() - t) / n; };
+    run();
+    const all = run(); const c = nd.coast; nd.coast = null; const bare = run(); nd.coast = c;
+    return { all, bare, coast: all - bare };
+  },
+  setDest(icao, ident) { for (const a of airports) for (const r of a.runways) for (const e of r.ends) if (a.icao === icao && e.ident === ident) view.dest = e; },
+};
+window.__devReady = true;
+</script>
+</body>
+</html>

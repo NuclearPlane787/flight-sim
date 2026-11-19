@@ -3,6 +3,8 @@
 // in place (RGBA8: R forest, G farm, B built-up), before its texture is made, so the GPU and
 // the CPU-side coverAt agree. Cells within one cell of the boundary are cleared too.
 
+import { GROUND_ON } from './region.js';
+
 function inside(x, y, pts) {
   let c = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
@@ -13,6 +15,14 @@ function inside(x, y, pts) {
 }
 
 export function maskAirportCover(hf, airports) {
+  // v0.6.0: the terrain in tiles. Each tile is masked as it arrives (the resident ones now),
+  // cell by cell as the national grid was (tests/tilestore.test.mjs checks they agree).
+  const T = hf && hf.layers && hf.layers.tiles;
+  if (T) {
+    let n = 0;
+    T.setOnTile((tile) => { n += maskAirportCover({ layers: { national: tile } }, airports); });
+    return n;
+  }
   const g = hf && hf.layers && hf.layers.national;
   if (!g || !g.cover) return 0;
   const { x0, y0, cell, nx, ny, cover } = g;
@@ -33,6 +43,10 @@ export function maskAirportCover(hf, airports) {
         if (cover[k] || cover[k + 2]) cleared++;
         cover[k] = 0;       // forest
         cover[k + 2] = 0;   // built-up
+        // v0.6.0 Part 7: the airfield marked in the unused fourth channel, so the fine cover
+        // (which maps aprons and terminals as built-up) stays out of it: no village lots, houses
+        // or woodlots inside the fence. Only with GROUND_ON: without it the bytes are v0.5.8's.
+        if (GROUND_ON) cover[k + 3] = 255;
       }
     }
   }

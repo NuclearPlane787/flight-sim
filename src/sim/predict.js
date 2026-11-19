@@ -7,6 +7,8 @@
 // The same request may then get a second result, over the terrain. reason 'terrain': the
 // path flies into the ground; its last sample has terrain: true and impact { t, x, y, z }.
 
+import { regionQuery, geoRules } from '../world/region.js';
+
 export function createPredictor() {
   let worker = null;
   let id = 0;
@@ -16,7 +18,7 @@ export function createPredictor() {
     busy: false,
     request(snap, opts = {}) {
       if (!worker) {
-        worker = new Worker(new URL('./predict-worker.js', import.meta.url), { type: 'module' });
+        worker = new Worker(new URL('./predict-worker.js' + regionQuery(), import.meta.url), { type: 'module' });   // v0.6.0: the same region as the page
         worker.onmessage = (ev) => {
           const m = ev.data;
           if (m.id !== id) return; // stale
@@ -28,7 +30,9 @@ export function createPredictor() {
       }
       id++;
       pred.busy = true;
-      worker.postMessage({ type: 'request', id, snap, opts });
+      // v0.6.0: with the page's own state of the local rules (loaded or not), so the worker runs
+      // on the same variation and country rules as the live sim, or not at all.
+      worker.postMessage({ type: 'request', id, snap, opts, rules: !!geoRules() });
       return id;
     },
     cancel() {

@@ -9,7 +9,7 @@
 
 import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from '../common.js';
 import { fmaModes, createBoxes, altAlert, speedLow, speedText, machText } from './logic.js';
-import { shownAltFt, shownGroundFt, baroLabel } from '../pfd.js';
+import { shownAltFt, shownGroundFt, baroLabel, baroInchesText, metricAlt } from '../pfd.js';
 
 const TAPE = 'rgba(70,76,82,0.92)';
 const SKY = '#1b6fc0', GROUND = '#7a4a24';
@@ -353,7 +353,8 @@ export function createBoeingPfd(cv) {
     drum(bx + bw - dw, yc, dw, bh * 1.44, A0, 20, 2, s * 0.033, 1.05);
 
     // The altimeter setting, Boeing's way: green, "1013 HPA", or STD.
-    const baro = baroLabel(view), baroT = baro.std ? 'STD' : `${baro.hpa} HPA`;
+    // v0.6.0: in inches, "29.92 IN".
+    const baro = baroLabel(view), inches = baroInchesText(view), baroT = baro.std ? 'STD' : inches ? `${inches} IN` : `${baro.hpa} HPA`;
     ctx.fillStyle = C.green; ctx.textAlign = 'center';
     fit('1013 HPA', s * 0.03, x1 - x0, false);
     ctx.fillText(baroT, (x0 + x1) / 2, bot + 0.03 * s);
@@ -362,6 +363,26 @@ export function createBoeingPfd(cv) {
       const w = ctx.measureText(baroT).width + 0.016 * s;
       ctx.strokeStyle = C.amber; ctx.lineWidth = Math.max(1.5, s * 0.004);
       ctx.strokeRect((x0 + x1) / 2 - w / 2, bot + 0.008 * s, w, 0.044 * s);
+    }
+
+    // v0.6.0: the metric altitude, Boeing's MTRS way: the altitude in metres in white in a box above the present
+    // altitude's box, and the selected altitude in metres in magenta above the selected altitude.
+    const met = metricAlt(view);
+    if (met) {
+      const mh = 0.04 * s, my = yc - bh * 0.72 - 0.006 * s - mh / 2, mw = bw;
+      ctx.fillStyle = BLACK; ctx.fillRect(bx, my - mh / 2, mw, mh);
+      ctx.strokeStyle = C.white; ctx.lineWidth = Math.max(1.2, s * 0.003); ctx.strokeRect(bx, my - mh / 2, mw, mh);
+      ctx.fillStyle = C.white; ctx.textAlign = 'center';
+      fit('-00000 M', s * 0.032, mw - 0.01 * s, true);
+      ctx.fillText(`${met.m} M`, bx + mw / 2, my);
+      // (Above the selected altitude is the FMA's row, drawn after this: so just inside the tape's top, on black.)
+      if (met.selM !== null) {
+        const sh = 0.036 * s, sy = top + 0.004 * s + sh / 2;
+        ctx.fillStyle = BLACK; ctx.fillRect(x0 + 0.016 * s, sy - sh / 2, x1 - x0 - 0.016 * s, sh);
+        ctx.fillStyle = C.magenta; ctx.textAlign = 'center';
+        fit('00000 M', s * 0.03, x1 - x0 - 0.024 * s, true);
+        ctx.fillText(`${met.selM} M`, (x0 + 0.016 * s + x1) / 2, sy);
+      }
     }
   }
 

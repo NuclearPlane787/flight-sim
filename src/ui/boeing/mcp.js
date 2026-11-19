@@ -8,7 +8,7 @@
 
 import { clamp, wrap360 } from '../common.js';
 import { bindKnobs } from '../knobs.js';
-import { baroOf, baroText, typedBaro, turnBaro, toggleStd } from '../fcu.js';
+import { baroOf, baroText, turnBaro, toggleStd, baroKnobValue, commitBaro, toggleBaroUnit, toggleMetricAlt, metricAltOn, metricUnitShown } from '../fcu.js';
 import { mcpLights, usesMach, machOfKt, ktOfMach, machText, typedSpeedKt } from './logic.js';
 
 const FPM = 196.85;     // ft/min per m/s
@@ -68,6 +68,19 @@ export function createMcp(root, hud) {
     }
     el.appendChild(d);
   }
+  // v0.6.0 (the region's flag on): the EFIS panel's BARO selector, IN or HPA, and its MTRS button, beside STD.
+  if (metricUnitShown()) {
+    const mk = (k, label, tip) => {
+      const d = document.createElement('div');
+      d.className = 'fsui-btn'; d.dataset.k = k; d.title = tip;
+      d.innerHTML = `<span>${label}</span><i class="fsui-light"></i>`;
+      el.insertBefore(d, btns.at.el);
+      btns[k] = { el: d, lit: -1 };
+      return d;
+    };
+    mk('unit', '<b class="fsui-u-in">IN</b><b class="fsui-u-hpa">HPA</b>', 'Altimeter setting in inches of mercury (IN) or hectopascals (HPA): click to change').classList.add('fsui-unit');
+    mk('mtrs', 'MTRS', 'The altitude in metres on the PFD as well (on by itself in China)');
+  }
 
   let view = null, vsPreset = null, vsPresetAt = 0;
   const lights = {};
@@ -94,7 +107,7 @@ export function createMcp(root, hud) {
     }
     if (k === 'hdg') return Math.round(ap.hdgDeg ?? 0);
     if (k === 'alt') return Math.round(ap.altFt ?? 5000);
-    if (k === 'baro') return Math.round(baroOf(view)?.hpa ?? 1013);
+    if (k === 'baro') return baroKnobValue(view);
     return vsMode() ? ap.vsFpm ?? 0 : vsPreset ?? presentVs();
   }
 
@@ -118,8 +131,7 @@ export function createMcp(root, hud) {
 
   function commit(k, text) {
     if (k === 'baro') {
-      const v = typedBaro(text);
-      if (v !== null) turnBaro(view, v);
+      commitBaro(view, text);
     } else if (k === 'spd') {
       const kt = typedSpeedKt(text, view?.state?.pos?.z ?? 0);
       if (kt !== null) call('setSpd', clamp(Math.round(kt), 100, 399));
@@ -142,6 +154,7 @@ export function createMcp(root, hud) {
     acceptKey(edit, key) {
       if ((key === '-' || key === '−') && edit.k === 'vs' && edit.text === '') { edit.text = '-'; return true; }
       if (key === '.' && edit.k === 'spd' && !edit.text.includes('.')) { edit.text += '.'; return true; }
+      if (key === '.' && edit.k === 'baro' && baroOf(view)?.inHg && !edit.text.includes('.')) { edit.text += '.'; return true; }
       return false;
     },
     onClick(e) {
@@ -150,6 +163,8 @@ export function createMcp(root, hud) {
       const k = b.dataset.k;
       if (k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'mcp'); else call('engageAp'); }
       else if (k === 'std') toggleStd(view);
+      else if (k === 'unit') toggleBaroUnit(view);
+      else if (k === 'mtrs') toggleMetricAlt(view);
       else if (k === 'vs') engageVs();
       else if (methods[k]) call(methods[k]);
       hud.poke();
@@ -185,6 +200,8 @@ export function createMcp(root, hud) {
     set(parts.baro, shown('baro', baroText(baro)), (baro?.std ? ' lit' : '') + sel('baro') + ed('baro'));
     mcpLights(ap, lights);
     lights.std = baro?.std ? 2 : 0;
+    if (btns.unit) { lights.unit = 0; const u = baro?.inHg ? 'in' : 'hpa'; if (btns.unit.el.dataset.u !== u) btns.unit.el.dataset.u = u; }
+    if (btns.mtrs) lights.mtrs = metricAltOn(v) ? 2 : 0;
     for (const k in btns) {
       const b = btns[k], lit = lights[k];
       if (b.lit !== lit) { b.el.classList.toggle('on', lit === 2); b.el.classList.toggle('arm', lit === 1); b.lit = lit; }

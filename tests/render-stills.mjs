@@ -56,7 +56,7 @@ const SHOTS = {
 };
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1600,1060'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1600,1060'] });
 let failed = 0;
 try {
   for (const name of names) {

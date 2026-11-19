@@ -10,7 +10,7 @@ const BASE = process.env.FS_BASE || 'http://127.0.0.1:8765/games/flight-sim/';
   const out = process.argv[2] || 'hud';
   const types = (process.argv[3] || 'a321neo,b777-300er').split(',');
   require('fs').mkdirSync(out, { recursive: true });
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   let bad = 0;
   for (const type of types) for (const viewport of (process.env.V044_SIZES ? JSON.parse(process.env.V044_SIZES) : [{ width: 1440, height: 900 }, { width: 1280, height: 720 }, { width: 1024, height: 700 }])) {
     const page = await browser.newPage({ viewport });

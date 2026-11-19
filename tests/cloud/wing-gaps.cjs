@@ -19,7 +19,7 @@ const TYPES = [
   { id: 'b777-300er', land: { slatDeg: 30, flapDeg: 30 } },
 ];
 (async () => {
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));

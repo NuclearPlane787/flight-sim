@@ -5,6 +5,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flightCard, readFlight, parseWhere, parseRoute, shortPlace } from '../src/ui/home-card.js';
 import { ScenarioStore, flightFields, whereText, altText } from '../src/scenarios.js';
+import { setEastAsia } from '../src/world/region.js';
+// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
+// flag is set off here whatever the shipped default (the region's own behaviour is checked in
+// tests/v060-*.test.mjs). No assertion below changed.
+setEastAsia(false);
 
 const NAMES = { RKSS: 'Gimpo', RKPC: 'Jeju', RKSI: 'Incheon' };
 const place = (icao) => NAMES[icao] || null;

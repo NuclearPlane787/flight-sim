@@ -9,7 +9,7 @@ const ROOT = (process.env.BASE || 'http://localhost:8014') + '/games/flight-sim/
 const DEV = ROOT + 'tests/dev-weather-tab.html';
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', import.meta.url).pathname);
 const ctx = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'fs-wx-')), { channel: 'chrome', headless: false,
-  viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, args: ['--window-size=1440,960'] });
+  viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, args: ['--mute-audio', '--window-size=1440,960'] });
 let fails = 0;
 const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fails++; };
 try {

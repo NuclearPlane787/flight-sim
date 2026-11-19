@@ -4,6 +4,8 @@
 // Drawn on one square Canvas 2D, sized by the HUD; all lengths are fractions of `s`.
 
 import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from './common.js';
+import { inchesOf, metricAltOn } from './fcu.js';
+import { EAST_ASIA_ON, rulesAt } from '../world/region.js';
 
 // The altitude the tapes show, ft: the altimeter's reading (state.altInd), which depends on the setting.
 export const shownAltFt = (st) => (st.altInd ?? st.pos.z) * FT;
@@ -14,6 +16,22 @@ export function baroLabel(view) {
   const b = view?.sim?.baro;
   if (b?.std) return { std: true, hpa: Math.round(b.hpa) };
   return { std: false, hpa: Math.round(b?.hpa ?? 1013.25) };
+}
+// v0.6.0: the setting's digits as the PFDs show them: '29.92' when the BARO's unit is inches, else null (hPa).
+export const baroInchesText = (view) => (view?.sim?.baro?.inHg ? inchesOf(view.sim.baro.hpa).toFixed(2) : null);
+// v0.6.0: the selected altitude shows as a flight level at or above the transition level: Korea's FL140 as in
+// v0.5.8 (exactly 14,000 with the region's flag off), else the place's (China's 3,600 m: 11,811 ft).
+export function transLevelFt(st) {
+  if (!EAST_ASIA_ON || !st?.pos) return 14000;
+  const m = rulesAt(st.pos.x, st.pos.y).transLevelM;
+  return Math.round(m / 0.3048);
+}
+// v0.6.0: the metric altitude (China, or METRIC ALT / MTRS): the altimeter's reading and the selected altitude in
+// metres, or null when it's off. The ALT window itself stays in feet.
+export function metricAlt(view) {
+  if (!metricAltOn(view)) return null;
+  const st = view.state, sel = view.ap?.altFt;
+  return { m: Math.round(st.altInd ?? st.pos.z), selM: sel === undefined ? null : Math.round(sel * 0.3048) };
 }
 
 export function createPfd(cv) {
@@ -307,7 +325,7 @@ export function createPfd(cv) {
     ctx.restore();
     if (sel !== undefined && Math.abs(sel - alt) >= 560) {
       ctx.fillStyle = C.cyan; ctx.font = font(s * 0.042); ctx.textAlign = 'center';
-      const txt = sel >= 14000 ? 'FL' + String(Math.round(sel / 100)).padStart(3, '0') : String(Math.round(sel));
+      const txt = sel >= transLevelFt(st) ? 'FL' + String(Math.round(sel / 100)).padStart(3, '0') : String(Math.round(sel));
       ctx.fillText(txt, (x0 + x1) / 2 + 0.01 * s, sel > alt ? top - 0.022 * s : bot + 0.022 * s);
     }
     ctx.strokeStyle = C.white; ctx.lineWidth = Math.max(1.2, s * 0.003);
@@ -352,10 +370,32 @@ export function createPfd(cv) {
       ctx.strokeStyle = C.yellow; ctx.lineWidth = Math.max(1.5, s * 0.004);
       ctx.strokeRect(mid - w / 2, by2 - 0.026 * s, w, 0.052 * s);
     } else {
-      const lab = 'QNH ', val = String(baro.hpa), lw = ctx.measureText(lab).width, x = mid - (lw + ctx.measureText(val).width) / 2;
+      // v0.6.0: in inches, QNH 29.92, fitted to the width QNH 1013 takes (B612's digits are wide).
+      const inches = baroInchesText(view);
+      if (inches) ctx.font = font(fitSize('QNH ' + inches, s * 0.036, ctx.measureText('QNH 1013').width * 1.08));
+      const lab = 'QNH ', val = inches ?? String(baro.hpa), lw = ctx.measureText(lab).width, x = mid - (lw + ctx.measureText(val).width) / 2;
       ctx.textAlign = 'left';
       ctx.fillStyle = C.white; ctx.fillText(lab, x, by2);
       ctx.fillStyle = C.cyan; if (!pulse) ctx.fillText(val, x + lw, by2);
+    }
+
+    // v0.6.0: the metric altitude, Airbus's way: the altitude in metres in green, in a box above the readout,
+    // and the selected altitude in metres in cyan above the tape, each with a cyan M.
+    const met = metricAlt(view);
+    if (met) {
+      const mw = bw + dw, mh = 0.048 * s, my = by - bh * 0.85 - 0.008 * s - mh / 2;
+      ctx.fillStyle = '#000'; ctx.fillRect(bx, my - mh / 2, mw, mh);
+      ctx.strokeStyle = C.yellow; ctx.lineWidth = Math.max(1.2, s * 0.003); ctx.strokeRect(bx, my - mh / 2, mw, mh);
+      const mText = String(met.m), unitW = 0.03 * s;
+      ctx.font = font(fitSize('-00000', s * 0.036, mw - unitW - 0.012 * s)); ctx.textAlign = 'right';
+      ctx.fillStyle = C.green; ctx.fillText(mText, bx + mw - unitW - 0.002 * s, my);
+      ctx.font = font(fitSize('M', s * 0.03, unitW - 0.008 * s));
+      ctx.fillStyle = C.cyan; ctx.textAlign = 'center'; ctx.fillText('M', bx + mw - unitW / 2, my);
+      if (met.selM !== null) {
+        const t = `${met.selM} M`;
+        ctx.font = font(fitSize('00000 M', s * 0.034, x1 - x0 + 0.02 * s)); ctx.textAlign = 'center';
+        ctx.fillStyle = C.cyan; ctx.fillText(t, (x0 + x1) / 2 + 0.01 * s, top - 0.06 * s);
+      }
     }
   }
 

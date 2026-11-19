@@ -11,6 +11,7 @@
 // (rounded to ~0.001°, so up to ~45 m off) keeps Gimpo, Jeju and Incheon usable.
 
 import { toMap, toGeo, convergence, magVar } from './frame.js';
+import { terrainSpec } from './region.js';
 
 const DEG = Math.PI / 180;
 
@@ -311,7 +312,8 @@ export async function loadAirports(baseUrl, opts = {}) {
     try { const r = await fetch(new URL(rel, base).href); return r.ok ? await r.json() : null; } catch (e) { return null; }
   };
   const manifest = (await get('manifest.json')) || {};
-  const loaded = (await Promise.all((manifest.airports || []).map(get))).filter((a) => a && a.runways && a.runways.length);
+  // v0.6.0: Korea's three, and the region's eight behind EAST_ASIA_ON (region.js).
+  const loaded = (await Promise.all(terrainSpec(manifest).airports.map(get))).filter((a) => a && a.runways && a.runways.length);
   const have = new Set(loaded.map((a) => a.icao));
   const list = loaded.concat(fallbackAirports().filter((a) => !have.has(a.icao)));
   return createAirports(list, opts);

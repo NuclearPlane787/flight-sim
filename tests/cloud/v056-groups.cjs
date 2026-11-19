@@ -58,7 +58,7 @@ async function run(browser, type) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   try {
     for (const t of ['b777-300er', 'a321neo']) await run(browser, t);
   } finally { await browser.close(); }

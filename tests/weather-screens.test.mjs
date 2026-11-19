@@ -1,6 +1,11 @@
 // v0.4.0: the cockpit screens' wind, track and altimeter setting, on a recording canvas and a fake DOM.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { setEastAsia } from '../src/world/region.js';
+// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
+// flag is set off here whatever the shipped default (the region's own behaviour is checked in
+// tests/v060-*.test.mjs). No assertion below changed.
+setEastAsia(false);
 
 const elements = [];
 function makeEl() {

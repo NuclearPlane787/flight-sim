@@ -26,6 +26,15 @@ const HOLD_SNAP_M = 60;       // a holding position farther than this from any t
 const RUNWAY_CROSS_PENALTY = 400; // metres added to an edge that crosses a runway (prefer not to)
 const BRIDGE_M = 30;          // a piece of taxi line this close to the network, but not joined to it, gets a link
 
+// v0.6.0 (V060.md Part 3): the region's eight airports. They take a few rules Korea's three don't, so that Korea's
+// routes, holds and stand lists stay exactly as they were: a departure's hold is the one on its own runway nearest
+// the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
+// stands after the real numbers (gate-flow.js standList).
+const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD']);
+export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao);
+const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
+const HOLD_STD_M = 90;        // the standard hold from a code 4 precision runway's centreline (Annex 14 Table 3-2)
+
 // ---- small geometry ----
 const dist = (ax, ay, bx, by) => Math.hypot(bx - ax, by - ay);
 
@@ -180,6 +189,7 @@ export function buildTaxiGraph(airport, opts = {}) {
   });
 
   const graph = { nodes, edges, holds: [], runwayCrossings: [], rects };
+  if (regionRules(airport)) graph.region = true;
 
   // 4. Holding positions: split the nearest edge and mark the new node.
   for (const hp of airport.holdingPositions || []) {
@@ -187,7 +197,13 @@ export function buildTaxiGraph(airport, opts = {}) {
     if (!at || at.d > HOLD_SNAP_M) continue;
     const id = splitAt(graph, at);
     nodes[id].hold = hp.ref || 'HOLD';
-    graph.holds.push({ ref: hp.ref, node: id, x: nodes[id].x, y: nodes[id].y });
+    const h = { ref: hp.ref, node: id, x: nodes[id].x, y: nodes[id].y };
+    if (graph.region) {   // the runway it holds short of: the nearest centreline
+      let best = Infinity;
+      for (const r of rects) { const d = clDist(r, h.x, h.y); if (d < best) { best = d; h.runway = r.id; h.clM = d; } }
+      if (hp.est) h.est = true;
+    }
+    graph.holds.push(h);
   }
   for (const r of rects) addRunwayAxis(graph, r);
   graph.bridges = bridgeIslands(graph);
@@ -350,43 +366,8 @@ const cost = e => e.lengthM * (e.axis ? AXIS_COST : 1) + RUNWAY_CROSS_PENALTY * 
 // Returns { points, refs, lengthM, crossings } or null.
 function route(graph, from, to) {
   const { nodes } = graph;
-  const N = nodes.length;
-  const d = new Float64Array(N).fill(Infinity);
-  const prev = new Int32Array(N).fill(-1);
-  const prevEdge = new Array(N).fill(null);
-  const heap = []; // binary heap of [cost, node]
-  const push = (c, n) => {
-    heap.push([c, n]);
-    let i = heap.length - 1;
-    while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
-  };
-  const pop = () => {
-    const top = heap[0], last = heap.pop();
-    if (heap.length) {
-      heap[0] = last;
-      let i = 0;
-      for (;;) {
-        const l = 2 * i + 1, r = l + 1; let m = i;
-        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
-        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
-        if (m === i) break;
-        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
-      }
-    }
-    return top;
-  };
-  const fe = from.edge, fc = cost(fe);
-  d[fe.a] = from.t * fc; d[fe.b] = (1 - from.t) * fc;
-  push(d[fe.a], fe.a); push(d[fe.b], fe.b);
-  while (heap.length) {
-    const [c, n] = pop();
-    if (c > d[n]) continue;
-    for (const e of nodes[n].edges) {
-      const m = e.a === n ? e.b : e.a;
-      const nc = c + cost(e);
-      if (nc < d[m]) { d[m] = nc; prev[m] = n; prevEdge[m] = e; push(nc, m); }
-    }
-  }
+  const fe = from.edge;
+  const { d, prev, prevEdge } = dijkstraFrom(graph, from);
 
   // Goal: a node (to.node) or a point on an edge.
   let endNode, best = Infinity, direct = false;
@@ -424,6 +405,84 @@ function route(graph, from, to) {
     if (e.runway && crossings[crossings.length - 1] !== e.runway) crossings.push(e.runway);
   }
   return { points, refs, lengthM, crossings };
+}
+
+// Dijkstra from an attachment (a point on an edge) over the whole graph: { d, prev, prevEdge } per node.
+function dijkstraFrom(graph, from) {
+  const { nodes } = graph;
+  const N = nodes.length;
+  const d = new Float64Array(N).fill(Infinity);
+  const prev = new Int32Array(N).fill(-1);
+  const prevEdge = new Array(N).fill(null);
+  const heap = []; // binary heap of [cost, node]
+  const push = (c, n) => {
+    heap.push([c, n]);
+    let i = heap.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  const fe = from.edge, fc = cost(fe);
+  d[fe.a] = from.t * fc; d[fe.b] = (1 - from.t) * fc;
+  push(d[fe.a], fe.a); push(d[fe.b], fe.b);
+  while (heap.length) {
+    const [c, n] = pop();
+    if (c > d[n]) continue;
+    for (const e of nodes[n].edges) {
+      const m = e.a === n ? e.b : e.a;
+      const nc = c + cost(e);
+      if (nc < d[m]) { d[m] = nc; prev[m] = n; prevEdge[m] = e; push(nc, m); }
+    }
+  }
+  return { d, prev, prevEdge };
+}
+
+// Metres from runway rectangle r's centreline segment (beyond an end: from that end).
+function clDist(r, x, y) {
+  const s = Math.max(0, Math.min(r.len, (x - r.ax) * r.ux + (y - r.ay) * r.uy));
+  return dist(x, y, r.ax + r.ux * s, r.ay + r.uy * s);
+}
+
+// v0.6.0, the region's airports: the hold for a departure from `from` (an attachment). The candidates are the mapped
+// (and baked "est") holds of that runway, beside it, within 700 m of the end; of those within HOLD_NEAR_M of the one
+// nearest the end, the one the route reaches without crossing the runway it holds short of, the cheapest to reach
+// (plus a little for each metre from the standard 90 m, so a CAT II/III hold farther out loses to the 90 m one).
+// null when there's no candidate: holdingPointFor's made hold then, as for Korea.
+function holdForRoute(graph, from, runwayEnd) {
+  const r = graph.rects.find((q) => q.idents.includes(runwayEnd.ident));
+  if (!r) return null;
+  const fromA = r.idents[0] === runwayEnd.ident;
+  const ox = fromA ? r.ax : r.bx, oy = fromA ? r.ay : r.by;
+  const ux = fromA ? r.ux : -r.ux, uy = fromA ? r.uy : -r.uy;
+  const along = (x, y) => (x - ox) * ux + (y - oy) * uy;
+  const pos = (h) => { const s = along(h.x, h.y); return s >= 0 ? s : -0.5 * s; };
+  const cands = graph.holds.filter((h) => h.runway === r.id && h.clM > r.half + 10 && h.clM < r.half + 200 &&
+    along(h.x, h.y) > -500 && along(h.x, h.y) < 700 && !graph.rects.some((q) => q !== r && insideRect(q, h.x, h.y)));
+  if (!cands.length) return null;
+  const nearest = Math.min(...cands.map(pos));
+  const { d, prev, prevEdge } = dijkstraFrom(graph, from);
+  const crossesOwn = (n) => { for (; n !== -1 && prevEdge[n]; n = prev[n]) if (prevEdge[n].runway === r.id) return true; return false; };
+  const less = (p, q) => p[0] !== q[0] ? p[0] < q[0] : p[1] !== q[1] ? p[1] < q[1] : p[2] < q[2];
+  let best = null;
+  for (const h of cands) {
+    if (!isFinite(d[h.node])) continue;
+    const key = [crossesOwn(h.node) ? 1 : 0, pos(h) <= nearest + HOLD_NEAR_M ? 0 : 1, d[h.node] + 2 * Math.abs(h.clM - HOLD_STD_M)];
+    if (!best || less(key, best.key)) best = { key, h };
+  }
+  return best ? { ...best.h, d: dist(best.h.x, best.h.y, runwayEnd.x, runwayEnd.y), runway: r.id } : null;
 }
 
 // The holding point for a departure runway end: a mapped holding position beside that
@@ -488,7 +547,7 @@ function insideRect(r, x, y) {
 // Returns { points: [[x, y], …], refs: ['A', …], lengthM, crossings: [runway ids], hold }.
 export function routeFromStand(graph, stand, runwayEnd) {
   const from = snapToGraph(graph, stand.x, stand.y);
-  const hold = holdingPointFor(graph, runwayEnd);
+  const hold = (graph.region && from && holdForRoute(graph, from, runwayEnd)) || holdingPointFor(graph, runwayEnd);
   if (!from || !hold) return null;
   const r = route(graph, from, { node: hold.node, x: hold.x, y: hold.y });
   if (r) r.hold = hold;

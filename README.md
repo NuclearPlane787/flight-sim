@@ -1,6 +1,6 @@
 # Flight Sim
 
-Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), flown between Incheon, Gimpo and Jeju, over real coastline and elevation with procedural fine detail. It has:
+Airliners over East Asia (the A321neo, the Boeing 787-9 and the 777-300ER), flown between eleven airports in Korea, Japan and China (Incheon, Gimpo, Jeju and Gimhae; Tokyo Haneda and Narita, Osaka Kansai and Fukuoka; Shanghai Pudong and Hongqiao, and Qingdao), over real coastline, elevation and land cover with procedural fine detail. It has:
 
 - realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777 (or, with Boeing auto-trim on in Settings, a path that holds itself as the A321's does);
 - a holds-only autopilot with up to 16× time compression;
@@ -10,6 +10,24 @@ Airliners over South Korea (the A321neo, the Boeing 787-9 and the 777-300ER), fl
 - synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), muffled but clearly there in the cockpit, warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
 
 `Updates.md` lists what each version added; the game shows its version in the Esc menu.
+
+## The region (v0.6.0)
+
+Korea's map grew into one region, in Korea's own map frame.
+
+- **The ground:** 250 m terrain over 29–40° N, 119–142° E (all of Korea, Kyushu, Shikoku and Honshu to about Sendai, and China's coast from Ningbo to the Shandong peninsula), and 1 km land round it out to about 24–46° N, 112–148° E, so no edge shows from cruise. 30 m terrain at every airport and on Mount Fuji. It is in 128 km tiles (`data/terrain/r0`, `r1`), loaded as you fly: the sim and the predicted path wait for a tile rather than fly over a missing one ("Loading terrain…" if that ever takes half a second).
+- **The airports:** each with its runways, lights, PAPIs and ILS, named taxiways and signs, aprons, numbered stands (code E for the widebodies), terminals and parked traffic; gate starts, pushbacks and taxi routes at all of them. An airport's models are built as you come within 200 km and released beyond 400 km. The setup lists them by country; the path map (N) covers the region, and Change route goes to any of them.
+- **Local rules:**
+  - Japan sets the altimeter in inches of mercury. Shift+B sets the local QNH in the local unit; the IN/HPA button beside the BARO window switches the unit by hand. 29.92 is the standard setting in inches.
+  - China's transition altitude is 3,000 m and its transition level 3,600 m (Korea's and Japan's: 14,000 ft and FL140), and in China the PFD also shows the altitude in metres (METRIC ALT on the FCU, MTRS on the Boeings' panel; a click turns it on or off anywhere). The ALT window stays in feet.
+  - The clock shows local time where you are: KST, JST or China's CST. The setup's time is the departure's; the logbook gives each end its own.
+  - The magnetic variation is the World Magnetic Model's (2025) outside South Korea, so runway numbers and headings agree in Tokyo and Shanghai too. The METAR line takes each country's form (`Q1014 … RMK A2997` in Japan, the wind in metres per second in China).
+- **The weather** is still one weather for the whole flight, set for the arrival; its wind keeps its true direction everywhere.
+- **The cities:** each country's own mix of buildings (Japan's low rows of houses with towers in the centres, China's compounds of point towers, Korea's apartment blocks), real buildings from OpenStreetMap in the centres of Tokyo, Yokohama, Osaka, Fukuoka, Shanghai, Qingdao, Seoul, Songdo and Busan, and nineteen landmarks as their own models, from Lotte World Tower and the 63 Building to Shanghai Tower, Tokyo Tower and Skytree. No names or logos on any of them.
+- **The fuel estimate** in the setup follows what the aircraft burn in the sim over these longer routes (about 5.1 t for an A321neo from Gimpo to Haneda, with the reserve).
+- **The countryside** near the aircraft follows 30 m land cover (ESA WorldCover 2021): fields as districts of uneven plots with tracks and tree lines between them (terraces along the contour on slopes), woods and woodlots where they really are with trees out to the middle distance, ponds and canals, greenhouses on the plains, and houses and sheds in the countryside, each country's own (Korea's coloured steel roofs, Japan's dark tiles, the Yangtze delta's tall village houses). Towns' ground is lots, gardens and lanes. South Korea's 250 m cover was re-aggregated from the same source so near and far agree.
+
+Three switches in `src/world/region.js` hold each part: `EAST_ASIA_ON` (the region; `?eastasia=0` on the URL gives v0.5.8's Korea), `CITIES_ON` (the cities, `?cities=0`) and `GROUND_ON` (the countryside's new ground; `?ground=0`). `?eastasia=0&cities=0` is v0.5.8's Korea, pixel for pixel.
 
 ## Running it
 
@@ -27,9 +45,9 @@ The game opens on the main menu, over a still rendered from the game: Continue (
 
 **Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the Esc menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename, duplicate and delete: a copy is the same moment, aircraft and load, so you can fly on from one point again and again (the Esc menu's Save a copy makes one of the present moment, and you fly on in the original). v0.1.x's last flight becomes "Scenario 1", with its logbook.
 
-New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time in Korea, or a date and time picked in KST). New flight in the Esc menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the Esc menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
+New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time at the departure, or a date and time picked in its local time: KST, JST or China's CST). New flight in the Esc menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the Esc menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
 
-**Night:** the time of day runs in KST with the sim (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. On every clear night (v0.4.3) an aurora hangs low in the northern sky: green curtains with red tops and drifting rays, far off, behind any cloud; since v0.4.4 its folds open and close in slow waves and its shapes change as they go. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
+**Night:** the time of day runs with the sim, shown in local time where you are (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. On every clear night (v0.4.3) an aurora hangs low in the northern sky: green curtains with red tops and drifting rays, far off, behind any cloud; since v0.4.4 its folds open and close in slow waves and its shapes change as they go. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
 **Weather** (v0.4.0): the L window has a third tab, Weather (Sky · Weight · Weather). Pick a preset (clear, few clouds, overcast, rain, a light, moderate or severe storm, snow, fog, gusty crosswind), or change any setting under it: the wind by height, gusts, turbulence, a low-level shear, a microburst on final, the visibility and fog, up to three cloud layers, rain or snow, lightning, the runway's state, the temperature and the QNH. It applies at once in flight. The setup picks a preset for the flight, clear by default. The wind is felt as a crosswind, a headwind or a tailwind, and the altimeter is real: each flight starts with the day's QNH set, K sets it again, and the BARO box on the FCU or the MCP sets it too (scroll it, type into it, or STD). Above the transition altitude (14,000 ft) with a QNH set, or below FL140 on STD in a descent, the setting flashes until you change it. The landing card and the logbook give the wind at touchdown as the tower does. v0.4.2: a predictive windshear warning (WINDSHEAR AHEAD) for a microburst on the path ahead below 1,200 ft; hydroplaning above about 130 kt on standing water in heavy rain; wipers in the cockpit, spray off the wheels, and snow over the taxiway paint.
 
@@ -110,6 +128,8 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 
 - No agent has listened to the sound: the levels and the engines' frequencies are measured (`tests/audio-render.mjs`), not judged by ear. `tests/audio-clips.mjs` renders flight phases to listen to. v0.3.1 raised the engines in the cockpit by about 7 dB, by measurement.
 - On the A321neo the predicted path is a straight line on the selected heading, because its autopilot has holds only (route following is on the roadmap). A Boeing's follows LNAV and its ILS.
+- v0.6.0: near cities the frame has 1.3 to 1.9 M triangles with every part on (v0.5.8: 0.7 to 0.9 M); it holds 60 fps on the M5 with about half the frame to spare (`tests/browser-v060-headroom.mjs`). `?ground=0` or `?cities=0` lightens it.
+- v0.6.0: some airport details are estimates until their charts are read (the approach lights at Pudong, Hongqiao and Qingdao, Gimhae's 36L/36R ILS category, holds where OpenStreetMap maps none); from close above, small rivers and ponds show their 30 m pixels.
 
 ## Types
 
@@ -196,7 +216,13 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/audio/` | `synth.js` (WebAudio engine, wind and warnings), `callouts.js` (radio-altitude callouts and RETARD) |
 | `src/scenarios.js` | the scenario store (save slots over localStorage), names, the migration from v0.1.x, the menu's texts; v0.5.7: the summary's flight fields for the home page's card (`flightFields()`) |
 | `src/ui/menu.js`, `src/ui/menu.css`, `src/ui/home-scene.js`, `src/ui/home-card.js`, `src/ui/home.css`, `src/ui/line-art.js` | the main menu, Load scenario, Settings and Controls pages; v0.5.7: the home page's scene (the moving path and plane, the floating boarding pass and suitcase, the landmarks' skyline tape, three backgrounds), the saved flight's card text, and the white line art (`SKYLINE`, `ICONS`). `assets/menu/`'s old stills (rendered by `tests/render-stills.mjs`) are no longer shown. v0.5.8: the travel prints (`PRINT_SLOTS`, `printSpots()`: `assets/menu/b777-landing-day.jpg`, `b787-cruise-night.jpg`, `a321-pushback-sunset.jpg`, rendered by `tests/cloud/v058-photos.cjs`), the stars and the aurora (static gradients and stripe masks, animated by transform and opacity), the ground band on the ground line (`groundLineUp()`) |
-| `src/clock.js`, `src/astro.js` | the KST clock; the sun, the Moon and its phase, sidereal time and the stars (Meeus's low-precision formulas) |
+| `src/world/region.js` | v0.6.0: the three switches (`EAST_ASIA_ON`, `CITIES_ON`, `GROUND_ON`), which terrain and airports the manifest gives, the map's extent, the local rules by place (`countryAt()`, `rulesAt()`), and the terrain loader that keeps the tiles round the flight resident and holds the sim's steps for a tile that isn't in |
+| `src/world/tilestore.js`, `clipwindow.js` | v0.6.0: the terrain in 128 km tiles (the 250 m level and the 1 km level beyond it), sampled as the one national grid was; the GPU's window of 4096² cells that follows the camera, filled a tile's block at a time |
+| `src/world/geo-rules.js` | v0.6.0: WMM2025's magnetic variation, the country raster and South Korea's mask (`data/magvar.*`, `country.*`, `krmask.*`) |
+| `src/world/airport-set.js`, `airport-worker.js` | v0.6.0: airports built within 200 km of the camera and released beyond 400 km, in slices of a few milliseconds, part of it in a worker |
+| `src/world/landmarks.js`, `landmark-models.js`, `centres.js`, `centres-worker.js` | v0.6.0: the nineteen landmarks' own models; the city centres' real buildings (`data/centres/`), built in a worker, with the mask that keeps the procedural blocks out from under them |
+| `src/world/finecover.js`, `ground.js`, `rural.js` | v0.6.0, behind `GROUND_ON`: the 31 m land cover's window round the camera, the field mosaic and the canopy, the countryside's houses and sheds |
+| `src/clock.js`, `src/astro.js` | the clock (local time by place since v0.6.0); the sun, the Moon and its phase, sidereal time and the stars (Meeus's low-precision formulas) |
 | `src/ui/sky-window.js` | the Sky window |
 | `src/ui/load-window.js` | the Weight window, the Sky window's second tab (v0.3.2) |
 | `src/world/sky.js` | the sky by day, twilight and night (stars, Milky Way, Moon, the aurora), and the light, haze and fog following the sun |
@@ -223,6 +249,8 @@ python3 games/flight-sim/tools/cpu-guard.py --minutes 5 -- bash -c 'node --test 
 
 The browser scripts expect Playwright in `/tmp/flight-sim/pw` (`npm i playwright` there) and the GameDump server on port 8001 (v0.2.0's on a no-cache server on 8014: `python3 games/flight-sim/tests/cloud/serve.py <GameDump> 8014`). v0.2.0 added `browser-scenarios.mjs` (the menu and scenarios, end to end), `browser-night.mjs` (the night screenshots and the frame rate at night), `render-stills.mjs` (the menu's stills), `browser-menu.mjs`, `browser-sky-window.mjs` and `browser-logbook-filter.mjs`. `browser-boot.mjs` predates the main menu and expects the setup on load.
 
+v0.6.0's browser checks (`tests/browser-v060-*.mjs`, all headless with `--mute-audio`, on port 8014): `flight` (a route end to end: take-off, the 16× cruise with its frame times, the map and a jump, skip to final, the landing; `--whole` flies the descent too, `--final` starts on the final, `--no-land` for a round trip's leak check, `--ground` or not), `airports <ICAO> [day|night]` (gate, pushback, taxi to the hold, take-off, landing), `night`, `stand-fps`, `setup`, `map`, `rules-baro`, `rules-metar`, `hub` (the page with no parameters and from the hub's player), `hitch` (the free camera at a 16× cruise's speed, each long frame named), `slowframes` (the same in the game at a gate), `revisit` (two places three times each: the leak check), `headroom` (the uncapped frame rate: run it alone), `stills` (fixed views with the flags given: the picture sets, compared with `v060-pixdiff.mjs`). Frame times only count when the check ran alone on the GPU. `tools/quicklook_fine_cover.py` and `tools/make_ground_sheets.py` make the land-cover maps and the before/after sheets.
+
 ## Storage
 
 All in localStorage, under `gamedump:flight-sim:`:
@@ -238,6 +266,11 @@ All in localStorage, under `gamedump:flight-sim:`:
 - Copernicus DEM GLO-90 and GLO-30, © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA: the elevation.
 - Natural Earth (public domain): the neighbouring coastlines.
 - OurAirports (public domain): the runway cross-check.
+- v0.6.0's region (see `V060.md`):
+  - ESA WorldCover 10 m 2021 v200, under CC BY 4.0: "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium": the land cover and inland water outside South Korea, and the fine land cover (`data/terrain/fine/`).
+  - OpenStreetMap's land polygons (osmdata.openstreetmap.de) and its airports and buildings, © OpenStreetMap contributors, under the ODbL: the coastline (`data/coast-region.json`), the new airports and the city centres' buildings (`data/centres/`).
+  - The World Magnetic Model WMM2025 (NOAA NCEI and the British Geological Survey, public domain): the magnetic variation outside South Korea (`data/magvar.*`).
+  - Natural Earth's countries and urban areas (public domain): the country by position (`data/country.*`) and the far margin's towns.
 
 The baked files in `data/` keep those licences: the OpenStreetMap-derived ones (coast, water, land cover, airports) are under the ODbL, and the elevation is under the Copernicus DEM licence.
 - The A321neo's numbers come from Airbus (the A321 Aircraft Characteristics document and the A321neo page) and EASA (TCDS EASA.A.064). Sources and pages are in `src/sim/a321neo.js`.

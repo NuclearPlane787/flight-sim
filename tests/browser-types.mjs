@@ -8,7 +8,7 @@ const BASE = process.env.FS_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const TYPE = process.argv[2] || 'b787-9';
 let fails = 0;
 const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });   // localStorage survives a reload
 try {
   const page = await ctx.newPage();
@@ -81,6 +81,7 @@ try {
     f.setPaused(true, true);
     f.rewindNow();                                      // to a snapshot flown on the old runway
     const back = f.ap.ils.x;
+    f.setPaused(false);                                 // v0.5.5: a rewind keeps the pause; the frame loop re-syncs the nav once it runs
     await new Promise((r) => setTimeout(r, 2500));
     const after = f.ap.ils.x, want = f.dest.end.x;
     f.setPaused(true, true);

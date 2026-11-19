@@ -29,7 +29,7 @@ mkdirSync(out, { recursive: true });
 let ffmpeg = true;
 try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); } catch { ffmpeg = false; }
 
-const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: false });
+const browser = await chromium.launch(CLOUD ? { args: ['--mute-audio'] } : { channel: 'chrome', headless: false, args: ['--mute-audio'] });
 try {
   const page = await browser.newPage();
   const errors = [];

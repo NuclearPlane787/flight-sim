@@ -45,7 +45,11 @@
       if (s.onGround) {
         c.roll = 0;
         const track = Math.atan2(Math.sin(s.hdg), Math.cos(s.hdg));
-        c.yaw = clamp(wrap(ctl.rwyHdg - track) / DEG * 0.4 - s.r * 2, -1, 1);
+        // v0.6.0 (browser-v060-airports.mjs): given the runway's axis (ctl.rwyAxis, from main.js runwayAxis()), also a
+        // pull back to the centreline, for a roll that starts from a line-up off it. Without it, as before.
+        const ra = ctl.rwyAxis;
+        const pull = ra ? clamp(-((s.pos.x - ra.tx) * ra.uy - (s.pos.y - ra.ty) * ra.ux) * 0.01, -0.05, 0.05) : 0;
+        c.yaw = clamp(wrap(ctl.rwyHdg + pull - track) / DEG * 0.4 - s.r * 2, -1, 1);
         // Rotate at about 2.5°/s, holding 9.5° on the wheels (the tail strikes near 10–11°).
         if (s.ias * KT >= vr) {
           if (ctl.rotateT === undefined) { ctl.rotateT = s.t; note('rotate at ' + (s.ias * KT).toFixed(0) + ' kt'); }

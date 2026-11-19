@@ -9,8 +9,9 @@
 // points are converted with y → −y, z → −z. state.pos is the body reference point (the
 // origin of geometry.js), not the CG; state.cgX is the CG's body x (m, + forward).
 
-import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0 } from './atmosphere.js';
-import { compileWeather, isDefaultWeather, normalizeWeather, windAt, newWind, microburstInto } from './weather.js';
+import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0, STD_INHG_HPA } from './atmosphere.js';
+import { rulesAt } from '../world/region.js';   // v0.6.0: the transition by place (Korea's everywhere with the flag off)
+import { compileWeather, isDefaultWeather, normalizeWeather, windAt, windTurnAt, newWind, microburstInto } from './weather.js';
 import { leverToPhi, createEngines } from './engines.js';
 import { kitFor, DEFAULT_TYPE } from './types.js';
 import { resolveDef, isDesign } from './designs.js';
@@ -22,7 +23,8 @@ const approach = (x, target, rate) => (x < target ? Math.min(target, x + rate) :
 
 // The windshear warning: the F-factor averaged over 1 km of flight [0.103, as patents citing the FAA give it;
 // TSO-C117a's own curve not seen], below 1,500 ft.
-const TRANSITION_M = 14000 * 0.3048;
+// (The transition altitude and level, v0.6.0: rulesAt() by place, src/world/region.js; Korea's 14,000 ft / FL140,
+// the same double as v0.5.8's TRANSITION_M, wherever the flag is off.)
 // v0.4.1, Indestructible: the crash points are skids. Per unit of the aircraft's mass, each one's spring (N/m
 // per kg: the belly sits about 0.08 m into the ground on three of them) and damper (N·s/m per kg), and the
 // friction of metal sliding on the ground.
@@ -66,6 +68,8 @@ function newCore(A, boeing, n) {
     payload: 15000,
     // v0.4.0: the altimeter's setting (an instrument's, so it's in the core): hPa, or standard.
     baroHpa: 1013.25, baroStd: false,
+    // v0.6.0: the BARO's unit, the pilot's display choice (true: inches of mercury). The setting stays in hPa.
+    baroIn: false,
     // v0.4.0: the windshear detector's F-factor (filtered over about a kilometre) and its alert's timer.
     wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
     pwsT: 0, pwsClock: 0,                     // v0.4.2: the predictive warning's timer, and when it next looks
@@ -994,12 +998,21 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // The transition reminder: a QNH (other than 1013, which reads the same) still set above the Korean transition
     // altitude, climbing or level (it stays until STD is set, as on both makers' PFDs), or STD still set descending
     // below the transition level (both 14,000 ft / FL140: eAIP ENR 1.7).
-    S.baroAlert = !S.onGround && (X.baroStd ? S.altInd < TRANSITION_M && S.vs < -1 : X.baroHpa !== 1013.25 && S.altInd > TRANSITION_M);
+    // v0.6.0: the transition by place (rulesAt(): a raster read, no allocation; Korea's with the flag off), and 29.92
+    // set in inches counts as standard too (STD_INHG_HPA, the one double a setting in inches of 29.92 gives).
+    const RL = rulesAt(S.pos.x, S.pos.y);
+    S.baroAlert = !S.onGround && (X.baroStd ? S.altInd < RL.transLevelM && S.vs < -1 : X.baroHpa !== 1013.25 && X.baroHpa !== STD_INHG_HPA && S.altInd > RL.transAltM);
     // The day's air for the screens' Mach conversions: 0 on a standard day, when they use ISA as they always did.
     const dayAir = wxC !== null && wxC.atmOn;
     S.airP = dayAir ? atmo.p : 0; S.airA = dayAir ? atmo.a : 0; S.airSigma = dayAir ? atmo.rho / RHO0 : 0;
     S.wind.x = Wd.e; S.wind.y = Wd.n; S.wind.z = -Wd.d; S.wind.meanX = Wd.meanE; S.wind.meanY = Wd.meanN;
     S.wind.sfcX = wxC !== null ? wxC.sfE : 0; S.wind.sfcY = wxC !== null ? wxC.sfN : 0;
+    if (wxC !== null) {
+      // v0.6.0: the surface wind as it blows here (the landing card's tower wind), turned like the
+      // wind itself; the turn is 0 with the region off, for an old save's weather and at the arrival.
+      const turn = windTurnAt(wxC, X.px, X.py);
+      if (turn !== 0) { const tc = Math.cos(turn), ts = Math.sin(turn); S.wind.sfcY = wxC.sfN * tc - wxC.sfE * ts; S.wind.sfcX = wxC.sfE * tc + wxC.sfN * ts; }
+    }
     S.wind.gustKt = wxS !== null && wxS.wind.gustKt > wxS.wind.kt ? wxS.wind.gustKt : 0;
     if (windOn() && X.vn * X.vn + X.ve * X.ve > 1) {
       let dr = Math.atan2(X.ve, X.vn) - S.hdg;
@@ -1282,7 +1295,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     setType(isDesign(snap.design) ? snap.design : snap.type || DEFAULT_TYPE);
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
-    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
+    Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, baroIn: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
       scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0, tanksDropped: false,
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
     migrateEngines(snap.core);
@@ -1409,7 +1422,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // v0.4.0: the altimeter's setting. setBaro(hPa) takes it off STD; setBaroStd(on); setLocalQnh() is the K key.
   function setBaro(hpa) { X.baroHpa = clamp(hpa, 900, 1100); X.baroStd = false; state.altInd = altimeter(state.pos.z); }
   function setBaroStd(on = true) { X.baroStd = !!on; state.altInd = altimeter(state.pos.z); }
-  function setLocalQnh() { setBaro(wxS ? wxS.qnh : 1013.25); }
+  // v0.6.0: in the local unit too (inches in Japan: rulesAt() where the aircraft is), as the crew would set it.
+  function setLocalQnh() { setBaro(wxS ? wxS.qnh : 1013.25); X.baroIn = rulesAt(state.pos.x, state.pos.y).baroUnit === 'inHg'; }
+  // v0.6.0: the BARO's unit (a click on the FCU's outer ring or the EFIS selector): a display choice only.
+  function setBaroUnit(inHg) { X.baroIn = !!inHg; }
   // In flight it applies at once: the aircraft doesn't move, it's flying in the new air.
   function applyWeather(s) {
     if (wxS === null && (!s || isDefaultWeather(s))) return;   // calm to calm: nothing at all happens
@@ -1453,7 +1469,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
   return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad, dropTanks, previewControls,
     setIndestructible: (on) => setOption('indestructible', on), setAutoTrim: (on) => setOption('autoTrim', on),
-    setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, get weather() { return wxS; }, get baro() { return { hpa: X.baroHpa, std: X.baroStd }; },
+    setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, setBaroUnit, get weather() { return wxS; }, get baro() { return X.baroIn ? { hpa: X.baroHpa, std: X.baroStd, inHg: true } : { hpa: X.baroHpa, std: X.baroStd }; },
     get type() { return typeDef; }, get design() { return typeDef.design || null; },
     get massProps() { massProps(); return { mass, cgX, Ixx, Iyy, Izz, Ixz }; },   // v0.5.0: for the tests
     get leverClimb() { return LEVER_CL; }, _core: X };

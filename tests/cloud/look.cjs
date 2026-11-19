@@ -26,7 +26,7 @@ fs.mkdirSync(out, { recursive: true });
 (async () => {
   const browser = process.env.FS_CHROME === '1'
     ? await chromium.launch({ channel: 'chrome', headless: false })
-    : await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+    : await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1100, height: 720 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));

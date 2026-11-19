@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Sim: landmarks dev page</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: 8px; top: 8px; color: #dfe; font: 12px/1.35 ui-monospace, Menlo, monospace;
+         background: rgba(0,0,0,.45); padding: 6px 8px; border-radius: 4px; white-space: pre; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">loading…</div>
+<script type="module">
+// Landmarks dev page (V060.md Part 6 step 3): dev-world.html's free camera over the world, with
+// src/world/landmarks.js created and updated beside it (world.js doesn't know about them here).
+// Needs ?cities=1 (and &eastasia=1 for the ones outside Korea).
+//   ?lm=<id>&dist=&az=&el=   stand off a landmark: dist metres (horizontal) from its centre, on
+//                            grid bearing az from it, el degrees above the point at look x height
+//                            (look: 0.55 by default), looking at that point
+//   ?lat=&lon= | ?x=&y=, ?alt= | ?agl=, ?hdg=&pitch=   as dev-world.html     ?hud=0 hides the overlay
+// window.__dev = { world, renderer, camera, cam, landmarks, pose(id, dist, az, el, look), ... }
+// Keys: WASD move, R/F up/down, arrows turn/pitch, Shift = 10x, L toggles the landmarks.
+import * as THREE from '../vendor/three.module.js';
+import { createWorld } from '../src/world/world.js';
+import { toMap } from '../src/world/frame.js';
+import { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, MAX_PATCHES, MAX_RUNWAYS } from '../src/world/glsl.js';
+import { ATMOS_GLSL } from '../src/world/sky.js';
+import { createLandmarks, LANDMARKS } from '../src/world/landmarks.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const FT = 0.3048, DEG = Math.PI / 180;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', reversedDepthBuffer: true });
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(num('fov', 55), 1, 0.5, 500000);
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const t0 = performance.now();
+const world = await createWorld({ renderer, scene, baseUrl: '../data/' });
+const loadMs = performance.now() - t0;
+const chunks = { UNIFORMS_GLSL, NOISE_GLSL, HEIGHT_GLSL, ATMOS_GLSL, MAX_PATCHES, MAX_RUNWAYS };
+const landmarks = createLandmarks(scene, world.uniforms, chunks, { heightfield: world.heightfield, renderer });
+
+const cam = { x: 0, y: 0, z: 1000, hdg: 0, pitch: 0 };
+if (q.has('lat')) [cam.x, cam.y] = toMap(num('lat'), num('lon'));
+cam.x = num('x', cam.x); cam.y = num('y', cam.y);
+cam.hdg = num('hdg', 0) * DEG; cam.pitch = num('pitch', 0) * DEG;
+if (q.has('alt')) cam.z = num('alt') * FT;
+if (q.has('agl')) cam.z = world.heightAt(cam.x, cam.y) + num('agl') * FT;
+
+// Stand off a landmark (the ground there must be loaded for the height: awaits its tiles).
+async function pose(id, dist = null, az = 200, el = 8, look = 0.55) {
+  const L = LANDMARKS.find((l) => l.id === id);
+  if (!L) throw new Error('no landmark ' + id);
+  const T = world.heightfield.tiles;
+  if (T && T.whenReady) await T.whenReady(L.x, L.y, 2000, 'dev-landmark');
+  const d = dist ?? 1.5 * L.heightM;
+  const g = world.heightAt(L.x, L.y);
+  const ty = g + look * L.heightM;
+  cam.x = L.x + d * Math.sin(az * DEG); cam.y = L.y + d * Math.cos(az * DEG);
+  cam.z = ty + d * Math.tan(el * DEG);
+  cam.hdg = (az + 180) * DEG; cam.pitch = -el * DEG;
+  if (T && T.whenReady) await T.whenReady(cam.x, cam.y, 40000, 'camera');
+  return { ...cam };
+}
+if (q.has('lm')) await pose(q.get('lm'), q.has('dist') ? num('dist') : null, num('az', 200), num('el', 8), num('look', 0.55));
+
+const keys = new Set();
+addEventListener('keydown', (e) => { keys.add(e.code); if (e.code === 'KeyL') landmarks.enabled = !landmarks.enabled; });
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+const hud = document.getElementById('hud');
+if (q.get('hud') === '0') hud.style.display = 'none';
+const origin = { x: 0, y: 0 };
+const camMap = { x: 0, y: 0 }, camScene = new THREE.Vector3();
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+window.__dev = { world, renderer, camera, cam, landmarks, LANDMARKS, pose, loadMs, ready: false };
+
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  const sp = (keys.has('ShiftLeft') ? 10 : 1) * Math.max(20, (cam.z - world.heightAt(cam.x, cam.y)) * 0.5) * dt;
+  const fx = Math.sin(cam.hdg), fy = Math.cos(cam.hdg);
+  if (keys.has('KeyW')) { cam.x += fx * sp; cam.y += fy * sp; }
+  if (keys.has('KeyS')) { cam.x -= fx * sp; cam.y -= fy * sp; }
+  if (keys.has('KeyA')) { cam.x -= fy * sp; cam.y += fx * sp; }
+  if (keys.has('KeyD')) { cam.x += fy * sp; cam.y -= fx * sp; }
+  if (keys.has('KeyR')) cam.z += sp;
+  if (keys.has('KeyF')) cam.z -= sp;
+  if (keys.has('ArrowLeft')) cam.hdg -= dt * 0.8;
+  if (keys.has('ArrowRight')) cam.hdg += dt * 0.8;
+  if (keys.has('ArrowUp')) cam.pitch += dt * 0.5;
+  if (keys.has('ArrowDown')) cam.pitch -= dt * 0.5;
+
+  origin.x = cam.x; origin.y = cam.y;
+  camera.position.set(0, cam.z, 0);
+  camera.rotation.set(cam.pitch, -cam.hdg, 0, 'YXZ');
+  const c0 = performance.now();
+  world.update({ camera, origin, state: null, dt });
+  camScene.setFromMatrixPosition(camera.matrixWorld);
+  camMap.x = origin.x + camScene.x; camMap.y = origin.y - camScene.z;
+  const ls = landmarks.update({ camMap, origin, camScene, agl: world.stats.agl });
+  renderer.render(scene, camera);
+  const cpu = performance.now() - c0;
+
+  frames++;
+  if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  const i = renderer.info.render, s = world.stats;
+  window.__dev.info = { fps, calls: i.calls, triangles: i.triangles, cpuMs: cpu, landmarks: { ...ls } };
+  hud.textContent =
+    `${fps.toFixed(0)} fps  cpu ${cpu.toFixed(2)} ms  load ${loadMs.toFixed(0)} ms\n` +
+    `draw calls ${i.calls}  triangles ${(i.triangles / 1000).toFixed(0)}k\n` +
+    `landmarks ${landmarks.enabled ? 'on' : 'off'}: shown ${ls.shown}, built ${ls.built}, ${ls.drawCalls} calls, ${(ls.triangles / 1000).toFixed(1)}k tris, lights ${ls.lights}\n` +
+    `x ${cam.x.toFixed(0)}  y ${cam.y.toFixed(0)}  alt ${(cam.z / FT).toFixed(0)} ft  agl ${(s.agl / FT).toFixed(0)} ft\n` +
+    `hdg ${(((cam.hdg / DEG) % 360 + 360) % 360).toFixed(0)}  pitch ${(cam.pitch / DEG).toFixed(1)}`;
+  window.__dev.ready = true;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

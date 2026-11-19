@@ -13,7 +13,7 @@ const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/f
 const type = process.argv[2] || 'a321neo', xKt = Number(process.argv[3] || 15), autoland = process.argv[4] === 'autoland';
 const BASE = process.env.E2E_URL || 'http://localhost:8014/games/flight-sim/';
 const FT = 3.28084, KT = 1.943844;
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 try {

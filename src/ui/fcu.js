@@ -17,6 +17,8 @@
 
 import { clamp, wrap360 } from './common.js';
 import { bindKnobs } from './knobs.js';
+import { EAST_ASIA_ON, rulesAt } from '../world/region.js';
+import { inHgToHpa, hpaToInHg } from '../sim/atmosphere.js';
 
 const WINDOWS = [
   { k: 'spd', label: 'SPD', step: 1, big: 10, tip: 'Speed (kt)' },
@@ -31,14 +33,55 @@ const W = Object.fromEntries(WINDOWS.map((w) => [w.k, w]));
 // setters are the sim's (sim.js, v0.4.0). A typed setting has to be a real one: out of range it's ignored.
 export const BARO_MIN = 900, BARO_MAX = 1100;
 export const baroOf = (view) => view?.sim?.baro ?? null;
-export const baroText = (b) => (!b ? '1013' : b.std ? 'STD' : String(Math.round(b.hpa)));
-export function typedBaro(text) {
+// v0.6.0: the setting in inches of mercury when the BARO's unit is IN (sim.baro.inHg: Japan's, behind the
+// region's flag; with it off the unit is never IN, and everything below is v0.5.8's). Inches show as 29.92.
+export const inchesOf = (hpa) => Math.round(hpaToInHg(hpa) * 100) / 100;
+export const baroValueText = (b) => (!b ? '1013' : b.inHg ? inchesOf(b.hpa).toFixed(2) : String(Math.round(b.hpa)));
+export const baroText = (b) => (!b ? '1013' : b.std ? 'STD' : baroValueText(b));
+// A typed setting: hPa as before (a whole number, returned rounded), or with inHg, inches: 29.92, or 2992 for
+// short (no point and 1,000 or more: hundredths). Inches come back as the exact hPa of the nearest 0.01 inHg.
+export function typedBaro(text, inHg = false) {
   if (text === '') return null;
-  const v = Number(text);
-  return Number.isFinite(v) && v >= BARO_MIN && v <= BARO_MAX ? Math.round(v) : null;
+  let v = Number(text);
+  if (!inHg) return Number.isFinite(v) && v >= BARO_MIN && v <= BARO_MAX ? Math.round(v) : null;
+  if (!Number.isFinite(v)) return null;
+  if (!text.includes('.') && Math.abs(v) >= 1000) v /= 100;
+  const hpa = inHgToHpa(Math.round(v * 100) / 100);
+  return hpa >= BARO_MIN && hpa <= BARO_MAX ? hpa : null;
 }
-export function turnBaro(view, v) { view?.sim?.setBaro?.(clamp(Math.round(v), BARO_MIN, BARO_MAX)); }
+// What the BARO window's knob holds: whole hPa, or hundredths of an inch (2992), so one step is 1 hPa or 0.01 inHg.
+export function baroKnobValue(view) {
+  const b = baroOf(view);
+  return b?.inHg ? Math.round(hpaToInHg(b.hpa) * 100) : Math.round(b?.hpa ?? 1013);
+}
+export function turnBaro(view, v) {
+  if (baroOf(view)?.inHg) view.sim.setBaro?.(clamp(inHgToHpa(Math.round(v) / 100), BARO_MIN, BARO_MAX));
+  else view?.sim?.setBaro?.(clamp(Math.round(v), BARO_MIN, BARO_MAX));
+}
+// Enter on the BARO window: what typedBaro() read, in the window's unit (hPa: as v0.5.8's turnBaro of it).
+export function commitBaro(view, text) {
+  const inHg = !!baroOf(view)?.inHg, v = typedBaro(text, inHg);
+  if (v === null) return;
+  if (inHg) view.sim.setBaro?.(v); else turnBaro(view, v);
+}
 export function toggleStd(view) { const s = view?.sim; if (s?.baro && s.setBaroStd) s.setBaroStd(!s.baro.std); }
+// The BARO's unit, IN or HPA: the FCU's outer ring, the Boeings' EFIS selector. A click target, not a key.
+export function toggleBaroUnit(view) { const s = view?.sim; if (s?.baro && s.setBaroUnit) s.setBaroUnit(!s.baro.inHg); }
+
+// v0.6.0: the PFDs' metric altitude (Airbus's METRIC ALT, Boeing's MTRS). On by itself where the country's rules
+// say so (China), off elsewhere; a click on the button flips it, and the pilot's choice then holds until the
+// country under the aircraft changes, when it goes back to that country's default. A display choice only: it
+// isn't saved (a loaded flight starts from its place's default). Never on with the region's flag off.
+const metric = { pick: null, country: null };
+export function metricAltOn(view) {
+  const p = view?.state?.pos;
+  if (!EAST_ASIA_ON || !p) return false;
+  const r = rulesAt(p.x, p.y);
+  if (r.country !== metric.country) { metric.country = r.country; metric.pick = null; }
+  return metric.pick ?? r.metricAlt;
+}
+export function toggleMetricAlt(view) { if (EAST_ASIA_ON && view?.state?.pos) metric.pick = !metricAltOn(view); }
+export const metricUnitShown = () => EAST_ASIA_ON;   // the IN/HPA and METRIC ALT / MTRS buttons exist only then
 
 export function createFcu(root, hud) {
   const el = document.createElement('div');
@@ -63,6 +106,18 @@ export function createFcu(root, hud) {
   };
   const stdBtn = mkBtn('std', 'STD'), apBtn = mkBtn('ap', 'AP1'), athrBtn = mkBtn('athr', 'A/THR');
   stdBtn.el.title = 'Altimeter: standard (1013) or back to the setting in the BARO window';
+  // v0.6.0 (the region's flag on): the BARO's outer ring, IN or HPA, beside the window; METRIC ALT beside ALT.
+  let unitBtn = null, metricBtn = null;
+  if (metricUnitShown()) {
+    unitBtn = mkBtn('unit', '<b class="fsui-u-in">IN</b><b class="fsui-u-hpa">HPA</b>');
+    unitBtn.el.classList.add('fsui-unit');
+    unitBtn.el.title = 'Altimeter setting in inches of mercury (IN) or hectopascals (HPA): click to change';
+    el.insertBefore(unitBtn.el, stdBtn.el);
+    metricBtn = mkBtn('metric', 'METRIC<br>ALT');
+    metricBtn.el.classList.add('fsui-metric');
+    metricBtn.el.title = 'The altitude in metres on the PFD as well (on by itself in China)';
+    el.insertBefore(metricBtn.el, parts.vs.el);
+  }
   const law = document.createElement('div');
   law.className = 'fsui-law'; law.title = 'Flight control law (Alternate: no stall protection)';
   el.appendChild(law);
@@ -79,7 +134,7 @@ export function createFcu(root, hud) {
     if (k === 'spd') return Math.round(ap.spdKt ?? 250);
     if (k === 'hdg') return Math.round(ap.hdgDeg ?? 0);
     if (k === 'alt') return Math.round(ap.altFt ?? 5000);
-    if (k === 'baro') return Math.round(baroOf(view)?.hpa ?? 1013);
+    if (k === 'baro') return baroKnobValue(view);
     return vsMode() ? ap.vsFpm ?? 0 : vsPreset ?? Math.round((view?.state?.vs ?? 0) * 196.85 / 100) * 100;
   }
 
@@ -108,7 +163,7 @@ export function createFcu(root, hud) {
 
   // What was typed: Enter or a second click sets it and pushes the knob.
   function commit(k, text) {
-    if (k === 'baro') { const v = typedBaro(text); if (v !== null) turnBaro(view, v); hud.poke(); return; }
+    if (k === 'baro') { commitBaro(view, text); hud.poke(); return; }
     let v = text === '' || text === '-' ? null : Number(text);
     if (v !== null && Number.isFinite(v)) {
       if (k === 'alt' && Math.abs(v) < 1000) v *= 100;   // a flight level
@@ -121,11 +176,14 @@ export function createFcu(root, hud) {
     windows: W, getView: () => view, current, setValue, commit, refresh: () => refresh(), poke: () => hud.poke(),
     acceptKey(edit, key) {
       if ((key === '-' || key === '−') && edit.k === 'vs' && edit.text === '') { edit.text = '-'; return true; }
+      if (key === '.' && edit.k === 'baro' && baroOf(view)?.inHg && !edit.text.includes('.')) { edit.text += '.'; return true; }
       return false;
     },
     onClick(e) {
       const b = e.target.closest('.fsui-btn');
-      if (b && b.dataset.k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'fcu'); else call('engageAp'); hud.poke(); }
+      if (b && b.dataset.k === 'unit') { toggleBaroUnit(view); hud.poke(); }
+      else if (b && b.dataset.k === 'metric') { toggleMetricAlt(view); hud.poke(); }
+      else if (b && b.dataset.k === 'ap') { if (view?.ap?.ap) call('disconnectAp', 'fcu'); else call('engageAp'); hud.poke(); }
       else if (b && b.dataset.k === 'athr') { call('toggleAthr'); hud.poke(); }
       else if (b && b.dataset.k === 'std') { toggleStd(view); hud.poke(); }
       else if (e.target.closest('.fsui-law')) {
@@ -163,6 +221,8 @@ export function createFcu(root, hud) {
     set(parts.baro, shown('baro', baroText(baro)), (baro?.std ? ' lit' : '') + sel('baro') + ed('baro'));
     const light = (b, isOn) => { if (b.on !== isOn) { b.el.classList.toggle('on', isOn); b.on = isOn; } };
     light(apBtn, on); light(athrBtn, !!ap.athr); light(stdBtn, !!baro?.std);
+    if (unitBtn) { const u = baro?.inHg ? 'in' : 'hpa'; if (unitBtn.on !== u) { unitBtn.el.dataset.u = u; unitBtn.on = u; } }
+    if (metricBtn) light(metricBtn, metricAltOn(v));
     const lawT = (v.state?.law || 'normal') === 'normal' ? 'LAW NORM' : 'LAW ALTN';
     if (law.textContent !== lawT) { law.textContent = lawT; law.classList.toggle('altn', lawT === 'LAW ALTN'); }
   }

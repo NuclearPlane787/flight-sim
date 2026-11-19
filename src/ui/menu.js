@@ -23,7 +23,7 @@
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
 import { onDesignRename, designName } from '../designs-store.js';   // v0.5.8: designName, the Load list's live names
 import { createHomeScene, BACKDROPS, DEFAULT_BACKDROP } from './home-scene.js';   // v0.5.7: the home page
-import { flightCard } from './home-card.js';
+import { flightCard, placeText } from './home-card.js';
 import { ICONS } from './line-art.js';
 import { BINDINGS, SECTIONS, BLOCK_TEXT, keyLabel, chordFor, resolveKeys, bindKey, clearKeys, resetKeys, bindingOf, isModifier,
   movedText } from '../keys.js';
@@ -178,7 +178,7 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
     } else {
       main = `<div class="fsm-row-main">
           <b>${esc(e.name)}</b>
-          <small>${s.design ? `${esc(designName(s.designId, s.design))} (${esc(typeName(e.type))})` : esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
+          <small>${s.design ? `${esc(designName(s.designId, s.design))} (${esc(typeName(e.type))})` : esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(placeText(s.where, place))}` : ''}</small>
         </div>
         <span class="fsm-when">${esc(savedText(e.savedAt))}</span>`;
     }

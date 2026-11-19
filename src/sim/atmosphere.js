@@ -94,3 +94,12 @@ export function pressureAltitude(p) {
 export function indicatedAltitude(p, baroPa) {
   return pressureAltitude(p) - pressureAltitude(baroPa);
 }
+
+// ---- v0.6.0: inches of mercury (Japan's altimeter setting) ----
+// 1 inHg = 3,386.389 Pa (25.4 mm of mercury at 0 °C under standard gravity; NIST SP 811). The sim keeps the
+// setting in hPa: a setting made in inches is converted once, exactly this way, so 29.92 inHg is always the
+// same double (STD_INHG_HPA, 1013.2076 hPa), which the transition reminder counts as standard.
+export const HPA_PER_INHG = 33.86389;
+export const inHgToHpa = (inHg) => inHg * HPA_PER_INHG;
+export const hpaToInHg = (hpa) => hpa / HPA_PER_INHG;
+export const STD_INHG_HPA = inHgToHpa(29.92);

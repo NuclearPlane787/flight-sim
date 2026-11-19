@@ -7,7 +7,7 @@
 // or skimming the terrain, and the last sample left carries terrain: true and the impact.
 
 import { createSim } from './sim.js';
-import { MAP_EXTENT } from '../world/frame.js';
+import { mapExtent } from '../world/region.js';   // v0.6.0: Korea's square, or the region's behind EAST_ASIA_ON
 
 const SEA = { h: 0, kind: 'water' };
 const seaGround = () => SEA;
@@ -26,8 +26,29 @@ export function terrainGround(hf) {
 // Sets up a run. Call run.advance(n) until it returns true; run.samples holds the result
 // and run.reason why it stopped ('time' | 'fuel' | 'map' | 'crash' | 'terrain' | 'landed').
 // hf: an optional heightfield (heightfield.js); without it the ground is flat sea.
+// v0.6.0: the tiles the next `steps` of a run can reach are in before it runs them
+// (V060.md: the worker never samples a stand-in where the live sim reads 250 m). Resolves at
+// once when they are; the wait isn't the run's CPU. hf without tiles: nothing to wait for.
+export function tilesForChunk(run, hf, steps) {
+  const T = hf && hf.layers && hf.layers.tiles;
+  if (!T) return null;
+  const S = run.state, v = S.vel;
+  const reach = (Math.hypot(v.x, v.y) + 100) * steps * run.dt + 5000;
+  if (T.isReady(S.pos.x, S.pos.y, reach)) return null;
+  return T.whenReady(S.pos.x, S.pos.y, reach, 'predict');
+}
+
+// The tiles round a snapshot's position, before a run is made from it (the restore reads the ground).
+export function tilesForSnap(snap, hf, r = 30000) {
+  const T = hf && hf.layers && hf.layers.tiles;
+  const c = snap && snap.core;
+  if (!T || !c || !Number.isFinite(c.px)) return null;
+  return T.isReady(c.px, c.py, r) ? null : T.whenReady(c.px, c.py, r, 'predict');
+}
+
 export function createPredictionRun(snap, opts = {}, hf = null) {
   const o = { ...PREDICT_DEFAULTS, ...opts };
+  const EXT = mapExtent();
   const ground = hf ? terrainGround(hf) : seaGround;
   const sim = createSim({ ground, type: snap.type });
   sim.restore(snap);
@@ -40,7 +61,7 @@ export function createPredictionRun(snap, opts = {}, hf = null) {
   const samples = [{ t: S.t, x: S.pos.x, y: S.pos.y, z: S.pos.z, snap: sim.snapshot() }];
   let k = 0;
   const run = {
-    samples, reason: '', done: false,
+    samples, reason: '', done: false, state: S, dt: o.dt,   // v0.6.0: state and dt for the tile loader
     advance(maxSteps) {
       if (run.done) return true;
       for (let i = 0; i < maxSteps; i++) {
@@ -60,7 +81,7 @@ export function createPredictionRun(snap, opts = {}, hf = null) {
         if (hf && (S.crashed || S.onGround || S.scraping) && ground(S.pos.x, S.pos.y).kind === 'ground') why = 'terrain';
         else if (S.crashed || S.scraping || (S.onGround && ground(S.pos.x, S.pos.y).kind === 'water')) why = 'crash';
         else if (S.fuelKg <= 0) why = 'fuel';
-        else if (S.pos.x < MAP_EXTENT.x0 || S.pos.x > MAP_EXTENT.x1 || S.pos.y < MAP_EXTENT.y0 || S.pos.y > MAP_EXTENT.y1) why = 'map';
+        else if (S.pos.x < EXT.x0 || S.pos.x > EXT.x1 || S.pos.y < EXT.y0 || S.pos.y > EXT.y1) why = 'map';
         else if (S.t >= tEnd - 1e-9) why = 'time';
         if (why) {
           if (k % stepsPerSample !== 0) samples.push({ t: S.t, x: S.pos.x, y: S.pos.y, z: S.pos.z, snap: sim.snapshot() });

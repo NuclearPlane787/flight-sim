@@ -25,7 +25,8 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { AIRLINER_TYPES, buildAirliner, buildAirlinerFar, buildVehicle, buildShadow, PART } from './traffic-models.js';
-import { placeParked, blockedByPlayer, createVehicles } from './traffic-layout.js';
+import { placeParkedInSteps, blockedByPlayer, createVehicles } from './traffic-layout.js';
+import { sliceTimer } from './airport-set.js';
 import { LIVERIES, linearRgb } from './liveries-other.js';
 
 const AIRCRAFT_RANGE = 15000;     // m from an airport's bounds: parked aircraft drawn
@@ -331,6 +332,14 @@ function boxDist(b, x, y) {
 // ------------------------------------------------------------------ public
 
 export function createTraffic(scene, uniforms, chunks, airports, heightfield = null) {
+  const gen = trafficInSteps(scene, uniforms, chunks, airports, heightfield);
+  for (;;) { const r = gen.next(); if (r.done) return r.value; }
+}
+
+// v0.6.0: createTraffic in slices (a generator that yields after each airport's placement and after
+// the meshes, and returns createTraffic's result), for the airports built near the camera (world.js).
+// The objects are made in the same order either way; the group joins the scene at the end.
+export function* trafficInSteps(scene, uniforms, chunks, airports, heightfield = null) {
   const group = new THREE.Group();
   group.name = 'traffic';
   const list = (Array.isArray(airports) ? airports : (airports && airports.airports) || []).slice(0, MAX_AIRPORTS);
@@ -338,17 +347,21 @@ export function createTraffic(scene, uniforms, chunks, airports, heightfield = n
   const airRel = Array.from({ length: MAX_AIRPORTS }, () => new THREE.Vector2());
 
   // Per airport: origin, bounds, parked aircraft, the vehicle fleet.
-  const sites = list.map((a, ai) => {
+  const sites = [];
+  for (let ai = 0; ai < list.length; ai++) {
+    const a = list[ai];
     const ox = a.origin ? a.origin[0] : a.stands?.[0]?.x || 0, oy = a.origin ? a.origin[1] : a.stands?.[0]?.y || 0;
     const b = [Infinity, Infinity, -Infinity, -Infinity];
     const grow = (x, y) => { b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y); };
     for (const s of a.stands || []) grow(s.x, s.y);
     for (const r of a.serviceRoads || []) for (const [x, y] of r.points) grow(x, y);
     if (!isFinite(b[0])) { grow(ox, oy); }
-    const parked = placeParked(a, { heightAt });
+    const parked = yield* placeParkedInSteps(a, { heightAt }, sliceTimer());
+    yield 'parked';
     const fleet = createVehicles(a, { heightAt });
-    return { a, ai, ox, oy, b, parked, fleet, hidden: new Set(), near: false, active: false, elev: a.elevM || 0 };
-  });
+    sites.push({ a, ai, ox, oy, b, parked, fleet, hidden: new Set(), near: false, active: false, elev: a.elevM || 0 });
+    yield 'placed';
+  }
 
   const common = (extra) => Object.assign({}, uniforms, { uAirRel: { value: airRel } }, extra);
   const vert = (body) => `${chunks.UNIFORMS_GLSL}\n${chunks.HEIGHT_GLSL}\n${body}`;

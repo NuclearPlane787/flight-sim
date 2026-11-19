@@ -25,11 +25,19 @@
 //   its scenario's), from createLogbook's `designName(id, fallback)` (src/designs-store.js's by default); the name the
 //   entry was written with shows only once the design is deleted. open()'s `scenarios` may carry each one's
 //   { designId, design } (its Load list summary's) for that.
+// v0.6.0, with the region on (off, every row as v0.5.8): a new entry also carries `local` { dep, depZone, depName, arr,
+//   arrZone, arrName } (the game clock's epoch ms at the lift-off and the touchdown, and each end's zone: the origin's
+//   and the arrival's, clock.js's zoneAt()) and `places` { origin, dest } (the airports' short names). Its row shows the
+//   departure's local date, "15:02 KST → 17:10 JST", and the names under the codes; an entry without them (older, or
+//   written with the region off) reads back as KST: its date in Seoul's zone, "14:05 KST". logTimes() makes the fields.
 // The pure helpers are exported for the node tests.
 
 import { esc, gradeColor, partsHtml, verdict } from './score-panel.js';
 import { typeName } from '../scenarios.js';
 import { designName as liveDesignName } from '../designs-store.js';
+import { eastAsiaOn } from '../world/region.js';
+import { KST_ZONE, zoneAt, zoneOfIcao, fmtZone, fmtZoneDate, zoneLabel } from '../clock.js';
+import { shortPlace } from './home-card.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -48,6 +56,40 @@ export function fmtDate(iso) {
   if (!iso || Number.isNaN(d.getTime())) return { day: '—', time: '' };
   return { day: `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`, time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}` };
 }
+
+// v0.6.0: the entry's fields for local times and names (nothing with the region off: the entry is v0.5.8's). clockMs and
+// speed: the game clock now (speed 0 if it's stopped); nowT, touchdownT, liftoffT: sim seconds (the scorer's touchdown,
+// main.js's lift-off); origin, dest: the airports' data ({ icao, name, shortName?, origin: [x, y] }).
+export function logTimes({ clockMs, speed = 1, nowT, touchdownT, liftoffT, origin, dest } = {}) {
+  if (!eastAsiaOn() || !Number.isFinite(clockMs)) return {};
+  const back = (s) => (Number.isFinite(s) ? s * 1000 * (Number.isFinite(speed) ? speed : 1) : 0);
+  const arr = Math.round(clockMs - back(nowT - touchdownT));
+  const dep = Number.isFinite(liftoffT) && Number.isFinite(touchdownT) ? Math.round(arr - back(touchdownT - liftoffT)) : null;
+  const zoneOf = (a) => (a?.origin ? zoneAt(a.origin[0], a.origin[1]) : zoneOfIcao(a?.icao));
+  const zo = zoneOf(origin), zd = zoneOf(dest);
+  const name = (a) => (a ? a.shortName || shortPlace(a.name) || a.icao || null : null);
+  const out = { local: { ...(dep !== null ? { dep, depZone: zo.timeZone, depName: zoneLabel(zo) } : {}), arr, arrZone: zd.timeZone, arrName: zoneLabel(zd) } };
+  const places = { origin: name(origin), dest: name(dest) };
+  if (places.origin || places.dest) out.places = places;
+  return out;
+}
+// The row's date and times with the region on: { day, time } as fmtDate() gives them, from `local` if the entry has it,
+// else its date read back as KST.
+export function fmtLocal(e) {
+  const L = e?.local;
+  const ok = (v) => typeof v === 'number' && Number.isFinite(v);
+  if (L && ok(L.arr)) {
+    const zA = { timeZone: L.arrZone || 'Asia/Seoul', zoneName: L.arrName || 'KST' };
+    const zD = { timeZone: L.depZone || zA.timeZone, zoneName: L.depName || zA.zoneName };
+    const arr = `${fmtZone(L.arr, zA)} ${zoneLabel(zA)}`;
+    return ok(L.dep) ? { day: fmtZoneDate(L.dep, zD), time: `${fmtZone(L.dep, zD)} ${zoneLabel(zD)} → ${arr}` } : { day: fmtZoneDate(L.arr, zA), time: arr };
+  }
+  const t = Date.parse(e?.date);
+  if (!e?.date || Number.isNaN(t)) return { day: '—', time: '' };
+  return { day: fmtZoneDate(t, KST_ZONE), time: `${fmtZone(t, KST_ZONE)} KST` };
+}
+// "Gimpo → Pudong" from the entry's places, with the region on ('' without them).
+export const placesText = (e) => (e?.places && (e.places.origin || e.places.dest) ? `${e.places.origin || '—'} → ${e.places.dest || '—'}` : '');
 
 export function fmtKg(kg) {
   return Number.isFinite(kg) ? `${Math.round(kg).toLocaleString('en-US')} kg` : '—';
@@ -253,12 +295,12 @@ export function createLogbook(root, { load, save, onclose, designName = liveDesi
     // The scenario's name on each row while all are shown (not for a bare open(), as in v0.1.x).
     const names = !scoped && sel == null && lastScenarios !== undefined;
     const html = rows.map(({ e, i }) => {
-      const d = fmtDate(e.date);
+      const region = eastAsiaOn(), d = region ? fmtLocal(e) : fmtDate(e.date), pl = region ? placesText(e) : '';
       const rwys = [e.depRunway, e.arrRunway].map((r) => (r ? esc(r) : '—')).join(' → ');
       const on = i === openIdx;
       return `<div class="fslb-row${on ? ' on' : ''}" data-i="${i}">
           <span class="date">${esc(d.day)}<small>${esc(d.time)}</small></span>
-          <span class="route">${esc(e.route || '—')}${names ? `<small class="sc">${esc(nameOf(scenarioOf(e, legacyId)))}</small>` : ''}</span>
+          <span class="route">${esc(e.route || '—')}${pl ? `<small class="pl">${esc(pl)}</small>` : ''}${names ? `<small class="sc">${esc(nameOf(scenarioOf(e, legacyId)))}</small>` : ''}</span>
           <span class="type">${e.design ? `${esc(designOf(e))} <small>${esc(typeName(e.type))}${e.engines ? ' · ' + esc(e.engines) : ''}</small>` : esc(typeName(e.type))}${e.indestructible ? '<small>Indestructible</small>' : ''}</span>
           <span class="rwy">${rwys}${e.gate ? `<small>Gate ${esc(e.gate)}</small>` : ''}</span>
           <span class="num">${fmtDuration(e.airTimeS)}</span>

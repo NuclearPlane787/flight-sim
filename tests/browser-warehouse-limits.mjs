@@ -14,7 +14,7 @@ const LIM = {
   max: { wing: { span: 1.3, chord: 1.3, sweep: 8, dihedral: 8 }, tail: 1.6, fin: 1.6, plugFwd: 6, plugAft: 6 },
   min: { wing: { span: 0.8, chord: 0.8, sweep: -8, dihedral: -3 }, tail: 0.6, fin: 0.6, plugFwd: -4, plugAft: -4 },
 };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

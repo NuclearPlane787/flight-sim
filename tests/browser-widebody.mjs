@@ -69,7 +69,7 @@ const SHOTS = {
 };
 
 const names = argv.length ? argv : Object.keys(SHOTS);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];

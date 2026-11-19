@@ -9,7 +9,7 @@ const BASE = process.env.FS_BASE || 'http://127.0.0.1:8765/games/flight-sim/';
   const out = process.argv[2] || 'ui';
   require('fs').mkdirSync(out, { recursive: true });
   const viewport = { width: 1440, height: 900 };
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));

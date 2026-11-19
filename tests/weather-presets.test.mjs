@@ -5,6 +5,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { calmWeather, normalizeWeather, isDefaultWeather, compileWeather } from '../src/sim/weather.js';
 import { PRESETS, presetWeather, weatherContext, weatherForm, weatherFromForm, weatherCheck, metarOf, finalMicroburst, coverOf, oktaOf } from '../src/sim/weather-presets.js';
+import { setEastAsia } from '../src/world/region.js';
+
+// v0.6.0: these check v0.5.8's presets key for key (the region's presets also carry `trueWind`,
+// which tests/v060-rules-frame.test.mjs checks), so the region is off here. No assertion changed.
+setEastAsia(false);
 
 const here = new URL('..', import.meta.url).pathname;
 const AIRPORTS = ['RKSS', 'RKPC', 'RKSI'].map((i) => JSON.parse(readFileSync(here + `data/airports/${i}.json`, 'utf8')));

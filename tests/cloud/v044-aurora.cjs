@@ -59,7 +59,7 @@ async function canvas(page, name, expr) {
 (async () => {
   const rkss = JSON.parse(require('fs').readFileSync(__dirname + '/../../data/airports/RKSS.json', 'utf8'));
   const e0 = rkss.runways[0].ends[0];
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   for (const [tag, dir] of [['043', 'flight-sim-043/'], ['044', 'flight-sim/']]) {
     const page = await open(browser, ROOT + dir, '?test&origin=RKSS&dep=14R&dest=RKPC&start=runway');
     await page.evaluate(FREECAM);

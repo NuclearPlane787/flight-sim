@@ -18,6 +18,7 @@
 // that ring), so fields and the sea submit nothing. Off (visible = false) by day.
 
 import * as THREE from '../../vendor/three.module.js';
+import { coverReader, coverGrid } from './clipwindow.js';
 
 export const LIGHT_BLOCK = 400;    // m, the finest ring's block (cities.js's BLOCK)
 export const LIGHT_HALF = 20;      // blocks each side of the camera, per ring
@@ -49,27 +50,31 @@ export function slotLayout() {
 }
 
 // Can a block hold a light? True when any cover texel near it is built-up (>= 7/255, as
-// cities.js). cov: the RGBA8 cover grid; nat {x, y, z: cell}; size {x: nx, y: ny}. The
-// answers are cached per (level, block).
+// cities.js). cov: the RGBA8 cover grid, or a cover reader (clipwindow.js's coverReader);
+// nat {x, y, z: cell}; size {x: nx, y: ny} (for a grid). The answers are cached per (level,
+// block); blockUrban.reset() drops them (the reader's window refilled).
 export function makeBlockTest(cov, nat, size) {
   const cache = new Map();
-  return function blockUrban(level, bx, by) {
-    if (!cov) return true;
+  const R = cov && ArrayBuffer.isView(cov) ? coverGrid(cov, size.x, size.y) : cov;
+  const blockUrban = function blockUrban(level, bx, by) {
+    if (!R) return true;
     const key = (level * 4096 + (bx + 2048)) * 4096 + (by + 2048);
     let v = cache.get(key);
     if (v !== undefined) return v;
-    const B = LIGHT_BLOCK * 2 ** level, cell = nat.z, nx = size.x, ny = size.y;
+    const B = LIGHT_BLOCK * 2 ** level, cell = nat.z, at = R.at;
     // The layout rotates by up to ~25°, so take the block's circumscribed square, plus a cell.
     const r = B * 0.72 + cell;
     const cx = (bx + 0.5) * B - nat.x, cy = (by + 0.5) * B - nat.y;
-    const i0 = Math.max(Math.ceil((cx - r) / cell - 0.5), 0), i1 = Math.min(Math.floor((cx + r) / cell - 0.5), nx - 1);
-    const j0 = Math.max(Math.ceil((cy - r) / cell - 0.5), 0), j1 = Math.min(Math.floor((cy + r) / cell - 0.5), ny - 1);
+    const i0 = Math.max(Math.ceil((cx - r) / cell - 0.5), R.lo[0]), i1 = Math.min(Math.floor((cx + r) / cell - 0.5), R.hi[0]);
+    const j0 = Math.max(Math.ceil((cy - r) / cell - 0.5), R.lo[1]), j1 = Math.min(Math.floor((cy + r) / cell - 0.5), R.hi[1]);
     v = false;
-    for (let j = j0; j <= j1 && !v; j++) for (let i = i0; i <= i1; i++) if (cov[(j * nx + i) * 4 + 2] >= 7) { v = true; break; }
+    for (let j = j0; j <= j1 && !v; j++) for (let i = i0; i <= i1; i++) if (at(i, j) >= 7) { v = true; break; }
     if (cache.size > 300000) cache.clear();
     cache.set(key, v);
     return v;
   };
+  blockUrban.reset = () => cache.clear();
+  return blockUrban;
 }
 
 // The blocks ring `level` draws around the camera (map x, y): relative indices [i, j, ...]
@@ -246,9 +251,9 @@ export function createCityLights(scene, uniforms, chunks /* , { heightfield, air
   const base = new Float32Array(layout.length * 3);
   layout.forEach((s, k) => base.set(s, k * 3));
 
-  const covTex = uniforms.uCover && uniforms.uCover.value;
-  const cov = uniforms.uHasCover && uniforms.uHasCover.value > 0.5 && covTex && covTex.image && covTex.image.data;
-  const blockUrban = makeBlockTest(cov || null, uniforms.uNat.value, uniforms.uNatSize.value);
+  const cov = coverReader(uniforms);
+  const blockUrban = makeBlockTest(cov, uniforms.uNat.value, uniforms.uNatSize.value);
+  let coverVer = cov ? cov.version() : 0;
 
   const group = new THREE.Group();
   group.name = 'city-lights';
@@ -304,6 +309,11 @@ export function createCityLights(scene, uniforms, chunks /* , { heightfield, air
       group.visible = on;
       if (!on) return NONE;
       let calls = 0, lights = 0;
+      if (cov && cov.version() !== coverVer) {
+        // The clip window refilled: list every ring's blocks again.
+        coverVer = cov.version(); blockUrban.reset();
+        for (const r of rings) r.gx = NaN;
+      }
       for (const r of rings) {
         const cx = Math.floor(camMap.x / r.B), cy = Math.floor(camMap.y / r.B);
         if (cx !== r.gx || cy !== r.gy) { r.gx = cx; r.gy = cy; fill(r, camMap); }

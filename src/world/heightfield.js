@@ -12,12 +12,14 @@
 // flat sea-level world, so nothing breaks while the bake is still running.
 
 import { runwayRects, rectElev, RUNWAY_SHOULDER_M } from './runways.js';
+import { terrainSpec, GROUND_ON } from './region.js';
 
 export const PATCH_BLEND = 600;      // m: patches fade in over this band inside their edge
 export const FLAT_MARGIN_U = 90;     // m beyond each runway end that's flattened
 export const FLAT_MARGIN_V = 90;     // m each side of the runway edge that's flattened
 export const FLAT_BLEND = 300;       // m over which the flattening fades out
 export const PAVE_BLEND_M = 8;       // m: off the pavements, nearby runways' surfaces blend over about this
+export const AIRPORT_TILES_M = 30000; // the region: the tiles this far round each airport stay resident (a 10 nm final starts inside it)
 
 // ------------------------------------------------------------------------- loading
 
@@ -61,6 +63,16 @@ function baseHref(baseUrl) {
 export async function loadHeightfield(baseUrl, opts = {}) {
   const base = baseHref(baseUrl);
   const manifest = (await fetchJson(resolve('manifest.json', base))) || {};
+  // v0.6.0: the terrain in tiles. Every tile in the extent is loaded before this resolves
+  // (Korea's 35, the data the national grid held), until the loader loads by distance.
+  // The region (behind EAST_ASIA_ON) is too big for that: its tiles come as they are needed
+  // (region.js's loader), with the ones round every airport in before this resolves, and kept
+  // (the airports' ground is built from them, and a flight starts on them).
+  if (manifest.tiles && opts.tiles !== false) {
+    const region = terrainSpec(manifest, opts.region).region;
+    // (48 tiles resident at most, 100 MB: the airports' pinned ones, about 25, and the flight's.)
+    return createTiledHeightfield(manifest, base, region ? { airportTiles: true, maxTiles: 48, ...opts } : { all: true, ...opts });
+  }
   const scale = manifest.heightScale || 0.25;
   const nat = manifest.national || null;
   const layers = { heightScale: scale, national: null, patches: [], coastPatches: [], manifest };
@@ -93,6 +105,56 @@ export async function loadHeightfield(baseUrl, opts = {}) {
   }
   await Promise.all(jobs);
   // Keep the patch order stable (the GPU atlas uses the same order).
+  layers.patches.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  layers.coastPatches.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return createHeightfield(layers, { airports: airports || [] });
+}
+
+// v0.6.0: the same heightfield over the tiles (tilestore.js) instead of the national grid.
+// Beside loadHeightfield() until the GPU and the loader's waits read tiles too (V060.md Part 1).
+// opts.layers: which of 'h', 'w', 'c' to load (the worker wants heights only);
+// opts.all: load every tile in the extent before resolving (Korea's 35, as the old loader read
+// the whole grid); else opts.at = [x, y, r] loads those first; opts.onTile edits each new tile.
+export async function loadTiledHeightfield(baseUrl, opts = {}) {
+  const base = baseHref(baseUrl);
+  const manifest = (await fetchJson(resolve('manifest.json', base))) || opts.manifest || {};
+  return createTiledHeightfield(manifest, base, opts);
+}
+
+// The same, from a manifest already read (node's tests read it from disk).
+export async function createTiledHeightfield(manifest, base, opts = {}) {
+  const { createTileStore } = await import('./tilestore.js');
+  // v0.6.0: Korea's tiles and patches, or the region's behind EAST_ASIA_ON (region.js); opts.region overrides.
+  const spec = terrainSpec(manifest, opts.region);
+  const store = createTileStore(spec.tiles, { base, layers: opts.layers, readGz: opts.readGz, onTile: opts.onTile, maxTiles: opts.maxTiles, cover2: opts.cover2 ?? GROUND_ON });
+  const read = opts.readGz || null;
+  const getGz = (rel) => (read ? read(rel) : fetchGz(resolve(rel, base)));
+  const getJson = opts.readJson || ((rel) => fetchJson(resolve(rel, base)));
+  const layers = { heightScale: manifest.heightScale || 0.25, tiles: store, national: null, patches: [], coastPatches: [], manifest };
+  const jobs = [];
+  if (opts.all) jobs.push(store.loadAll());
+  else if (opts.at) jobs.push(store.whenReady(opts.at[0], opts.at[1], opts.at[2] || 0, 'start'));
+  if (opts.patches !== false) {
+    for (const p of spec.patches) {
+      const g = { id: p.id, x0: p.x0, y0: p.y0, cell: p.cell, nx: p.nx, ny: p.ny, height: null };
+      jobs.push(getGz(p.height).then((b) => { if (b && b.byteLength === g.nx * g.ny * 2) { g.height = new Int16Array(b); layers.patches.push(g); } }));
+    }
+  }
+  if (opts.coasts !== false) {
+    for (const p of spec.coastPatches) {
+      const g = { id: p.id, x0: p.x0, y0: p.y0, cell: p.cell, nx: p.nx, ny: p.ny, coast: null };
+      jobs.push(getGz(p.coast).then((b) => { if (b && b.byteLength === g.nx * g.ny) { g.coast = new Uint8Array(b); layers.coastPatches.push(g); } }));
+    }
+  }
+  let airports = opts.airports || null;
+  if (!airports && spec.airports.length) {
+    jobs.push(Promise.all(spec.airports.map((f) => getJson(f))).then((list) => { airports = list.filter(Boolean); }));
+  }
+  await Promise.all(jobs);
+  // opts.airportTiles: the tiles within AIRPORT_TILES_M of each airport, in and pinned.
+  if (opts.airportTiles) {
+    await Promise.all((airports || []).filter((a) => a.origin).map((a) => store.whenReady(a.origin[0], a.origin[1], AIRPORT_TILES_M, 'ap:' + a.icao)));
+  }
   layers.patches.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   layers.coastPatches.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   return createHeightfield(layers, { airports: airports || [] });
@@ -137,9 +199,13 @@ export function flatWeight(r, u, v) {
 // Build the helper from loaded layers (also used by the tests with synthetic grids).
 export function createHeightfield(layers, opts = {}) {
   const scale = layers.heightScale || 0.25;
-  const nat = layers.national && layers.national.height ? layers.national : null;
-  const natW = layers.national && layers.national.water ? layers.national : null;
-  const natC = layers.national && layers.national.cover ? layers.national : null;
+  // v0.6.0: the terrain in tiles (tilestore.js), sampled with the same arithmetic; else the
+  // one national grid (v0.5.8's files, and the tests' synthetic grids).
+  const T = layers.tiles || null;
+  const TH = T && T.has.h ? T : null, TW = T && T.has.w ? T : null, TC = T && T.has.c ? T : null;
+  const nat = !T && layers.national && layers.national.height ? layers.national : null;
+  const natW = !T && layers.national && layers.national.water ? layers.national : null;
+  const natC = !T && layers.national && layers.national.cover ? layers.national : null;
   const patches = layers.patches || [];
   const coast = layers.coastPatches || [];
   // By rank (runways.js → runwayCrossings): where two runways cross, the longer one comes last and wins.
@@ -153,7 +219,7 @@ export function createHeightfield(layers, opts = {}) {
 
   // Raw data height (may be negative over the sea), before flattening and clamping.
   function rawHeight(x, y) {
-    let h = nat ? bilinear(nat, x, y, hNat) * scale : 0;
+    let h = TH ? TH.height(x, y) * scale : nat ? bilinear(nat, x, y, hNat) * scale : 0;
     for (let k = 0; k < patches.length; k++) {
       const p = patches[k];
       if (x < p.x0 || y < p.y0 || x > p.x0 + p.nx * p.cell || y > p.y0 + p.ny * p.cell) continue;
@@ -199,12 +265,14 @@ export function createHeightfield(layers, opts = {}) {
       const d = (bilinear(p, x, y, p._get) - 128) * 2;
       if (Math.abs(d) < 250) return d;
     }
+    if (TW) return (TW.water(x, y, 0) - 128) * 20;
     if (natW) return (bilinear(natW, x, y, seaNat) - 128) * 20;
     // No water layer: below 0 is sea (the bake pushes the sea under 0); no data at all is sea.
-    return nat ? rawHeight(x, y) * 20 : -1000;
+    return (nat || TH) ? rawHeight(x, y) * 20 : -1000;
   }
 
   function inlandDistance(x, y) {
+    if (TW) return (TW.water(x, y, 1) - 128) * 20;
     if (!natW) return 2560;
     return (bilinear(natW, x, y, inlandNat) - 128) * 20;
   }
@@ -214,6 +282,12 @@ export function createHeightfield(layers, opts = {}) {
   }
 
   function coverAt(x, y, out = {}) {
+    if (TC) {
+      out.forest = TC.cover(x, y, 0) / 255;
+      out.farm = TC.cover(x, y, 1) / 255;
+      out.urban = TC.cover(x, y, 2) / 255;
+      return out;
+    }
     if (!natC) { out.forest = 0; out.farm = 0; out.urban = 0; return out; }
     const c = natC.cover, nx = natC.nx;
     out.forest = bilinear(natC, x, y, (i, j) => c[(j * nx + i) * 4]) / 255;
@@ -225,6 +299,7 @@ export function createHeightfield(layers, opts = {}) {
   return {
     heightAt, waterAt, coverAt, seaDistance, inlandDistance, rawHeight,
     layers, runwayRects: rects,
-    info: { height: !!nat, water: !!natW, cover: !!natC, patches: patches.length, coastPatches: coast.length },
+    tiles: T,
+    info: { height: !!(nat || TH), water: !!(natW || TW), cover: !!(natC || TC), tiled: !!T, patches: patches.length, coastPatches: coast.length },
   };
 }

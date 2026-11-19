@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const TYPE = process.env.WH_TYPE || 'a321neo';
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
 const errors = [];
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra !== '' ? ` (${extra})` : ''}`); if (!ok) fails++; };
@@ -81,7 +81,7 @@ try {
   await page.mouse.click(s.x, s.y);
   await page.waitForTimeout(300);
   check('a click on the wing selects it', (await selected())?.what === 'wing', JSON.stringify(await selected()));
-  check('the wing\'s sliders in the panel', (await page.$$('.fsw [data-af]')).length === 4);
+  check('the wing\'s sliders in the panel', (await page.$$('.fsw [data-af]')).length === 5);   // v0.5.6 added Position to span, chord, sweep, dihedral
   await shot(`${TYPE}-02-wing`);
   let buildDuring = null;
   await dragSlider('span', 0.9, async () => {

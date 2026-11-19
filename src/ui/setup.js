@@ -18,12 +18,18 @@
 // plan.design the design itself, whole and normalized (src/sim/designs.js); the limits, the fuel rule and the
 // stands are its type entry's (designDef(design)). defaults.design picks it again: as given with lockType (a
 // scenario keeps its copy), else the stored design with that id if it's still there (else its base).
+// v0.6.0 (with the region on, region.js's EAST_ASIA_ON; off, every line here draws as v0.5.8): the eleven airports
+// grouped by country, Korea first (airportGroups()), named by their short names; the small map fitted to the region,
+// its labels kept apart (Pudong and Hongqiao, Haneda and Narita); a filter on a long stand list; the fuel rule by the
+// cruise level a trip that long flies at (fuelEstimate()); the start's time in the departure's own zone (KST, JST, CST).
 // v0.5.8: the scenario's copy is named as the design is now (designName(), by its id; its own name once the design
 // is deleted), on its card and in the plan Fly returns: only the name, its parts stay the scenario's.
 
 import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints } from './common.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
-import { fmtKst, fmtKstDate } from '../clock.js';
+import { fmtKst, fmtKstDate, zoneAt, zoneLabel, fmtZone, fmtZoneDate, zoneFieldValues, zoneFromFields } from '../clock.js';
+import { eastAsiaOn } from '../world/region.js';
+import { shortPlace } from './home-card.js';
 import { kstFieldValues, kstFromFields } from './sky-window.js';
 import { esc } from './score-panel.js';
 import { standList } from '../ground/gate-flow.js';
@@ -44,9 +50,30 @@ export const LIMITS = typeById(DEFAULT_TYPE).limits;
 //   taxi    = 200 kg.
 // Rounded up to 100 kg. Gimpo–Jeju (243 nm) gives about 4,000 kg.
 // `type`: a registry entry or an id; without one, the A321neo.
+//
+// v0.6.0, with the region on: the trip from the sim itself (tests/v060-fuel-sim.mjs flies each type's take-off, climb at
+// CL/FLCH, cruise at its Mach, idle descent and approach at its setup load, at the best level a trip that long fits) as
+//   trip = climbKg · (1 − e^(−d / rampNm)) + perNm · d,
+// the climb's extra fuel growing in over the first hundred-odd nm as the level a trip can reach does. Within 1 % of
+// the sim at 120, 300, 480, 640 and 960 nm on all three (tests/v060-setup.test.mjs); v0.5.8's line read 40 to 120 %
+// over it there (it was set for a block, not the sim). The reserve, the 5 % and the taxi are as before. A design's
+// rule scales with its per-nm against its base's (designs.js). With the region off, v0.5.8's rule exactly.
+export const REGION_FUEL = {
+  a321neo: { climbKg: 660, rampNm: 92, perNm: 4.76 },
+  'b787-9': { climbKg: 1950, rampNm: 122, perNm: 9.7 },
+  'b777-300er': { climbKg: 2400, rampNm: 100, perNm: 12.74 },
+};
+export function regionTrip(distNm, type) {
+  const t = type && typeof type === 'object' ? type : typeById(type);
+  const R = REGION_FUEL[t.id], base = typeById(t.id).fuel;
+  if (!R || !base) return null;
+  const k = t.fuel && base.perNm ? t.fuel.perNm / base.perNm : 1;
+  return k * (R.climbKg * (1 - Math.exp(-Math.max(0, distNm) / R.rampNm)) + R.perNm * distNm);
+}
 export function fuelEstimate(distNm, type) {
   const r = (type && typeof type === 'object' ? type : typeById(type)).fuel;
-  const trip = r.climbKg + r.perNm * distNm;
+  const rt = eastAsiaOn() ? regionTrip(distNm, type) : null;
+  const trip = rt ?? r.climbKg + r.perNm * distNm;
   const total = trip * 1.05 + r.holdKg + r.taxiKg;
   return { trip: Math.round(trip), total: Math.ceil(total / 100) * 100 };
 }
@@ -58,6 +85,69 @@ export function fitLoad({ pax, cargoKg }, type) {
   let p = pax > l.PAX_MAX ? d.pax : pax, c = cargoKg > l.CARGO_MAX ? d.cargoKg : cargoKg;
   if (l.OEW + p * l.PAX_KG + c > l.MZFW) { p = d.pax; c = d.cargoKg; }
   return { pax: p, cargoKg: c };
+}
+
+// ---- v0.6.0: the region's airports in the lists ----
+// The country by the ICAO code's region letters (stable, whatever the country raster says at a shore), Korea first,
+// then Japan and China; within one, the order below (the capital's airports first), then any other by its code.
+const COUNTRY_OF = [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN']];
+export const COUNTRY_LABEL = { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', other: 'Elsewhere' };
+const COUNTRY_ORDER = ['KR', 'JP', 'CN', 'KP', 'other'];
+export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSQD'];
+export const airportCountry = (ap) => (COUNTRY_OF.find(([p]) => String(ap?.icao || '').startsWith(p)) || [null, 'other'])[1];
+// The airport's short name: its data's shortName, else its name made short ("Seoul Gimpo International Airport" → "Gimpo").
+export const airportShort = (ap) => ap?.shortName || shortPlace(ap?.name) || ap?.icao || '';
+// The list's text for an airport: v0.5.8's "RKSS · Seoul Gimpo International Airport", or with the region on "RJTT · Haneda".
+export const airportOption = (ap) => (eastAsiaOn() ? `${ap.icao} · ${airportShort(ap)}` : `${ap.icao} · ${ap.name || ''}`);
+// [{ country, label, airports }] in the lists' order.
+export function airportGroups(aps) {
+  const rank = (a) => { const i = AIRPORT_ORDER.indexOf(a.icao); return i < 0 ? 999 : i; };
+  const groups = new Map();
+  for (const a of [...(aps || [])].sort((p, q) => rank(p) - rank(q) || String(p.icao).localeCompare(String(q.icao)))) {
+    const c = airportCountry(a);
+    if (!groups.has(c)) groups.set(c, []);
+    groups.get(c).push(a);
+  }
+  return COUNTRY_ORDER.filter((c) => groups.has(c)).map((c) => ({ country: c, label: COUNTRY_LABEL[c], airports: groups.get(c) }));
+}
+
+// The region's small map frame: the airports' box fitted both ways with a 20 % margin (the region is wide). → { k (px per
+// m), cx, cy (the map point at the centre) }
+export function miniRegionFrame(aps, W, H) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const a of aps) { const [x, y] = a.origin; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const k = Math.min(W / (((x1 - x0) || 100000) * 1.2), H / (((y1 - y0) || 100000) * 1.2));
+  return { k, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+// The labels' sizes on the region's small map (font(12, true)).
+export const MINI_LABEL = { charW: 7.6, h: 13, gap: 7, dotR: 4.5 };
+// The small map's labels kept apart (pure, for the tests): each dot [id, sx, sy, text] gets a label beside it, right,
+// left, above or below, the first that overlaps no other label or dot and stays on the canvas (else the right).
+// → [{ id, x, y, align, box: [x0, y0, x1, y1] }], x and y the text's anchor (textBaseline middle).
+export function placeLabels(dots, W, H, { charW = 8.2, h = 14, gap = 9, dotR = 5 } = {}) {
+  const boxes = [], out = [];
+  const hits = (b) => boxes.some((c) => b[0] < c[2] && b[2] > c[0] && b[1] < c[3] && b[3] > c[1])
+    || dots.some(([, x, y]) => x + dotR > b[0] && x - dotR < b[2] && y + dotR > b[1] && y - dotR < b[3]);
+  for (const [id, sx, sy, text] of dots) {
+    const w = String(text).length * charW;
+    // beside, then above and below, then the corners, then a step further out (with a leader line from the dot)
+    const at = (dx, dy, align, lead = false) => {
+      const x0 = align === 'left' ? sx + dx : align === 'right' ? sx + dx - w : sx + dx - w / 2;
+      return { x: sx + dx, y: sy + dy, align, lead, box: [x0, sy + dy - h / 2, x0 + w, sy + dy + h / 2] };
+    };
+    const up = gap + h / 2 - 2, far = gap + 14;
+    const tries = [
+      at(gap, 0, 'left'), at(-gap, 0, 'right'), at(0, -up, 'center'), at(0, up, 'center'),
+      at(gap - 3, -up, 'left'), at(-gap + 3, -up, 'right'), at(gap - 3, up, 'left'), at(-gap + 3, up, 'right'),
+      at(far, 0, 'left', true), at(-far, 0, 'right', true), at(0, -up - 12, 'center', true), at(0, up + 12, 'center', true),
+      at(far - 4, -up - 8, 'left', true), at(-far + 4, -up - 8, 'right', true), at(far - 4, up + 8, 'left', true), at(-far + 4, up + 8, 'right', true),
+    ];
+    const inside = (b) => b[0] >= 2 && b[2] <= W - 2 && b[1] >= 2 && b[3] <= H - 2;
+    const pick = tries.find((t) => inside(t.box) && !hits(t.box)) || tries.find((t) => inside(t.box)) || tries[0];
+    boxes.push(pick.box);
+    out.push({ id, ...pick });
+  }
+  return out;
 }
 
 // The picture's URL: picker.picture is relative to the game's root, this file two folders below it.
@@ -97,6 +187,7 @@ export function designCardHtml(def, pictureSrc = '', locked = false) {
 // A card's key: a type by its id, a design by its own (a design shares its base's id).
 const choiceKey = (t) => (t?.design ? `design:${t.design.id}` : `type:${t?.id}`);
 
+const STAND_FILTER_MIN = 60;   // v0.6.0: a stand list longer than this gets its filter (region on)
 const BASE = { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway', pax: 190, cargoKg: 1500, fuelKg: 0, waypoints: [] };
 
 function loadStored() {
@@ -181,16 +272,33 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
   // The start time: 'now' or 'set' (from the date and time fields, read as KST).
   let timeMode = 'now';
   const tf = (n) => el.querySelector(`[data-t="${n}"]`);
+  // v0.6.0: with the region on, the start's time is the departure's local time, in its own zone (clock.js's zoneAt()
+  // at the origin airport: KST, JST or CST): Now shows the real time there, and Set's fields are read in that zone.
+  // Off, KST as v0.5.8 (the same functions, so the same strings).
+  const depZone = () => { const a = list().find((x) => x.icao === plan?.origin); return a?.origin ? zoneAt(a.origin[0], a.origin[1]) : zoneAt(NaN, NaN); };
+  const fieldValues = (ms) => (eastAsiaOn() ? zoneFieldValues(ms, depZone()) : kstFieldValues(ms));
+  const fromFields = (d, t) => (eastAsiaOn() ? zoneFromFields(d, t, depZone()) : kstFromFields(d, t));
   function setTimeMode(mode, ms) {
     timeMode = mode === 'set' ? 'set' : 'now';
     if (Number.isFinite(ms) || (timeMode === 'set' && !tf('date').value)) {
-      const v = kstFieldValues(Number.isFinite(ms) ? ms : Date.now());
+      const v = fieldValues(Number.isFinite(ms) ? ms : Date.now());
       tf('date').value = v.date; tf('time').value = v.time;
     }
     seg('time', timeMode);
     o('timeRow').hidden = timeMode !== 'set';
+    showZone();
+  }
+  // The time row's note and labels for the departure's zone (only the note with the region off, as v0.5.8 wrote it).
+  function showZone() {
     const now = Date.now();
-    o('timeNote').textContent = timeMode === 'now' ? `${fmtKst(now)} KST, ${fmtKstDate(now)}` : '';
+    if (!eastAsiaOn()) { o('timeNote').textContent = timeMode === 'now' ? `${fmtKst(now)} KST, ${fmtKstDate(now)}` : ''; return; }
+    const z = depZone(), zn = zoneLabel(z);
+    o('timeNote').textContent = timeMode === 'now' ? `${fmtZone(now, z)} ${zn}, ${fmtZoneDate(now, z)}` : '';
+    const lbl = o('timeRow').querySelector('.fsui-note');
+    if (lbl) { lbl.textContent = zn; lbl.title = `The departure's local time (${z.timeZone})`; }
+    const bNow = el.querySelector('[data-seg="time"] [data-v="now"]'), bSet = el.querySelector('[data-seg="time"] [data-v="set"]');
+    if (bNow) bNow.title = 'The real time at the departure';
+    if (bSet) bSet.title = `A date and a time at the departure (${zn})`;
   }
 
   // Keys typed here never reach the game (the name field included); Enter flies, Esc cancels.
@@ -214,6 +322,14 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     sel.value = items.some(([v]) => v === val) ? val : items[0]?.[0] ?? '';
     return sel.value;
   };
+  // v0.6.0: the airports grouped by country (optgroups), each named short, its full name as the option's title.
+  const optAirports = (sel, val) => {
+    const esc1 = (t) => esc(String(t ?? ''));
+    sel.innerHTML = airportGroups(list()).map((g) => `<optgroup label="${esc1(g.label)}">${g.airports.map((a) => `<option value="${esc1(a.icao)}" title="${esc1(a.name)}">${esc1(airportOption(a))}</option>`).join('')}</optgroup>`).join('');
+    const all = list();
+    sel.value = all.some((a) => a.icao === val) ? val : (airportGroups(all)[0]?.airports[0]?.icao ?? '');
+    return sel.value;
+  };
   const ends = (icao) => (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends.map((e) => [e.ident, `RWY ${e.ident}  (${Math.round(r.lengthM || 0).toLocaleString()} m)`]));
   const endObj = (icao, ident) => {
     for (const r of list().find((a) => a.icao === icao)?.runways || []) for (const e of r.ends) if (e.ident === ident) return e;
@@ -230,16 +346,46 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     return d / NM;
   };
 
+  // v0.6.0: a long stand list (Pudong's, Narita's, Qingdao's hundreds) gets a filter beside it: what's typed narrows
+  // the list to the stands whose number holds it ("11" → 110–119, 211…). Made once, the first time a list is long.
+  let standFind = null;
+  function filterStands(st) {
+    const long = st.length > STAND_FILTER_MIN;
+    if (!standFind && long) {
+      standFind = document.createElement('input');
+      standFind.type = 'search'; standFind.className = 'fsui-stand-find'; standFind.placeholder = 'Find a stand';
+      standFind.setAttribute('aria-label', 'Find a stand'); standFind.spellcheck = false; standFind.autocomplete = 'off';
+      f('stand').after(standFind);
+      standFind.addEventListener('input', (e) => { e.stopPropagation(); applyStandFilter(); });
+      standFind.addEventListener('change', (e) => e.stopPropagation());
+      standFind.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } });
+    }
+    if (!standFind) return;
+    standFind.hidden = !long;
+    if (!long || standFind.dataset.at !== plan.origin) standFind.value = '';   // a new origin starts unfiltered
+    standFind.dataset.at = plan.origin;
+    applyStandFilter(st);
+  }
+  function applyStandFilter(st = stands(plan.origin)) {
+    const q = standFind && !standFind.hidden ? standFind.value.trim().toUpperCase() : '';
+    const m = q ? st.filter(([ref]) => String(ref).toUpperCase().includes(q)) : st;
+    if (!m.length) { f('stand').innerHTML = `<option value="" disabled selected>No stand ${esc(q)}</option>`; return; }
+    if (q || f('stand').options.length !== st.length) plan.stand = opt(f('stand'), m, plan.stand);
+    if (standFind) standFind.title = q ? `${m.length} of ${st.length} stands` : `${st.length} stands`;
+  }
+
   const weatherNote = () => PRESETS.find((p) => p.id === plan.weather)?.note || '';
   function fill() {
     const aps = list().map((a) => [a.icao, `${a.icao} · ${a.name || ''}`]);
-    plan.origin = opt(f('origin'), aps, plan.origin);
+    const region = eastAsiaOn();
+    plan.origin = region ? optAirports(f('origin'), plan.origin) : opt(f('origin'), aps, plan.origin);
     plan.depRunway = opt(f('depRunway'), ends(plan.origin), plan.depRunway);
-    plan.dest = opt(f('dest'), aps, plan.dest);
+    plan.dest = region ? optAirports(f('dest'), plan.dest) : opt(f('dest'), aps, plan.dest);
     plan.arrRunway = opt(f('arrRunway'), ends(plan.dest), plan.arrRunway);
     const st = stands(plan.origin);
     plan.stand = st.length ? opt(f('stand'), st, plan.stand) : '';
     if (!st.length) f('stand').innerHTML = '';
+    if (region) { filterStands(st); showZone(); }
     f('pax').value = f('paxR').value = plan.pax;
     f('cargoKg').value = plan.cargoKg;
     f('fuelKg').value = plan.fuelKg;
@@ -395,12 +541,16 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
   const miniState = { k: 1, cx: 0, cy: 0, pts: [] };
   function drawMini() {
     const dpr = Math.min(window.devicePixelRatio || 1, 3), W = 300, H = 300;
-    if (mini.width !== W * dpr) { mini.width = W * dpr; mini.height = H * dpr; }
+    // (v0.6.0: with the region on the height is checked too: a new canvas is 300 × 150, so at a pixel ratio of 1 the
+    // width already matched and the map drew stretched to twice its height. Off, as v0.5.8.)
+    if (mini.width !== W * dpr || (eastAsiaOn() && mini.height !== H * dpr)) { mini.width = W * dpr; mini.height = H * dpr; }
     const ctx = mini.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#06101c'; ctx.fillRect(0, 0, W, H);
     const aps = list();
     if (!aps.length) return;
+    if (eastAsiaOn()) { drawMiniRegion(ctx, W, H, aps); return; }
+    miniState.labels = null;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const a of aps) { const [x, y] = a.origin; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     const span = Math.max(x1 - x0, y1 - y0) * 1.35 || 100000;
@@ -430,10 +580,49 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
       ctx.fillText(ap.icao, sx + (right ? 10 : -10), sy);
     }
   }
+  // v0.6.0: the region's small map. The airports' box fitted both ways (the region is wide), dots a little smaller, and
+  // each label put where it hits no other label or dot (placeLabels()); a click on a label picks its airport too, so the
+  // close pairs (Pudong and Hongqiao, Haneda and Narita, 5 to 8 px apart here) can each be picked.
+  function drawMiniRegion(ctx, W, H, aps) {
+    const { k, cx, cy } = miniRegionFrame(aps, W, H), hw = W / 2 / k, hh = H / 2 / k;
+    Object.assign(miniState, { k, cx, cy });
+    const X = (x) => W / 2 + (x - cx) * k, Y = (y) => H / 2 - (y - cy) * k;
+    if (coastL) {
+      ctx.beginPath();
+      traceRings(ctx, coastL.land, coastL.lod(1 / k), { x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh }, (x, y, p) => { p[0] = X(x); p[1] = Y(y); return p; }, 2 / k);
+      ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd'); ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    const a = endObj(plan.origin, plan.depRunway), b = endObj(plan.dest, plan.arrRunway);
+    if (a && b) {   // the route as a straight line on the map (the frame is conformal: within about 0.5 % of the great circle)
+      ctx.strokeStyle = C.magenta; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); for (const [x, y] of plan.waypoints || []) ctx.lineTo(X(x), Y(y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke();
+    }
+    // the picked ones last, so their dots and labels sit on top and get the first choice of place
+    const order = [...aps].sort((p, q) => (p.icao === plan.origin || p.icao === plan.dest ? -1 : 0) - (q.icao === plan.origin || q.icao === plan.dest ? -1 : 0));
+    const dots = order.map((ap) => [ap.icao, X(ap.origin[0]), Y(ap.origin[1]), ap.icao]);
+    const labels = placeLabels(dots, W, H, MINI_LABEL);
+    miniState.pts = dots.map(([icao, sx, sy]) => [icao, sx, sy]);
+    miniState.labels = labels;
+    ctx.font = font(12, true); ctx.textBaseline = 'middle';
+    for (let i = dots.length - 1; i >= 0; i--) {
+      const [icao, sx, sy] = dots[i], L = labels[i];
+      const col = icao === plan.origin ? C.green : icao === plan.dest ? C.magenta : C.white;
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#06101c'; ctx.lineWidth = 1; ctx.stroke();
+      if (L.lead) {   // a label set further out: a thin line from its dot to the label's near edge
+        const ex = Math.max(L.box[0], Math.min(sx, L.box[2])), ey = Math.max(L.box[1], Math.min(sy, L.box[3]));
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+      }
+      ctx.fillStyle = col; ctx.textAlign = L.align; ctx.fillText(icao, L.x, L.y);
+    }
+  }
   mini.addEventListener('click', (e) => {
     const r = mini.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
     let best = null, bd = 28;
     for (const [icao, x, y] of miniState.pts) { const d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = icao; } }
+    const lab = miniState.labels?.find((L) => sx >= L.box[0] - 2 && sx <= L.box[2] + 2 && sy >= L.box[1] - 2 && sy <= L.box[3] + 2);
+    if (lab && !(bd < 6)) best = lab.id;   // v0.6.0: a label picks its airport (a dot right under the pointer still wins)
     if (!best) return;
     if (pick === 'origin') { plan.origin = best; plan.depRunway = ''; plan.stand = ''; pick = 'dest'; }
     else { plan.dest = best; plan.arrRunway = ''; }
@@ -449,7 +638,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     }
     let startMs = null;
     if (timeMode === 'set') {
-      startMs = kstFromFields(tf('date').value, tf('time').value);
+      startMs = fromFields(tf('date').value, tf('time').value);
       if (startMs === null) { o('msg').textContent = 'Pick a date and a time for the start, or choose Now.'; o('msg').style.color = C.red; tf('date').focus(); return; }
     }
     if (plan.start === 'gate' && !plan.stand) { o('msg').textContent = `${noStands()}: start on the runway.`; o('msg').style.color = C.red; return; }

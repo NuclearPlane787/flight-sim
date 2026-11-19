@@ -12,7 +12,7 @@ const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignor
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra !== '' ? ` (${extra})` : ''}`); if (!ok) fails++; };
 (async () => {
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));

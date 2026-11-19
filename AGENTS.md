@@ -1,10 +1,10 @@
 # Flight Sim: read this first
 
-Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D airliner sim of South Korea (the A321neo, 787-9 and 777-300ER), flown between Incheon, Gimpo and Jeju. GameDump's root `AGENTS.md` (the house rules) applies on top of this file.
+Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D airliner sim of East Asia (the A321neo, 787-9 and 777-300ER), flown between eleven airports in Korea, Japan and China (Korea's three alone until v0.6.0). GameDump's root `AGENTS.md` (the house rules) applies on top of this file.
 
 **Picking the game up? Read `HANDOFF.md` first:** where things stand, what's next (v0.2.0's decisions), and how the Cowork sessions checked their work (`tests/cloud/`).
 
-**Briefing a Claude Code run? `V040.md` (v0.4.0, the weather) is the latest brief to model it on:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
+**Briefing a Claude Code run? `V060.md` (v0.6.0, East Asia: sittings, parts in priority order behind flags) is the latest brief to model it on:** Shane's decisions, the scope, the definition of done, the run's rules and the starting prompt.
 
 ## Files
 
@@ -14,6 +14,7 @@ Flight Sim (`flight-sim`) is the ninth Game Dump game: a 3D airliner sim of Sout
 | `V020.md` | The brief for v0.2.0 (the main menu and scenarios, then night), an overnight Claude Code run. |
 | `V030.md` | The brief for v0.3.0 (aircraft types, then the Boeing 787-9 and 777-300ER), an overnight Claude Code run. |
 | `V040.md` | The brief for v0.4.0 (the weather), a Claude Code run on the Mac. |
+| `V050.md`, `V053.md`, `V060.md` | The briefs for v0.5.0 (the warehouse), v0.5.3 (the airframe from parts) and v0.6.0 (East Asia), Claude Code runs on the Mac. |
 | `PLAN.md` | The design: Shane's decisions (final) and how each part is built. The spec for everything. |
 | `STATUS.md` | The progress log. Append a checkpoint after every step, and read it after any context compaction. |
 | `ROADMAP.md` | Milestones M1–M3 with a Done column, and the future additions. |
@@ -55,7 +56,8 @@ The Games project doc `claude/flight-sim-prototype.md` lives on claude.ai, where
 - **v0.4.4** (2026-11-13, the same Cowork session, about 30 minutes before v0.5.0's run): Hide panels at the top left (`panelsBox` in `ui/hud.js`, `hidePanels` in the settings); the view switch stays at the top right (`placeViews()`: a smaller font, then just under the top row with that side's panels below it; never the bottom centre); the aurora undulates (`aurora()` in `world/sky.js`: a swaying azimuth, edge ripples, shapes that evolve, breathing arcs); the Boeings' main legs pivot inside the wing (`mainPivotZ` in `widebody-specs.js`, 0.45 m higher); the A321's setup limits from `sim/a321neo.js`.
 - **v0.4.3** (2026-11-13, the same Cowork session): Shane's findings from testing v0.4. The Boeings' wing bend goes on after the skinning (`setWingFlex()`'s shader in `widebody.js`), so slats and flaps rise with the bent wing, and the engines ride it as one piece (`bendY`, the Builder's fifth argument in `aircraft.js`), so the fans stay centred; a fan case, a full fan face and a back disc on all three types' engines (no light through the cowl); the 777's elevator and stabiliser power from its tail volume (`CM` in `sim/b777-300er.js`) and a 2.2°/s pitch-rate cap in auto-trim's path mode (`PATH_Q_MAX` in `sim/fbw-boeing.js`), so it settles as the 787; and the aurora on every clear night (`aurora()` in `world/sky.js`).
 - **Update 5 closed** with v0.5.8 (2026-11-19; Shane: "the biggest update yet"): v0.5.0 to v0.5.8.
-- **Next:** v0.6.0 (East Asia), planned with Shane first, then built (`HANDOFF.md`'s first section was brought up to date for it on 2026-11-19; `ROADMAP.md`'s "Found while building" lists hold Update 5's leftovers), taken from start to finish by a new session; `HANDOFF.md`'s first section is its handoff. `ROADMAP.md`'s "The long term" (Shane, 2026-11-10: MSFS, KSP and Besiege) has the plan after it, to v0.18.0.
+- **v0.6.0** (2026-11-19 to 20, a Claude Code run in two sittings, 15:15–17:15 and 17:46–01:30 KST, briefed by `V060.md` after Shane settled it with the Cowork session that morning; reviewed and written up by that session): East Asia. Korea's map frame grown to 29–40° N, 119–142° E at 250 m with 1 km land round it (`src/world/region.js`: the region, the flags `EAST_ASIA_ON`, `CITIES_ON`, `GROUND_ON`, on by default, `?eastasia=0&cities=0` is v0.5.8's Korea pixel for pixel); the terrain in 128 km tiles (`src/world/tilestore.js`, `heightfield.js` over it, the loader's waits, the worker by chunk, the GPU's clip window); eight new airports (`data/airports/`, `tools/bake_region_airports.py`, built near the camera in slices: `airport-set.js`, `airport-worker.js`; the region's taxi rules in `ground/taxi.js` and `ground/gate-flow.js`); each country's rules (`src/world/geo-rules.js`, `data/country.*`, `data/magvar.*`: WMM2025 outside `south-korea.poly`, the sky and the wind turned by the convergence, inHg in Japan, China's metres, local time, each country's METAR); each country's city mix, nine centres of real buildings (`centres.js`, `data/centres/`) and nineteen landmarks (`landmarks.js`); the new countryside from WorldCover's land cover (`finecover.js`, `rural.js`). The golden flights exact over Korea's tiles and the region's; 1200 unit tests. `data/` 153 MB.
+- **Next:** v0.6.1, the overnight list in v0.6.0's hand-over (a Claude Code run, 2026-11-20 until 08:00 KST: the small waters' edges, fewer triangles, the airports' charts, greenhouse models, Korea's taxi-in, the coast file's seam, headless scripts), reviewed and written up by the same Cowork session, which then rewrites `HANDOFF.md`'s first section for v0.7.0 (the regions, and Europe). `ROADMAP.md`'s "The long term" has the plan after it, to v0.18.0.
 
 ## Versions, Updates.md and pushing
 

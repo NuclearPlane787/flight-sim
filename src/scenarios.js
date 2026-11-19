@@ -7,6 +7,7 @@
 // full, and the game goes on without it.
 
 import { TYPES, DEFAULT_TYPE } from './sim/types.js';
+import { afternoonIn, zoneOfIcao, localTimeOn } from './clock.js';
 
 export const PREFIX = 'gamedump:flight-sim:';
 export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, type, summary: { route, where, design?, designId?, phase?, … (flightPart) }, legacy? }]
@@ -91,6 +92,12 @@ export function newId(now = Date.now()) {
 export function afternoonKst(now = Date.now()) {
   const k = new Date(now + 9 * 3600e3);
   return Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate(), 15 - 9);
+}
+
+// v0.6.0: 15:00 at the departure, on its own day: with the region on, in the zone of the airport `icao` (clock.js's
+// zoneOfIcao(): 15:00 CST at Pudong is 16:00 KST); off, afternoonKst() exactly.
+export function afternoonAt(now = Date.now(), icao) {
+  return localTimeOn() ? afternoonIn(now, zoneOfIcao(icao)) : afternoonKst(now);
 }
 
 export class ScenarioStore {
@@ -235,7 +242,7 @@ export class ScenarioStore {
     const hasLog = this.raw(LOGBOOK_KEY) != null;
     if ((!last || typeof last !== 'object') && !hasLog) { this.put(INDEX_KEY, []); return null; }
     const plan = last && typeof last === 'object' ? last : { ...DEFAULT_PLAN, waypoints: [] };
-    const state = { v: 1, fresh: true, plan, clock: { ms: afternoonKst(now), running: true, speed: 1 } };
+    const state = { v: 1, fresh: true, plan, clock: { ms: afternoonAt(now, plan.origin), running: true, speed: 1 } };
     const where = plan.start === 'gate' ? whereText({ onGround: true, phase: 'parked', icao: plan.origin, stand: plan.stand })
       : plan.start === 'final' ? `On final to ${plan.dest}` : whereText({ onGround: true, icao: plan.origin });
     const r = this.create('Scenario 1', state, { route: routeText(plan), where }, { now, legacy: true });

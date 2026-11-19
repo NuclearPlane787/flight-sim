@@ -16,7 +16,7 @@
 // The phases: 'none' → 'parked' → 'pushback' → 'taxi' → 'departed' (lined up or airborne);
 // after landing 'taxi-in' → 'arrived'.
 
-import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, standGeo, lineBehind, pushMinBack, planPushback } from './taxi.js';
+import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, standGeo, lineBehind, pushMinBack, planPushback, regionRules } from './taxi.js';
 import { createPushback, pushbackPoses } from './pushback.js';
 import { createTaxiRoute } from '../world/taxiroute.js';
 import * as A321_GEO from '../geometry.js';
@@ -30,8 +30,28 @@ const dist = (ax, ay, bx, by) => Math.hypot(bx - ax, by - ay);
 // typeDef, only the stands that type can use (taxi.js standsFor).
 export function standList(airport, typeDef = null) {
   const num = (r) => { const m = String(r).match(/\d+/); return m ? Number(m[0]) : 1e9; };
+  // v0.6.0: at the region's airports the stands the bake numbered itself (R1, R2…, where OSM has no number) come after
+  // the real numbers, gates first in each, so "R12" doesn't sit between "12" and "13". Korea's lists stay as they were.
+  const ours = regionRules(airport) ? (s) => (/^R\d+$/.test(s.ref) ? 1 : 0) : () => 0;
   return standsFor(airport, typeDef).filter((s) => s.ref).slice().sort((a, b) =>
-    (b.gate - a.gate) || (num(a.ref) - num(b.ref)) || String(a.ref).localeCompare(String(b.ref)));
+    (ours(a) - ours(b)) || (b.gate - a.gate) || (num(a.ref) - num(b.ref)) || String(a.ref).localeCompare(String(b.ref)));
+}
+
+// The metres of a route that run along a runway: legs on a runway's pavement within 20 degrees of
+// its direction (crossing one squarely counts nothing).
+export function alongRunwayM(graph, points) {
+  let m = 0;
+  for (let k = 1; k < points.length; k++) {
+    const [ax, ay] = points[k - 1], [bx, by] = points[k], L = Math.hypot(bx - ax, by - ay);
+    if (L < 1) continue;
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    for (const r of graph.rects) {
+      const sa = (mx - r.ax) * r.ux + (my - r.ay) * r.uy, c = -(mx - r.ax) * r.uy + (my - r.ay) * r.ux;
+      if (sa < 0 || sa > r.len || Math.abs(c) > r.half) continue;
+      if (Math.abs(((bx - ax) * r.ux + (by - ay) * r.uy) / L) > 0.9397) m += L;
+    }
+  }
+  return m;
 }
 
 export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = null, uniforms = null, heightAt = null, occupied = null } = {}) {
@@ -354,11 +374,24 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     for (const e of g.edges) {
       if (e.dead || e.axis || e.runway !== rect.id) continue;
       const A = g.nodes[e.a], B = g.nodes[e.b];
-      const I = A.runway === rect.id ? A : B.runway === rect.id ? B : null;
-      const O = I === A ? B : A;
+      let I = A.runway === rect.id ? A : B.runway === rect.id ? B : null;
+      let O = I === A ? B : A;
+      if (!I && g.region && !A.runway && !B.runway) {
+        // v0.6.0, the region's airports: most of their taxiways aren't joined to the runway's
+        // centreline in the map data (they stop at its edge or cross it), so a landing on Qingdao 34
+        // or Kansai 24R found no exit at all. Such an edge is an exit too: off the runway at the
+        // end farther from the centreline, leaving the centreline abeam its nearer end.
+        const off = (n) => -(n.x - rect.ax) * rect.uy + (n.y - rect.ay) * rect.ux;
+        const near = Math.abs(off(A)) <= Math.abs(off(B)) ? A : B;
+        O = near === A ? B : A;
+        if (Math.abs(off(O)) < rect.half + 5 || Math.abs(off(near)) > rect.half + 40) continue;   // it must really leave, from beside the runway
+        const sa = (near.x - rect.ax) * rect.ux + (near.y - rect.ay) * rect.uy;
+        if (sa < 0 || sa > rect.len) continue;
+        I = { x: rect.ax + rect.ux * sa, y: rect.ay + rect.uy * sa, runway: rect.id };
+      }
       if (!I || O.runway) continue;
       const ahead = dir * ((I.x - rect.ax) * rect.ux + (I.y - rect.ay) * rect.uy - s0);
-      const back = dir * ((O.x - I.x) * rect.ux + (O.y - I.y) * rect.uy) / (e.lengthM || 1);
+      const back = dir * ((O.x - I.x) * rect.ux + (O.y - I.y) * rect.uy) / (I === A || I === B ? e.lengthM || 1 : Math.hypot(O.x - I.x, O.y - I.y) || 1);   // (a joined exit: v0.5.8's arithmetic)
       if (ahead < -10 || ahead > 3500 || back < -0.3) continue;
       exits.push({ I, O, ahead });
     }
@@ -369,10 +402,23 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       // stands to choose from: if all are taken, one of them gets freed (traffic.setPlayerStand).
       const fits = usable(ap), pool = fits.length ? { stands: fits } : ap;
       const at = [ex.O.x, ex.O.y];
-      const st = freeStand(pool, occupied ? occupied(ap.icao) : [], at) || (fits === ap.stands ? null : freeStand(pool, [], at));
-      const r = st && routeToStand(g, [ex.O.x, ex.O.y], st);
+      let st = freeStand(pool, occupied ? occupied(ap.icao) : [], at) || (fits === ap.stands ? null : freeStand(pool, [], at));
+      let r = st && routeToStand(g, [ex.O.x, ex.O.y], st);
+      if (!r && st && g.region) {
+        // v0.6.0, the region's airports: the nearest free stand can sit on a piece of the map's
+        // taxiways that nothing joins (Hongqiao's stand 64 from runway 18R). Then the next
+        // nearest, a few times, before this exit is given up.
+        const skip = new Set(occupied ? occupied(ap.icao) : []);
+        for (let k = 0; k < 8 && !r && st; k++) {
+          skip.add(st.ref);
+          st = freeStand(pool, skip, at);
+          r = st && routeToStand(g, [ex.O.x, ex.O.y], st);
+        }
+      }
       if (!r) continue;
-      const total = ex.ahead + r.lengthM;
+      // v0.6.0, the region's airports: an exit whose route then runs back along a runway (the
+      // map's graph allows it, at a cost) loses to one a little further on that doesn't.
+      const total = ex.ahead + r.lengthM + (g.region ? 5 * alongRunwayM(g, r.points) : 0);
       if (!best || total < best.total) best = { total, ex, r, st };
     }
     if (!best) { lastTry = [x, y]; say('No taxi route to a stand found'); return null; }
@@ -385,7 +431,15 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     const points = pts.filter((p, i) => i === 0 || dist(p[0], p[1], pts[i - 1][0], pts[i - 1][1]) > 0.5);
     let lengthM = 0;
     for (let i = 1; i < points.length; i++) lengthM += dist(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]);
-    const out = { kind: 'in', points, refs: r.refs, crossings: r.crossings, lengthM, stand: st.ref, standXY: [st.x, st.y], exit: [ex.O.x, ex.O.y] };
+    // v0.6.0, the region's airports: the exit's own edge carries the tag of the runway being left,
+    // which read as "crossing 16/34" after a landing on 34. The landing runway is only a crossing
+    // if the route comes back onto its pavement.
+    let crossings = r.crossings;
+    if (g.region && crossings && crossings.includes(rect.id)) {
+      const onIt = ([px, py]) => { const sa = (px - rect.ax) * rect.ux + (py - rect.ay) * rect.uy, c = -(px - rect.ax) * rect.uy + (py - rect.ay) * rect.ux; return sa > 0 && sa < rect.len && Math.abs(c) < rect.half; };
+      if (!r.points.slice(1).some(onIt)) crossings = crossings.filter((c) => c !== rect.id);
+    }
+    const out = { kind: 'in', points, refs: r.refs, crossings, lengthM, stand: st.ref, standXY: [st.x, st.y], exit: [ex.O.x, ex.O.y] };
     out.text = taxiText(out, `stand ${st.ref}`);
     stand = st;
     phase = 'taxi-in';

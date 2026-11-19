@@ -71,7 +71,7 @@ const COUNT = { 'a321-overwing': 4, '777-trijet': 5, '787-eight': 8 };
 (async () => {
   const rkss = JSON.parse(require('fs').readFileSync(__dirname + '/../../data/airports/RKSS.json', 'utf8'));
   const e0 = rkss.runways[0].ends[0];
-  const browser = await chromium.launch({ args: ARGS });
+  const browser = await chromium.launch({ args: ['--mute-audio'],  args: ARGS });
   let bad = 0;
   for (const [tag, d] of Object.entries(DESIGNS)) {
     const page = await open(browser, ROOT + 'flight-sim/', '?test&origin=RKSS&dep=14R&dest=RKPC&start=runway&design=' + encodeURIComponent(JSON.stringify(d)));

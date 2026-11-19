@@ -14,6 +14,7 @@
 
 import { typeName, altText, PHASES } from '../scenarios.js';
 import { designName as liveDesignName } from '../designs-store.js';
+import { eastAsiaOn } from '../world/region.js';
 
 const str = (v) => (v == null || v === '' ? null : String(v));
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -71,6 +72,15 @@ export function shortPlace(name) {
   return s || null;
 }
 
+// v0.6.0: a text with its airports' codes named (the Load list's "Parked at ZSPD stand 112" → "Parked at Pudong stand
+// 112", "FL350, 120 nm to RJTT" → "FL350, 120 nm to Haneda"), with the region on; off, the text as it is (v0.5.8). Only
+// codes place() knows are named; anything else stays.
+export function placeText(text, place) {
+  const t = String(text ?? '');
+  if (!eastAsiaOn() || typeof place !== 'function') return t;
+  return t.replace(/\b[A-Z]{4}\b/g, (code) => { let n = null; try { n = place(code) || null; } catch { n = null; } return n || code; });
+}
+
 const nmText = (nm) => `${Math.round(nm).toLocaleString('en-US')} nm`;
 
 export function flightCard(entry, { place, designName = liveDesignName } = {}) {
@@ -79,7 +89,9 @@ export function flightCard(entry, { place, designName = liveDesignName } = {}) {
   const f = readFlight(s);
   const named = (code) => { let n = null; try { n = place?.(code) || null; } catch { n = null; } return n || code; };
   const at = f.at ? ` at ${named(f.at)}` : '';
-  const route = [f.origin && { value: f.origin, label: 'From' }, f.dest && { value: f.dest, label: 'To' }].filter(Boolean);
+  // v0.6.0: with the region on, the From and To stats name the airports too ("Gimpo", "Haneda"); off, the codes (v0.5.8)
+  const stat = (code) => (eastAsiaOn() ? named(code) : code);
+  const route = [f.origin && { value: stat(f.origin), label: 'From' }, f.dest && { value: stat(f.dest), label: 'To' }].filter(Boolean);
   // v0.5.8: the design by its id, as it's named now (the stored name once it's deleted)
   let live = null;
   if (s.design) { try { live = designName?.(s.designId, s.design) || null; } catch { live = null; } }
@@ -95,7 +107,7 @@ export function flightCard(entry, { place, designName = liveDesignName } = {}) {
       card.title = f.final && f.dest ? `On final to ${named(f.dest)}` : f.dest ? `En route to ${named(f.dest)}` : 'In the air';
       const alt = f.alt != null ? { value: altText(f.alt), label: f.alt >= 18000 ? 'Flight level' : 'Altitude' } : null;
       const far = f.distNm != null ? { value: nmText(f.distNm), label: 'Remaining' } : null;
-      if (alt || far) card.stats = [alt || (f.origin && { value: f.origin, label: 'From' }), far || (f.dest && { value: f.dest, label: 'To' })].filter(Boolean);
+      if (alt || far) card.stats = [alt || (f.origin && { value: stat(f.origin), label: 'From' }), far || (f.dest && { value: stat(f.dest), label: 'To' })].filter(Boolean);
       break;
     }
     case 'parked': card.title = f.at ? `At ${named(f.at)}${f.stand ? `, stand ${f.stand}` : ''}` : 'Parked'; break;

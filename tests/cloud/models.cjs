@@ -60,7 +60,7 @@ function doorShotsFor(t) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const pick = (env, all) => (process.env[env] ? process.env[env].split(',') : all);
   const sets = pick('SETS', ['landing', 'clean', 'doors']);
   for (const id of pick('TYPES', Object.keys(TYPES))) {

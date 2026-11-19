@@ -135,6 +135,9 @@
 .fsui-seg button[disabled] { color: #5d6c78; cursor: not-allowed; }
 .fsui-seg button small { color: #8a9097; margin-left: 4px; }
 .fsui-mini { width: 300px; height: 300px; background: #070b10; border: 1px solid #2b3238; border-radius: 8px; display: block; cursor: pointer; }
+/* v0.6.0 (the region on): the filter beside a long stand list */
+.fsui-dlg input.fsui-stand-find { width: 110px; font: 14px var(--font); color: #f0f0f0; background: #0a0e11;
+  border: 1px solid #44505a; border-radius: 5px; padding: 6px 8px; }
 .fsui-mini-help { font-size: 12px; color: #8a9097; margin-top: 6px; }
 .fsui-weights { font-size: 13px; line-height: 1.6; color: #c9ced2; background: #0a0e11; border: 1px solid #2b3238; border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
 .fsui-weights b { color: #3cff4e; font-weight: 600; }
@@ -182,3 +185,12 @@ button.fsui-tc:hover { border-color: #5d6c78; }
 .fsui-mcp .fsui-btn:active { background: #3a4045; }
 .fsui-mcp .fsui-light { width: 2.2em; height: 0.3em; flex: none; }
 .fsui-mcp .fsui-btn.arm .fsui-light { background: #f2f2f2; box-shadow: 0 0 5px #f2f2f2; }
+
+/* v0.6.0 (the region's flag on): the BARO's unit, IN or HPA, the selected one bright (the FCU's outer ring, the
+   EFIS selector), and METRIC ALT / MTRS. Two lines in the button, so it isn't wider than STD. */
+.fsui-btn.fsui-unit { min-width: 3em; }
+.fsui-unit span { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.fsui-unit b { font-weight: 500; color: #8f989f; font-size: 0.9em; }
+.fsui-unit[data-u="in"] .fsui-u-in, .fsui-unit[data-u="hpa"] .fsui-u-hpa { color: #fff; font-weight: 700; }
+.fsui-unit .fsui-light { display: none; }
+.fsui-btn.fsui-metric { min-width: 3.6em; font-size: 0.66em; text-align: center; line-height: 1.05; }

@@ -22,6 +22,7 @@ import {
 } from './apron-geom.js';
 import { RUNWAY_SHOULDER_M } from './runways.js';
 import { buildTaxiGraph, holdingPointFor } from '../ground/taxi.js';
+import { sliceTimer, awaitPrep } from './airport-set.js';
 
 const CENTRE_STEP = 30, BEND_STEP = 15, EDGE_STEP = 60, BAR_STEP = 3;
 const BEND_DEG = 8;              // heading change over ±15 m that counts as a bend
@@ -78,6 +79,13 @@ function thinner(minD) {
 }
 
 export function taxiLightLayout(airport, hf = null) {
+  const gen = taxiLightLayoutInSteps(airport, hf);
+  for (;;) { const r = gen.next(); if (r.done) return r.value; }
+}
+
+// v0.6.0: the same in slices (a generator that yields after the centrelines and after the edges and
+// returns the layout), for the airports built near the camera (world.js).
+export function* taxiLightLayoutInSteps(airport, hf = null, tick = sliceTimer()) {
   const lines = runwayLines(airport);
   const taxiways = (airport.taxiways || []).filter((t) => t.points && t.points.length >= 2);
   const index = segmentIndex(taxiways);
@@ -106,24 +114,33 @@ export function taxiLightLayout(airport, hf = null) {
       last = p[i].s;
       put(p[i].x, p[i].y, 'green', 'centre');
     }
+    if (tick()) yield 'centre';
   }
+  yield 'centre';
 
   // Edges: the paint's edge lines (inset 0.6 m), pushed out to the pavement's edge.
   const keepE = thinner(20);
   const aprons = dedupePolys(airport.aprons || []);
-  for (const e of taxiwayEdges({ ...airport, taxiways }, index, aprons)) {
+  const edges = taxiwayEdges({ ...airport, taxiways }, index, aprons);
+  yield 'edges found';
+  for (const e of edges) {
     for (const q of walk(e, EDGE_STEP)) {
       if (onRunway(lines, q.x, q.y, 8)) continue;
       if (!keepE(q.x, q.y)) continue;
       put(q.x, q.y, 'blue', 'edge');
     }
+    if (tick()) yield 'edges';
   }
+  yield 'edges';
 
   // Stop bars: across the taxiway 0.6 m short of each runway hold-short, facing the holding
   // side. Then, where the taxi graph's departure hold for a runway end (where the aircraft
   // stops, taxi.js) has no bar within 40 m, one there too.
   const sites = holdShortSites({ ...airport, taxiways }, index).filter((h) => h.pattern === 'A');
-  for (const h of departureHolds(airport, lines)) {
+  yield 'holds found';
+  const deps = departureHolds(airport, lines);
+  yield 'departure holds';
+  for (const h of deps) {
     if (!sites.some((q) => Math.hypot(q.x - h.x, q.y - h.y) < 40)) sites.push({ ...h, graph: true });
   }
   for (const h of sites) {
@@ -247,12 +264,29 @@ const TAXI_FRAG = /* glsl */ `
   }`;
 
 export function createTaxiLights(scene, uniforms, chunks, airports, hf = null) {
+  const gen = taxiLightsInSteps(scene, uniforms, chunks, airports, hf);
+  for (;;) { const r = gen.next(); if (r.done) return r.value; }
+}
+
+// v0.6.0: createTaxiLights in slices (see taxiLightLayoutInSteps); the group joins the scene at the end.
+// pre: the airports' preparation from the worker (airport-set.js awaitPrep: the layout without heights), or null.
+export function* taxiLightsInSteps(scene, uniforms, chunks, airports, hf = null, pre = null) {
   const group = new THREE.Group();
   group.name = 'taxi-lights';
   const sets = [];
   for (const a of airports || []) {
     if (!a || !a.taxiways) continue;
-    const L = taxiLightLayout(a, hf);
+    const prep = yield* awaitPrep(pre, a.icao);
+    let L;
+    if (prep) {
+      // The heights as the layout gives them (its z()), added here, where the heightfield is.
+      L = prep.lights;
+      const tick = sliceTimer();
+      for (const l of L) {
+        if (hf) l.z = hf.heightAt(l.x, l.y) + 0.25;
+        if (tick()) yield 'heights';
+      }
+    } else L = yield* taxiLightLayoutInSteps(a, hf);
     for (const m of floodMasts(a)) {
       // Two lamps on each mast's head.
       const g = hf ? hf.heightAt(m.x, m.y) : a.elevM || 0;
@@ -287,6 +321,7 @@ export function createTaxiLights(scene, uniforms, chunks, airports, hf = null) {
     pts.visible = false;
     group.add(pts);
     sets.push({ icao: a.icao, pts, u, ox, oy, box: [x0, y0, x1, y1], count: L.length });
+    yield 'lights';
   }
   scene.add(group);
 

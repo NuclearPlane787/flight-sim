@@ -1,0 +1,20 @@
+{
+  "what": "South Korea's mask for the local rules' blend: the distance outside south-korea.poly (Geofabrik's boundary of Korea's OSM extract), from tools/bake_krmask.py",
+  "type": "uint8",
+  "rowOrder": "south first",
+  "sampling": "cell-centred: value (i, j) is at x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell",
+  "encoding": "q = clip(floor((d - marginM) / unitM), 0, 255), d the distance (m) outside the poly, 0 inside",
+  "blend": "w = smoothstep(min(bilinear(q) * unitM / bandM, 1)); w = 1 outside the raster; w is exactly 0 everywhere inside the poly (marginM exceeds cell * sqrt(2))",
+  "file": "krmask.u8.gz",
+  "frame": "src/world/frame.js map metres",
+  "marginM": 3000.0,
+  "unitM": 200.0,
+  "bandM": 47000.0,
+  "x0": -460000.0,
+  "y0": -460000.0,
+  "cell": 2000.0,
+  "nx": 476,
+  "ny": 460,
+  "insideCells": 80904,
+  "zeroCells": 82898
+}

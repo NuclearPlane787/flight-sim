@@ -25,7 +25,7 @@ const FT = 3.28084, KT = 1.943844, DEG = Math.PI / 180;
 
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 
 async function open(query) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

@@ -171,11 +171,21 @@ function simplify(pts, tol) {
 // Coastline with levels of detail: rings as Float64Arrays plus bounding boxes,
 // at tolerances 0, 400 m, 1.5 km and 6 km. Pick with lod(metresPerPixel).
 const TOLS = [0, 400, 1500, 6000];
+// The HUD (both NDs), the path map and the setup each build the same file: built once (v0.6.0).
+const built = new WeakMap();
 export function buildCoast(coast) {
+  if (coast && typeof coast === 'object') {
+    let b = built.get(coast);
+    if (!b) { b = coast.v === 2 ? buildRegionCoast(coast) : buildKoreaCoast(coast); built.set(coast, b); }
+    return b;
+  }
+  return buildKoreaCoast(coast);
+}
+function buildKoreaCoast(coast, tols = TOLS) {
   const prep = (rings) => (rings || []).map((r) => {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of r) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    const levels = TOLS.map((t) => {
+    const levels = tols.map((t) => {
       const s = t ? simplify(r, t) : r;
       const f = new Float64Array(s.length * 2);
       s.forEach((p, i) => { f[2 * i] = p[0]; f[2 * i + 1] = p[1]; });
@@ -201,6 +211,118 @@ export function traceRings(ctx, rings, lod, box, tf, minSize = 0) {
     for (let i = 2; i < f.length; i += 2) { tf(f[i], f[i + 1], p); ctx.lineTo(p[0], p[1]); }
     ctx.closePath();
   }
+}
+
+// ---- v0.6.0: the region's coast (data/coast-region.json, tools/bake_region_coast.py) ----
+// Six levels baked at 80 m, 200 m, 400 m, 800 m, 1.5 km and 6 km, each cut into square cells
+// (64, 64, 128, 128 and 256 km; the last whole) so a frame traces only the cells in its box and
+// never all of Honshu. The pieces are exact cuts: the land fills even-odd without seams (traceLand), and the
+// coastline is every edge of a piece except those on its cell's edge (traceCoastLines).
+// `land` keeps traceRings() working (the setup's mini map): each piece carries only its own
+// level's points, so traceRings(land, lod) draws that level alone.
+const NONE = new Float64Array(0);
+function buildRegionCoast(coast) {
+  const [ex0, ey0, ex1, ey1] = coast.extent;
+  const land = [], nl = (coast.levels || []).length;
+  const levels = (coast.levels || []).map((L, li) => {
+    const cell = L.cell, nx = Math.max(1, Math.ceil((ex1 - ex0) / cell)), ny = Math.max(1, Math.ceil((ey1 - ey0) / cell));
+    const cells = Array.from({ length: nx * ny }, () => []);
+    for (const r of L.rings) {
+      const ci = r[0], cj = r[1], n = (r.length - 3) >> 1;
+      if (n < 3 || ci < 0 || cj < 0 || ci >= nx || cj >= ny) continue;
+      const f = new Float64Array(n * 2);
+      let x = 0, y = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0; i < n; i++) {
+        x += r[3 + 2 * i]; y += r[4 + 2 * i]; f[2 * i] = x; f[2 * i + 1] = y;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+      const levelsOf = new Array(nl).fill(NONE); levelsOf[li] = f;
+      const ring = {
+        x0, y0, x1, y1, size: r[2], levels: levelsOf, f,
+        cx0: Math.max(ex0, ex0 + ci * cell), cy0: Math.max(ey0, ey0 + cj * cell),
+        cx1: Math.min(ex1, ex0 + (ci + 1) * cell), cy1: Math.min(ey1, ey0 + (cj + 1) * cell),
+      };
+      cells[cj * nx + ci].push(ring);
+      land.push(ring);
+    }
+    return { tol: L.tol, cell, nx, ny, cells };
+  });
+  const tols = levels.map((L) => L.tol);
+  // The inland water, delta coded, at the same levels (simplified here, as Korea's).
+  const rings = (coast.water || []).map((r) => {
+    const out = []; let x = 0, y = 0;
+    for (let i = 0; i + 1 < r.length; i += 2) { x += r[i]; y += r[i + 1]; out.push([x, y]); }
+    return out;
+  });
+  const water = buildKoreaCoast({ water: rings }, tols.map((t, i) => (i ? t : 0))).water;
+  return {
+    region: true, extent: { x0: ex0, y0: ey0, x1: ex1, y1: ey1 }, levels, land, water,
+    // As Korea's: the coarsest level whose tolerance is at most 1.5 px.
+    lod(mPerPx) { const want = mPerPx * 1.5; let l = 0; for (let i = 0; i < tols.length; i++) if (tols[i] <= want) l = i; return l; },
+  };
+}
+
+// The region's pieces of level `lod` in the cells under `box`, as fn(ring) calls.
+function eachPiece(b, lod, box, minSize, fn) {
+  const L = b.levels[Math.min(lod, b.levels.length - 1)];
+  if (!L) return;
+  const e = b.extent;
+  const i0 = Math.max(0, Math.floor((box.x0 - e.x0) / L.cell)), i1 = Math.min(L.nx - 1, Math.floor((box.x1 - e.x0) / L.cell));
+  const j0 = Math.max(0, Math.floor((box.y0 - e.y0) / L.cell)), j1 = Math.min(L.ny - 1, Math.floor((box.y1 - e.y0) / L.cell));
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      for (const r of L.cells[j * L.nx + i]) {
+        if (r.x1 < box.x0 || r.x0 > box.x1 || r.y1 < box.y0 || r.y0 > box.y1 || r.size < minSize) continue;
+        fn(r);
+      }
+    }
+  }
+}
+
+// The map box (AABB) of a screen rectangle round the aircraft on a heading-up display: u right and
+// w up of the aircraft's symbol, in px; k px per metre; (ch, sh) the heading's cos and sin. The
+// region's NDs draw only what this box holds, the part of the arc on the screen.
+export function screenBox(px, py, ch, sh, k, u0, u1, w0, w1) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const u of [u0, u1]) for (const w of [w0, w1]) {
+    const x = px + (u * ch + w * sh) / k, y = py + (-u * sh + w * ch) / k;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+// The land to fill (even-odd) into the current path: the region's cells in view, or Korea's rings.
+export function traceLand(ctx, b, lod, box, tf, minSize = 0) {
+  if (!b.region) { traceRings(ctx, b.land, lod, box, tf, minSize); return; }
+  const p = [0, 0];
+  eachPiece(b, lod, box, minSize, (r) => {
+    const f = r.f;
+    tf(f[0], f[1], p); ctx.moveTo(p[0], p[1]);
+    for (let i = 2; i < f.length; i += 2) { tf(f[i], f[i + 1], p); ctx.lineTo(p[0], p[1]); }
+    ctx.closePath();
+  });
+}
+
+// True when the edge (ax, ay)-(bx, by) lies on its piece's cell edge (a cut, not the coast).
+export const onCellEdge = (r, ax, ay, bx, by) =>
+  (ax === bx && (ax === r.cx0 || ax === r.cx1)) || (ay === by && (ay === r.cy0 || ay === r.cy1));
+
+// The coastline to stroke into the current path: the region's pieces less their cut edges, or,
+// for Korea's file, its rings as traceRings draws them.
+export function traceCoastLines(ctx, b, lod, box, tf, minSize = 0) {
+  if (!b.region) { traceRings(ctx, b.land, lod, box, tf, minSize); return; }
+  const p = [0, 0];
+  eachPiece(b, lod, box, minSize, (r) => {
+    const f = r.f, n = f.length >> 1;
+    let pen = false;
+    for (let i = 0; i < n; i++) {
+      const j = i + 1 < n ? i + 1 : 0;
+      const ax = f[2 * i], ay = f[2 * i + 1], bx = f[2 * j], by = f[2 * j + 1];
+      if (onCellEdge(r, ax, ay, bx, by)) { pen = false; continue; }
+      if (!pen) { tf(ax, ay, p); ctx.moveTo(p[0], p[1]); pen = true; }
+      tf(bx, by, p); ctx.lineTo(p[0], p[1]);
+    }
+  });
 }
 
 // Change detection: returns true when any number differs by more than its epsilon.
