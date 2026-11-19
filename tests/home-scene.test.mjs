@@ -1,9 +1,11 @@
 // v0.5.7: the home page scene's geometry and timing (src/ui/home-scene.js), without a page: the skyline's fit and
 // tiles, the route's curve and its even-speed table, where the plane is (shrinking into each dot, gone a moment,
-// back the other way), the dashes' flow, and where the boarding pass and the suitcase float.
+// back the other way), the dashes' flow, and where the boarding pass and the suitcase float. v0.5.8: the suitcase on
+// the pass's side of the path, the ground band's top on the ground line, the prints below and right of the path.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { skylineFit, routeCurve, bezier, curveTable, planeAt, dashTravel, freeArea, floaterSpots, PLANE, BACKDROPS, DEFAULT_BACKDROP } from '../src/ui/home-scene.js';
+import { skylineFit, routeCurve, bezier, curveTable, planeAt, dashTravel, freeArea, floaterSpots, PLANE, BACKDROPS, DEFAULT_BACKDROP,
+  groundLineUp, PRINT, PRINT_SLOTS, PRINT_SIZES, printHeight, printSpots, printOverlap, PHOTOS } from '../src/ui/home-scene.js';
 import { SKYLINE, ICONS } from '../src/ui/line-art.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} vs ${b} (±${tol})`);
@@ -103,8 +105,13 @@ test('the dashes flow with the plane: forwards out, back on the way back, easing
   near(dashTravel(-1), dashTravel(period - 1), 1e-9, 'any time');
 });
 
-test('the free area keeps clear of the title and the skyline; the floaters sit either side of the path, clear of it', () => {
-  for (const [w, h, headBottom, groundTop] of [[680, 700, 176, 516], [794, 720, 175, 530], [893, 900, 205, 662], [1190, 1080, 260, 801], [1587, 1440, 343, 1166]]) {
+// The scene's sizes the checks use: [w, h, headBottom, groundTop] (from the page at 1100×700 to 2560×1440).
+const SCENES = [[680, 700, 176, 516], [794, 720, 175, 530], [893, 900, 205, 662], [1190, 1080, 260, 801], [1587, 1440, 343, 1166]];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const yOnPath = (t, x) => { let best = null; for (let i = 0; i <= 400; i++) { const p = t.at(i / 400); if (!best || Math.abs(p.x - x) < Math.abs(best.x - x)) best = p; } return best.y; };
+
+test('the free area keeps clear of the title and the skyline; v0.5.8: both floaters left of (above) the path, clear of it', () => {
+  for (const [w, h, headBottom, groundTop] of SCENES) {
     const box = freeArea({ w, h, headBottom, groundTop, padX: 0.062 * w });
     assert.ok(box.y0 > headBottom && box.y1 < groundTop && box.x0 > 0 && box.x1 < w, `${w}×${h}: the free area`);
     const c = routeCurve(box), t = curveTable(c);
@@ -113,14 +120,75 @@ test('the free area keeps clear of the title and the skyline; the floaters sit e
       assert.ok(f.x >= box.x0 - 1e-9 && f.y >= box.y0 - 1e-9 && f.x + f.w <= box.x1 + 1e-9 && f.y + f.h <= box.y1 + 1e-9, `${w}×${h}: the ${k} inside the free area`);
       for (let i = 0; i <= 100; i++) {
         const p = t.at(i / 100);
-        assert.ok(!(p.x > f.x - 4 && p.x < f.x + f.w + 4 && p.y > f.y - 4 && p.y < f.y + f.h + 4), `${w}×${h}: the path clear of the ${k}`);
+        const m = k === 'case' ? 24 : 4;   // (the pass where v0.5.7 put it; the suitcase well clear)
+        assert.ok(!(p.x > f.x - m && p.x < f.x + f.w + m && p.y > f.y - m && p.y < f.y + f.h + m), `${w}×${h}: the path clear of the ${k} (${m} px)`);
       }
+      // Left of the path: above it where the path runs under it, and its lower right corner above the path too.
+      assert.ok(f.y + f.h < yOnPath(t, f.x + f.w / 2), `${w}×${h}: the ${k} above (left of) the path`);
+      assert.ok(f.y + f.h < yOnPath(t, f.x + f.w), `${w}×${h}: the ${k}'s lower right corner above the path`);
     }
-    // Either side: the path's height at the floater's middle.
-    const yAt = (x) => { let best = null; for (let i = 0; i <= 400; i++) { const p = t.at(i / 400); if (!best || Math.abs(p.x - x) < Math.abs(best.x - x)) best = p; } return best.y; };
-    assert.ok(s.pass.y + s.pass.h < yAt(s.pass.x + s.pass.w / 2), `${w}×${h}: the boarding pass above (left of) the path`);
-    assert.ok(s.case.y > yAt(s.case.x + s.case.w / 2), `${w}×${h}: the suitcase below it`);
+    // The suitcase further along than the pass, and apart from it (their bob and drift: 18 px).
+    assert.ok(s.case.x > s.pass.x + s.pass.w / 2, `${w}×${h}: the suitcase beyond the pass`);
+    const apart = s.case.x > s.pass.x + s.pass.w + 18 || s.case.y + s.case.h + 18 < s.pass.y;
+    assert.ok(apart, `${w}×${h}: the pass and the suitcase apart`);
     near(s.pass.h / s.pass.w, ICONS.boardingPass.h / ICONS.boardingPass.w, 1e-9, 'the pass keeps its shape');
     near(s.case.w / s.case.h, ICONS.suitcase.w / ICONS.suitcase.h, 1e-9, 'the suitcase keeps its shape');
   }
+});
+
+test('v0.5.8: the ground band starts on the skyline\'s ground line', () => {
+  for (const h of [500, 700, 900, 1080, 1440]) {
+    const f = skylineFit(1000, h);
+    near(groundLineUp(f), (SKYLINE.height - SKYLINE.baseline) * f.height / SKYLINE.height, 1e-9, `${h}: the line's height over the tape's bottom`);
+    assert.ok(groundLineUp(f) > 2 && groundLineUp(f) < 10, `${h}: a few px (${groundLineUp(f).toFixed(2)})`);
+  }
+  assert.ok(SKYLINE.paths[0].startsWith(`M0 ${SKYLINE.baseline}H`), 'the first path is the ground line, at the baseline');
+});
+
+test('v0.5.8: the prints: a 3:2 photo in a white border, thicker at the bottom', () => {
+  near(printHeight(200), 200 * (PRINT.side + (1 - 2 * PRINT.side) / PRINT.aspect + PRINT.bottom), 1e-9);
+  assert.ok(PRINT.bottom > PRINT.side, 'the bottom edge thicker');
+  assert.equal(PHOTOS.length, PRINT_SLOTS.length);
+  // v0.5.8: each print has a short caption for its bottom edge.
+  for (const p of PHOTOS) assert.ok(typeof p.caption === 'string' && p.caption.length > 0 && p.caption.length <= 24, p.caption);
+  const rots = PRINT_SLOTS.map((s) => s.rot);
+  assert.equal(new Set(rots.map((r) => Math.sign(r))).size, 2, 'tilted both ways');
+  for (const r of rots) assert.ok(Math.abs(r) >= 1.5 && Math.abs(r) <= 8, `a few degrees (${r})`);
+  assert.equal(new Set(rots).size, rots.length, 'each its own tilt');
+});
+
+test('v0.5.8: the prints lie below and right of the path, clear of it and its dots, inside the free area, overlapping a little', () => {
+  for (const [w, h, headBottom, groundTop] of SCENES) {
+    const box = freeArea({ w, h, headBottom, groundTop, padX: 0.062 * w });
+    const c = routeCurve(box), t = curveTable(c);
+    const planePx = clamp(0.042 * w, 34, 64), clear = planePx * 0.5 + 12, pw = clamp(0.17 * w, 120, 290);
+    const P = printSpots(box, c, { w: pw, clear });
+    assert.ok(P.length >= 2 && P.length <= 3, `${w}×${h}: ${P.length} prints`);
+    assert.deepEqual(P.slice(0, 2).map((p) => p.slot), [0, 1], `${w}×${h}: the two along the bottom always`);
+    const floaters = floaterSpots(box, c, { passW: Math.min(230, Math.max(120, 0.15 * w)), caseH: Math.min(120, Math.max(64, 0.09 * w)) });
+    for (const p of P) {
+      const a = p.aabb;
+      assert.ok(a.l >= box.x0 - 1e-9 && a.t >= box.y0 - 1e-9 && a.r <= box.x1 + 1e-9 && a.b <= box.y1 + 1e-9, `${w}×${h}: print ${p.slot} (tilted, drifting) inside the free area`);
+      // The path and its dots (and rings, r 9) clear of the tilted print's box by the plane's half-size and more.
+      let gap = Infinity;
+      for (let i = 0; i <= 400; i++) { const q = t.at(i / 400); gap = Math.min(gap, Math.hypot(Math.max(0, a.l - q.x, q.x - a.r), Math.max(0, a.t - q.y, q.y - a.b))); }
+      assert.ok(gap >= clear - 1e-6 && gap >= 9 + 8, `${w}×${h}: print ${p.slot} ${gap.toFixed(1)} px off the path (≥ ${clear.toFixed(1)})`);
+      for (const d of [c[0], c[3]]) assert.ok(d.x < a.l - 17 || d.x > a.r + 17 || d.y < a.t - 17 || d.y > a.b + 17, `${w}×${h}: print ${p.slot} clear of the dots`);
+      assert.ok(p.cy > yOnPath(t, p.cx), `${w}×${h}: print ${p.slot} below (right of) the path`);
+      assert.ok(PRINT_SIZES.some((k) => Math.abs(p.w - k * pw) < 1e-9) && Math.abs(p.h - printHeight(p.w)) < 1e-9, `its size (${p.w.toFixed(0)} of ${pw.toFixed(0)})`);
+      for (const f of Object.values(floaters)) assert.ok(f.x + f.w < a.l || f.x > a.r || f.y + f.h < a.t || f.y > a.b, `${w}×${h}: print ${p.slot} apart from the floaters`);
+    }
+    // Overlapping a little: each touches another, by a modest share of its area; the first two by 5–35 %.
+    near(printOverlap(P[0], P[1]), printOverlap(P[0], P[1]), 0);
+    const o01 = printOverlap(P[0], P[1]);
+    assert.ok(o01 >= 0.05 && o01 <= 0.35, `${w}×${h}: prints 0 and 1 overlap ${(o01 * 100).toFixed(0)} %`);
+    for (const p of P) {
+      const best = Math.max(...P.filter((q) => q !== p).map((q) => printOverlap(p, q)));
+      assert.ok(best >= 0.03 && best <= 0.25 + 1e-9, `${w}×${h}: print ${p.slot} overlaps another a little (${(best * 100).toFixed(0)} %)`);
+    }
+  }
+  // A small free area: the third is left out rather than cover the path.
+  const small = { x0: 40, y0: 200, x1: 600, y1: 380 };
+  const P = printSpots(small, routeCurve(small), { w: 120, clear: 29 });
+  assert.ok(P.length <= 2, `a small area: ${P.length} prints`);
 });

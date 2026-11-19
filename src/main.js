@@ -16,13 +16,13 @@ import * as store from './store.js';
 import { createGateFlow } from './ground/gate-flow.js';
 import { standHeading } from './world/traffic-layout.js';
 import { VERSION } from './version.js';
-import { ScenarioStore, whereText, flightFields, legacyId } from './scenarios.js';
+import { ScenarioStore, whereText, flightFields, legacyId, renamedState } from './scenarios.js';
 import { createMenu, createSettingsPage, createControlsPage } from './ui/menu.js';
 import { shortPlace } from './ui/home-card.js';
 import { createClock, afternoonOf } from './clock.js';
 import { typeById, DEFAULT_TYPE, TYPE_LIST } from './sim/types.js';
 import { loadKeys, saveKeys, resolveKeys, scopeOf, keysFrom, engineSlots, keyNamesOf } from './keys.js';
-import { designStore } from './designs-store.js';
+import { designStore, designName } from './designs-store.js';
 import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
@@ -476,19 +476,24 @@ async function boot() {
       stand: gate.phase === 'arrived' ? (gate.route?.stand ?? gate.stand?.ref) : (gate.phase === 'parked' ? (gate.stand?.ref ?? plan.stand) : null), crashed: !!crashed };
     return {
       route: `${plan.origin}–${plan.dest}`,
-      ...(sim.design ? { design: sim.design.name, designId: sim.design.id } : {}),   // v0.5.0: the Load list names the design; v0.5.4: and its id, for a rename
+      ...(sim.design ? { design: designNameNow(), designId: sim.design.id } : {}),   // v0.5.0: the Load list names the design; v0.5.4: and its id, for a rename (v0.5.8: the name as it is now)
       where: whereText({ ...at, destIcao: plan.dest }),
       // v0.5.7: the same as fields, for the home page's card (ui/home-card.js): the phase, the altitude, the distance left
       ...flightFields({ ...at, origin: plan.origin, dest: plan.dest, landed }),
     };
   }
+  // v0.5.8: the design flown, named as it is now (src/designs-store.js's designName(), by its id): renamed in the
+  // warehouse while this flight was in memory, its saves and log entries carry the new name (its own copy's once the
+  // design is deleted).
+  const designNameNow = () => (sim.design ? designName(sim.design.id, sim.design.name) : null);
   function captureState() {
-    return {
+    const st = {
       v: 1, plan: { ...plan, waypoints: (map.waypoints || plan.waypoints || []).map((p) => [Math.round(p[0]), Math.round(p[1])]) },
       sim: sim.snapshot(), gate: gate.serialize(),
       flight: { landed, arrivalStand, arrivalIcao: arrivalStand ? nearAirport(sim.state)?.icao ?? null : null, liftoffT, fuelAtStart, lever: input.lever },
       scorer: scorer.serialize(endRefs.identify), camera: rig.serialize(), clock: clock.serialize(),
     };
+    return sim.design ? renamedState(st, sim.design.id, designNameNow()) : st;   // v0.5.8: only the copies' names
   }
   // Never a crashed state: a crash leaves the last good save.
   function saveNow(reason = '') {
@@ -862,7 +867,8 @@ async function boot() {
 
   const scoreCard = createScorePanel(ui.score, { onnewflight: () => { ui.crash.hidden = true; crashed = false; newFlight(); } });
   const logbook = createLogbook($('logbook-root'), { load: store.load, save: store.save, onclose: () => { if (!inMenu) input.setEnabled(true); } });
-  const scenarioList = () => (scenarios ? scenarios.list().map((e) => ({ id: e.id, name: e.name })) : []);
+  // v0.5.8: with each one's design (its id and stored name), for the logbook's entries written without a designId
+  const scenarioList = () => (scenarios ? scenarios.list().map((e) => ({ id: e.id, name: e.name, ...(e.summary?.designId ? { designId: e.summary.designId, design: e.summary.design } : {}) })) : []);
   const legacy = () => (scenarios ? legacyId(scenarios.list()) : null);
   function openLogbook(scoped) {
     input.setEnabled(false);
@@ -1030,7 +1036,7 @@ async function boot() {
     });
     store.addLogEntry({
       date: new Date().toISOString(), version: VERSION.number, type: sim.type.id,
-      ...(sim.design ? { design: sim.design.name, designId: sim.design.id, engines: sim.type.engineName } : {}),   // v0.5.0
+      ...(sim.design ? { design: designNameNow(), designId: sim.design.id, engines: sim.type.engineName } : {}),   // v0.5.0; v0.5.8: the logbook names it by designId, live, and `design` (the name now) once it's deleted
       ...(current ? { scenarioId: current.id, scenarioName: current.name } : { scenarioId: 'unsaved', scenarioName: 'Unsaved flights' }), route: `${plan.origin}–${arr ? arr.icao : plan.dest}`,
       depRunway: plan.start === 'runway' ? plan.depRunway : null, arrRunway: le ? le.end.ident : null, gate: plan.start === 'gate' ? plan.stand ?? null : null,
       airTimeS: liftoffT !== null ? Math.round(res.touchdown.t - liftoffT) : null,

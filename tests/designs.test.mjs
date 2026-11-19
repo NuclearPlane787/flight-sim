@@ -182,11 +182,17 @@ test('a pylon at 2× thrust gives way at take-off thrust; its mass leaves and th
   assert.ok(s.engines[i].off && s.engines[i].thrustN === 0 && s.engines[i].ffKgS === 0);
   assert.ok(Math.abs(mass0 - s.mass - def.data.ENGINE_MASS_KG) < 5, `the engine's mass left: ${mass0 - s.mass}`);
   // The pilot pulls the levers back at once (the others' pylons hold a little more), to about two thirds of the
-  // thrust (a Boeing's lever: thrust ∝ lever²), holds the speed, and lets the yaw be.
+  // thrust (a Boeing's lever: thrust ∝ lever²), holds the speed, and (v0.5.8: the laws no longer cancel a thrust
+  // asymmetry by themselves) keeps the sideslip and the bank in hand with rudder and wheel, gently enough that the
+  // aircraft still yaws towards the dead side.
   c.thrust = 0.8;
   const hdg0 = s.hdg, deadLeft = def.geo.ENGINES[i].y > 0;
+  const holdYaw = () => {
+    c.yaw = Math.max(-1, Math.min(1, 4 * s.beta));
+    c.roll = Math.max(-1, Math.min(1, -0.1 * s.roll / DEG - 0.05 * s.p / DEG));
+  };
   for (let k = 0; k < 120 * 20; k++) {
-    holdSpeed();
+    holdSpeed(); holdYaw();
     sim.step(DT);
     sim.events.length = 0;
     assert.equal(s.crashed, null);

@@ -15,6 +15,15 @@
 //   store.remove(id)             → true if it was there and the list was rewritten without it
 //   onDesignRename(fn)           → off()   v0.5.4: fn(id, name, store) after a saved design's name changes (rename(), or
 //                                          a save() of it under a new name: the editor's name then Save)
+//   store.names()                → Map id → name (v0.5.8; read again only when the stored list changes)
+//   store.nameOf(id, fallback?)  → the design's name now, by its id; `fallback` (the name a scenario, a log entry or a
+//                                  saved copy carries) only when no stored design has that id (deleted, or storage off)
+//   designName(id, fallback?)    → the same, from the page's store
+//
+// v0.5.8 (Shane: "when I change the name in the warehouse, all appearances of that name in the game should
+// automatically update"): a design's name is a live reference. Everything that shows one (the home page's card, Load
+// scenario, the logbook, the setup's cards, the flight's saves and log entries) asks designName() by the design's id
+// at the moment it's shown, and the name stored beside the id is only what shows once the design is deleted.
 
 import { normalizeDesign, newDesign, isDesign } from './sim/designs.js';
 import { TYPES } from './sim/types.js';
@@ -33,6 +42,7 @@ export function onDesignRename(fn) {
 function told(id, name, store) {
   for (const fn of [...renameListeners]) { try { fn(id, name, store); } catch (err) { console.error(err); } }
 }
+let namesMemo = { raw: undefined, names: new Map() };   // v0.5.8: names()'s, by the stored text
 
 export class DesignStore {
   constructor(storage) { this.s = storage || null; }
@@ -41,9 +51,9 @@ export class DesignStore {
   put(list) { try { if (!this.s) return false; this.s.setItem(DESIGNS_KEY, JSON.stringify(list)); return true; } catch { return false; } }
 
   // The stored list, normalized; anything that isn't a design (or repeats an id) is dropped.
-  list() {
+  list(raw = this.raw()) {
     let a;
-    try { a = JSON.parse(this.raw() || '[]'); } catch { a = []; }
+    try { a = JSON.parse(raw || '[]'); } catch { a = []; }
     if (!Array.isArray(a)) return [];
     const seen = new Set(), out = [];
     for (const d of a) {
@@ -54,6 +64,18 @@ export class DesignStore {
     return out;
   }
   get(id) { return this.list().find((d) => d.id === id) || null; }
+
+  // v0.5.8: the names by id, as list() normalizes them. A pure function of the stored text, so it's kept while that
+  // text stays the same (any store's: the same text gives the same names), and a list of rows asks it cheaply.
+  names() {
+    const raw = this.raw();
+    if (raw !== namesMemo.raw) namesMemo = { raw, names: new Map(this.list(raw).map((d) => [d.id, d.name])) };
+    return namesMemo.names;
+  }
+  nameOf(id, fallback = null) {
+    const n = id != null && id !== '' ? this.names().get(String(id)) : undefined;
+    return n ?? (fallback == null || fallback === '' ? null : String(fallback));
+  }
 
   save(design) {
     const d = normalizeDesign(design);
@@ -113,3 +135,7 @@ export function designStore() {
   try { s = globalThis.localStorage || null; } catch { s = null; }
   return new DesignStore(s);
 }
+
+// v0.5.8: a design's name now, from the page's store (see the header): the stored design's with id `id`, else
+// `fallback`, else null.
+export const designName = (id, fallback = null) => designStore().nameOf(id, fallback);

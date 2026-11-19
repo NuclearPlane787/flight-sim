@@ -13,7 +13,7 @@
 // Body axes: x forward, y right, z down; p roll right +, q pitch up +, r yaw right +.
 
 import { RHO0 } from './atmosphere.js';
-import { gainFor } from './fbw.js';
+import { gainFor, asymmetryInto } from './fbw.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -68,6 +68,7 @@ export function createFbwBoeing(A) {
   // v0.4.2: with auto-trim, a held trim switch moves the path held at this rate (the flare's attitude
   // at twice it), a finer control than W/S.
   const TRIM_PATH_RATE = 0.5 * DEG;
+  const asy = { beta: 0, r: 0, p: 0 };   // v0.5.8: asymmetryInto()'s, each step
   // v0.4.3: auto-trim's most pitch rate in the landing configuration's path mode, hand flown (not in the flare or a
   // go-around). A held key asked for 3.5°/s of path, the nose ran at 4°/s, and stopping it when the key came up took
   // the elevator to its rate limit: the 777 (the heavier, with less elevator for its inertia) went on 2.8° past the
@@ -236,13 +237,17 @@ export function createFbwBoeing(A) {
     let uLaw = sr, protBank = false;
     const aphi = Math.abs(E.phi), sgn = E.phi >= 0 ? 1 : -1;
     if (w > 0) {
+      // v0.5.8: a thrust asymmetry's sideslip, yaw rate and dihedral roll, left to the pilot (fbw.js's asymmetryInto()).
+      // These wheels command the roll surfaces, so that roll is let through: the wheel's rate, and the bank held hands
+      // off, move at asy.p (all 0 with the thrust symmetric), and the pilot's wheel or, better, rudder stops it.
+      asymmetryInto(asy, A, E, V, G * sphi / V);
       protBank = aphi > BANK_TRIP && !E.apOn;
       let pCmd;
       if (E.apOn && Math.abs(sr) < 0.04) {
         pCmd = clamp(0.6 * (E.apBank - E.phi), -5 * DEG, 5 * DEG);
         X.rollLatched = false; X.boBankBack = false;
       } else if (Math.abs(sr) > 0.04) {
-        pCmd = sr * A.ROLL_RATE_MAX;
+        pCmd = sr * A.ROLL_RATE_MAX + asy.p;
         if (aphi > BANK_TRIP) {
           if (pCmd * sgn > 0) pCmd *= BANK_WHEEL;
           pCmd -= sgn * BANK_K * (aphi - BANK_BACK);
@@ -255,7 +260,16 @@ export function createFbwBoeing(A) {
           X.phiRef = sgn * BANK_BACK;
           if (aphi < BANK_BACK + 0.5 * DEG) X.boBankBack = false;
           pCmd = clamp(BANK_K * 2 * (X.phiRef - E.phi), -A.ROLL_RATE_MAX, A.ROLL_RATE_MAX);
-        } else pCmd = clamp(1.0 * (X.phiRef - E.phi), -A.ROLL_RATE_MAX, A.ROLL_RATE_MAX);
+        } else {
+          // v0.5.8: the bank held drifts with the asymmetry's roll. Outwards it fades over the 4° before 1° inside the
+          // protection's edge (34°), where it holds, so the bank doesn't overshoot into the protection's roll back.
+          let ff = 0;
+          if (asy.p !== 0) {
+            const k = asy.p * X.phiRef >= 0 ? clamp((BANK_TRIP - DEG - Math.abs(X.phiRef)) / (4 * DEG), 0, 1) : 1;
+            ff = k * asy.p; X.phiRef += ff * dt;
+          }
+          pCmd = clamp(1.0 * (X.phiRef - E.phi) + ff, -A.ROLL_RATE_MAX, A.ROLL_RATE_MAX);
+        }
       }
       const pdotCmd = 4.0 * (pCmd - E.p);
       const lNeed = E.Ixx * pdotCmd + (E.Izz - E.Iyy) * E.q * E.r - E.Ixz * E.p * E.q;
@@ -269,7 +283,7 @@ export function createFbwBoeing(A) {
     if (w > 0) {
       const rTurn = G * sphi / V;
       const kr = Math.min(1.2, 40 / V) * K_YAW;
-      rud += w * (-kr * (E.r - rTurn) + 0.8 * K_YAW * E.beta);
+      rud += w * (-kr * (E.r - rTurn - asy.r) + 0.8 * K_YAW * (E.beta - asy.beta));   // v0.5.8: asy as fbw.js
     }
     X.rudCmd = clamp(rud, -rudLim, rudLim);
 

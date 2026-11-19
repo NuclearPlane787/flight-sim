@@ -20,10 +20,16 @@
 // A log entry (main.js → showScore): { date (ISO), route 'RKSS–RKPC', depRunway, arrRunway,
 //   gate, airTimeS, fuelUsedKg, score: { points, grade, parts }, scenarioId, scenarioName, type }.
 //   Any field may be missing. `type` (v0.3.0) is the aircraft's id; without one it was the A321neo.
+//   v0.5.0: a design's flight also has { design (its name then), designId, engines }.
+// v0.5.8: a design's name is shown as it is now (designLabel(): by the entry's designId, or for an entry without one
+//   its scenario's), from createLogbook's `designName(id, fallback)` (src/designs-store.js's by default); the name the
+//   entry was written with shows only once the design is deleted. open()'s `scenarios` may carry each one's
+//   { designId, design } (its Load list summary's) for that.
 // The pure helpers are exported for the node tests.
 
 import { esc, gradeColor, partsHtml, verdict } from './score-panel.js';
 import { typeName } from '../scenarios.js';
+import { designName as liveDesignName } from '../designs-store.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -137,6 +143,28 @@ export function scenarioOptions(log, scenarios, legacyId = null) {
   return out;
 }
 
+// ---- The design's name (v0.5.8) ----
+
+// The id of the design an entry flew: its own designId, else (an entry written without one) its scenario's, since a
+// scenario keeps its aircraft; null for a type's flight, or when neither is known (it keeps the name it carries).
+export function designIdOf(entry, scenario = null) {
+  if (!entry || !entry.design) return null;
+  if (entry.designId != null && entry.designId !== '') return String(entry.designId);
+  return scenario && scenario.designId != null && scenario.designId !== '' ? String(scenario.designId) : null;
+}
+
+// The design's name for an entry's row: as it's named now (nameOf(id, fallback) → the name, or the fallback once the
+// design is gone), else the name its scenario last stored for it (renamed with it until it was deleted), else the
+// entry's own. null for a type's flight.
+export function designLabel(entry, { scenario = null, nameOf = null } = {}) {
+  if (!entry || !entry.design) return null;
+  const id = designIdOf(entry, scenario);
+  const stored = (id && scenario && String(scenario.designId ?? '') === id && scenario.design) || entry.design;
+  let now = null;
+  if (id && typeof nameOf === 'function') { try { now = nameOf(id, null); } catch { now = null; } }
+  return String(now || stored);
+}
+
 // v0.4.0: the wind at touchdown, with its crosswind and head or tailwind parts. A flight from before v0.4.0, or a calm one: —.
 function windCell(w) {
   if (!w || !(w.kt >= 1)) return '—';
@@ -148,7 +176,7 @@ function windCell(w) {
   return `${dir}°/${Math.round(w.kt)}${gust} kt${bits.length ? `<small>${bits.join(' · ')}</small>` : ''}`;
 }
 
-export function createLogbook(root, { load, save, onclose } = {}) {
+export function createLogbook(root, { load, save, onclose, designName = liveDesignName } = {}) {
   const el = document.createElement('div');
   el.className = 'fslb';
   el.hidden = true;
@@ -191,6 +219,9 @@ export function createLogbook(root, { load, save, onclose } = {}) {
   el.addEventListener('click', (e) => { if (e.target === el) close(); }); // the backdrop
 
   const nameOf = (id) => options.find((o) => o.id === id)?.name ?? LEGACY_NAME;
+  // v0.5.8: an entry's design, named as it is now
+  const scenarioById = (id) => (Array.isArray(lastScenarios) ? lastScenarios.find((s) => s && s.id === id) : null) || null;
+  const designOf = (e) => designLabel(e, { scenario: scenarioById(scenarioOf(e, legacyId)), nameOf: designName });
   const shownRows = () => newestFirst(log).filter(({ e }) => e && (sel == null || scenarioOf(e, legacyId) === sel));
 
   function renderTotals() {
@@ -228,7 +259,7 @@ export function createLogbook(root, { load, save, onclose } = {}) {
       return `<div class="fslb-row${on ? ' on' : ''}" data-i="${i}">
           <span class="date">${esc(d.day)}<small>${esc(d.time)}</small></span>
           <span class="route">${esc(e.route || '—')}${names ? `<small class="sc">${esc(nameOf(scenarioOf(e, legacyId)))}</small>` : ''}</span>
-          <span class="type">${e.design ? `${esc(e.design)} <small>${esc(typeName(e.type))}${e.engines ? ' · ' + esc(e.engines) : ''}</small>` : esc(typeName(e.type))}${e.indestructible ? '<small>Indestructible</small>' : ''}</span>
+          <span class="type">${e.design ? `${esc(designOf(e))} <small>${esc(typeName(e.type))}${e.engines ? ' · ' + esc(e.engines) : ''}</small>` : esc(typeName(e.type))}${e.indestructible ? '<small>Indestructible</small>' : ''}</span>
           <span class="rwy">${rwys}${e.gate ? `<small>Gate ${esc(e.gate)}</small>` : ''}</span>
           <span class="num">${fmtDuration(e.airTimeS)}</span>
           <span class="num">${fmtKg(e.fuelUsedKg)}</span>

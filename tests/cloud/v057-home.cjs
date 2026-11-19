@@ -91,7 +91,8 @@ const SIZES = [[1440, 900], [1280, 720], [1920, 1080], [1100, 700], [2560, 1440]
     ok(!overlap(L.pass, L.case, bob), `${tag}: the boarding pass and the suitcase apart`);
     const yp = curveYAt(L.pts, (L.pass.l + L.pass.r) / 2), yc = curveYAt(L.pts, (L.case.l + L.case.r) / 2);
     ok(yp == null || L.pass.b < yp, `${tag}: the boarding pass to the left of (above) the path`);
-    ok(yc == null || L.case.t > yc, `${tag}: the suitcase below the path`);
+    // (v0.5.8 moved the suitcase to the boarding pass's side, above the path: v058-home.cjs checks the rest of v0.5.8.)
+    ok(yc == null || L.case.b < yc, `${tag}: the suitcase above the path (v0.5.8)`);
     ok(L.ground.l <= L.scene.l + 0.5 && L.ground.r >= L.scene.r - 0.5, `${tag}: the skyline's strip spans the scene (${Math.round(L.ground.l)}–${Math.round(L.ground.r)})`);
     ok(L.version.t >= L.ground.b - 1 && L.version.l < L.scene.l + 140, `${tag}: the version at the bottom left, under the ground line`);
     const st = await scene();

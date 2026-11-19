@@ -14,6 +14,7 @@
 .fsh-art, .fsh-art > * { position: absolute; pointer-events: none; }
 .fsh-art { inset: 0; }
 .fsh-stars, .fsh-route { inset: 0; overflow: visible; }
+.fsh-tw { bottom: auto; height: 50%; }   /* (home-scene.js's TW_H) */
 .fsh-route { will-change: transform; }   /* its own layer: the plane's and the dashes' repaints stay off the sky */
 .fsh-stars { display: none; }
 .fsm-head { position: absolute; z-index: 2; left: var(--pad-x); top: clamp(44px, 10.5cqh, 150px); max-width: calc(100% - 2 * var(--pad-x)); }
@@ -32,8 +33,85 @@
 .fsh-float .fsh-drift, .fsh-float .fsh-bob, .fsh-icon { width: 100%; height: 100%; display: block; }
 .fsh-icon { overflow: visible; }
 .fsh-ground { left: 0; right: 0; bottom: var(--ground-gap); height: var(--sky-h); overflow: hidden; color: rgba(255, 255, 255, 0.88); }
-/* Under the ground line: the ground, darker than the sky, so the city stands on it and the version reads there. */
-.fsh-earth { left: 0; right: 0; bottom: 0; height: var(--ground-gap); background: linear-gradient(180deg, rgba(5, 9, 22, 0.5), rgba(5, 9, 22, 0.7)); }
+/* Under the ground line: the ground, darker than the sky, so the city stands on it and the version reads there.
+   v0.5.8: its top edge is the ground line itself (the skyline's baseline sits --line-up above the tape's bottom;
+   home-scene.js sets it from the skyline's scale), at every size. */
+.fsh-earth { left: 0; right: 0; bottom: 0; height: calc(var(--ground-gap) + var(--line-up, 0px));
+  background: linear-gradient(180deg, rgba(5, 9, 22, 0.5), rgba(5, 9, 22, 0.7)); }
+
+/* v0.5.8: the prints, snapshots tossed below and right of the path: a 3:2 photo in a white border, thicker at the
+   bottom, each tilted its own way (--rot, from home-scene.js's PRINT_SLOTS), a soft shadow, drifting very slightly.
+   The shadow, the border and the photo are painted once into the drift's layer; only its transform moves. */
+.fsh-print[hidden] { display: none; }
+.fsh-print .fsh-print-drift { width: 100%; height: 100%; }
+.fsh-print-card { box-sizing: border-box; width: 100%; height: 100%; padding: var(--edge, 6px) var(--edge, 6px) var(--edge-b, 18px);
+  background: linear-gradient(160deg, #fbf9f4, #ece7dc); border-radius: 2px; transform: rotate(var(--rot, 0deg));
+  box-shadow: 0 10px 24px rgba(2, 5, 16, 0.42), 0 2px 5px rgba(2, 5, 16, 0.3); }
+.fsh-print-card img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #1a2436; }
+/* v0.5.8: the caption, as if written on the print's bottom edge in pen. */
+.fsh-print-card { position: relative; }
+.fsh-print-cap { position: absolute; left: var(--edge, 6px); right: var(--edge, 6px); bottom: 0; height: var(--edge-b, 18px); margin: 0;
+  display: block; line-height: var(--edge-b, 18px); text-align: left; padding-left: 0.3em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-family: 'Barlow', system-ui, sans-serif; font-style: italic; font-weight: 500; font-size: max(9px, calc(var(--edge-b, 18px) * 0.4)); letter-spacing: 0.02em; color: #34465e; }
+/* The upper print lies on top, so the prints overlap each other's photos and every caption shows. */
+.fsh-print.p0 { z-index: 2; } .fsh-print.p1 { z-index: 1; } .fsh-print.p2 { z-index: 3; }
+.fsh-print.p0 .fsh-print-drift { animation: fsh-print-a 21s ease-in-out -4s infinite; }
+.fsh-print.p1 .fsh-print-drift { animation: fsh-print-b 26s ease-in-out -11s infinite; }
+.fsh-print.p2 .fsh-print-drift { animation: fsh-print-c 17s ease-in-out -7s infinite; }
+@keyframes fsh-print-a { 0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); } 50% { transform: translate3d(-3px, 2px, 0) rotate(0.6deg); } }
+@keyframes fsh-print-b { 0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); } 50% { transform: translate3d(3px, -2px, 0) rotate(-0.5deg); } }
+@keyframes fsh-print-c { 0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); } 50% { transform: translate3d(2px, 3px, 0) rotate(0.5deg); } }
+
+/* v0.5.8: the aurora, after the game's own (world/sky.js): curtains with a sharp lower edge, a violet fringe on it,
+   green above fading up into red and magenta tops, fine vertical rays (two masks of incommensurate stripes, and the
+   ends faded). All static gradients, painted once; each curtain drifts (its outer layer's transform) and shimmers
+   (its inner layer's opacity and a slow stretch from the lower edge). Behind the title (z-index: the head's 2). */
+.fsh-aurora { inset: 0; overflow: hidden; opacity: var(--au, 0.8); }
+.fsh-au { position: absolute; }
+.fsh-au-drift, .fsh-au-in { width: 100%; height: 100%; }
+.fsh-au-drift { will-change: transform; }
+.fsh-au-in { transform-origin: 50% 100%;
+  background:
+    radial-gradient(ellipse 72% 150% at 42% -52%, transparent 0%, transparent 44%, rgba(204, 26, 92, 0) 47%, rgba(214, 34, 110, 0.26) 62%,
+      rgba(150, 120, 120, 0.15) 72%, rgba(41, 255, 120, 0.24) 82%, rgba(90, 255, 160, 0.55) 93%, rgba(128, 60, 230, 0.34) 96.5%, transparent 99%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 74%, transparent 100%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.6) 0px, #000 9px, rgba(0, 0, 0, 0.76) 17px, rgba(0, 0, 0, 0.95) 26px, rgba(0, 0, 0, 0.6) 41px),
+    repeating-linear-gradient(90deg, #000 0px, rgba(0, 0, 0, 0.66) 13px, #000 29px, rgba(0, 0, 0, 0.8) 52px, #000 73px);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 74%, transparent 100%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.6) 0px, #000 9px, rgba(0, 0, 0, 0.76) 17px, rgba(0, 0, 0, 0.95) 26px, rgba(0, 0, 0, 0.6) 41px),
+    repeating-linear-gradient(90deg, #000 0px, rgba(0, 0, 0, 0.66) 13px, #000 29px, rgba(0, 0, 0, 0.8) 52px, #000 73px);
+  mask-composite: intersect; }
+/* Three arcs: the main one across the upper middle, a higher redder one to the right, a faint low one behind the title. */
+.fsh-au.a0 { left: 18%; width: 96%; top: -3%; height: 35%; }
+.fsh-au.a1 { left: 46%; width: 74%; top: -9%; height: 30%; opacity: 0.8; }
+.fsh-au.a1 .fsh-au-in { background:
+  radial-gradient(ellipse 70% 150% at 52% -55%, transparent 0%, transparent 40%, rgba(204, 26, 92, 0) 44%, rgba(220, 40, 120, 0.36) 62%,
+    rgba(160, 110, 130, 0.14) 74%, rgba(41, 255, 120, 0.22) 84%, rgba(90, 255, 160, 0.5) 94%, rgba(128, 60, 230, 0.3) 97%, transparent 99.5%); }
+.fsh-au.a2 { left: -16%; width: 70%; top: 1%; height: 28%; opacity: 0.45; }
+.fsh-au.a0 .fsh-au-drift { animation: fsh-au-drift-a 58s ease-in-out -13s infinite; }
+.fsh-au.a1 .fsh-au-drift { animation: fsh-au-drift-b 71s ease-in-out -40s infinite; }
+.fsh-au.a2 .fsh-au-drift { animation: fsh-au-drift-a 83s ease-in-out -29s infinite reverse; }
+.fsh-au.a0 .fsh-au-in { animation: fsh-au-shimmer 9.5s ease-in-out -2s infinite; }
+.fsh-au.a1 .fsh-au-in { animation: fsh-au-shimmer 12.5s ease-in-out -7s infinite; }
+.fsh-au.a2 .fsh-au-in { animation: fsh-au-shimmer 15s ease-in-out -4s infinite; }
+@keyframes fsh-au-drift-a { 0%, 100% { transform: translate3d(-4%, 0, 0); } 50% { transform: translate3d(5%, 2%, 0); } }
+@keyframes fsh-au-drift-b { 0%, 100% { transform: translate3d(3%, 1%, 0); } 50% { transform: translate3d(-5%, -1%, 0); } }
+@keyframes fsh-au-shimmer { 0%, 100% { opacity: 0.62; transform: scaleY(0.93); } 30% { opacity: 1; transform: scaleY(1.04); }
+  55% { opacity: 0.74; transform: scaleY(0.97); } 80% { opacity: 0.92; transform: scaleY(1.02); } }
+/* The twinkling stars: three groups out of step, each its own layer. */
+.fsh-tw { will-change: opacity; }
+.fsh-tw.t0 { animation: fsh-tw 5.8s ease-in-out infinite; }
+.fsh-tw.t1 { animation: fsh-tw 7.9s ease-in-out -3.1s infinite; }
+.fsh-tw.t2 { animation: fsh-tw 10.3s ease-in-out -6.4s infinite; }
+@keyframes fsh-tw { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.95; } }
+.fsh-tw { opacity: 0.6; }
+
+/* Paused while the scene is still (the menu covered or hidden: home-scene.js's is-still), none with reduced motion:
+   every animation in the scene, whatever its own rule says. */
+.fsh.is-still .fsh-anim { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .fsh .fsh-anim { animation: none !important; } }
+
 .fsh-tape { position: absolute; left: 0; bottom: 0; display: block; overflow: visible; will-change: transform; }
 
 /* The motion: slow, steady, out of step (the periods differ); the tape slides one tile, left to right. Paused while the
@@ -48,8 +126,7 @@
 @keyframes fsh-bob-a { 0%, 100% { transform: translate3d(0, 0, 0) rotate(-4deg); } 50% { transform: translate3d(0, -11px, 0) rotate(2.5deg); } }
 @keyframes fsh-drift-b { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(-14px, -5px, 0); } }
 @keyframes fsh-bob-b { 0%, 100% { transform: translate3d(0, 0, 0) rotate(3deg); } 50% { transform: translate3d(0, -9px, 0) rotate(-2.5deg); } }
-.fsh.is-still .fsh-anim { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .fsh .fsh-anim { animation: none; } }
+/* (The pause and reduced motion: the !important rules after the twinkling stars, above, over every animation here.) */
 
 /* ---- The backgrounds (home-scene.js's bg-*): calm, dark, the line art crisp on them ---- */
 /* Night: deep navy, a soft lift of light behind the title, a few faint stars. */
@@ -58,6 +135,7 @@
   radial-gradient(ellipse 90% 50% at 60% 108%, rgba(40, 70, 140, 0.28), rgba(40, 70, 140, 0) 70%),
   linear-gradient(180deg, #0e1d3c 0%, #0a1631 52%, #08122a 100%); }
 .fsh.bg-night .fsh-stars { display: block; }
+.fsh.bg-night { --au: 0.88; }
 /* Dusk: navy above, deep indigo lower, a faint warm glow along the skyline, just after sunset. */
 .fsh.bg-dusk { background:
   radial-gradient(ellipse 75% 30% at 52% 100%, rgba(255, 152, 112, 0.24), rgba(255, 152, 112, 0) 72%),
@@ -65,12 +143,17 @@
   linear-gradient(180deg, #0b1633 0%, #121c43 34%, #1e1f4e 62%, #2c2356 84%, #36275a 100%); }
 .fsh.bg-dusk .fsh-stars { display: block; opacity: 0.75; }
 .fsh.bg-dusk .fsh-stars .low { display: none; }
+.fsh.bg-dusk { --au: 0.66; }
 /* Blueprint: dark slate navy with a faint drafting grid. */
 .fsh.bg-blueprint { background-color: #0f1f34; background-image:
   radial-gradient(ellipse 70% 60% at 26% 24%, rgba(86, 136, 206, 0.14), rgba(86, 136, 206, 0) 72%),
   linear-gradient(rgba(150, 196, 255, 0.085) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 196, 255, 0.085) 1px, transparent 1px),
   linear-gradient(rgba(150, 196, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 196, 255, 0.04) 1px, transparent 1px);
   background-size: 100% 100%, 120px 120px, 120px 120px, 24px 24px, 24px 24px; background-position: 0 0, -1px -1px, -1px -1px, -1px -1px, -1px -1px; }
+/* (v0.5.8: on blueprint the aurora and a few stars stay subtle.) */
+.fsh.bg-blueprint { --au: 0.26; }
+.fsh.bg-blueprint .fsh-stars { display: block; opacity: 0.45; }
+.fsh.bg-blueprint .fsh-stars .low { display: none; }
 
 /* ---- The panel ---- */
 .fsm-right { position: relative; min-width: 0; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;

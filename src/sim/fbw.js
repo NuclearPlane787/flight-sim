@@ -17,6 +17,33 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 // on its base's airframe, has no GAIN_SCALE: exactly 1, so its arithmetic is the same to the bit (x · 1 === x).
 export const gainFor = (ratio) => (ratio > 0 && Number.isFinite(ratio) ? clamp(1 / ratio, 0.5, 2) : 1);
 
+// v0.5.8: a thrust asymmetry is the pilot's to hold with the rudder (Shane, v0.5.7: "the roll and yaw deviation when I
+// remove thrust from one side is too low"). The yaw damper (on r − the turn's rate, with no washout) and the turn
+// coordination (0.8 rad of rudder per rad of sideslip) took about half the sideslip away and held it there, a TAC
+// the A321 doesn't have. A real yaw damper is washed out (a steady yaw rate gets no rudder) and no rudder in these
+// aircraft centres a steady sideslip by itself (the A320's β target is for the pilot's feet), so the augmentation
+// now works about what the asymmetry sets up: the share of the sideslip flown, up to the one the engines' yaw moment
+// (E.nThrust) is balanced by with the rudder centred, and of the yaw rate, up to the rate that sideslip's side force
+// turns the path at, wings level. Beyond those (a Dutch roll's overshoot, a turn's adverse yaw, a gust) it damps and
+// coordinates as before; a pilot's rudder that takes the sideslip away takes the share with it, so the augmentation
+// never fights the feet. o.p is the roll rate the share's dihedral effect gives with the roll surfaces neutral (the
+// roll damping's balance; the Boeings' wheel lets it through, fbw-boeing.js). With the thrust symmetric, E.nThrust is
+// exactly 0 and all three are 0, so the laws' arithmetic is the same to the bit (x − 0 === x).
+export function asymmetryInto(o, A, E, V, rTurn) {
+  o.beta = 0; o.r = 0; o.p = 0;
+  const n = E.nThrust;
+  if (!(n !== 0 && E.qbar > 1)) return o;
+  const qS = E.qbar * A.S;
+  const bT = -n / (qS * A.SPAN * A.CN.beta);                 // the sideslip that balances it, rudder centred
+  const b = bT > 0 ? clamp(E.beta, 0, bT) : clamp(E.beta, bT, 0);
+  const rT = qS * A.CY.beta * b / (E.mass * V);               // its side force's turn rate, wings level
+  const dr = E.r - rTurn;
+  o.beta = b;
+  o.r = rT < 0 ? clamp(dr, rT, 0) : clamp(dr, 0, rT);
+  o.p = -(A.CL_ROLL.beta / A.CL_ROLL.p) * b * 2 * V / A.SPAN;
+  return o;
+}
+
 export function createFbw(A) {
   // v0.5.3, Part 3: the pitch and roll loops invert the sim's moments with the design's own control powers and
   // inertias (E.elevScale, E.rollScale, E.Iyy, E.Ixx), so they need nothing. What works in surface deflection does:
@@ -36,6 +63,7 @@ export function createFbw(A) {
   const FLARE_THETA_MAX = 7.5 * A.DEG; // highest command (tail strike is about 9.7° on the struts)
   const FLARE_LEAD = 2 * A.DEG;        // how far the command may run ahead of the attitude
   const FLARE_Q_MAX = 3.5 * A.DEG;     // pitch-rate limit in the flare
+  const asy = { beta: 0, r: 0, p: 0 }; // v0.5.8: asymmetryInto()'s, each step
 
   // X: the sim's core state (fbw fields below are kept there so snapshots include them).
   // c: controls. E: per-step environment (see sim.js). Writes X.elevCmd, X.uRoll, X.rudCmd,
@@ -215,8 +243,9 @@ export function createFbw(A) {
     if (flt > 0) {
       const rTurn = G * sphi / V;
       const kr = Math.min(1.2, 40 / V) * K_YAW;
-      let aug = -kr * (E.r - rTurn);              // yaw damper
-      if (normal) aug += 0.8 * K_YAW * E.beta;             // turn coordination
+      asymmetryInto(asy, A, E, V, rTurn);         // v0.5.8: what a thrust asymmetry sets up is left to the pilot
+      let aug = -kr * (E.r - rTurn - asy.r);      // yaw damper
+      if (normal) aug += 0.8 * K_YAW * (E.beta - asy.beta); // turn coordination
       rud += flt * aug;
     }
     X.rudCmd = clamp(rud, -rudLim, rudLim);

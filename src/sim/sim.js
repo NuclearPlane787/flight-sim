@@ -227,6 +227,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     Ixx: 1, Iyy: 1, Izz: 1, Ixz: 0, myOther: 0, lOther: 0, elevScale: 0, rollScale: 0, rudLim: 0,
     alphaMax: 0.3, vls: 0, vsw: 0, slat: 0, flap: 0, apOn: false, apGamma: 0, apBank: 0,
     fAlong: 0, mass: 1, iasDot: 0, autoTrim: false,
+    nThrust: 0,   // v0.5.8: the engines' yaw moment about the CG, N·m (exactly 0 with the thrust symmetric)
   };
   // The engines' scratch (engineStep's), and the public list, one per engine of the type.
   let eng, NE = 0;
@@ -630,20 +631,27 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const fAeroX = F[0], fAeroZ = F[2];
 
     // Thrust at the engines (along body x; a design's engines along their own lines, v0.5.2).
+    // v0.5.8: their yaw moment on its own (nThr) for the laws, which leave a thrust asymmetry to the pilot's feet. Mirrored
+    // engines with the same thrust give exactly 0 (a·T + (−a)·T), so the laws' arithmetic is then the same to the bit; with
+    // more pairs the sum's roundoff can leave ~1e-16 of their moments, so under 1e-9 of them counts as symmetric.
     const TD = typeDef.geo.THRUST_DIRS;
+    let nThr = 0, nAbs = 0;
     for (let i = 0; i < NE; i++) {
       const T = eng[i].thrustN;
       const rx = ENGINES[i].x - cgX, ry = -ENGINES[i].y, rz = -ENGINES[i].z;
       if (!TD) {
+        const n = -ry * T;
         F[0] += T;
         M[1] += rz * T;
-        M[2] += -ry * T;
+        M[2] += n; nThr += n; nAbs += Math.abs(n);
         continue;
       }
       const dr = TD[i], fx = T * dr[0], fy = -T * dr[1], fz = -T * dr[2];
+      const n = rx * fy - ry * fx;
       F[0] += fx; F[1] += fy; F[2] += fz;
-      M[0] += ry * fz - rz * fy; M[1] += rz * fx - rx * fz; M[2] += rx * fy - ry * fx;
+      M[0] += ry * fz - rz * fy; M[1] += rz * fx - rx * fz; M[2] += n; nThr += n; nAbs += Math.abs(n);
     }
+    E.nThrust = Math.abs(nThr) > 1e-9 * nAbs ? nThr : 0;
 
     // Gear (only when near the ground and the legs are down and locked).
     const wowNPrev = wowN;

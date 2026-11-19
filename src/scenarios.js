@@ -176,6 +176,9 @@ export class ScenarioStore {
   // designId) the saved state's design.id. savedAt stays, so the list keeps its order; the logbook keeps the
   // names it has. → how many scenarios were renamed (0 if none fly it; also 0 if storage refused, with
   // everything put back as it was).
+  // v0.5.8: what shows is the design's name now, by summary.designId (src/designs-store.js's designName()), so these
+  // copies are only the fallback once the design is deleted; this keeps them current, and gives a save from before
+  // v0.5.4 its summary.designId.
   renameDesign(designId, name) {
     const clean = cleanName(name);
     if (!designId || clean.length < NAME_MIN) return 0;

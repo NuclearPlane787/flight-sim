@@ -1,9 +1,10 @@
 // v0.5.7: what the home page's saved-flight card says (the main menu's Continue, ui/menu.js), from a scenario's index
 // entry. Pure (no DOM): tests/home-card.test.mjs checks every case.
 //
-//   flightCard(entry, { place }) → null | { id, kicker, title, sub, stats: [{ value, label }], action }
+//   flightCard(entry, { place, designName }) → null | { id, kicker, title, sub, stats: [{ value, label }], action }
 //     entry: a ScenarioStore index entry ({ id, name, type, summary }); place(icao) → a short place name, or null for
-//     an airport it doesn't know (the card then shows the code)
+//     an airport it doesn't know (the card then shows the code); v0.5.8: designName(id, stored) → the design's name now
+//     (src/designs-store.js's, the default: the summary's `design` only once the design with `designId` is deleted)
 //   readFlight(summary) → { phase, origin, dest, at, stand, alt, distNm, landed, final }: the summary's own fields (from
 //     v0.5.7, scenarios.js's flightFields()), else read from its `where` and `route` texts (older saves)
 //   shortPlace(name) → "Jeju" for "Jeju International Airport", "Gimpo" for "Seoul Gimpo International Airport"
@@ -12,6 +13,7 @@
 // saved today: a crash keeps the last good save; here for completeness).
 
 import { typeName, altText, PHASES } from '../scenarios.js';
+import { designName as liveDesignName } from '../designs-store.js';
 
 const str = (v) => (v == null || v === '' ? null : String(v));
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -71,14 +73,17 @@ export function shortPlace(name) {
 
 const nmText = (nm) => `${Math.round(nm).toLocaleString('en-US')} nm`;
 
-export function flightCard(entry, { place } = {}) {
+export function flightCard(entry, { place, designName = liveDesignName } = {}) {
   if (!entry || typeof entry !== 'object' || !entry.id) return null;
   const s = entry.summary && typeof entry.summary === 'object' ? entry.summary : {};
   const f = readFlight(s);
   const named = (code) => { let n = null; try { n = place?.(code) || null; } catch { n = null; } return n || code; };
   const at = f.at ? ` at ${named(f.at)}` : '';
   const route = [f.origin && { value: f.origin, label: 'From' }, f.dest && { value: f.dest, label: 'To' }].filter(Boolean);
-  const aircraft = s.design ? String(s.design) : typeName(entry.type);
+  // v0.5.8: the design by its id, as it's named now (the stored name once it's deleted)
+  let live = null;
+  if (s.design) { try { live = designName?.(s.designId, s.design) || null; } catch { live = null; } }
+  const aircraft = s.design ? String(live || s.design) : typeName(entry.type);
   const card = { id: entry.id, kicker: 'Saved flight', title: '', sub: [str(entry.name), aircraft].filter(Boolean).join(' · '), stats: route, action: 'Resume flight' };
   switch (f.phase) {
     case 'fresh':

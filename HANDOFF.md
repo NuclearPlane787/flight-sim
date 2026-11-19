@@ -2,72 +2,79 @@
 
 Read this first if you're picking the game up. Its first section is the job in hand; the rest is how the game is built and how to work on it. Then read `AGENTS.md` (the rules), `ROADMAP.md`'s "The long term" (where the game is going) and the newest entries in `STATUS.md` (what was done, with the evidence).
 
-It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run, reviewed it, and then made v0.4.1 (Shane's fixes after flying it), v0.4.2 (the list of what was already known) v0.4.3 (Shane's findings from testing v0.4) and v0.4.4, then settled v0.5.0's scope with Shane, briefed the Claude Code run that built it (2026-11-13, 03:26 to 04:10 KST), and reviewed it. That last session wrote this first section for the next one, then made v0.5.1 (the warehouse's hangar) and v0.5.2 (parts anywhere), briefed the Claude Code run that built v0.5.3 (the airframe from parts, 2026-11-15) and reviewed it.
+It was first written on 2026-10-31 by the Cowork session that made v0.1.1 to v0.1.3, and every session and run since has kept it up: the Cowork sessions that made v0.1.4, v0.2.1 and v0.2.2, the Claude Code runs that made v0.2.0, v0.3.0 and v0.4.0, the Cowork session that made v0.3.1 and v0.3.2 and set the long-term plan with Shane on 2026-11-10, and the Cowork session that settled v0.4.0's scope, briefed its run, reviewed it, and then made v0.4.1 (Shane's fixes after flying it), v0.4.2 (the list of what was already known) v0.4.3 (Shane's findings from testing v0.4) and v0.4.4, then settled v0.5.0's scope with Shane, briefed the Claude Code run that built it (2026-11-13, 03:26 to 04:10 KST), and reviewed it. That session wrote this first section's plan for v0.6.0, then made v0.5.1 (the warehouse's hangar) and v0.5.2 (parts anywhere), briefed the Claude Code run that built v0.5.3 (the airframe from parts, 2026-11-15) and reviewed it. The Cowork session after it made v0.5.4 to v0.5.8 with Shane (2026-11-16 to 19), closing Update 5, and brought this section up to date on 2026-11-19 for the session that takes v0.6.0.
 
 ## The next session: v0.6.0, East Asia, from start to finish
 
-Shane, 2026-11-10: "I would rather a new session work completely from end to end of an update." That's you:
+Shane, 2026-11-10: "I would rather a new session work completely from end to end of an update." On 2026-11-19, closing Update 5 ("I think that should close Update 5, the biggest update yet"), he asked for the handoff "for a fresh session to pick up with carefully planning and working on v0.6.0". That's you:
 
-- settle the scope with Shane;
-- get it built (most likely a Claude Code run you brief, as v0.3.0, v0.4.0 and v0.5.0 were);
-- check it;
-- write it up;
-- hand it to him to push.
+1. **Plan it with Shane before anything is built.** The questions below each have a default, so he can answer by picking options (AskUserQuestion takes up to four a call; v0.5.0's went in one call with the deadline). Then write the plan down as `V060.md` and let him read it before the run starts. v0.6.0 is the first update that grows the world, and its tiles are what every later region stands on, so the planning is worth the time.
+2. **Get it built:** most likely a Claude Code run on the Mac that you brief, as v0.3.0, v0.4.0, v0.5.0 and v0.5.3 were. The downloads and the bake need the Mac: the cloud container's network reaches package registries and GitHub, not the data's hosts, and its 2 cores and SwiftShader are too slow for the GPU checks.
+3. **Check it** against the definition of done, item by item, with your own checks on top (below).
+4. **Write it up** and hand it to him to push.
 
 Your last job is to rewrite this section for the session after you (v0.7.0 in the plan: the regions, and Europe).
 
 ### Where you start
 
-- **v0.5.6 is pushed** (`7a6cea8`), and **v0.5.7 was written up and ready to push** when this was last updated (2026-11-18, evening). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed here. If the top line isn't the last version written up, ask Shane to push it first (`sh tools/push.sh vX.Y.Z`): a run starts only from a pushed version.
-- **Passing at v0.5.7:** 995 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `v057-home` (150 checks), `v056-keys` (47), `v056-groups` (20), `weight-copy` (60), `v056-editor`, `v052-editor`, `v052-designs`, `v051-hangar`, `athr-lever` and `v057-line-art` (`STATUS.md`'s v0.5.7 entry). Not on the Mac's GPU; the Mac-only browser scripts changed for the moved keys and the new pages weren't run.
-- **Passing at v0.5.6:** 950 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `athr-lever`, `weather-final`, `route-views` (B 89), `v044-hud`, `wing-gaps`, `v051-hangar`, `v052-editor`, `v052-designs`, `weight-copy`, and the new `v056-editor` and `v056-groups` (`STATUS.md`'s v0.5.6 entry). Not on the Mac's GPU; the Mac-only browser scripts changed for the new keys weren't run.
-- **Passing at v0.5.5:** 890 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `weight-copy.cjs` (60 checks, with the menu's and the pause's new behaviour). Not on the Mac's GPU; `browser-boot.mjs` and `browser-cpu.mjs` were updated for the menu that doesn't pause but not run.
-- **Passing at v0.5.4:** 885 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `weight-copy.cjs` (with the Pause button's checks), `v051-hangar.cjs`, `v052-editor.cjs` (its Fly click now waits up to 120 s: SwiftShader takes about 34 s to start the flight) and `v044-hud.cjs` for the A321 at three widths and the 777 at 1440 (it ran out of time after that) (`STATUS.md`'s v0.5.4 entry). Not on the Mac's GPU.
-- **Passing at v0.5.3:**
-  - 850 unit tests (`node --test tests/*.test.mjs`, about 24 s on the Mac through the guard), the three golden flights among them;
-  - in the cloud container, `tests/cloud/wing-gaps.cjs`, `weight-copy.cjs`, `athr-lever.cjs`, `route-views.cjs`, `weather-final.cjs` and `v044-hud.cjs`, `v051-hangar.cjs`, and `v052-editor.cjs` and `v052-designs.cjs` (`STATUS.md`'s v0.5.3 review entry has the results);
-  - on the Mac's GPU (v0.5.3's run): `browser-airframe.mjs` (60 fps with a stretched, long-winged eight-engine design on each type), `browser-warehouse-airframe.mjs`, `browser-warehouse-limits.mjs`, `browser-stands-airframe.mjs`, `browser-sharklets.mjs`, and the old ones: `browser-designs.mjs` 14/14, `browser-warehouse.mjs`, `browser-scenarios.mjs` 23/23, `browser-e2e.mjs` 12/12, `browser-types.mjs` on both Boeings, `browser-picker.mjs`, `audio-render.mjs` 45/45 on each type (the A321's reverser clunk misses its bar about a quarter of the time: ROADMAP, "Found while building v0.5.3").
+- **Update 5 is closed:** v0.5.0 to v0.5.8 (2026-11-13 to 19), the warehouse, parts anywhere, the airframe from parts, keys, the new home page; the table under "Where things stand" has each. **v0.5.7 is pushed** (`c806ab5`), and **v0.5.8 was written up and ready to push** when this was last updated (2026-11-19, about 02:45 KST). Check with `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`, the only git command allowed in GameDump. If the top line isn't v0.5.8, ask Shane to push it first (`sh tools/push.sh v0.5.8`): a run starts only from a pushed version.
+- **Passing at v0.5.8:** 1024 unit tests in the container and on the Mac, the golden flights among them; in the cloud container `v058-home` (344 checks), `v058-rename` (32), `weight-copy` (60), `athr-lever`, `v052-designs` and `v056-keys` (47) (`STATUS.md`'s v0.5.8 entry). Each earlier version's checks are in its `STATUS.md` entry.
+- **The Mac's GPU hasn't run the browser scripts since v0.5.3** (that run's `browser-*.mjs`: 60 fps with a stretched eight-engine design on each type, and the old list in its entry). They were edited since for the new keys, the Controls page and the home page, but not run. Run them first, before anything changes, as v0.6.0's baseline on the Mac (the run can do it, through the guard).
 - **A design may change its airframe** (v0.5.3): its wing, tails and fuselage come through `def.geo.AIRFRAME` (the maps of `sim/airframe-map.js`) and `def.geo.DESIGN_SHAPE`, while `def.geo`'s shape constants (`WING`, `SPAN`, `NOSE_X`…) stay the base's. Anything new that reads a type's size for a design (its span, length, nose, tail) should read those, as the stands do (`standGeo()` in `ground/taxi.js`). A design on its base's airframe takes the old paths to the bit.
 - **Two settings change how a test flight behaves** (v0.4.1, in Settings, saved under `gamedump:flight-sim:settings`): Indestructible (no crash ends a flight) and Boeing auto-trim (since v0.4.2 with a flare law below 50 ft). A browser check that expects a crash, or Boeing's speed-stable law, must start with them off (a fresh profile has them off).
 - **Any flight may fly a design** (v0.5.0): a check that expects a type's own numbers starts from the type, not from a saved scenario that might hold a design. `?design=<json>` starts one in a test.
-- **The golden flights fly over the real terrain from RKSS 14R** (`tests/golden-a321-flight.mjs`, `golden-boeing-flight.mjs`): so moving the terrain to tiles must give the same heights to the bit, or they fail. That's the first test of v0.6.0's tiles.
+- **The golden flights fly over the real terrain from RKSS 14R** (`tests/golden-a321-flight.mjs`, `golden-boeing-flight.mjs`): so moving the terrain to tiles must give the same heights to the bit, or they fail. That's the first test of v0.6.0's tiles. (v0.5.8's asymmetry change kept them exact: symmetric thrust takes the old arithmetic to the bit.)
 - **The direction:** `ROADMAP.md` → "The long term" and its "How the regions would work". East Asia is Korea's region grown, in Korea's own map frame; the terrain in tiles is what every later region (Europe, North America, Oceania) stands on.
+
+### What Update 5 changed that v0.6.0 meets
+
+- **Place names come from the airport data.** The home page's ticket ("En route to Jeju", "At Gimpo, stand 12") and its stats read the scenario summary's flight fields (`flightFields()` in `scenarios.js`: phase, origin, dest, at, stand, alt, distNm, landed) and name places through a lookup main.js builds from each airport's JSON: its `shortName` if it has one, else its name shortened ("Seoul Gimpo International Airport" → "Gimpo", `shortPlace()` in `ui/home-card.js`). Give each new airport a `shortName` ("Pudong", "Haneda", "Narita") and check the ticket and the Load list with one.
+- **"Airliners over South Korea" is gone** from the title (v0.5.7: "that won't be true for long"). `README.md`'s first line still says it; change it when the region grows.
+- **The keys:** the warehouse's block (7–0, U–P, J–;, M–/, and Shift with them) is each aircraft's own; the Controls page can't take it. Anything new on the Controls page goes outside the block, and by Shane's rule a key pressed more than once a flight in the air needs no Shift (rare ones may). The free plain keys left are 4, 5, 6, ' and the arrows (`PLAN.md`'s v0.5.7 section, `keys.js`).
+- **The altimeter:** the BARO window shows the setting, not the outside pressure; Shift+B sets the local QNH, and above 14,000 ft the BARO alert flashes on any setting but STD or 1013.25. Shane asked on 2026-11-19 why it "always stays at 1013" (the default weather's QNH is 1013): he'll notice whatever v0.6.0 does here, so explain inches of mercury or metres in the update's notes if they come in.
+- **One engine down now bites** (v0.5.8: the laws leave a thrust asymmetry to the pilot). Nothing for v0.6.0 to do, but long routes make engine failures a natural challenge later (ROADMAP row 15).
+- **Pictures from the game:** `tests/cloud/v058-photos.cjs` poses stills in the cloud (a type, a place, a time, a free camera, read off the canvas); the new airports' pictures and the release's can come from it, or from the run on the Mac's GPU.
+- **The home page's skyline** (`ui/line-art.js`) already has Tokyo Skytree among its Asian landmarks (Sungnyemun, N Seoul Tower, Lotte World Tower, Marina Bay Sands, the Petronas Towers), but nothing from Shanghai: an Oriental Pearl Tower would be a small, welcome addition.
+- **One weather for the whole map** (v0.4.0): fine over Korea, odd once Shanghai and Tokyo are 1,000 km apart (question 8).
 
 ### What Shane has said, in his words
 
 - **2026-11-10** (ROADMAP row 13): "I want to expand beyond just Korea, but I'm sure mapping the whole world out is infeasible. ... Maybe just those three regions locally, with long international flights unavailable."
 - **2026-11-10:** "I don't think more Korean airports would add much. If anything, adding more varied airports like Shanghai Pudong or Haneda + Narita might be better, since that with Korea can be considered one region." And: "Adding the region map to git is reasonable, I think."
+- **2026-11-19:** "Let's do v0.5.8. Let it be the last update before v0.6.0." Then: "I think that should close Update 5, the biggest update yet. Create the necessary handoffs for a fresh session to pick up with carefully planning and working on v0.6.0."
 - **The ground (2026-10-31):** "have macro-scale details be determined, and finer details are procedural." Real elevation and coastlines, procedural trees, fields and buildings.
 - **Memory (2026-10-31):** an 18.7 GB Python process nearly took his Mac down: `AGENTS.md`'s memory rule (stream or tile, never load whole) and the guard's 6 GB cap apply to every bake.
 - **His controls:** the Mac's keyboard and touchpad, or a mouse at most.
 
 ### Proposed, not confirmed: ask him first
 
-ROADMAP's v0.6.0 row is Claude's proposal: "Shanghai Pudong, Tokyo Haneda and Narita, in Korea's own map frame. The terrain moves to tiles at several resolutions, read from the game's folder as you fly, which every later region needs." Settle these before you write the brief. Each has a default, so he can answer by picking options (v0.5.0's four went in one AskUserQuestion call, with the deadline).
+ROADMAP's v0.6.0 row is Claude's proposal: "Shanghai Pudong, Tokyo Haneda and Narita, in Korea's own map frame. The terrain moves to tiles at several resolutions, read from the game's folder as you fly, which every later region needs." Settle these before you write the brief. Check each default against its source before you offer it (they were written on 2026-11-13 and 19 from memory, not from the AIPs).
 
 1. **The map's extent.** Default: Korea's map grows to a box from about 29° to 40° N and 119° to 142° E: all of Korea, Kyushu, Shikoku and Honshu past Tokyo, and China's coast from Ningbo to the Shandong peninsula, with the sea between. Korea's frame holds it (its scale depends on latitude only: about +0.5 % at 29° N, −0.1 % at Tokyo, +0.2 % at 40° N). Beyond it, as now, rough land from Natural Earth and haze.
 2. **The terrain's resolution.** Default: as Korea's: 250 m everywhere (Copernicus GLO-90), 30 m patches around each new airport (GLO-30), 10 m coastlines at each airport, in tiles (say 128 km square) loaded by distance on the main thread and in the prediction worker; Korea's own data cut into the same tiles, unchanged.
 3. **Land cover in Japan and China.** Default: ESA WorldCover (10 m, CC BY 4.0) resampled to the game's classes, for the new area only (Korea keeps its OpenStreetMap cover). OpenStreetMap's land use over Japan and eastern China is far too heavy to bake (the 18.7 GB incident).
 4. **The cities.** Default: the game's procedural cities everywhere, as in Korea (towers and slabs from the built-up cover). Tokyo's and Shanghai's own look, and landmarks, later.
-5. **Local rules.** Defaults: the magnetic variation from WMM2025 on a baked grid for the box (today's `magVar()` is a plane fitted to Korea); the altimeter in inches of mercury in Japan (its controllers give the setting so, hectopascals on request; its METARs carry both) and hectopascals in Korea and China; each country's transition altitude; the clock in local time where you are (Korea and Japan UTC+9, China UTC+8). Check each against its country's AIP before the brief, and tag what you can't.
-6. **The airports' detail.** Default: as Gimpo's, Jeju's and Incheon's: runways, lights, PAPIs, taxiways with their names, aprons, numbered stands (code E for the widebodies), terminals and parked traffic, from each airport's own small OpenStreetMap extract (an `osmium extract` box, never the country's file whole).
-7. **Who builds it.** Default: a Claude Code run on the Mac (the downloads, the bake through the guard, the GPU checks), with the same rules as v0.5.0's: priority order, a flag so the game stays pushable, Korea unchanged.
+5. **Local rules.** Defaults: the magnetic variation from WMM2025 on a baked grid for the box (today's `magVar()` is a plane fitted to Korea); the altimeter in inches of mercury in Japan (its controllers give the setting so, hectopascals on request; its METARs carry both) and hectopascals in Korea and China; each country's transition altitude; the clock in local time where you are (Korea and Japan UTC+9, China UTC+8).
+6. **China's metres.** China assigns flight levels in metres (its own RVSM table) and gives transition altitudes in metres. Default: the aircraft keep feet, as Airbus's and Boeing's displays do, with the metric altitude on the PFD as both makers offer it (an option, on by default in China); no ATC to assign metric levels, so the AP's ALT stays in feet.
+7. **The airports' detail.** Default: as Gimpo's, Jeju's and Incheon's: runways, lights, PAPIs, taxiways with their names, aprons, numbered stands (code E for the widebodies), terminals and parked traffic in the game's made-up liveries (no real airline's branding), from each airport's own small OpenStreetMap extract (an `osmium extract` box, never the country's file whole).
+8. **The weather over a bigger map.** Default: still one weather (v0.4.0's), set for the departure at the start; weather by place stays in ROADMAP. The other way: each airport its own preset, blended between them along the route.
+9. **Who builds it.** Default: a Claude Code run on the Mac (the downloads, the bake through the guard, the GPU checks), with the same rules as v0.5.0's: parts in priority order, a flag so the game stays pushable, Korea unchanged; and a deadline Shane sets.
 
 ### The brief: `V060.md`
 
-Model it on `V050.md` (the parts in priority order, a flag so whatever is done can ship) and `V040.md`. Its parts, in order:
+Model it on `V050.md` (the parts in priority order, a flag so whatever is done can ship) and `V053.md` (the newest, with its starting prompt and `/goal`). Its parts, in order:
 
 1. **Korea in tiles, with nothing else changing:** the national grid, the patches and the coast patches cut into tiles; a tile loader on the main thread and in the prediction worker; the clipmap and `heightAt()` reading tiles. Korea's heights the same to the bit (the golden flights to 1e-9) and its stills the same at Gimpo, Jeju and Incheon by day.
 2. **The bake for the new area,** tile by tile through the guard: GLO-90 heights (the same AWS buckets as Korea's), ESA WorldCover, the coastline and water, the 30 m and 10 m patches at the new airports.
-3. **The three airports:** Shanghai Pudong (ZSPD), Tokyo Haneda (RJTT) and Narita (RJAA), baked as the Korean ones are, in the setup's lists and on the map.
-4. **The local rules:** the magnetic variation, the altimeter's units, the transition altitudes, the local time.
+3. **The three airports:** Shanghai Pudong (ZSPD), Tokyo Haneda (RJTT) and Narita (RJAA), baked as the Korean ones are, with `shortName`s, in the setup's lists and on the map.
+4. **The local rules:** the magnetic variation, the altimeter's units, the transition altitudes, China's metres (as settled), the local time.
 5. **The routes:** Gimpo to Haneda (about 640 nm), Incheon to Narita (about 680 nm), Incheon to Pudong (about 440 nm), Jeju to Pudong (about 280 nm) and the rest, with the path map, the ND's coast and the fuel estimate over the bigger map.
 
-A definition of done to start from: the three golden flights to 1e-9; Korea's stills unchanged; a Gimpo to Haneda and an Incheon to Pudong flight on the autopilot with time compression, landed by the test pilot, B or better; 60 fps at each new airport and over Tokyo and Shanghai at night; the prediction over the new terrain within its 2 s; every bake under the 6 GB cap (the guard's log); the data's size in git, each file under 100 MB; a reviewer subagent.
+A definition of done to start from: the Mac-side baseline run first (the browser scripts at v0.5.8); the three golden flights to 1e-9; Korea's stills unchanged; a Gimpo to Haneda and an Incheon to Pudong flight on the autopilot with time compression, landed by the test pilot, B or better; the home page's ticket and the Load list naming the new airports; 60 fps at each new airport and over Tokyo and Shanghai at night; the prediction over the new terrain within its 2 s; every bake under the 6 GB cap (the guard's log); the data's size in git, each file under 100 MB; a reviewer subagent.
 
 ### Where the terrain plugs in
 
-From a read of the code on 2026-11-13. Check the details, which drift.
+From a read of the code on 2026-11-13, with Update 5's additions. Check the details, which drift.
 
 | Where | What to know |
 |---|---|
@@ -77,17 +84,19 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | `src/sim/predict-worker.js` | Loads the national grid itself (`manifest.national`) for the predicted path over the terrain. |
 | `src/world/frame.js` | The map frame (Lambert conformal conic at 36° N 127.5° E, standard parallels 33° and 38°); `magVar()` is a plane fitted to four Korean cities (WMM2025), good only in Korea. |
 | `tools/bake_*.py`, `tools/bake_all.sh` | The bake: `bake_height.py` (GLO-90 to the national grid), `bake_patches.py` (GLO-30), `bake_cover.py` and `bake_water.py` (OpenStreetMap), `bake_airports.py`, `bake_osm_extract.py` (the script behind the 18.7 GB incident: box and stream everything). Always through `tools/cpu-guard.py`. |
-| `data/airports/*.json`, `src/world/airports.js`, `apron.js`, `runways.js`, `src/ground/` | Each airport baked to local metres; the stands, taxi routes and parked traffic. |
+| `data/airports/*.json`, `src/world/airports.js`, `apron.js`, `runways.js`, `src/ground/` | Each airport baked to local metres; the stands, taxi routes and parked traffic. A `shortName` field names it on the home page (Update 5). |
 | `src/ui/setup.js`, `src/ui/map.js`, `src/ui/nd.js`, `data/coast.json` | The airport lists, the path map, the ND's coastline. |
-| `src/clock.js`, `src/sim/atmosphere.js`, the BARO boxes | KST and hectopascals everywhere today. |
+| `src/clock.js`, `src/sim/atmosphere.js`, the BARO boxes (`ui/fcu.js`, `ui/boeing/mcp.js`, both PFDs), `sim.js`'s `TRANSITION_M` | KST, hectopascals and Korea's 14,000 ft transition altitude everywhere today. |
+| `src/scenarios.js` (`flightFields()`, `whereText()`), `src/ui/home-card.js`, `src/main.js` (the place lookup) | The ticket's and the Load list's place names and numbers (Update 5). |
+| `tests/cloud/v058-photos.cjs`, `tests/cloud/stills.cjs` | Posed pictures from the game in the cloud (Update 5's, and the older free camera). |
 
 ### After the run
 
 1. **Read the run's `STATUS.md` entries,** and go through the definition of done item by item against the evidence.
-2. **Check it yourself:** the unit tests on the Mac through the guard (and in the container: see "Pitfalls" on the golden flights); the cloud checks (`route-views`, `weight-copy`, `athr-lever`, `weather-final`, `wing-gaps`, `v044-hud`, and new stills at the new airports); Korea against v0.5.0 for anything that should be unchanged. Look at every picture.
+2. **Check it yourself:** the unit tests on the Mac through the guard (and in the container: see "Pitfalls" on the golden flights); the cloud checks (`route-views`, `weight-copy`, `athr-lever`, `weather-final`, `wing-gaps`, `v044-hud`, `v058-home`, `v058-rename`, and new stills at the new airports); Korea against v0.5.8 for anything that should be unchanged. Look at every picture.
 3. **Fix what's wrong:** in the session if it's small, as a v0.6.1 patch if it isn't.
-4. **Write it up:** `src/version.js`, `Updates.md`, `README.md`, `PLAN.md`, `ROADMAP.md` (row 13 and the plan), `AGENTS.md` (State), `STATUS.md`, and the Games project doc.
-5. **Hand it to Shane:** `sh tools/push.sh v0.6.0`, then Cmd+Shift+R in the app (Empty Cache and Hard Reload in Chrome).
+4. **Write it up:** `src/version.js`, `Updates.md`, `README.md` (its first line too), `PLAN.md`, `ROADMAP.md` (row 13 and the plan), `AGENTS.md` (State), `STATUS.md`, and the Games project doc.
+5. **Hand it to Shane:** `sh tools/push.sh v0.6.0`, then Cmd+Shift+R in the app.
 6. **Rewrite this section** for v0.7.0's session.
 
 ## Where things stand
@@ -113,11 +122,12 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | v0.5.0 | The Warehouse: designs on any of the three types (engines: count, type, stations, thrust; empty weight, fuel, longer gear, name, registration), flown from New scenario; engines as parts in the sim, the model, the screens and the sound; pylons that give way | yes (`3aeaa07`) |
 | v0.5.1 | The warehouse is a hangar: steel frames and roof trusses, skylights and lamps, offices, racks, benches and a spare engine along the walls, sliding doors part open onto the apron, a painted floor with the stand's lead-in and a stop bar per type, people walking; the camera stays inside | yes |
 | v0.5.2 | Parts anywhere, KSP's way: engines under or over the wing, on the rear fuselage or in the tail (up to 8, mixed types, nudged and turned), wing tanks, hold tanks and ballast, each with its mass, drag and thrust line; the editor's palette, ghost, mirror, select, drag, undo and redo, the CoM and CoT, new checks, Fly it | yes (`31c1fb3`) |
-| v0.5.3 | The airframe from parts: each wing side's span, chord, sweep and dihedral, the tailplane's and fin's size and the fuselage's plugs in the warehouse, the handling from the parts (strips with their own airflow, one rigid body), the model following, the structure's weight, new checks (static margin, Cnβ, stall speed, nose-wheel load, code letter), self-tuning yaw gains, stands that fit, the A321's sharklets as a switch | not yet when this was written: `sh tools/push.sh v0.5.3` |
+| v0.5.3 | The airframe from parts: each wing side's span, chord, sweep and dihedral, the tailplane's and fin's size and the fuselage's plugs in the warehouse, the handling from the parts (strips with their own airflow, one rigid body), the model following, the structure's weight, new checks (static margin, Cnβ, stall speed, nose-wheel load, code letter), self-tuning yaw gains, stands that fit, the A321's sharklets as a switch | yes (`08f3e82`) |
 | v0.5.4 | Shane's list after v0.5.3: a Pause button beside Hide panels (the L window works while paused), a renamed design renamed in its scenarios, landings out of 10 per part (a weighted average, the worst part capping it), sweep moving the coffin corner's top and MMO, Drop wing tanks, keys for the selected part in the warehouse, the tails' overhang and the A321's inner flap fixed, the hangar's doors shut | yes (`c466026`) |
 | v0.5.5 | Shane's list after v0.5.4: the Esc menu doesn't pause (only the HUD's button does), the views, camera and controls work while paused and act on Resume, the landing card's rows as shares of 100 that add up with penalty rows after them (a would-be crash halves), bounces counted from the wheels | yes (`c2ebae4`) |
-| v0.5.6 | Keys per aircraft (every control rebindable, engine groups with their own levers), flaps on − and =, the swept wing's area, the main gear following the wing and a wing position, take-off trim for tails and moved engines, VMC, drop tanks that fall away, the warehouse's keys for a part in hand and drag from the palette | not yet when this was written: `sh tools/push.sh v0.5.6` |
-| v0.5.7 | The warehouse's key block (7–0, U–P, J–;, M–/: each aircraft's own keys, only there) and every other key global on the Controls page, each engine its own keys, the moved keys (TO/GA Shift+T, QNH Shift+B, pushback Shift+G, map N, the Sky window \\), a keyboard drawing on the Controls page; a new home page (the moving path and plane, the floating boarding pass and suitcase, a skyline of 22 landmarks scrolling like a tape, a dusk background, the saved flight as a ticket), no subtitle |
+| v0.5.6 | Keys per aircraft (every control rebindable, engine groups with their own levers), flaps on − and =, the swept wing's area, the main gear following the wing and a wing position, take-off trim for tails and moved engines, VMC, drop tanks that fall away, the warehouse's keys for a part in hand and drag from the palette | yes (`7a6cea8`) |
+| v0.5.7 | The warehouse's key block (7–0, U–P, J–;, M–/: each aircraft's own keys, only there) and every other key global on the Controls page, each engine its own keys, the moved keys (TO/GA Shift+T, QNH Shift+B, pushback Shift+G, map N, the Sky window \\), a keyboard drawing on the Controls page; a new home page (the moving path and plane, the floating boarding pass and suitcase, a skyline of 22 landmarks scrolling like a tape, a dusk background, the saved flight as a ticket), no subtitle | yes (`c806ab5`) |
+| v0.5.8 | The last before v0.6.0: one engine down bites (the laws leave a thrust asymmetry to the pilot; the Boeings roll with it), design names follow the warehouse everywhere (the logbook too), the home page's ground band fixed, three travel prints rendered from the game, stars and an aurora | written up; `sh tools/push.sh v0.5.8` if it isn't yet |
 
 - **Check first:** `GIT_OPTIONAL_LOCKS=0 git log --oneline -3` (the only git command allowed here), to see what Shane has pushed since.
 - **Passing at v0.3.0's hand-off:** 501 unit tests; `browser-boeing-flight.mjs` and `browser-types.mjs` on both Boeings; `browser-e2e.mjs` 12/12, `browser-scenarios.mjs` 23/23. `audio-render.mjs` 30/30 on each Boeing, six runs in a row; on the A321 its reverser door clunk can still fail now and then (it's too quiet there by the check's measure, and the A321's sound stays as it is). Not played by hand or listened to.
@@ -129,6 +139,7 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 - **v0.5.1's** is in its `STATUS.md` entry ("2026-11-13, 10:55 KST"): 722 unit tests, `tests/cloud/v051-hangar.cjs` and the pictures `v051-hangar-*.jpg`.
 - **v0.5.2's** is in its `STATUS.md` entry ("2026-11-14"): 744 unit tests, `tests/cloud/v052-editor.cjs` and `v052-designs.cjs`, and the pictures `v052-*.jpg`.
 - **v0.5.3's** is in its `STATUS.md` entries: the run's (from "2026-11-15, 04:04 KST" to "12:42 KST", with the validation table at 04:18) and the review's ("2026-11-15, evening"): 850 unit tests, the run's Chrome checks on the Mac, the cloud checks, and the pictures `v053-*.png`.
+- **v0.5.8's** is in its `STATUS.md` entry ("2026-11-19, 01:25 KST").
 - **v0.5.7's** is in its `STATUS.md` entry ("2026-11-18, 21:55 KST").
 - **v0.5.6's** is in its `STATUS.md` entry ("2026-11-18, 03:35 KST").
 - **v0.5.5's** is in its `STATUS.md` entry ("2026-11-18, 00:40 KST"): 890 unit tests and `weight-copy.cjs`.
@@ -283,6 +294,16 @@ From a read of the code on 2026-11-13. Check the details, which drift.
 | `tests/cloud/v042-shots.cjs` | v0.4.2's pictures, some against v0.4.1 served beside it as `games/flight-sim-041/`. |
 | New tests | `boeing-autotrim-787`, `yaw-approach`, `windshear-ahead`, `spray`; `boeing-autotrim`, `indestructible`, `taxisigns`, `weather-autoland` (tightened) and `weather-precip` grew. |
 
+### v0.5.8: the last touches before v0.6.0
+
+| File | What's there |
+|---|---|
+| `src/sim/sim.js`, `src/sim/fbw.js`, `src/sim/fbw-boeing.js` | `E.nThrust` (the engines' own yaw moment, 0 for symmetric thrust); `asymmetryInto()`: the sideslip and yaw rate the asymmetry explains, which the yaw damper and turn coordination leave alone; the Boeings' hands-off roll and the wheel's rate drifting with the sideslip's dihedral effect, fading out by 34°. |
+| `src/designs-store.js`, `src/ui/logbook.js`, `src/ui/home-card.js`, `src/ui/setup.js`, `src/ui/menu.js`, `src/main.js` | `designName(id, stored)`, `store.names()`, `store.nameOf()`; `designIdOf()`, `designLabel()`; `flightCard(entry, { place, designName })`; the Load list's rows; `designNameNow()`, the saves and log entries with the live name, `renamedState`. |
+| `src/ui/home-scene.js`, `src/ui/home.css` | `groundLineUp()`, the suitcase's spot, `PRINT`, `PRINT_SLOTS`, `PRINT_SIZES`, `printSpots()`, `printOverlap()`, the stars (`TWINKLE`), the aurora's curtains. |
+| `assets/menu/b777-landing-day.jpg`, `b787-cruise-night.jpg`, `a321-pushback-sunset.jpg`, `tests/cloud/v058-photos.cjs` | The prints, rendered from the game with a free camera (posed stills; the script makes them again). |
+| New tests | `thrust-asymmetry`, `design-names` (node), `home-scene` grew; `tests/cloud/v058-home.cjs`, `v058-rename.cjs`, `v058-photos.cjs`; `designs.test.mjs`'s pylon test now holds the sideslip and bank with rudder and wheel. |
+
 ### v0.5.7: the key block and the home page
 
 | File | What's there |
@@ -413,6 +434,15 @@ No brief: Shane's list (2026-11-16) built by the Cowork session with five subage
 
 Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When it's connected, it's `$HOME/mnt/GameDump` in the device shell.
 
+**How Update 5's session worked** (v0.5.4 to v0.5.8, 2026-11-16 to 19), which worked well and fast:
+
+- **A working copy in the cloud container** (`/tmp/fs/gd/games/flight-sim`, outside GameDump): the quickest way to get one is to `git clone` the public repository there (git is fine outside GameDump) and check it against the Mac with the tree hash below; anything not pushed yet is staged from the Mac on top. The container's files can vanish between turns: check before trusting them.
+- **The tree hash,** run the same on both sides (in the game folder): `find . -type f ! -path './reference/*' ! -path './.git/*' ! -name '.DS_Store' ! -path '*/__pycache__/*' -print0 | sort -z | xargs -0 sha256sum | sha256sum`. Equal hashes close every sync.
+- **Edit and test in the container,** then sync in one batch at the end (Shane plays while you work): copy the changed and new files to a fresh folder under `/mnt/user-data/outputs/`, read each Mac file's mtime in the device shell as `int(os.stat(f).st_mtime * 1000)` (the tool compares whole milliseconds), and `device_commit_files` them with that `expectedMtimeMs`, at most 50 a call. The outputs folder re-encodes JPEGs (the same pixels, different bytes): copy them back from there into the container before you compare the hashes.
+- **Cloud checks:** serve the copy with `python3 tests/cloud/serve.py /tmp/fs/gd 8765 &` (from `/tmp/fs/gd`), then `NODE_PATH=/opt/node-tools/node_modules timeout 900 node tests/cloud/<name>.cjs <outdir>`, one at a time (2 cores; SwiftShader takes about 30 s to start a flight). The server dies with the container: `curl` it first.
+- **Subagents,** each owning its files (shared files edited with the Edit tool only), for the parts of a version that don't touch each other, then an independent reviewer for anything with logic in it (v0.5.6's and v0.5.7's found real bugs). Shane has been fine with it ("You can run subagents if you would like").
+
+
 - **Editing:** work on the Mac directly, with a short Python read-modify-write or `sed -i`. Never retype a file from tool output, which can be cut short. The device shell can't delete files, and each call stops at 180 s.
   - v0.2.1, v0.3.1 and v0.3.2 worked the other way round, which also works: edit the staged copy in the container with the Edit tool, test it there, then copy the changed files to `/mnt/user-data/outputs/` and `device_commit_files` them back with `expectedMtimeMs` from staging, and compare the md5s at the end.
 - **Unit tests on the Mac** go through the guard. Its state folder must be writable in the VM:
@@ -502,7 +532,7 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
 
 ## Working with Shane on this game
 
-- **How he plays and reports:** in Chrome on his M5 MacBook, from his own server (`python3 -m http.server 8001` in GameDump). He reports from playing, often with a screenshot.
+- **How he plays and reports:** in the GameDump desktop app on his M5 MacBook (Cmd+Shift+R reloads after a push; it used to be Chrome from his own server, `python3 -m http.server 8001` in GameDump, which still works). He reports from playing, often with a screenshot, and often gives a time to finish in ("about 60 minutes", "about 20 minutes"): keep to it, and say what you dropped.
 - **Versions:** he names each one ("Package these into v0.1.2", "Call this 0.1.3") and pushes it himself with `sh tools/push.sh vX.Y.Z`. The commit's title is the version alone.
 - **Who builds them:** a judgment per job, and one session takes an update from end to end (2026-11-10; `AGENTS.md` → Versions). Long builds that want the Mac's GPU and Chrome suit a Claude Code run briefed from Cowork; focused changes are done in the Cowork session.
 - **His controls:** the Mac's keyboard and touchpad, or a mouse at most. No joystick (2026-11-10).
@@ -516,18 +546,18 @@ Shane's GameDump folder is `~/Desktop/ClaudeProjects/GameDump` on the Mac. When 
   - where the screenshots are.
 - **Ask what you can't see.** His logbook lives in his Chrome, so for v0.1.3 he was asked for his landing's numbers and answered at once.
 - **Standing decisions:**
-  - keys H and Y are the Boeings' trim, O their TO/GA, `[` and `]` the flap lever's steps (v0.3.0);
+  - the keys (v0.5.7): the warehouse's block 7–0, U–P, J–;, M–/ (and Shift with them) is each aircraft's own, set in the warehouse; everything else is on the Controls page, the same for every aircraft; a key pressed more than once a flight in the air needs no Shift (Shane's rule). The defaults: W/S, A/D, Q/E, R/F, H/Y the Boeings' trim, − and = the flaps a step, C and Shift+C, G, Space, B, Z, X, Shift+T TO/GA, Shift+B the local QNH, 1, 2, 3 and V the views, [ and ] time, T rewind, N the map, Shift+G pushback, F3 the readout; \\ the Sky window (with Cmd/Ctrl+L), Esc the menu; \` Tab Caps Lock Return delete and the Shifts can't be keys;
   - the CPU rules (`tools/cpu-guard.py`);
-  - no Ctrl key bindings;
+  - no Ctrl key bindings (Cmd/Ctrl+L the only one);
   - no network at runtime;
-  - the repository is public: no third-party PDFs, no paths with a user name, no real airline's branding;
+  - the repository is public: no third-party PDFs or images, no paths with a user name, no real airline's branding;
   - the Nuclear Airlines livery;
-  - keys 1, 2, 3 are the views (v0.2.1); 6–0 the flaps.
+  - each version its own commit, for a consistent history (Shane, 2026-11-18): v0.5.5 was pushed on its own after v0.5.6 was built, by putting the folder back to v0.5.5's exact files for the push.
 
 ## Starting a new chat
 
 A first message that works, in the Games project with the GameDump folder connected:
 
-> Read games/flight-sim/HANDOFF.md in my GameDump folder, then its AGENTS.md, ROADMAP.md's "The long term" and the newest entries in its STATUS.md. Then take v0.6.0, East Asia, from start to finish, as HANDOFF.md's first section says.
+> Read games/flight-sim/HANDOFF.md in my GameDump folder, then its AGENTS.md, ROADMAP.md's "The long term" and the newest entries in its STATUS.md. Then take v0.6.0, East Asia, from start to finish, as HANDOFF.md's first section says: plan it with me carefully first (the questions, then V060.md for me to read), and only then get it built.
 
 For a later update, the last line names that update instead.

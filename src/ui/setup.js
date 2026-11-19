@@ -18,6 +18,8 @@
 // plan.design the design itself, whole and normalized (src/sim/designs.js); the limits, the fuel rule and the
 // stands are its type entry's (designDef(design)). defaults.design picks it again: as given with lockType (a
 // scenario keeps its copy), else the stored design with that id if it's still there (else its base).
+// v0.5.8: the scenario's copy is named as the design is now (designName(), by its id; its own name once the design
+// is deleted), on its card and in the plan Fly returns: only the name, its parts stay the scenario's.
 
 import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints } from './common.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
@@ -28,7 +30,7 @@ import { standList } from '../ground/gate-flow.js';
 import { TYPE_LIST, typeById, DEFAULT_TYPE } from '../sim/types.js';
 import { PRESETS } from '../sim/weather-presets.js';
 import { designDef, designNumbers, isDesign } from '../sim/designs.js';
-import { designStore } from '../designs-store.js';
+import { designStore, designName } from '../designs-store.js';
 
 const KEY = 'gamedump:flight-sim:settings';
 
@@ -476,7 +478,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     const last = loadStored().lastPlan;
     const want = defaults?.design ?? (!locked && (defaults?.type === undefined || defaults.type === last?.type) ? last?.design : null);
     if (isDesign(want)) {
-      if (locked) return designDef(want);
+      if (locked) { const n = designName(want.id, want.name); return designDef(n && n !== want.name ? { ...want, name: n } : want); }   // v0.5.8
       const stored = designsNow().find((d) => d.id === want.id);
       if (stored) return designDef(stored);
     }

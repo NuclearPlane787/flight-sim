@@ -21,7 +21,7 @@
 // menu: it's plain DOM and line art.
 
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
-import { onDesignRename } from '../designs-store.js';
+import { onDesignRename, designName } from '../designs-store.js';   // v0.5.8: designName, the Load list's live names
 import { createHomeScene, BACKDROPS, DEFAULT_BACKDROP } from './home-scene.js';   // v0.5.7: the home page
 import { flightCard } from './home-card.js';
 import { ICONS } from './line-art.js';
@@ -100,7 +100,7 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
         <div class="fsh-rows">
           ${row('new', 'New scenario')}
           ${row('load', 'Load scenario')}
-          ${row('warehouse', 'Warehouse<small>Your designs: engines, weight, fuel and gear</small>', ' hidden')}
+          ${row('warehouse', 'Warehouse', ' hidden')}
           ${row('logbook', 'Logbook')}
         </div>
         <div class="fsh-pair"><button data-k="settings">Settings</button><span class="fsh-sep" aria-hidden="true"></span><button data-k="controls">Controls</button></div>
@@ -178,7 +178,7 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
     } else {
       main = `<div class="fsm-row-main">
           <b>${esc(e.name)}</b>
-          <small>${s.design ? `${esc(s.design)} (${esc(typeName(e.type))})` : esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
+          <small>${s.design ? `${esc(designName(s.designId, s.design))} (${esc(typeName(e.type))})` : esc(typeName(e.type))} · ${esc(s.route || '—')}${s.where ? ` · ${esc(s.where)}` : ''}</small>
         </div>
         <span class="fsm-when">${esc(savedText(e.savedAt))}</span>`;
     }
@@ -328,6 +328,8 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
   // v0.5.4 (Shane: "When you rename a plane in the warehouse, it doesn't update it in the load scenario boxes"): a
   // design renamed there (its list's Rename, or the editor's name then Save) is renamed in the scenarios that fly
   // it, their Load scenario rows and their saved copies of it (scenarios.js's renameDesign); the logbook keeps its.
+  // v0.5.8: the rows name it live (designName() by summary.designId), so this only keeps the stored names, which show
+  // once the design is deleted, up to date.
   onDesignRename((id, name) => { if (scenarios?.renameDesign?.(id, name) && !el.hidden && page === 'load') renderLoad(null); });
   function openWarehouse() {
     if (!warehouseLoad) {
