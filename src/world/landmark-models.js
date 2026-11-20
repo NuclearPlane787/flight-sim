@@ -920,4 +920,231 @@ export function fkdome() {
   return b.result();
 }
 
-export const MODELS = { lotte, b63, nseoul, parc1, shtower, swfc, jinmao, pearl, skytree, tokyotower, azabudai, tmg, ylmt, lct, neatt, harukas, umeda, fktower, fkdome };
+// ------------------------------------------------------------------ v0.6.3: Beijing, Tianjin, Shenyang, Vladivostok
+
+// CITIC Tower (China Zun): 527.7 m, 109 floors, the top floor at 522 m. A square plan with rounded
+// corners, about 78 m a side at the base (OSM 81 x 77 m), drawn in on a concave curve to about 54 m
+// near 385 m and flaring again to about 69 m at the top, as the ancient vessel it is named for
+// (the waist's and top's widths [EST], from the design's published proportions).
+export function citic(brg = 6) {
+  const b = new Builder(0.31).frame(0, 0, brg);
+  const H = 527.7, ROOF = 522, WAIST = 385;
+  const hw = (y) => (y < WAIST ? 39 - 12 * smooth01(y / WAIST) : 27 + 7.5 * smooth01(Math.min((y - WAIST) / (ROOF - WAIST), 1)));
+  const plan = (y) => roundedRect(hw(y), hw(y), hw(y) * 0.2, 3);
+  b.set(GLASS([0.27, 0.31, 0.35], 4.85, 3.0, 0.85, 0.26));
+  const secs = [];
+  for (let k = 0; k <= 24; k++) { const y = (ROOF * k) / 24; secs.push(at(plan(y), y)); }
+  b.loft(secs, { smooth: false });
+  // the crown: a parapet round the roof's garden, lit at night
+  b.set(GLASS([0.34, 0.37, 0.40], 4.0, 2.0, 0.6, 0, { glow: [0.30, 0.32, 0.36] }));
+  b.loft([at(plan(ROOF), ROOF), at(scaleRing(plan(ROOF), 1.004), H)], { capTop: false });
+  b.flip = true;
+  b.loft([at(scaleRing(plan(ROOF), 0.93), ROOF), at(scaleRing(plan(ROOF), 0.93), H)], { capTop: false });
+  b.flip = false;
+  const c = hw(ROOF) * 0.97;
+  for (const [x, n] of [[c, c], [-c, -c]]) b.light([x, H, n], 1);
+  for (const [x, n] of [[c, -c], [-c, c]]) b.light([x, H, n], 0);
+  for (const y of [420, 300, 180, 70]) { const q = hw(y) * 0.95; for (const [x, n] of [[q, q], [-q, q], [-q, -q], [q, -q]]) b.light([x, y, n], 0); }
+  return b.result();
+}
+
+// CCTV Headquarters: 234 m, 51 floors. Two towers leaning out at about 6° [EST], rising from an
+// L-shaped podium of about 9 floors [EST] along two sides of the site and joined at the top by an
+// L-shaped overhang of about 13 floors [EST] along the other two: a loop, about 160 m a side in plan
+// (OSM 159 x 168 m). Local plan: tower A at the south-west corner, B at the north-east, the podium
+// round the south-east corner, the overhang round the north-west.
+export function cctv(brg = 6) {
+  const b = new Builder(0.44).frame(0, 0, brg);
+  const H = 234, POD = 50, OVER = 162, E = 80, T = 27;      // E: the site's half side; T: a tower's half side
+  const glass = GLASS([0.24, 0.26, 0.28], 4.5, 3.0, 0.7, 0.24, { spec: 0.3 });
+  b.set(glass);
+  // the podium: an L round the south-east corner (y 0..POD)
+  // (each L as two boxes: a fan cap from an L's centre would cover its inner corner)
+  box(b, 0, -E + T, 0, POD, E, T);
+  box(b, E - T, T, 0, POD, T, E - T);
+  // the towers, leaning: A (south-west) towards the north, B (north-east) towards the west, each by
+  // tan 6° of its rise, so their tops sit under the overhang's arms
+  const lean = Math.tan(6 * DEG);
+  const tower = (cx, cn, dx, dn) => {
+    const secs = [];
+    for (const y of [POD, (POD + OVER) / 2, OVER]) secs.push(at(shift([[T, -T], [T, T], [-T, T], [-T, -T]], cx + dx * lean * (y - POD), cn + dn * lean * (y - POD)), y));
+    b.loft(secs, { capTop: false });
+  };
+  tower(-E + T, -E + T, 0, 1);
+  tower(E - T, E - T, -1, 0);
+  // the overhang: an L round the north-west corner (y OVER..H), its arms over the towers' tops
+  const dA = lean * (OVER - POD);
+  b.set({ ...glass, glow: [0.10, 0.11, 0.13] });
+  box(b, -E + T, dA / 2, OVER, H, T, E - dA / 2, 0, { capBottom: true });
+  box(b, (-E + 2 * T + E - dA) / 2, E - T, OVER, H, (E - dA - (-E + 2 * T)) / 2, T, 0, { capBottom: true });
+  b.light([-E, H, E], 1); b.light([E - dA, H, E], 1); b.light([-E, H, -E + dA], 1);
+  for (const [x, n] of [[-E + 2 * T, E - 2 * T], [-E + 2 * T, -E + dA], [E - dA, E - 2 * T]]) b.light([x, H, n], 0);
+  for (const [x, n] of [[E, -E], [E, E], [-E, -E]]) b.light([x, POD, n], 0);
+  return b.result();
+}
+
+// A TV tower: a round concrete shaft (r0 at the foot to r1 at the pod), the pod (rings [y, r]),
+// a short shaft above it and the mast, painted red and white in bands. Lights: the mast's top
+// flashing, steady ones up the mast and round the pod.
+function tvTower(b, { H, r0, r1, podY0, pod, shaftTop, shaftR, mastR, foot = null, bands = 6 }) {
+  const shaft = PLAIN(CONCRETE.map((v) => v * 1.12), 0.1, { glow: [0.10, 0.10, 0.12] });
+  b.set(shaft);
+  if (foot) b.loft(foot.map(([y, r]) => at(circle(r, 16), y)), { smooth: true, capTop: false });
+  const y0 = foot ? foot[foot.length - 1][0] : 0;
+  b.loft([y0, lerp(y0, podY0, 0.35), lerp(y0, podY0, 0.7), podY0].map((y) => at(circle(lerp(r0, r1, (y - y0) / (podY0 - y0)), 16), y)), { smooth: true, capTop: false });
+  b.set(GLASS([0.30, 0.32, 0.34], 3.6, 2.2, 0.6, 0.45, { glow: [0.25, 0.25, 0.30] }));
+  b.loft(pod.map(([y, r]) => at(circle(r, 24), y)), { smooth: true });
+  const podTop = pod[pod.length - 1][0];
+  b.set(shaft);
+  cyl(b, 0, 0, podTop, shaftTop, shaftR, shaftR * 0.85, 12);
+  const red = PLAIN([0.60, 0.07, 0.04], 0.2), white = PLAIN(WHITE, 0.2);
+  mast(b, shaftTop, H, mastR, 0.3, bands, [red, white], 8);
+  b.light([0, H, 0], 1);
+  for (const t of [0.33, 0.66]) { const y = lerp(shaftTop, H, t); ringLights(b, circle(lerp(mastR, 0.3, t) + 0.3, 3), y, 0); }
+  const podMax = Math.max(...pod.map(([, r]) => r));
+  ringLights(b, circle(podMax + 0.3, 4), pod.reduce((a, p) => (p[1] === podMax ? p[0] : a), podY0), 0);
+  ringLights(b, circle(shaftR + 0.2, 3), shaftTop, 0);
+}
+
+// The Central Radio and TV Tower (Beijing): 405 m to the antenna, the observation deck at 238 m,
+// the top floor at 248 m. The pod's shape and the shaft's and mast's sizes [EST]; the base building
+// about 70 m across (OSM 72 x 71 m) [EST its height].
+export function cctvtower() {
+  const b = new Builder(0.13);
+  tvTower(b, { H: 405, r0: 13, r1: 9, podY0: 212, pod: [[212, 9], [220, 22], [228, 24], [238, 24], [242, 21], [248, 21], [253, 13], [257, 8]],
+    shaftTop: 278, shaftR: 6.5, mastR: 3.2, bands: 8 });
+  b.set(GLASS([0.38, 0.37, 0.35], 4.2, 3.0, 0.35, 0.35));
+  b.loft([at(chamferRect(34, 34, 8), 0), at(chamferRect(34, 34, 8), 16)]);
+  return b.result();
+}
+
+// The Tianjin Radio and Television Tower: 415.2 m, standing in its lake. A round shaft (OSM: 30 m
+// across at the foot) flared at the water, the pod about two-thirds of the way up (its rings [EST]),
+// and the mast.
+export function tjtower() {
+  const b = new Builder(0.47);
+  tvTower(b, { H: 415.2, r0: 11.5, r1: 7.5, podY0: 232, pod: [[232, 7.5], [240, 18], [246, 20], [262, 20], [268, 16], [274, 8]],
+    shaftTop: 300, shaftR: 5.5, mastR: 2.8, foot: [[0, 15], [6, 14.5], [16, 11.5]], bands: 8 });
+  return b.result();
+}
+
+// The Liaoning Broadcast and TV Tower (Shenyang): 305.5 m. A round shaft (OSM: 38 m across at the
+// foot, with its base), the disk with the observation decks and the revolving restaurant, an outdoor
+// deck on top of it (its height [EST]), and the mast.
+export function lntower() {
+  const b = new Builder(0.58);
+  tvTower(b, { H: 305.5, r0: 10, r1: 6.5, podY0: 180, pod: [[180, 6.5], [186, 17], [190, 21], [198, 21], [201, 18], [204, 9]],
+    shaftTop: 222, shaftR: 5, mastR: 2.4, foot: [[0, 18], [8, 18], [9, 11], [14, 10]], bands: 6 });
+  return b.result();
+}
+
+// A cable-stayed bridge along the local n axis (map metres; its plan from OpenStreetMap), the base
+// at the sea (y 0). geo: { s: half the pylons' spacing, n0, n1: the deck's ends (n0 < -s, n1 > s),
+// h0, h1: the ground's height at those ends, clear: the deck's underside at mid-span, half: the
+// deck's half width, back: the cable fans' reach behind each pylon, pylon(b, n): the pylon's builder,
+// anchors(n): [x, y] cable anchors on the pylon at n (x signed), piers: spacing beyond the fans }.
+function cableStayed(b, g) {
+  const D = 4.5;                                    // the deck's depth
+  // the deck's underside: a gentle camber over the main span, then straight down to the ends' ground
+  const under = (n) => {
+    const a = Math.abs(n);
+    if (a <= g.s) return g.clear + 3 * (1 - (a / g.s) ** 2);
+    const end = n < 0 ? g.n0 : g.n1, hEnd = (n < 0 ? g.h0 : g.h1) - D;
+    const t = (a - g.s) / (Math.abs(end) - g.s);
+    return lerp(g.clear, Math.max(hEnd, 0.5), t);
+  };
+  // the deck: a box girder lofted along n
+  const ns = [];
+  for (let n = g.n0; n < g.n1; n += 60) ns.push(n);
+  ns.push(g.n1);
+  for (const s of [-g.s, g.s]) if (!ns.includes(s)) ns.push(s);
+  ns.sort((p, q) => p - q);
+  b.set(PLAIN([0.40, 0.41, 0.42], 0.25));
+  const H = g.half;
+  for (let i = 0; i + 1 < ns.length; i++) {
+    const na = ns[i], nb = ns[i + 1], ya = under(na), yb = under(nb);
+    const c = b.T([0, (ya + yb) / 2 + D / 2, (na + nb) / 2]);
+    const q = (x, y, n) => b.T([x, y, n]);
+    const A = [q(-H, ya, na), q(H, ya, na), q(H, ya + D, na), q(-H, ya + D, na)];
+    const B = [q(-H, yb, nb), q(H, yb, nb), q(H, yb + D, nb), q(-H, yb + D, nb)];
+    for (let k = 0; k < 4; k++) { const k1 = (k + 1) % 4; b.tri(A[k], A[k1], B[k1], c); b.tri(A[k], B[k1], B[k], c); }
+    if (i === 0) { b.tri(A[0], A[1], A[2], c); b.tri(A[0], A[2], A[3], c); }
+    if (i + 2 === ns.length) { b.tri(B[0], B[1], B[2], c); b.tri(B[0], B[2], B[3], c); }
+  }
+  // the approach piers, below the deck where it is clear of the ground (where the ground is
+  // higher they stand in it)
+  b.set(PLAIN(CONCRETE, 0.1));
+  for (const side of [-1, 1]) {
+    const end = side < 0 ? g.n0 : g.n1;
+    for (let a = g.s + g.piers; a < Math.abs(end) - 20; a += g.piers) {
+      const y = under(side * a);
+      if (y > 3) box(b, 0, side * a, 0, y, H * 0.55, 3, 0, { capTop: false });
+    }
+  }
+  // the pylons and their fans of stays: from the anchors on each pylon to the deck's edges, over
+  // the main span (to near mid-span) and the back span
+  for (const pn of [-g.s, g.s]) {
+    g.pylon(b, pn);
+    const anc = g.anchors(pn);
+    b.set(PLAIN([0.70, 0.70, 0.68], 0.4));
+    anc.forEach(([x, y], k) => {
+      const t = (k + 1) / anc.length;
+      for (const dir of [-1, 1]) {
+        const reach = dir * Math.sign(pn) < 0 ? g.s * 0.96 : g.back;     // towards the middle, or behind
+        const n = pn + dir * reach * t;
+        b.member([x, y, pn], [Math.sign(x) * (H - 1), under(n) + D, n], 0.55, 3);
+      }
+    });
+  }
+}
+
+// The Russky Bridge (Vladivostok): the pylons 321 m (OSM height=321; Wikipedia's infobox 319.1 m,
+// its text 324 m), the main span 1,104 m over the Eastern Bosphorus strait, 70 m clear below, the
+// deck 29.5 m wide, spans 60+72+3x84+1104+3x84+72+60 m, 168 stays. A-shaped pylons (the legs from
+// OSM's footings, 80 m apart) meeting at the head, the stays in two planes from it.
+export function russky(brg = 45.6, geo = {}) {
+  const b = new Builder(0.52).frame(0, 0, brg);
+  const g = { s: 556, n0: -1064, n1: 1064, h0: 30, h1: 30, ...geo };
+  const H = 321, LEG = 40, HEAD = 190;
+  cableStayed(b, {
+    ...g, clear: 70, half: 14.75, back: 384 * g.s / 552, piers: 84 * g.s / 552,
+    pylon: (bb, n) => {
+      bb.set(PLAIN([0.60, 0.61, 0.60], 0.15, { glow: [0.18, 0.20, 0.26] }));
+      for (const sx of [-1, 1]) bb.member([sx * LEG, 0, n], [sx * 3.5, HEAD + 40, n], 5.5, 4);
+      bb.loft([at(shift(chamferRect(5.5, 8, 1.5), 0, n), HEAD + 30), at(shift(chamferRect(4, 6, 1.2), 0, n), H)]);
+      // the cross beam under the deck
+      bb.member([-LEG * 0.82, 62, n], [LEG * 0.82, 62, n], 3, 4);
+      bb.light([0, H, n], 1);
+      for (const y of [240, 160, 80]) for (const sx of [-1, 1]) bb.light([sx * (LEG - (LEG - 3.5) * y / (HEAD + 40) + 6), y, n], 0);
+    },
+    anchors: () => { const out = []; for (let k = 0; k < 11; k++) { const y = lerp(HEAD + 40, H - 12, k / 10); out.push([-3.5, y], [3.5, y]); } return out; },
+  });
+  return b.result();
+}
+
+// The Zolotoy (Golden) Bridge (Vladivostok): over the Golden Horn bay, the main span 737 m, 1,387 m
+// long, 60 m clear below, the deck 33.3 m wide. The pylons about 226 m [EST: Wikipedia's infobox
+// gives a height of 222.42 m without saying of what], their legs splayed into a V across the deck
+// [EST their sizes]; their places: the cable-stayed section's middle (OSM) +- half the main span [EST].
+export function zolotoy(brg = -1.7, geo = {}) {
+  const b = new Builder(0.63).frame(0, 0, brg);
+  const g = { s: 371.8, n0: -686.8, n1: 686.8, h0: 30, h1: 30, ...geo };
+  const H = 226, B0 = 21, B1 = 31;
+  cableStayed(b, {
+    ...g, clear: 60, half: 16.65, back: Math.max(Math.min(Math.abs(g.n0), g.n1) - g.s - 40, 120), piers: 60,
+    pylon: (bb, n) => {
+      bb.set(PLAIN([0.58, 0.58, 0.56], 0.15, { glow: [0.34, 0.27, 0.12] }));
+      for (const sx of [-1, 1]) bb.member([sx * B0, 0, n], [sx * B1, H - 2, n], 4, 4);
+      bb.member([-B0 - 1.5, 54, n], [B0 + 1.5, 54, n], 3, 4);
+      bb.member([-B1 + 1, H - 30, n], [B1 - 1, H - 30, n], 2.2, 4);
+      bb.loft([at(shift(chamferRect(4, 4, 1), -B1, n), H - 2), at(shift(chamferRect(3, 3, 0.8), -B1, n), H)]);
+      bb.loft([at(shift(chamferRect(4, 4, 1), B1, n), H - 2), at(shift(chamferRect(3, 3, 0.8), B1, n), H)]);
+      for (const sx of [-1, 1]) { bb.light([sx * B1, H, n], 1); for (const y of [150, 90]) bb.light([sx * (lerp(B0, B1, y / H) + 4.5), y, n], 0); }
+    },
+    anchors: () => { const out = []; for (let k = 0; k < 9; k++) { const y = lerp(120, H - 12, k / 8), x = lerp(B0, B1, y / H); out.push([-x, y], [x, y]); } return out; },
+  });
+  return b.result();
+}
+
+export const MODELS = { lotte, b63, nseoul, parc1, shtower, swfc, jinmao, pearl, skytree, tokyotower, azabudai, tmg, ylmt, lct, neatt, harukas, umeda, fktower, fkdome,
+  citic, cctv, russky, zolotoy, cctvtower, tjtower, lntower };

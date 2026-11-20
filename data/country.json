@@ -6,9 +6,10 @@
     "2": "KP",
     "3": "JP",
     "4": "CN",
-    "5": "other"
+    "5": "other",
+    "6": "RU"
   },
-  "encoding": "byte & 7 = country (1 KR, 2 KP, 3 JP, 4 CN, 5 other; the sea takes its nearest land cell's); byte & 8 = sea. 0 would be sea with no country (never occurs).",
+  "encoding": "byte & 7 = country (1 KR, 2 KP, 3 JP, 4 CN, 5 other, 6 RU; the sea takes its nearest land cell's); byte & 8 = sea. 0 would be sea with no country (never occurs).",
   "type": "uint8",
   "rowOrder": "south first",
   "sampling": "cell-centred: value (i, j) is at x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell",

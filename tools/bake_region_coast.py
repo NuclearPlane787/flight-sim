@@ -47,6 +47,12 @@ Output (ints, metres, map frame):
   python3 tools/cpu-guard.py --minutes 20 -- /tmp/flight-sim/venv/bin/python -I tools/bake_region_coast.py
   ... --blocks-only   (stage 1 only)    ... --stats   (the written file's numbers)
   ... --water-only    (v0.6.1: the inland water again, the written file's land levels kept as they are)
+
+v0.6.3: reads the shipped data/coast-region.json and writes /tmp/flight-sim/v063/bake/coast-region.json
+(staging). The 64 km cells over the new 250 m tiles (bake_region_tiles.EXTRA) take the fine detail
+(levels 0 and 1) as v0.6.0's FINE rectangle's do; the lakes read the new tiles' water too, and the
+inland water is merged lake by lake (merge_water): the shipped rings stay byte for byte except the
+lakes within 1 km of a new tile, which are this bake's.
 """
 import argparse
 import json
@@ -62,6 +68,7 @@ os.makedirs = lambda *a, **k: None          # bake_common makes data/ folders on
 try:
     import bake_common as bc
     import bake_geom as bg
+    import bake_region_tiles as rt
 finally:
     os.makedirs = _makedirs
 
@@ -71,7 +78,10 @@ from rasterio import features
 from shapely.geometry import box, shape as to_shape
 
 REGION = (-1600000, -1338000, 2110000, 1284000)
-FINE = (-912000, -784000, 1520000, 624000)
+FINE = (-912000, -784000, 1520000, 624000)     # v0.6.0's 250 m data's rectangle (kept: the old cells' detail stays)
+# v0.6.3: the cells over the new 250 m tiles (bake_region_tiles.EXTRA) take the fine detail too
+FINE_NEW = [(-400000 + ti * 128000, -400000 + tj * 128000, -400000 + (ti + 1) * 128000, -400000 + (tj + 1) * 128000)
+            for ti, tj in rt.EXTRA_TILES]
 KOREA = (-400000, -400000, 400000, 400000)
 BLOCK = 512000
 NBX = int(np.ceil((REGION[2] - REGION[0]) / BLOCK))
@@ -89,8 +99,9 @@ WORK = '/tmp/flight-sim/v060/map-work'
 BLOCKS = os.path.join(WORK, 'blocks')
 LANDPOLY = '/tmp/flight-sim/v060/landpoly/land-polygons-split-4326/land_polygons'
 LPINDEX = '/tmp/flight-sim/v060/landpoly/bbox_index.npy'
-WATER_TILES = '/tmp/flight-sim/v060/bake/water'
-OUT = os.path.join(bc.DATA, 'coast-region.json')
+WATER_TILES = [os.path.join(rt.STAGE_OLD, 'water'), os.path.join(rt.STAGE, 'water')]   # v0.6.0's tiles, then v0.6.3's
+SHIPPED = os.path.join(bc.DATA, 'coast-region.json')       # read (--water-only keeps its land levels)
+OUT = os.path.join(rt.STAGE, 'coast-region.json')         # v0.6.3: staging; the lead installs it
 KOREA_COAST = os.path.join(bc.DATA, 'coast.json')
 
 
@@ -207,7 +218,7 @@ def level_rings(L, blocks):
                 r = (max(cx0, REGION[0]), max(cy0, REGION[1]), min(cx0 + cell, REGION[2]), min(cy0 + cell, REGION[3]))
                 if r[0] >= r[2] or r[1] >= r[3]:
                     continue
-                fine = 0 if overlaps(r, FINE) else 1
+                fine = 0 if (overlaps(r, FINE) or any(overlaps(r, f) for f in FINE_NEW)) else 1
                 if fine not in simp:
                     s = g.simplify(L['tol'][fine], preserve_topology=True)
                     ps = [p for p in polys_of(s) if p.area >= L['area'][fine]]
@@ -231,14 +242,15 @@ def level_rings(L, blocks):
 def lakes():
     """Inland water rings: WorldCover's (the water tiles) outside Korea's square, coast.json's inside."""
     gs = []
-    for name in sorted(os.listdir(WATER_TILES)):
+    names = sorted(set(n for d in WATER_TILES if os.path.isdir(d) for n in os.listdir(d)))
+    for name in names:
         if not name.endswith('.npy') or name.count('_') != 1:
             continue
         try:
             ti, tj = (int(v) for v in name[:-4].split('_'))
         except ValueError:
             continue
-        a = np.load(os.path.join(WATER_TILES, name), mmap_mode='r')
+        a = np.load(rt.find('water', name), mmap_mode='r')
         if a.shape != (516, 516, 2):
             continue
         m = (np.asarray(a[2:514, 2:514, 1]) < 128).astype(np.uint8)
@@ -286,6 +298,48 @@ def lakes():
     return out, n_wc
 
 
+def ring_groups(rings):
+    """Group delta-coded rings into lakes: each ring goes with its outermost containing ring (so a
+    lake's islands, and lakes on those islands, stay with the lake). Returns [[ring, ...], ...]."""
+    polys = []
+    for r in rings:
+        c = np.cumsum(np.asarray(r, np.float64).reshape(-1, 2), axis=0)
+        g = shapely.Polygon(c)
+        polys.append(g if g.is_valid else shapely.make_valid(g))
+    order = sorted(range(len(rings)), key=lambda k: -polys[k].area)
+    tree = shapely.STRtree(polys)
+    root = {}
+    for k in order:
+        pt = shapely.Polygon(np.cumsum(np.asarray(rings[k], np.float64).reshape(-1, 2), axis=0)).representative_point()
+        best = None
+        for j in tree.query(pt):
+            if j != k and polys[j].area > polys[k].area and polys[j].contains(pt):
+                if best is None or polys[j].area > polys[best].area:
+                    best = j
+        root[k] = k if best is None else root.get(best, best)
+    groups = {}
+    for k in range(len(rings)):
+        groups.setdefault(root[k], []).append(k)
+    return [([rings[k] for k in ks], shapely.union_all([polys[k] for k in ks])) for ks in groups.values()]
+
+
+def merge_water(shipped, baked):
+    """v0.6.3: the shipped inland water stays byte for byte except the lakes that reach the new 250 m
+    tiles (within 1 km of their rectangles), which come from this bake (they now see the new tiles'
+    water). Returns (rings, counts)."""
+    reach = shapely.union_all([box(*f).buffer(1000) for f in FINE_NEW])
+    keep, drop, add = [], 0, []
+    for rs, g in ring_groups(shipped):
+        if g.intersects(reach):
+            drop += len(rs)
+        else:
+            keep.extend(rs)
+    for rs, g in ring_groups(baked):
+        if g.intersects(reach):
+            add.extend(rs)
+    return keep + add, dict(kept=len(keep), dropped=drop, added=len(add))
+
+
 def stats():
     with open(OUT) as f:
         d = json.load(f)
@@ -298,10 +352,12 @@ def stats():
 
 def water_only():
     """Bake the inland water again into the written file; its land levels stay as they are, byte for byte."""
-    with open(OUT) as f:
+    with open(SHIPPED) as f:
         out = json.load(f)
     water, n_wc = lakes()
     print(f'water: {len(water)} rings ({n_wc} from WorldCover outside Korea\'s square)', flush=True)
+    water, cnt = merge_water(out['water'], water)
+    print(f'water merged with the shipped file: {cnt}', flush=True)
     out['water'] = water
     with open(OUT + '.tmp', 'w') as f:
         json.dump(out, f, separators=(',', ':'))
@@ -339,6 +395,10 @@ def main():
         levels.append(dict(tol=L['tol'][0], cell=L['cell'] or WHOLE, rings=rings))
     water, n_wc = lakes()
     print(f'water: {len(water)} rings ({n_wc} from WorldCover outside Korea\'s square)', flush=True)
+    with open(SHIPPED) as f:
+        shipped = json.load(f)['water']
+    water, cnt = merge_water(shipped, water)
+    print(f'water merged with the shipped file: {cnt}', flush=True)
     out = dict(v=2, kind='region', extent=list(REGION), levels=levels, water=water)
     with open(OUT + '.tmp', 'w') as f:
         json.dump(out, f, separators=(',', ':'))

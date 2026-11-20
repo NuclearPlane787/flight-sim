@@ -28,7 +28,7 @@ import { createMap } from '../src/ui/map.js';
 import { makeState, makeAp, derive, toMap, magToGrid } from './dev-ui-mock.js';
 
 const KOREA = ['RKSS', 'RKSI', 'RKPC'];
-const REGION = [...KOREA, 'RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN'];
+const REGION = [...KOREA, 'RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW'];   // (the last five: v0.6.3)
 const airports = (await Promise.all((EAST_ASIA_ON ? REGION : KOREA).map(async (i) => (await fetch(`../data/airports/${i}.json`)).json())))
   .map((a) => ({ ...a, runways: a.runways.map((r) => ({ ...r, ends: r.ends.map((e, j) => ({ ...e, hdgGridDeg: e.hdgGridDeg ?? Math.atan2(r.ends[1 - j].x - e.x, r.ends[1 - j].y - e.y) * 180 / Math.PI })) })) }));
 const coast = await (await fetch(EAST_ASIA_ON ? '../data/coast-region.json' : '../data/coast.json')).json();
@@ -39,7 +39,9 @@ const buildMs = performance.now() - t0;
 const cvA = hidpiCanvas(document.getElementById('nd-a')), cvB = hidpiCanvas(document.getElementById('nd-b'));
 cvA.size(330, 330); cvB.size(330, 330);
 const ndA = createNd(cvA, { airports, coast: built }), ndB = createBoeingNd(cvB, { airports, coast: built });
-const map = createMap(document.getElementById('map-root'), { airports, coast });
+// v0.6.3: the map's city areas and names, as main.js loads them (the region only).
+const urban = EAST_ASIA_ON ? await fetch('../data/urban-region.json').then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+const map = createMap(document.getElementById('map-root'), { airports, coast, urban });
 const st = makeState(2), ap = makeAp(st);
 st.onGround = false; st.ias = 280 * 0.514444; st.pos.z = 30000 * 0.3048; derive(st);
 const view = { state: st, ap, dest: null, timeScale: 1, timeScaleActual: 1, paused: false, controls: { law: 'normal' } };

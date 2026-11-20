@@ -22,7 +22,8 @@ const HALF = 20;            // blocks each side of the camera: ±8 km
 const SLOTS = 15;           // 3 columns x 5 rows per block (Korea's)
 // v0.6.0 Part 6 (behind CITIES_ON): each country's own mix. A block's country goes to the shader in
 // its slot index (slot + 64 x code); Japan's blocks have 30 slots (5 x 6), China's 20 (4 x 5).
-const COUNTRY_CODE = { KR: 0, KP: 0, other: 0, JP: 1, CN: 2 };
+// v0.6.3: Russia (Vladivostok's Soviet-era slab blocks on its hills) takes Korea's apartment-slab mix.
+const COUNTRY_CODE = { KR: 0, KP: 0, other: 0, JP: 1, CN: 2, RU: 0 };
 const COUNTRY_SLOTS = [SLOTS, 30, 20];
 const MAX_SLOTS = 30;
 export const CITY_MAX_AGL = 4500;   // m above the ground: no buildings above this

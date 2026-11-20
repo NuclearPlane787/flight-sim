@@ -91,10 +91,11 @@ async function boot() {
 
   ui.loadingText.textContent = 'Loading terrain and airports…';
   const base = new URL('../data/', import.meta.url).href;
-  const [hf, rw, coast] = await Promise.all([
+  const [hf, rw, coast, , urban] = await Promise.all([
     hfMod.loadHeightfield(base), rwMod.loadAirports(base),
     import('./world/region.js').then((m) => fetch(base + (m.EAST_ASIA_ON ? 'coast-region.json' : 'coast.json'))).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     import('./world/region.js').then((m) => m.loadLocalRules(base)),   // v0.6.0: the local rules (WMM, the country) installed before the first step; null at once with the region off
+    import('./world/region.js').then((m) => (m.EAST_ASIA_ON ? fetch(base + 'urban-region.json').then((r) => (r.ok ? r.json() : null)) : null)).catch(() => null),   // v0.6.3: the map's city areas and names (the region's map only)
   ]);
   rw.setHeightfield(hf);
   // v0.6.0: the terrain loader (region.js): the tiles the flight reads, and the sim's waits.
@@ -258,7 +259,7 @@ async function boot() {
     return def;
   }
   const hud = hudMod.createHud($('hud'), { airports, coast });
-  const map = mapMod.createMap($('map-root'), { airports, coast });
+  const map = mapMod.createMap($('map-root'), { airports, coast, urban });
   const setup = setupMod.createSetup($('setup-root'), { airports, coast });
 
   // ---- Scenarios (save slots with the whole state; src/scenarios.js) ----

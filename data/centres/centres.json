@@ -254,6 +254,146 @@
    "maxHeightM": 143.0,
    "minKeepHeightM": 12.0,
    "bytes": 230156
+  },
+  {
+   "id": "beijing",
+   "name": "Beijing",
+   "file": "beijing.bin.gz",
+   "origin": [
+    -948136,
+    487980
+   ],
+   "box": [
+    -954947,
+    483005,
+    -941325,
+    492955
+   ],
+   "latlon": [
+    39.86368,
+    116.32445,
+    39.96628,
+    116.49547
+   ],
+   "cols": 28,
+   "rows": 20,
+   "count": 7743,
+   "vertices": 54947,
+   "maxHeightM": 528.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 202341
+  },
+  {
+   "id": "tianjin",
+   "name": "Tianjin",
+   "file": "tianjin.bin.gz",
+   "origin": [
+    -889146,
+    393199
+   ],
+   "box": [
+    -893451,
+    389330,
+    -884841,
+    397068
+   ],
+   "latlon": [
+    39.08634,
+    117.15587,
+    39.16365,
+    117.2641
+   ],
+   "cols": 18,
+   "rows": 16,
+   "count": 3151,
+   "vertices": 22386,
+   "maxHeightM": 415.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 82760
+  },
+  {
+   "id": "shenyang",
+   "name": "Shenyang",
+   "file": "shenyang.bin.gz",
+   "origin": [
+    -339956,
+    651153
+   ],
+   "box": [
+    -344130,
+    647249,
+    -335782,
+    655057
+   ],
+   "latlon": [
+    41.75852,
+    123.37813,
+    41.83147,
+    123.48182
+   ],
+   "cols": 17,
+   "rows": 16,
+   "count": 1106,
+   "vertices": 7790,
+   "maxHeightM": 366.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 29000
+  },
+  {
+   "id": "dalian",
+   "name": "Dalian",
+   "file": "dalian.bin.gz",
+   "origin": [
+    -509262,
+    338044
+   ],
+   "box": [
+    -513595,
+    335271,
+    -504929,
+    340817
+   ],
+   "latlon": [
+    38.88276,
+    121.57826,
+    38.93723,
+    121.68171
+   ],
+   "cols": 18,
+   "rows": 12,
+   "count": 2435,
+   "vertices": 16005,
+   "maxHeightM": 192.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 59164
+  },
+  {
+   "id": "vladivostok",
+   "name": "Vladivostok",
+   "file": "vladivostok.bin.gz",
+   "origin": [
+    361150,
+    799243
+   ],
+   "box": [
+    357666,
+    796446,
+    364634,
+    802040
+   ],
+   "latlon": [
+    43.08366,
+    131.85858,
+    43.13633,
+    131.94645
+   ],
+   "cols": 14,
+   "rows": 12,
+   "count": 2741,
+   "vertices": 20585,
+   "maxHeightM": 155.5,
+   "minKeepHeightM": 12.0,
+   "bytes": 74448
   }
  ]
 }

@@ -74,7 +74,7 @@ const PLACES = [
   ['Pudong', 31.1434, 121.8052, 'CN'],
   ['Qingdao', 36.0671, 120.3826, 'CN'],
   ['Taipei', 25.033, 121.5654, 'other'],
-  ['Vladivostok', 43.1155, 131.8855, 'other'],
+  ['Vladivostok', 43.1155, 131.8855, 'RU'],   // (v0.6.3: Russia is in the raster, code 6; 'other' until then)
 ];
 
 test('countryAt: cities and airports', () => {

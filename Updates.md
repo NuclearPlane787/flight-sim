@@ -4,6 +4,24 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.6.3 · 2026-11-21 · Beijing, Shenyang, Dalian and Vladivostok; cities on the map
+
+- **Five new airports, seventeen in all.** East Asia grows west to Beijing and north to Vladivostok:
+  - **Beijing Capital** (ZBAA): three runways of 3,200 to 3,800 m, terminals 2 and 3 with their piers, 393 stands.
+  - **Beijing Daxing** (ZBAD): four runways, the star-shaped terminal, 392 stands. Its east-west runway's 11L end has no approach aids, as the real one has none: it's a departure end.
+  - **Shenyang Taoxian** (ZYTX): one runway, 06/24, 3,200 m, 87 stands.
+  - **Dalian Zhoushuizi** (ZYTL): one runway, 10/28, 3,300 m, among hills by the sea, both thresholds displaced, 46 stands.
+  - **Vladivostok** (UHWW): one runway, 07R/25L, 3,500 m, ILS category II to 25L, 23 stands numbered as its real chart numbers them. Its runway, lights and stands are the published ones (Russia's AIP).
+
+  Each has gate starts, pushbacks, taxi routes, signs and parked traffic, and the widebodies get stands at all five (at Vladivostok the six its chart gives them). The setup lists Beijing's two first in China, then Dalian and Shenyang after Qingdao, and Vladivostok under Russia. Some routes: Incheon–Beijing 487 nm, Pudong–Beijing 593 nm, Gimpo–Vladivostok 427 nm, Incheon–Shenyang 286 nm, Incheon–Dalian 249 nm, Shenyang–Vladivostok 398 nm.
+- **More land in detail.** The 250 m terrain and the 30 m countryside now reach round Beijing and Tianjin, down the Beijing–Shanghai route, across Liaoning and North Korea's north, and over Mount Paektu (its crater lake is there) to Vladivostok and its bays: 26 more tiles, fitted to the routes rather than a rectangle. Nothing already there moved, so saved flights stand where they stood.
+- **Russia's rules at Vladivostok:** the altimeter in hectopascals and altitudes in feet, a transition altitude of 8,000 ft (FL090 above it), the clock ten hours ahead of UTC (shown as VLAT), and the tower's wind in metres per second on the weather line.
+- **Cities on the map.** The path map (N) now shows built-up areas as pale shapes on the land, with the cities' names in English: the great cities with the whole region on screen (Tokyo, Seoul, Shanghai, Beijing, Osaka and a few more), and more as you zoom in, down to towns. Names keep clear of the airports' labels; the route and the bright path stay on top. The faint dashed outline of the detailed terrain is its real stepped shape now.
+- **Real buildings in five more centres:** Beijing from Financial Street to the CBD, Tianjin along the Hai River, Shenyang, Dalian and Vladivostok round the Golden Horn.
+- **Seven more landmarks:** Beijing's CITIC Tower (528 m, with its narrow waist), the CCTV Headquarters' loop and the Central Radio and TV Tower; Vladivostok's two cable-stayed bridges, the Russky Bridge to its island (pylons 321 m, a kilometre's span) and the Zolotoy Bridge over the Golden Horn; Tianjin's TV tower in its lake and Liaoning's in Shenyang. Twenty-six in all.
+- **Under the hood:** `?mapcities=0` after the address draws the map without the cities, for comparison; 1,307 unit tests; `data/` is 204 MB (153 MB before).
+- **Known:** China's AIP can't be read without an account, so the Chinese airports' lights and ILS categories come from open navigation data and their approach lights' length is the standard 900 m; Daxing's stand numbers beyond the ones OpenStreetMap carries are made up (R1 to R275), and so are the holding points at all five. Vladivostok's taxiways are named only along the parallel (A). The place names come from Natural Earth's list of 419 places in the region: fine for cities, thin for small towns.
+
 ## v0.6.2 · 2026-11-20 · The landing itself, one bar along the top, panel size, and the heading on the map
 
 - **The landing score is the landing itself.** The approach no longer counts: the glide path and the sink rate's swings are gone, so lining up late and putting it down well scores well (a good touchdown after a quick line-up went from 50 to 99). Nothing caps the total any more but a hard touchdown: 900 ft/min with the rest right still scores 50, a D, but landing long or off the centreline just loses those parts' points (700 m long with the rest perfect: 78). The grass, a touchdown off a runway and a would-be crash still come off. Landings already in your logbook keep the scores they were given.

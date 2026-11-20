@@ -58,12 +58,35 @@ export const regionQuery = () => {
 
 // The map's extent (m, the map frame): Korea's 800 km square (frame.js's MAP_EXTENT, v0.5.8),
 // or the region's whole data, the 1 km level's rectangle round 24-46 N, 112-148 E. FINE_EXTENT
-// is the 250 m data's rectangle (29-40 N, 119-142 E). The predicted path ends at mapExtent(),
+// is the 250 m data's bounding rectangle (v0.6.0: the tiles meeting 29-40 N, 119-142 E; v0.6.3 adds 26 tiles
+// round Beijing and north to Vladivostok: the data itself is the manifest's `covered` tiles, fineOutline()). The predicted path ends at mapExtent(),
 // and the path map draws it. (tests/region-loader.test.mjs checks both against the manifest.)
 export const KOREA_EXTENT = { x0: -400000, y0: -400000, x1: 400000, y1: 400000 };
 export const REGION_EXTENT = { x0: -1600000, y0: -1338000, x1: 2110000, y1: 1284000 };
-export const FINE_EXTENT = { x0: -912000, y0: -784000, x1: 1520000, y1: 624000 };
+export const FINE_EXTENT = { x0: -1040000, y0: -784000, x1: 1520000, y1: 880000 };   // (v0.6.3: Beijing's column in the west, two rows north to Vladivostok; v0.6.2's was -912000 .. 624000)
 export const mapExtent = () => (EAST_ASIA_ON ? REGION_EXTENT : KOREA_EXTENT);
+// v0.6.3: the 250 m data is a set of tiles, not a rectangle (Shane, 2026-11-20: "we don't have to keep every
+// region a perfect rectangle"). fineOutline() is its edge for the map: every side of a covered tile whose
+// neighbour isn't covered, as [x0, y0, x1, y1] in map metres; null until a manifest with the region's tiles has
+// been read (terrainSpec() notes it), and with the flag off.
+let fineSpec = null, fineEdges = null;
+export function tileOutline(spec) {
+  const L = spec && spec.levels && spec.levels[0];
+  if (!L || !L.covered) return null;
+  const size = L.tile * L.cell, has = new Set(L.covered), out = [];
+  for (const name of L.covered) {
+    const [i, j] = name.split('_').map(Number), x = spec.x0 + i * size, y = spec.y0 + j * size;
+    if (!has.has(`${i}_${j - 1}`)) out.push([x, y, x + size, y]);
+    if (!has.has(`${i}_${j + 1}`)) out.push([x, y + size, x + size, y + size]);
+    if (!has.has(`${i - 1}_${j}`)) out.push([x, y, x, y + size]);
+    if (!has.has(`${i + 1}_${j}`)) out.push([x + size, y, x + size, y + size]);
+  }
+  return out;
+}
+export function fineOutline() {
+  if (!EAST_ASIA_ON || !fineSpec) return null;
+  return fineEdges || (fineEdges = tileOutline(fineSpec));
+}
 export const fineExtent = () => (EAST_ASIA_ON ? FINE_EXTENT : KOREA_EXTENT);
 
 // ---- The local rules by place (briefs/V0-6-0.md Part 5). One lookup the sim, the screens and the clock
@@ -99,7 +122,7 @@ export function loadLocalRules(base) {
   }
   return localRules;
 }
-// 'KR' | 'KP' | 'JP' | 'CN' | 'other' (the sea takes its nearest land's country).
+// 'KR' | 'KP' | 'JP' | 'CN' | 'RU' (v0.6.3) | 'other' (the sea takes its nearest land's country).
 export function countryAt(x, y) { return EAST_ASIA_ON && geo ? geo.countryAt(x, y) : 'KR'; }
 const FT_M = 0.3048;
 const KR_RULES = { country: 'KR', timeZone: 'Asia/Seoul', zoneName: 'KST', baroUnit: 'hPa',
@@ -112,6 +135,12 @@ export const COUNTRY_RULES = {
   // China: hPa, metres on the PFD, Pudong's 3,000 m / 3,600 m (Hongqiao's and Qingdao's [EST] the
   // same until their charts are read), the wind in metres per second.
   CN: { ...KR_RULES, country: 'CN', timeZone: 'Asia/Shanghai', zoneName: 'CST', transAltM: 3000, transLevelM: 3600, metricAlt: true, metar: 'cn' },
+  // Russia (v0.6.3), from AIP Russia as read on 2026-11-20 (UHWW AD 2.17 and its ILS Z 25L chart, ENR 1.7, GEN 2.1):
+  // QNH in hPa and altitudes in feet at Vladivostok, the transition altitude 8,000 ft, the level FL090 with the QNH at
+  // 1013 hPa or more (FL100 from 977, FL110 below: one value here, the standard day's), the wind in metres per
+  // second, UTC+10 with no summer time. The whole of Russia's part of the map takes Vladivostok's zone and
+  // transition (Sakhalin is UTC+11): right at the one Russian airport, [EST] elsewhere.
+  RU: { ...KR_RULES, country: 'RU', timeZone: 'Asia/Vladivostok', zoneName: 'VLAT', transAltM: 8000 * FT_M, transLevelM: 9000 * FT_M, metar: 'ru' },
 };
 export function rulesAt(x, y) { return COUNTRY_RULES[countryAt(x, y)] || KR_RULES; }
 
@@ -123,12 +152,13 @@ export function terrainSpec(manifest, on = EAST_ASIA_ON) {
   if (on === undefined || on === null) on = EAST_ASIA_ON;
   const m = manifest || {};
   const region = !!(on && m.tilesRegion);
+  if (m.tilesRegion && m.tilesRegion !== fineSpec) { fineSpec = m.tilesRegion; fineEdges = null; }   // (for fineOutline())
   const pending = region && PENDING_ON;
   return {
     region,
     tiles: region ? m.tilesRegion : m.tiles,
     patches: (m.patches || []).concat(region ? m.patchesRegion || [] : [], pending ? m.patchesPending || [] : []),
-    coastPatches: (m.coastPatches || []).concat(region ? m.coastPatchesRegion || [] : []),
+    coastPatches: (m.coastPatches || []).concat(region ? m.coastPatchesRegion || [] : [], pending ? m.coastPatchesPending || [] : []),   // (coastPatchesPending: v0.6.3)
     airports: (m.airports || []).concat(region ? m.airportsRegion || [] : [], pending ? m.airportsPending || [] : []),
   };
 }

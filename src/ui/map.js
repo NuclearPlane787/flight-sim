@@ -4,19 +4,23 @@
 // or skip to a 15 nm final. North up. Nothing here ever says you're off course.
 // v0.2.1: Change route (or a click on an airport) picks a new destination and runway in flight.
 //
-// createMap(root, { airports, coast }) -> { open(), close(), toggle(), isOpen, update(view),
+// createMap(root, { airports, coast, urban }) -> { open(), close(), toggle(), isOpen, update(view),
 //   setPrediction(samples), onjump(sample), onskipfinal(), onroute(icao, ident) -> { ok, error? },
-//   openRoute(icao?), setCoast(coast), waypoints, setWaypoints(list) }
+//   openRoute(icao?), setCoast(coast), setUrban(urban), waypoints, setWaypoints(list) }
+// v0.6.3: `urban` is data/urban-region.json (the city areas and names; the region's map only).
 
-import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg, headingForTrack } from './common.js';
+import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, buildUrban, pickPlaces, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg, headingForTrack } from './common.js';
 import { MAP_EXTENT } from '../world/frame.js';
-import { EAST_ASIA_ON, mapExtent, fineExtent } from '../world/region.js';
+import { EAST_ASIA_ON, mapExtent, fineExtent, fineOutline } from '../world/region.js';
 import { fuelEstimate } from './setup.js';
 
 const PRED = '#c6ff2e';      // the predicted path: bright lime
+// v0.6.3: the city areas' tint over the land, and a switch for comparing (?mapcities=0 draws the map without them).
+const URBAN_FILL = 'rgba(226,212,176,0.27)';
+const CITY_AREAS = !/[?&]mapcities=0\b/.test((typeof location !== 'undefined' && location.search) || '');
 const PRED_GLOW = 'rgba(198,255,46,0.55)';
 
-export function createMap(root, { airports, coast } = {}) {
+export function createMap(root, { airports, coast, urban } = {}) {
   const el = document.createElement('div');
   el.className = 'fsui-map';
   el.hidden = true;
@@ -50,6 +54,7 @@ export function createMap(root, { airports, coast } = {}) {
   const confirmEl = el.querySelector('.fsui-confirm');
   const routeEl = el.querySelector('.fsui-route');
   let coastL = coast ? buildCoast(coast) : null;
+  let urbanL = urban ? buildUrban(urban) : null;   // v0.6.3: the city areas and names (the region's map only)
 
   let W = 0, H = 0, dpr = 1;
   let cx = 0, cy = 0, k = 1 / 1000;      // view centre (map m) and px per metre
@@ -64,7 +69,7 @@ export function createMap(root, { airports, coast } = {}) {
     if (b) b.textContent = k ? `Close (${k})` : 'Close';
   }
   const api = {
-    open, close, toggle, update, setPrediction, setCoast, setKeyNames,
+    open, close, toggle, update, setPrediction, setCoast, setUrban, setKeyNames,
     get isOpen() { return isOpen; },
     get waypoints() { return route.waypoints; },
     setWaypoints(list) { setWaypoints(list); redraw(); },
@@ -75,7 +80,8 @@ export function createMap(root, { airports, coast } = {}) {
     _devScreen(x, y) { const r = canvas.getBoundingClientRect(); return [r.left + X(x), r.top + Y(y)]; },
     _devConfirm(f) { const i = Math.floor(clamp(f, 0, 1) * (ahead().length - 1)); const s = ahead()[i]; if (s) showConfirm(s); },
     // Dev hooks (v0.6.0): centre the view on a map point at a scale; time n full draws (ms each).
-    _devView(x, y, mPerPx) { cx = x; cy = y; k = 1 / mPerPx; layoutSig = ''; if (isOpen) draw(); },
+    _devView(x, y, mPerPx) { cx = x; cy = y; k = 1 / mPerPx; layoutSig = ''; placeSig = ''; if (isOpen) draw(); },
+    _devPlaces() { return urbanL && CITY_AREAS ? placeLayout().map((p) => ({ name: p.name, x: p.x, y: p.y, pop: p.pop })) : []; },   // v0.6.3: the names written now
     _devDrawMs(n = 20) { const t = performance.now(); for (let i = 0; i < n; i++) draw(); return (performance.now() - t) / n; },
     // Dev hook: a point on an airport's label (its ICAO code), in page px.
     _devLabel(icao) {
@@ -125,6 +131,7 @@ export function createMap(root, { airports, coast } = {}) {
   function close() { if (!isOpen) return; isOpen = false; el.hidden = true; hideConfirm(); closeRoute(); tip.hidden = true; }
   function toggle() { isOpen ? close() : open(); }
   function setCoast(c) { coastL = c ? buildCoast(c) : null; redraw(); }
+  function setUrban(u) { urbanL = u ? buildUrban(u) : null; placeSig = ''; redraw(); }
   function setPrediction(list) { samples = Array.isArray(list) ? list : []; hover = null; redraw(); }
 
   function update(v) {
@@ -156,6 +163,16 @@ export function createMap(root, { airports, coast } = {}) {
         // v0.6.0: the region's coast, by level of detail and only the cells in view (common.js).
         ctx.beginPath(); traceLand(ctx, coastL, lod, box, tf, 1.5 / k);
         ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd');
+        // v0.6.3: the city areas, on the land only (the same path clips them, so none spills over a harbour).
+        if (urbanL && CITY_AREAS) {
+          // (Clipped only closer in than 600 m a pixel: further out a shape's overhang is under a pixel, and the
+          // clip to the whole region's coast would double the draw's cost.)
+          const clip = 1 / k < 600;
+          if (clip) { ctx.save(); ctx.clip('evenodd'); }
+          ctx.beginPath(); traceRings(ctx, urbanL.rings, urbanL.lod(1 / k), box, tf, 4 / k);
+          ctx.fillStyle = URBAN_FILL; ctx.fill('evenodd');
+          if (clip) ctx.restore();
+        }
         ctx.beginPath(); traceCoastLines(ctx, coastL, lod, box, tf, 1.5 / k);
         ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
       } else {
@@ -171,7 +188,10 @@ export function createMap(root, { airports, coast } = {}) {
       // v0.6.0: the region's rectangle, and inside it, fainter, the 250 m data's.
       const E = mapExtent(), F = fineExtent();
       ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.setLineDash([3, 7]);
-      ctx.strokeRect(X(F.x0), Y(F.y1), (F.x1 - F.x0) * k, (F.y1 - F.y0) * k);
+      // v0.6.3: the 250 m data's own outline (its tiles' outer sides); its bounding rectangle until the manifest is read.
+      const edges = fineOutline();
+      if (edges) { ctx.beginPath(); for (const [ax, ay, bx, by] of edges) { ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by)); } ctx.stroke(); }
+      else ctx.strokeRect(X(F.x0), Y(F.y1), (F.x1 - F.x0) * k, (F.y1 - F.y0) * k);
       ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
       ctx.strokeRect(X(E.x0), Y(E.y1), (E.x1 - E.x0) * k, (E.y1 - E.y0) * k);
     } else {
@@ -180,6 +200,7 @@ export function createMap(root, { airports, coast } = {}) {
     }
     ctx.setLineDash([]);
 
+    if (urbanL && CITY_AREAS && coastL?.region) drawPlaces();   // v0.6.3: under the airports, the route and the path
     drawAirports();
     const st = view?.state;
     // The line to the destination (magenta), with its waypoints.
@@ -326,6 +347,39 @@ export function createMap(root, { airports, coast } = {}) {
       if (got) { placed.push(got); layoutMap.set(apt, got); }
     }
     return layoutMap;
+  }
+  // ---- v0.6.3: the cities' names (Shane: "their English names appearing in that area, like google maps") ----
+  // Picked by population and zoom, never touching an airport's label or dot (common.js pickPlaces()); laid out
+  // once per view. Drawn before the airports, the route and the path, which stay on top.
+  let placeSig = '', placeList = [];
+  function placeLayout() {
+    const sig = [W, H, cx, cy, k, airportList(airports).length, destAirport()?.icao].join();
+    if (sig === placeSig) return placeList;
+    placeSig = sig;
+    const taken = [];
+    for (const B of labelLayout().values()) taken.push(B);
+    for (const a of airportList(airports)) { const [ox, oy] = originOf(a); taken.push({ x0: X(ox) - 7, y0: Y(oy) - 7, x1: X(ox) + 7, y1: Y(oy) + 7 }); }
+    // And the map's own overlays (the bar, the help's lines, the info, the scale bar at the bottom right): a name
+    // under them can't be read.
+    const cr = canvas.getBoundingClientRect();
+    for (const q of el.querySelectorAll('.fsui-map-bar, .fsui-map-help, .fsui-map-info')) {
+      const r = q.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) taken.push({ x0: r.left - cr.left - 6, y0: r.top - cr.top - 6, x1: r.right - cr.left + 6, y1: r.bottom - cr.top + 6 });
+    }
+    taken.push({ x0: W - 200, y0: H - 150, x1: W, y1: H });
+    placeList = pickPlaces(urbanL.places, {
+      k, W, H, taken, toScreen: (x, y, o) => { o[0] = X(x); o[1] = Y(y); return o; },
+      measure: (name, st) => { ctx.font = font(st.px, st.bold); return ctx.measureText(name).width; },
+    });
+    return placeList;
+  }
+  function drawPlaces() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    for (const p of placeLayout()) {
+      ctx.font = font(p.px, p.bold);
+      ctx.strokeStyle = 'rgba(6,16,28,0.8)'; ctx.lineWidth = 3; ctx.strokeText(p.name, p.x, p.y);
+      ctx.fillStyle = `rgba(232,236,244,${p.alpha})`; ctx.fillText(p.name, p.x, p.y);
+    }
   }
   function drawAirportsRegion() {
     const list = airportList(airports), lay = labelLayout();

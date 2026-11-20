@@ -57,7 +57,12 @@ const CUT_GLSL = (() => {
 })();
 
 // The look by country (0 Korea, 1 Japan, 2 China); Korea's three stand with CITIES_ON alone.
-const COUNTRY = { seoul: 0, songdo: 0, busan: 0, tokyo: 1, yokohama: 1, osaka: 1, fukuoka: 1, shanghai: 2, qingdao: 2 };
+// v0.6.3: Beijing, Tianjin, Shenyang and Dalian China's; Vladivostok Korea's (its Soviet-era slab
+// blocks are nearest Korea's apartment slabs, as cities.js maps RU), behind EAST_ASIA_ON as the rest.
+const COUNTRY = {
+  seoul: 0, songdo: 0, busan: 0, tokyo: 1, yokohama: 1, osaka: 1, fukuoka: 1, shanghai: 2, qingdao: 2,
+  beijing: 2, tianjin: 2, shenyang: 2, dalian: 2, vladivostok: 0,
+};
 const KOREA = new Set(['seoul', 'songdo', 'busan']);
 export function centreAllowed(id, cities = CITIES_ON, region = EAST_ASIA_ON) {
   return !!cities && (KOREA.has(id) || !!region);
@@ -75,6 +80,12 @@ export function landmarkExclusions(list) {
   for (const l of list) {
     if (!l || !Number.isFinite(l.lat) || !Number.isFinite(l.lon)) continue;
     const [x, y] = toMap(l.lat, l.lon);
+    // A bridge (v0.6.3) leaves out only what stands where its pylons stand: its footprint is its
+    // whole length, and the buildings on either shore stay.
+    if (l.kind === 'bridge') {
+      for (const [dx, dy, r] of l.parts || []) out.push({ x: x + dx, y: y + dy, r: Math.max(r, 20) });
+      continue;
+    }
     out.push({ x, y, r: Math.max(Number(l.footprintM) || 0, 20) });
   }
   return out;

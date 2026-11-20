@@ -77,17 +77,51 @@ export const LANDMARKS = [
     source: 'Wikipedia "Fukuoka Tower": 234 m, decks 116-123 m, mast 111 m above the top deck; triangle 24 m (OSM)' },
   { id: 'fkdome', city: 'fukuoka', country: 'JP', lat: 33.5953, lon: 130.3622, heightM: 84, footprintM: 109, brg: 0,
     source: 'Wikipedia "Mizuho PayPay Dome Fukuoka" (coordinates; no size given): 216 m across and 84 m high [EST, the brief]' },
+  // v0.6.3: Beijing, Vladivostok, Tianjin, Shenyang (checked 2026-11-20). The bridges (kind
+  // 'bridge') are placed from OSM: lat, lon the pylons' midpoint, `pylons` their centres (from the
+  // footings' outlines), `ends` the deck's ends; their parts (the pylons' circles) and the deck's
+  // axis are worked out below. Their base is the sea (y 0), the deck coming down to the ground at
+  // each end (read when the model is built).
+  { id: 'citic', city: 'beijing', country: 'CN', lat: 39.91150, lon: 116.46024, heightM: 527.7, footprintM: 56, brg: 6.4, floors: 109,
+    source: 'Wikipedia "China Zun": 527.7 m, top floor 522 m, 109 floors; OSM height=528, footprint 81 x 77 m; waist and top widths [EST]' },
+  { id: 'cctv', city: 'beijing', country: 'CN', lat: 39.91381, lon: 116.45797, heightM: 234, footprintM: 116, brg: 6.4, floors: 51,
+    source: 'Wikipedia "CCTV Headquarters": 234 m roof, 51 floors (OSM height=245); the site 159 x 168 m (OSM); the lean, podium and overhang [EST]' },
+  { id: 'russky', city: 'vladivostok', country: 'RU', kind: 'bridge', lat: 43.0633255, lon: 131.9078555, heightM: 321, footprintM: 1100,
+    pylons: [[43.060012, 131.902812], [43.066639, 131.912899]], ends: [[43.05692, 131.898282], [43.069665, 131.917507]],
+    source: 'Wikipedia "Russky Bridge": main span 1,104 m, clearance 70 m, pylons 319.1 m (infobox) / 324 m (text); OSM pylon footings height=321; the ends from OSM\'s bridge outline (to 131.9173 E) and road' },
+  { id: 'zolotoy', city: 'vladivostok', country: 'RU', kind: 'bridge', lat: 43.1088535, lon: 131.896239, heightM: 226, footprintM: 720,
+    pylons: [[43.1055348, 131.8961703], [43.1121722, 131.8963077]], ends: [[43.102722, 131.896112], [43.114985, 131.896366]],
+    source: 'Wikipedia "Zolotoy Bridge": main span 737 m, 1,387 m long, clearance 60 m, infobox height 222.42 m; pylons 226 m [EST, the brief]; pylon places +-368.5 m about the cable-stayed way\'s middle (OSM) [EST]' },
+  { id: 'cctvtower', city: 'beijing', country: 'CN', lat: 39.918176, lon: 116.300299, heightM: 405, footprintM: 50,
+    source: 'Wikipedia "Central Radio & TV Tower": 405 m, observation deck 238 m, top floor 248 m; OSM height=405, base 72 x 71 m; pod rings [EST]' },
+  { id: 'tjtower', city: 'tianjin', country: 'CN', lat: 39.091917, lon: 117.175338, heightM: 415.2, footprintM: 24,
+    source: 'Wikipedia "Tianjin Radio and Television Tower": 415.2 m, the pod about two-thirds up; OSM height=415, shaft 30 m; pod rings [EST]' },
+  { id: 'lntower', city: 'shenyang', country: 'CN', lat: 41.780386, lon: 123.427954, heightM: 305.5, footprintM: 24,
+    source: 'Wikipedia "Liaoning Broadcast and TV Tower": 305.5 m, the disk with decks and restaurant (no heights given) [EST the disk at 180-204 m]; OSM base 38 m (OSM height from levels, 160 m, wrong)' },
 ];
 // The cities' boxes (lat S, W, N, E) the tests check the list against.
 export const CITY_BOXES = {
   seoul: [37.42, 126.80, 37.70, 127.20], shanghai: [31.10, 121.30, 31.35, 121.65], tokyo: [35.55, 139.60, 35.80, 139.90],
   yokohama: [35.40, 139.55, 35.52, 139.70], busan: [35.05, 128.90, 35.30, 129.25], songdo: [37.34, 126.58, 37.44, 126.70],
   osaka: [34.60, 135.40, 34.75, 135.60], fukuoka: [33.54, 130.30, 33.65, 130.45],
+  beijing: [39.80, 116.20, 40.05, 116.60], tianjin: [39.00, 117.10, 39.20, 117.35], shenyang: [41.70, 123.30, 41.90, 123.55],
+  vladivostok: [43.00, 131.80, 43.20, 132.00],
 };
 
+export const PYLON_R = 45;     // m: a bridge pylon's circle (Russky's footings are 80 m apart)
 for (const L of LANDMARKS) {
   const [x, y] = toMap(L.lat, L.lon);
   L.x = x; L.y = y;
+  if (L.kind === 'bridge') {
+    // The deck's axis from pylon to pylon (map metres), the ends projected onto it.
+    const P = L.pylons.map(([la, lo]) => toMap(la, lo));
+    const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
+    L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
+    L.parts = P.map(([px, py]) => [px - x, py - y, PYLON_R]);
+    L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
+    const along = L.endsMap.map(([ex, ey]) => (ex - x) * ux + (ey - y) * uy);
+    L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
+  }
 }
 
 // The real centres' extrusion leaves these out: one circle per tower, in map metres.
@@ -100,11 +134,22 @@ export function landmarkFootprints() {
   return out;
 }
 
-export function buildModel(L) {
+// endH: a bridge's ground at its two ends (m; heightAt there when built), else 30 m.
+export function buildModel(L, endH = null) {
   const f = MODELS[L.id];
   if (L.id === 'parc1') return f(L.brg, L.parts[1].slice(0, 2));
   if (L.id === 'lct') return f(undefined, L.brg);
+  if (L.kind === 'bridge') return f(L.brg, { ...L.geo, ...(endH ? { h0: endH[0], h1: endH[1] } : {}) });
   return f(L.brg);   // (the round ones take no bearing and ignore it)
+}
+
+// A bridge's ground at its ends, in the order of L.geo's n0, n1: the higher of the ground there and
+// a few metres (the deck never dives into the water at an end that reads as sea).
+export function bridgeEnds(L, heightAt) {
+  const e = L.endsMap.map(([x, y]) => Math.max(heightAt(x, y), 3));
+  const ux = Math.sin(L.brg * Math.PI / 180), uy = Math.cos(L.brg * Math.PI / 180);
+  const a0 = (L.endsMap[0][0] - L.x) * ux + (L.endsMap[0][1] - L.y) * uy;
+  return a0 <= 0 ? e : [e[1], e[0]];
 }
 
 // Is this landmark on in the scene now (the flags)?
@@ -255,6 +300,7 @@ function lightMaterial(uniforms) {
 // The ground under a landmark: the lowest of heightAt at its centre and round its plan (so no
 // side floats), less half a metre.
 export function baseHeight(L, heightAt) {
+  if (L.kind === 'bridge') return 0;     // a bridge stands in the sea: its model's y 0 is the water
   let h = heightAt(L.x, L.y);
   const circles = L.parts ? L.parts.map(([dx, dy, r]) => [L.x + dx, L.y + dy, r]) : [[L.x, L.y, L.footprintM]];
   for (const [x, y, r] of circles) {
@@ -277,7 +323,7 @@ export function createLandmarks(scene, uniforms, chunks, { heightfield = null, r
   function build(it) {
     const t0 = performance.now();
     if (!mat) { mat = buildingMaterial(uniforms, chunks); lmat = lightMaterial(uniforms); }
-    const { geometry, lights } = buildModel(it.L);
+    const { geometry, lights } = buildModel(it.L, it.L.kind === 'bridge' ? bridgeEnds(it.L, heightAt) : null);
     it.ground = baseHeight(it.L, heightAt);
     const mesh = new THREE.Mesh(geometry, mat);
     mesh.name = `landmark-${it.L.id}`;

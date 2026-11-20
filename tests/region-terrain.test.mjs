@@ -22,9 +22,10 @@ const region = (opts = {}) => createTiledHeightfield(m, DATA.href, { region: tru
 
 test('the region: the manifest lists its tiles, patches and airports; the extents match region.js', { skip: !HAVE }, () => {
   assert.equal(spec.region, true);
-  assert.equal(spec.airports.length, 12);   // v0.6.1: Yancheng
-  assert.equal(spec.patches.length, 10);    // and its patch
-  assert.equal(spec.coastPatches.length, 8);
+  assert.equal(spec.airports.length, 17);   // v0.6.1: Yancheng (12); v0.6.3: Beijing's two, Shenyang, Dalian, Vladivostok
+  assert.equal(spec.patches.length, 15);    // and a patch each
+  assert.equal(spec.coastPatches.length, 10);   // v0.6.3: Dalian's and Vladivostok's
+  assert.equal(new Set(spec.airports).size, spec.airports.length, 'no airport listed twice');
   const t = m.tilesRegion, l0 = t.levels[0], l1 = t.levels[1];
   assert.deepEqual(FINE_EXTENT, { x0: t.x0 + l0.extent.i0 * l0.cell, y0: t.y0 + l0.extent.j0 * l0.cell, x1: t.x0 + l0.extent.i1 * l0.cell, y1: t.y0 + l0.extent.j1 * l0.cell });
   assert.deepEqual(REGION_EXTENT, { x0: t.x0 + l1.extent.i0 * l1.cell, y0: t.y0 + l1.extent.j0 * l1.cell, x1: t.x0 + l1.extent.i1 * l1.cell, y1: t.y0 + l1.extent.j1 * l1.cell });
@@ -90,7 +91,7 @@ test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by d
     }
   }
   assert.equal(hf.runwayRects.length, airportsAll.reduce((n, a) => n + a.runways.length, 0));
-  assert.equal(runwayRects(airportsAll).length, 30);   // (29 until v0.6.1's Yancheng)
+  assert.equal(runwayRects(airportsAll).length, 40);   // (29 until v0.6.1's Yancheng, 30 until v0.6.3: Capital's 3, Daxing's 4, Shenyang's, Dalian's, Vladivostok's)
   // Fuji's summit (the 30 m patch): within 60 m of 3,776 m; the 250 m data alone is lower.
   const [fx, fy] = toMap(35.3606, 138.7274);
   await T.whenReady(fx, fy, 20000, 'test');
@@ -105,10 +106,19 @@ test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by d
   assert.ok(hf.coverAt(x, y).urban > 0.5, 'Shinjuku is built-up');
   [x, y] = await at(31.23, 121.47);
   assert.ok(hf.coverAt(x, y).urban > 0.5, 'Shanghai is built-up');
-  // The margin (no 250 m data): the 1 km level. Paektu-san's plateau, north of the fine box.
+  // Paektu-san: in the margin until v0.6.3, whose tiles took the 250 m data north to Vladivostok. Its plateau from
+  // the 250 m level now, and Beijing's plain west of v0.6.2's edge.
   [x, y] = await at(41.99, 128.08);
-  assert.ok(x < REGION_EXTENT.x1 && y > FINE_EXTENT.y1, 'Paektu lies in the margin');
-  assert.ok(hf.heightAt(x, y) > 1800, `Paektu ${hf.heightAt(x, y).toFixed(0)} m from the 1 km level`);
+  assert.ok(y > 624000 && y < FINE_EXTENT.y1, 'Paektu lies north of v0.6.2\'s 250 m data, inside v0.6.3\'s');
+  assert.ok(hf.heightAt(x, y) > 1800, `Paektu ${hf.heightAt(x, y).toFixed(0)} m from the 250 m level`);
+  [x, y] = await at(39.905, 116.397);
+  assert.ok(x < -912000 && x > FINE_EXTENT.x0, 'Beijing lies west of v0.6.2\'s 250 m data, inside v0.6.3\'s');
+  assert.ok(hf.coverAt(x, y).urban > 0.5, 'Beijing is built-up');
+  assert.ok(hf.heightAt(x, y) > 20 && hf.heightAt(x, y) < 80, `Beijing's centre ${hf.heightAt(x, y).toFixed(0)} m`);
+  // The margin (no 250 m data): the 1 km level. Wutai Shan's plateau, west of the 250 m data.
+  [x, y] = await at(39.08, 113.57);
+  assert.ok(x > REGION_EXTENT.x0 && x < FINE_EXTENT.x0, 'Wutai Shan lies in the margin');
+  assert.ok(hf.heightAt(x, y) > 1800, `Wutai Shan ${hf.heightAt(x, y).toFixed(0)} m from the 1 km level`);
   // Open sea far from anything: 0 m, water.
   [x, y] = await at(30.5, 131.5);
   assert.ok(hf.waterAt(x, y) && hf.heightAt(x, y) === 0, 'the Pacific');

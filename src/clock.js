@@ -112,7 +112,7 @@ export function zoneAt(x, y) {
   return r && r.timeZone ? { timeZone: r.timeZone, zoneName: r.zoneName || r.timeZone } : KST_ZONE;
 }
 // By an airport's ICAO code, where no position is at hand (a saved plan): the ICAO region's first letters.
-const ICAO_ZONES = [['ZK', 'Asia/Pyongyang', 'KST'], ['RK', 'Asia/Seoul', 'KST'], ['RJ', 'Asia/Tokyo', 'JST'], ['RO', 'Asia/Tokyo', 'JST'], ['Z', 'Asia/Shanghai', 'CST']];
+const ICAO_ZONES = [['ZK', 'Asia/Pyongyang', 'KST'], ['RK', 'Asia/Seoul', 'KST'], ['RJ', 'Asia/Tokyo', 'JST'], ['RO', 'Asia/Tokyo', 'JST'], ['Z', 'Asia/Shanghai', 'CST'], ['U', 'Asia/Vladivostok', 'VLAT']];   // (U: Russia's far east, v0.6.3: Vladivostok)
 export function zoneOfIcao(icao) {
   const c = String(icao || '').toUpperCase();
   if (!eastAsiaOn()) return KST_ZONE;

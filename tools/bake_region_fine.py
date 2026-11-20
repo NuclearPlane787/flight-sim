@@ -6,6 +6,9 @@ lattice extended both ways: l0 cell edges at x = -400000 + i * 250, y = -400000 
 of 512 cells (128 km), tile (ti, tj) holding cells ti * 512 .. ti * 512 + 511. The tiles are
 bake_region_height.region_tiles() (180 tiles, ti -4..14, tj -3..7).
 
+v0.6.3: --tiles new bakes the 26 new tiles into /tmp/flight-sim/v063/bake/fine/ (state in
+/tmp/flight-sim/v063/work/fine/state/); --index writes the whole index there, v0.6.0's entries first.
+
 Fine pixels are 31.25 m, exactly 8 a 250 m cell: global fine pixel (P, Q) covers
 x in [-400000 + P * 31.25, + 31.25), y likewise, and l0 tile (ti, tj) holds P = ti * 4096 ..
 ti * 4096 + 4095. Each l0 tile is cut into 4 x 4 sub-tiles of 1024 x 1024 px (32 km), no borders:
@@ -68,6 +71,7 @@ try:
     import bake_common as bc
     import bake_region_height as brh
     import bake_region_water as brw
+    import bake_region_tiles as rt
 finally:
     os.makedirs = _makedirs
 
@@ -80,9 +84,11 @@ TPX = TILE * PER_CELL           # 4096 fine pixels an l0 tile side
 K = 3                           # sub-points a fine pixel side
 MODE_FILTER = False            # --filter: the 3 x 3 majority (see the header)
 STAGE = brw.STAGE
-OUT = os.path.join(STAGE, 'fine')
-WORK = '/tmp/flight-sim/v060/fine-work'
+OUT = os.path.join(STAGE, 'fine')                 # v0.6.3: the new tiles' sub-tiles and the whole index
+OUT_OLD = os.path.join(rt.STAGE_OLD, 'fine')      # v0.6.0's (read-only)
+WORK = os.path.join(rt.WORK, 'fine')
 STATE = os.path.join(WORK, 'state')
+STATE_OLD = '/tmp/flight-sim/v060/fine-work/state'
 LOG = os.path.join(WORK, 'log.tsv')
 CLASSES = ['water', 'tree', 'shrub', 'grass', 'crop', 'built', 'bare', 'wetland']
 NC = len(CLASSES)
@@ -102,11 +108,16 @@ def name(ti, tj, a, b):
 
 
 def sub_path(n):
-    return os.path.join(OUT, n + '.u8.gz')
+    """v0.6.3's sub-tile if it exists, else v0.6.0's, else where v0.6.3 writes it."""
+    p = os.path.join(OUT, n + '.u8.gz')
+    q = os.path.join(OUT_OLD, n + '.u8.gz')
+    return q if (not os.path.exists(p) and os.path.exists(q)) else p
 
 
 def state_path(ti, tj):
-    return os.path.join(STATE, f'{ti}_{tj}.json')
+    p = os.path.join(STATE, f'{ti}_{tj}.json')
+    q = os.path.join(STATE_OLD, f'{ti}_{tj}.json')
+    return q if (not os.path.exists(p) and os.path.exists(q)) else p
 
 
 # ------------------------------------------------------------------ sampling
@@ -209,7 +220,7 @@ def write_sub(n, c):
     buf = io.BytesIO()
     with gzip.GzipFile(filename='', mode='wb', compresslevel=9, fileobj=buf, mtime=0) as f:
         f.write(np.ascontiguousarray(c, np.uint8).tobytes())
-    p = sub_path(n)
+    p = os.path.join(OUT, n + '.u8.gz')
     with open(p + '.tmp', 'wb') as f:
         f.write(buf.getvalue())
     os.replace(p + '.tmp', p)
@@ -242,14 +253,14 @@ def bake_tile(wc, ti, tj, wcbox):
             hist += h
             if (h > 0).sum() == 1:
                 st['subs'][n] = {'uniform': int(np.argmax(h))}
-                if os.path.exists(sub_path(n)):
-                    os.remove(sub_path(n))
+                if os.path.exists(os.path.join(OUT, n + '.u8.gz')):
+                    os.remove(os.path.join(OUT, n + '.u8.gz'))
             else:
                 sz = write_sub(n, c)
                 st['subs'][n] = {'bytes': sz}
                 st['bytes'] += sz
     st['hist'] = [int(v) for v in hist]
-    p = state_path(ti, tj)
+    p = os.path.join(STATE, f'{ti}_{tj}.json')
     with open(p + '.tmp', 'w') as f:
         json.dump(st, f)
     os.replace(p + '.tmp', p)
@@ -272,11 +283,16 @@ def cmd_bake(args):
     todo = select(args.tiles)
     wc = brw.WorldCover(cap=args.cache)
     wcbox = wc_files_bbox()
+    listed = brw.wc_listed()
     t_start = time.time()
     nd = ns = 0
     for ti, tj in todo:
         if os.path.exists(state_path(ti, tj)):
             ns += 1
+            continue
+        miss = brw.wc_missing(ti, tj, listed, set(wc.files))
+        if miss:
+            print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'N{a}E{b}' for a, b in miss))
             continue
         if time.time() - t_start > args.budget * 60:
             print(f'budget of {args.budget} min reached; stopping (resumable)')
@@ -372,7 +388,7 @@ def cmd_quicklook(args):
                 r0 = ((tj - tj0) * PER + b) * n
                 c0 = ((ti - ti0) * PER + a) * n
                 rgb[r0:r0 + n, c0:c0 + n] = np.clip(img + 0.5, 0, 255).astype(np.uint8)
-    p = os.path.join(bc.SHOTS, 'v060-bake-fine-region.png')
+    p = os.path.join(bc.SHOTS, 'v063-bake-fine-region.png')
     bc.write_png(p, bc.south_up_to_image(rgb))
     print(f'{p}: {Wd} x {H} px, {f * PX:.0f} m a pixel')
 

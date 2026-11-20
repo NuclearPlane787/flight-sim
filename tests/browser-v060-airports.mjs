@@ -30,7 +30,7 @@ const ICAO = (process.argv[2] || 'ZSPD').toUpperCase();
 const MODE = process.argv[3] === 'night' ? 'night' : 'day';
 const TYPE = process.argv[4] || 'a321neo';
 const WIDE = TYPE !== 'a321neo';
-const UTC_OFFSET_H = ICAO.startsWith('Z') ? 8 : 9;
+const UTC_OFFSET_H = ICAO.startsWith('Z') ? 8 : ICAO.startsWith('U') ? 10 : 9;   // (U: Vladivostok, UTC+10, v0.6.3)
 const CLOCK_MS = Date.UTC(2026, 10, 19, (MODE === 'day' ? 13 : 22) - UTC_OFFSET_H, 0, 0);
 const FT = 3.28084, KT = 1.943844, NM = 1852;
 // v0.6.1: E2E_EXTRA adds to the page's query ("&pending=1" for an airport still in the manifest's airportsPending),

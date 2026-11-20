@@ -30,7 +30,7 @@ const BRIDGE_M = 30;          // a piece of taxi line this close to the network,
 // routes, holds and stand lists stay exactly as they were: a departure's hold is the one on its own runway nearest
 // the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
 // stands after the real numbers (gate-flow.js standList).
-const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN']);   // (ZSYN: v0.6.1)
+const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW']);   // (ZSYN: v0.6.1; the last five: v0.6.3)
 export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao);
 const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
 const HOLD_STD_M = 90;        // the standard hold from a code 4 precision runway's centreline (Annex 14 Table 3-2)
@@ -611,6 +611,12 @@ const AIP_STANDS = {
   // Wikipedia and an open scenery listing, no AIP read: [EST]). The geometry would let a code E
   // aircraft take three stands' width on the made-up apron; the aerodrome wouldn't.
   ZSYN: { exclude: () => false, prefer: [], maxSpan: 36 },
+  // Vladivostok (v0.6.3): AIP Russia's parking chart (AD 2.1 UHWW-40.1) lists the stands for the B777-300ER and
+  // A350-900: 1A, 4, 5A, 6A, 7A, 8A, 10, 10B, 11, 14A, 16A, 18A, 23A (the B787-9 also 3). Of the stands the game has
+  // (the front row 1A to 11, the rows behind 12 to 23), code E only at 1A, 4, 5A, 6A, 10 and 11, the bridges first.
+  // The list is the widebodies' (a span over code D's 52 m): a narrower design keeps every stand its shape fits,
+  // as the A321neo does (the review, 2026-11-20: a design the A321's size was held to these six).
+  UHWW: { exclude: (ref, span) => span > 52 && !['1A', '4', '5A', '6A', '10', '11'].includes(ref), prefer: ['1A', '4', '5A', '6A', '10', '11'] },
   // Gimpo: the 500s to 900s are the West apron and the helicopter and GA spots, reached over W1,
   // W2, T and S, all "up to code letter B" (§1.7). The widebodies use the International Terminal
   // (North apron), stands 34 to 39.
@@ -785,7 +791,7 @@ export function standsFor(airport, typeDef) {
     const rules = AIP_STANDS[airport.icao];
     const baseRefs = design && typeDef.base ? new Set(standsFor(airport, typeDef.base).map((s) => s.ref)) : null;
     const tooWide = !!(rules?.maxSpan && size.span > rules.maxSpan);
-    const fits = tooWide ? [] : all.filter((s) => !rules?.exclude(s.ref) && (!baseRefs || baseRefs.has(s.ref)) && standFits(airport, c, s, size, geo));
+    const fits = tooWide ? [] : all.filter((s) => !rules?.exclude(s.ref, size.span) && (!baseRefs || baseRefs.has(s.ref)) && standFits(airport, c, s, size, geo));
     const rank = (s) => { const i = rules ? rules.prefer.indexOf(s.ref) : -1; return i < 0 ? Infinity : i; };
     list = fits.map((s, i) => [rank(s), i, s]).sort((p, q) => (p[0] - q[0]) || (p[1] - q[1])).map((p) => p[2]);
     c.lists.set(key, list);

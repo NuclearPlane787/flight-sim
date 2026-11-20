@@ -208,6 +208,69 @@ function buildKoreaCoast(coast, tols = TOLS) {
   };
 }
 
+// ---- v0.6.3: the path map's city areas and names (data/urban-region.json, tools/bake_region_urban.py) ----
+// Shane, 2026-11-20: "Major cities show as distinct urban regions with their English names appearing in that
+// area, like google maps." The areas are rings (delta coded, filled even-odd, traced by traceRings at the level
+// urbanLod() picks); the names are [name, x, y, population], largest first, picked by pickPlaces().
+const URBAN_TOLS = [0, 500, 1200, 2500, 5000];
+export function buildUrban(doc) {
+  if (!doc || typeof doc !== 'object') return null;
+  let b = built.get(doc);
+  if (!b) {
+    const rings = (doc.urban || []).map((r) => {
+      const out = [[r[1], r[2]]]; let x = r[1], y = r[2];
+      for (let i = 3; i + 1 < r.length; i += 2) { x += r[i]; y += r[i + 1]; out.push([x, y]); }
+      return out;
+    });
+    b = {
+      rings: buildKoreaCoast({ water: rings }, URBAN_TOLS).water,
+      places: (doc.places || []).map(([name, x, y, pop]) => ({ name, x, y, pop })),
+      // (A coarser level than the coast's at a scale: a tint's edge needs less than a stroked line's.)
+      lod(mPerPx) { const want = mPerPx * 2.2; let l = 0; for (let i = 0; i < URBAN_TOLS.length; i++) if (URBAN_TOLS[i] <= want) l = i; return l; },
+    };
+    built.set(doc, b);
+  }
+  return b;
+}
+// The smallest city named at a scale (k: px per metre). With the whole region on the screen (k about 0.0003)
+// only the cities of about five million and more; each doubling of the zoom names cities about a fifth the size; from
+// about 0.003 (300 km across a 900 px map) every place in the list.
+export const PLACE_K0 = 0.0003, PLACE_POP0 = 5.5e6;
+export function placePopMin(k) {
+  if (!(k > 0)) return Infinity;
+  const p = PLACE_POP0 * Math.pow(PLACE_K0 / k, 2.3);
+  return p < 30000 ? 0 : p;
+}
+// The size a name is written at: the great cities larger and heavier.
+export const placeStyle = (pop) => (pop >= 5e6 ? { px: 14, bold: true, alpha: 0.82 } : pop >= 1e6 ? { px: 12.5, bold: true, alpha: 0.7 } : pop >= 2e5 ? { px: 11.5, bold: false, alpha: 0.66 } : { px: 11, bold: false, alpha: 0.56 });
+// Which names to write, and where. places: largest first; toScreen(x, y) -> [sx, sy]; W, H the canvas (px);
+// taken: boxes { x0, y0, x1, y1 } no name may touch (the airports' labels and dots); measure(name, style) -> px.
+// A name is centred on its city; if that touches something, just under it, then just over it; else it is left
+// out (a smaller city never takes a larger one's place: the list is walked largest first). -> [{ name, x, y (the text's centre, px), px, bold, alpha, pop }]
+export function pickPlaces(places, { k, toScreen, W, H, taken = [], measure, max = 48 }) {
+  const min = placePopMin(k), out = [], boxes = taken.slice();
+  const p = [0, 0];
+  for (const c of places || []) {
+    if (c.pop < min) break;                       // the list is by population
+    if (out.length >= max) break;
+    const [sx, sy] = toScreen(c.x, c.y, p);
+    if (sx < -40 || sy < -20 || sx > W + 40 || sy > H + 20) continue;
+    const st = placeStyle(c.pop), w = measure(c.name, st), h = st.px + 4;
+    // A city of a million or more also tries beside its place and two lines off (Seoul and Tokyo sit under
+    // their airports' labels at the region's scale, and the map shouldn't lose them to that).
+    const tries = c.pop >= 1e6 ? [[0, 0], [0, h + 3], [0, -h - 3], [w / 2 + 12, 0], [-w / 2 - 12, 0], [0, 2 * h + 6], [0, -2 * h - 6], [w / 2 + 12, h + 3], [-w / 2 - 12, h + 3]] : [[0, 0], [0, h + 3], [0, -h - 3]];
+    for (const [dx, dy] of tries) {
+      const b = { x0: sx + dx - w / 2 - 4, y0: sy + dy - h / 2 - 1, x1: sx + dx + w / 2 + 4, y1: sy + dy + h / 2 + 1 };
+      if (boxes.every((q) => b.x1 < q.x0 || b.x0 > q.x1 || b.y1 < q.y0 || b.y0 > q.y1)) {
+        boxes.push(b);
+        out.push({ name: c.name, x: sx + dx, y: sy + dy, px: st.px, bold: st.bold, alpha: st.alpha, pop: c.pop });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 // Trace the rings that touch a box into the current path, with a transform fn(x, y) -> [sx, sy].
 export function traceRings(ctx, rings, lod, box, tf, minSize = 0) {
   const p = [0, 0];

@@ -3,8 +3,8 @@ margin box (24-46 N, 112-148 E), each the country its centre falls in, from Natu
 ne_10m_admin_0_countries (public domain), and the sea taking its nearest land cell's country
 (close to the FIR boundaries: the Korea-Japan median, the Yellow Sea).
 
-Codes: 0 sea, 1 KR, 2 KP, 3 JP, 4 CN, 5 other. Each byte is
-  low 3 bits  the country (1-5): the land's own, or for the sea its nearest land's
+Codes: 0 sea, 1 KR, 2 KP, 3 JP, 4 CN, 5 other, 6 RU (v0.6.3). Each byte is
+  low 3 bits  the country (1-6): the land's own, or for the sea its nearest land's
   bit 3 (8)   set where the cell is sea
 so `byte & 7` is the answer for anything that needs "whose is it", and `byte & 8` says sea.
 (0 alone would mean sea with no land anywhere: it never occurs.)
@@ -14,14 +14,21 @@ vertices are dense enough that straight edges in the map frame are fine), then a
 scanline fill by cell centre per country. The sea's nearest land is a jump flood (exact to a
 cell or so, which is what 2 km cells are anyway) in map metres.
 
-Outputs:
-  data/country.u8.gz   uint8, ny rows x nx, row 0 = south, cell-centred
-  data/country.json    the header
-  Claude outputs/flight-sim/v060-bake-country.png   the quick-look (north up)
+v0.6.3: Russia is its own code, 6, without moving anything else: the countries are still filled
+in v0.6.0's order (the "other" countries, Russia among them, then KR, KP, JP and CN, so a shared
+border cell goes to the same country as before), and the jump flood picks the same nearest land
+cell, so only cells that were Russian land, or sea nearest Russian land, change (5 -> 6, 13 -> 14).
+
+Outputs (--out DIR, default data/; v0.6.3 stages them in /tmp/flight-sim/v063/bake/):
+  country.u8.gz   uint8, ny rows x nx, row 0 = south, cell-centred
+  country.json    the header
+  Claude outputs/flight-sim/v063-bake-country.png   the quick-look (north up)
+  --no-ru         v0.6.0's codes (RU as 5): to check the bake reproduces the shipped file
 
 Run (from the game folder):
-  python3 tools/cpu-guard.py --minutes 10 -- /tmp/flight-sim/venv/bin/python -I tools/bake_country.py
+  python3 tools/cpu-guard.py --minutes 10 -- /tmp/flight-sim/venv/bin/python -I tools/bake_country.py --out /tmp/flight-sim/v063/bake
 """
+import argparse
 import json
 import os
 import sys
@@ -33,8 +40,9 @@ from bake_common import DATA, RAW, SHOTS, to_geo, to_map, write_gz, write_png  #
 
 SRC = os.path.join(RAW, 'ne', 'ne_10m_admin_0_countries.geojson')
 GRID = dict(x0=-1600000.0, y0=-1340000.0, cell=2000.0, nx=1855, ny=1315)
-CODES = {'KOR': 1, 'PRK': 2, 'JPN': 3, 'CHN': 4}
-NAMES = ['sea', 'KR', 'KP', 'JP', 'CN', 'other']
+CODES = {'KOR': 1, 'PRK': 2, 'JPN': 3, 'CHN': 4, 'RUS': 6}
+NAMES = ['sea', 'KR', 'KP', 'JP', 'CN', 'other', 'RU']
+FIRST_LATER = ('KOR', 'PRK', 'JPN', 'CHN')     # filled last, over the others (v0.6.0's order; RU stays with the others)
 SEA = 8
 # The geographic box to take polygons from (a little past the margin box).
 BOX = (20.0, 50.0, 105.0, 155.0)   # lat0, lat1, lon0, lon1
@@ -125,6 +133,12 @@ def jump_flood(label):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--out', default=DATA)
+    ap.add_argument('--no-ru', action='store_true')
+    args = ap.parse_args()
+    codes = {k: v for k, v in CODES.items() if not (args.no_ru and k == 'RUS')}
+    names = NAMES[:6] if args.no_ru else NAMES
     gr = GRID
     with open(SRC) as f:
         feats = json.load(f)['features']
@@ -132,7 +146,7 @@ def main():
     lat0, lat1, lon0, lon1 = BOX
     used = []
     # "other" first, then the four, so a shared border cell goes to the named country
-    feats.sort(key=lambda ft: ft['properties']['ADM0_A3'] in CODES)
+    feats.sort(key=lambda ft: ft['properties']['ADM0_A3'] in FIRST_LATER)
     for ft in feats:
         a3 = ft['properties']['ADM0_A3']
         rings = []
@@ -145,33 +159,35 @@ def main():
             continue
         mask = fill_rings(rings, gr)
         if mask.any():
-            land[mask] = CODES.get(a3, 5)
+            land[mask] = codes.get(a3, 5)
             used.append(f'{a3}:{int(mask.sum())}')
     print('countries filled (cells):', ' '.join(used))
     sea = land == 0
     owner = jump_flood(land)
     out = (owner | np.where(sea, SEA, 0)).astype(np.uint8)
-    write_gz(os.path.join(DATA, 'country.u8.gz'), out)
+    os.makedirs(args.out, exist_ok=True)
+    write_gz(os.path.join(args.out, 'country.u8.gz'), out)
     header = dict(
         source='Natural Earth ne_10m_admin_0_countries (public domain)',
-        codes={str(i): n for i, n in enumerate(NAMES)},
-        encoding='byte & 7 = country (1 KR, 2 KP, 3 JP, 4 CN, 5 other; the sea takes its nearest '
-                 'land cell\'s); byte & 8 = sea. 0 would be sea with no country (never occurs).',
+        codes={str(i): n for i, n in enumerate(names)},
+        encoding=('byte & 7 = country (1 KR, 2 KP, 3 JP, 4 CN, 5 other' + ('' if args.no_ru else ', 6 RU') +
+                  '; the sea takes its nearest land cell\'s); byte & 8 = sea. 0 would be sea with no country (never occurs).'),
         type='uint8', rowOrder='south first',
         sampling='cell-centred: value (i, j) is at x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell',
         file='country.u8.gz', frame='src/world/frame.js map metres',
         covers='24-46 N, 112-148 E (the margin box) and more', **gr)
-    with open(os.path.join(DATA, 'country.json'), 'w') as f:
+    with open(os.path.join(args.out, 'country.json'), 'w') as f:
         json.dump(header, f, indent=2)
     for name in ('country.u8.gz', 'country.json'):
-        print(f'  data/{name}: {os.path.getsize(os.path.join(DATA, name))} bytes')
-    for k in range(1, 6):
-        print(f'  {NAMES[k]}: land {int(((out & 7) == k).sum() - ((out == (k | SEA))).sum())} cells, '
+        print(f'  {args.out}/{name}: {os.path.getsize(os.path.join(args.out, name))} bytes')
+    for k in range(1, len(names)):
+        print(f'  {names[k]}: land {int(((out & 7) == k).sum() - ((out == (k | SEA))).sum())} cells, '
               f'with its sea {int(((out & 7) == k).sum())}')
 
     # the quick-look: land bright, sea dark of the same hue, borders black, 5 deg graticule,
     # the fine box (29-40 N, 119-142 E) white
-    pal = np.array([[0, 0, 0], [60, 120, 220], [220, 60, 60], [240, 200, 40], [60, 170, 80], [150, 150, 150]], float)
+    pal = np.array([[0, 0, 0], [60, 120, 220], [220, 60, 60], [240, 200, 40], [60, 170, 80], [150, 150, 150],
+                    [170, 90, 200]], float)
     o = out & 7
     rgb = pal[o]
     rgb[sea] = rgb[sea] * 0.35 + np.array([10, 20, 40])
@@ -194,7 +210,7 @@ def main():
     box = np.zeros_like(sea)
     box[:, 1:] |= inbox[:, 1:] != inbox[:, :-1]; box[1:, :] |= inbox[1:, :] != inbox[:-1, :]
     rgb[box] = 255
-    png = os.path.join(SHOTS, 'v060-bake-country.png')
+    png = os.path.join(args.out, 'country-check.png') if args.no_ru else os.path.join(SHOTS, 'v063-bake-country.png')
     write_png(png, np.clip(rgb, 0, 255).astype(np.uint8)[::-1])
     print('  quick-look:', png)
 

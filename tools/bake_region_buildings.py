@@ -41,8 +41,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bake_common import RAW, SHOTS, to_geo, to_map
 
 OSMIUM = '/opt/homebrew/bin/osmium'
-WORK = '/tmp/flight-sim/v060/centres-work'
-OUT = '/tmp/flight-sim/v060/bake/centres'
+# (v0.6.3: FS_CENTRES_WORK and FS_CENTRES_OUT move the two folders, FS_SHOT_PREFIX names the quick-looks, so new
+# centres bake beside v0.6.0's without touching its staging.)
+WORK = os.environ.get('FS_CENTRES_WORK') or '/tmp/flight-sim/v060/centres-work'
+OUT = os.environ.get('FS_CENTRES_OUT') or '/tmp/flight-sim/v060/bake/centres'
+SHOT_PREFIX = os.environ.get('FS_SHOT_PREFIX') or 'v060'
 CELL = 500.0
 LEVEL_M = 3.2
 KEEP_AREA = 2000.0        # m²: kept whatever its height
@@ -55,6 +58,7 @@ SOURCES = {
     'kyushu': 'osm/kyushu-261118.osm.pbf',
     'china': 'osm/china-261118.osm.pbf',
     'korea': 'south-korea-latest.osm.pbf',
+    'fareast': 'osm/far-eastern-fed-district-261119.osm.pbf',   # v0.6.3: Vladivostok
 }
 
 # id: (name, source, nominal box W, S, E, N, quick-look core: lat, lon, size km)
@@ -68,6 +72,13 @@ CENTRES = {
     'busan': ('Busan', 'korea', (129.040, 35.140, 129.185, 35.180), (35.162, 129.145, 5.0)),
     'osaka': ('Osaka', 'kansai', (135.470, 34.635, 135.535, 34.710), (34.675, 135.505, 8.0)),
     'fukuoka': ('Fukuoka', 'kyushu', (130.340, 33.570, 130.430, 33.605), (33.590, 130.395, 5.0)),
+    # v0.6.3 (briefs/V0-6-3.md Part 5): Beijing from Financial Street to the CBD at Guomao, Tianjin along the Hai
+    # River, Shenyang's centre, Dalian from Xinghai Bay to Zhongshan Square, Vladivostok round the Golden Horn.
+    'beijing': ('Beijing', 'china', (116.330, 39.870, 116.490, 39.960), (39.912, 116.458, 6.0)),
+    'tianjin': ('Tianjin', 'china', (117.160, 39.090, 117.260, 39.160), (39.125, 117.205, 5.0)),
+    'shenyang': ('Shenyang', 'china', (123.380, 41.760, 123.480, 41.830), (41.795, 123.432, 5.0)),
+    'dalian': ('Dalian', 'china', (121.580, 38.885, 121.680, 38.935), (38.915, 121.635, 5.0)),
+    'vladivostok': ('Vladivostok', 'fareast', (131.860, 43.085, 131.945, 43.135), (43.112, 131.895, 4.0)),
 }
 
 
@@ -496,7 +507,7 @@ def quicklook(cid, recs, origin, box):
     out.paste(whole, (cw, 0))
     out.paste(leg, (0, max(cw, whole.size[1])))
     os.makedirs(SHOTS, exist_ok=True)
-    out.save(os.path.join(SHOTS, f'v060-bake-centre-{cid}.png'), optimize=True)
+    out.save(os.path.join(SHOTS, f'{SHOT_PREFIX}-bake-centre-{cid}.png'), optimize=True)
 
 
 def stage_bake(ids):

@@ -90,10 +90,10 @@ export function fitLoad({ pax, cargoKg }, type) {
 // ---- v0.6.0: the region's airports in the lists ----
 // The country by the ICAO code's region letters (stable, whatever the country raster says at a shore), Korea first,
 // then Japan and China; within one, the order below (the capital's airports first), then any other by its code.
-const COUNTRY_OF = [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN']];
-export const COUNTRY_LABEL = { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', other: 'Elsewhere' };
-const COUNTRY_ORDER = ['KR', 'JP', 'CN', 'KP', 'other'];
-export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast)
+const COUNTRY_OF = [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN'], ['U', 'RU']];   // (U: Russia, v0.6.3)
+export const COUNTRY_LABEL = { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', RU: 'Russia', other: 'Elsewhere' };
+const COUNTRY_ORDER = ['KR', 'JP', 'CN', 'KP', 'RU', 'other'];
+export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok)
 export const airportCountry = (ap) => (COUNTRY_OF.find(([p]) => String(ap?.icao || '').startsWith(p)) || [null, 'other'])[1];
 // The airport's short name: its data's shortName, else its name made short ("Seoul Gimpo International Airport" → "Gimpo").
 export const airportShort = (ap) => ap?.shortName || shortPlace(ap?.name) || ap?.icao || '';

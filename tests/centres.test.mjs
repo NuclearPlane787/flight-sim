@@ -1,4 +1,4 @@
-// The dense centres (src/world/centres.js, centres-worker.js): the nine baked files against
+// The dense centres (src/world/centres.js, centres-worker.js): the fourteen baked files (nine, and v0.6.3's five) against
 // centres.json, their order and rings, the triangulation, the geometry builder on a small synthetic
 // centre, the mask rule, the landmark exclusion and the tiers' helpers. Node only, no WebGL.
 import { test } from 'node:test';
@@ -33,8 +33,9 @@ const ringOf = (p, i) => {
   return [xs, ys];
 };
 
-test('the nine centres parse to centres.json\'s counts', () => {
-  assert.equal(INDEX.centres.length, 9);
+test('the fourteen centres parse to centres.json\'s counts', () => {
+  assert.equal(INDEX.centres.length, 14);
+  assert.deepEqual(INDEX.centres.slice(9).map((c) => c.id), ['beijing', 'tianjin', 'shenyang', 'dalian', 'vladivostok']);
   for (const c of INDEX.centres) {
     const p = parsed.get(c.id);
     assert.equal(p.count, c.count, c.id);
@@ -286,6 +287,12 @@ test('the tiers\' helpers', () => {
   assert.equal(centreAllowed('tokyo', true, false), false);
   assert.equal(centreAllowed('tokyo', true, true), true);
   assert.equal(centreAllowed('busan', false, true), false);
+  // v0.6.3's five: behind the region's flag, as the others outside Korea
+  for (const id of ['beijing', 'tianjin', 'shenyang', 'dalian', 'vladivostok']) {
+    assert.equal(centreAllowed(id, true, false), false, id);
+    assert.equal(centreAllowed(id, false, true), false, id);
+    assert.equal(centreAllowed(id, true, true), true, id);
+  }
 });
 
 test('with CITIES_ON off nothing exists', () => {

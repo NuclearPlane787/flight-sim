@@ -9,6 +9,9 @@ resample() (3 x 3 sub-points per cell through to_geo, float64 sums) and sample_t
 bake_height's own load_tiles(). Only the 1-degree source tiles a tile touches are read, lazily,
 with a small LRU. NaN where there's no source (sea).
 
+v0.6.3: the tiles are region_tiles(): v0.6.0's 180 (box_tiles()) plus bake_region_tiles.EXTRA;
+--tiles new bakes the 26 into /tmp/flight-sim/v063/bake/raw-h/, and out_path() reads either staging.
+
 Output (staging, NOT data/): /tmp/flight-sim/v060/bake/raw-h/<ti>_<tj>.npy, float32
 (516, 516), row 0 south, column 0 west: cell (li, lj) is lattice cell
 (ti*512 - 2 + li, tj*512 - 2 + lj). Written to .tmp and renamed, so a file that exists is complete.
@@ -42,6 +45,7 @@ os.makedirs = lambda *a, **k: None
 try:
     import bake_common as bc
     import bake_height as bh
+    import bake_region_tiles as rt
 finally:
     os.makedirs = _makedirs
 
@@ -52,9 +56,9 @@ TSPAN = TILE * CELL
 BOX = dict(lat0=29.0, lat1=40.0, lon0=119.0, lon1=142.0)
 DEM90 = os.path.join(bc.RAW, 'dem90')
 TILELIST = '/tmp/flight-sim/v060/lists/glo90_tileList.txt'
-OUT = '/tmp/flight-sim/v060/bake/raw-h'
+OUT = os.path.join(rt.STAGE, 'raw-h')         # v0.6.3: new tiles are written here; v0.6.0's are read from rt.STAGE_OLD
 LOG = os.path.join(OUT, 'log.tsv')
-PNG = os.path.join(bc.SHOTS, 'v060-bake-raw-heights.png')
+PNG = os.path.join(bc.SHOTS, 'v063-bake-raw-heights.png')
 SUB = 3
 
 
@@ -163,7 +167,31 @@ def tile_meets_box(ti, tj):
 
 
 def region_tiles():
-    """Every tile meeting the box. The candidate range comes from the box's corners and edges."""
+    """v0.6.3: the region's l0 tiles, v0.6.0's 180 (box_tiles(), in their order) then the 26 of
+    bake_region_tiles.EXTRA (any already among the 180 kept once, as old)."""
+    old = box_tiles()
+    have = set(old)
+    return old + [t for t in rt.EXTRA_TILES if t not in have]
+
+
+def old_tiles():
+    return box_tiles()
+
+
+def new_tiles():
+    have = set(box_tiles())
+    return [t for t in rt.EXTRA_TILES if t not in have]
+
+
+_BOX_TILES = None
+
+
+def box_tiles():
+    """v0.6.0's enumeration: every tile meeting the box. The candidate range comes from the box's
+    corners and edges. (Cached: it never changes.)"""
+    global _BOX_TILES
+    if _BOX_TILES is not None:
+        return list(_BOX_TILES)
     t = np.linspace(0, 1, 2001)
     la = np.concatenate([BOX['lat0'] + 0 * t, BOX['lat1'] + 0 * t,
                          BOX['lat0'] + (BOX['lat1'] - BOX['lat0']) * t, BOX['lat0'] + (BOX['lat1'] - BOX['lat0']) * t])
@@ -172,11 +200,17 @@ def region_tiles():
     bx, by = bc.to_map(la, lo)
     ti0, ti1 = int(np.floor((bx.min() - X0) / TSPAN)), int(np.floor((bx.max() - X0) / TSPAN))
     tj0, tj1 = int(np.floor((by.min() - Y0) / TSPAN)), int(np.floor((by.max() - Y0) / TSPAN))
-    return [(ti, tj) for tj in range(tj0, tj1 + 1) for ti in range(ti0, ti1 + 1) if tile_meets_box(ti, tj)]
+    _BOX_TILES = [(ti, tj) for tj in range(tj0, tj1 + 1) for ti in range(ti0, ti1 + 1) if tile_meets_box(ti, tj)]
+    return list(_BOX_TILES)
 
 
 def out_path(ti, tj):
-    return os.path.join(OUT, f'{ti}_{tj}.npy')
+    """The staged raw heights (v0.6.3's staging, else v0.6.0's)."""
+    return rt.find('raw-h', f'{ti}_{tj}.npy')
+
+
+def write_path(ti, tj):
+    return rt.new_path('raw-h', f'{ti}_{tj}.npy')
 
 
 def done(ti, tj):
@@ -195,7 +229,7 @@ def bake_tile(ti, tj, tiles):
     # bake_height.resample over this tile's 516 x 516 cells: cell centres x0 + (k + 0.5) * 250,
     # exactly Korea's lattice values (multiples of 125 m, exact in doubles).
     h = bh.resample(tiles, x0, y0, CELL, S, S, sub=SUB)
-    p = out_path(ti, tj)
+    p = write_path(ti, tj)
     with open(p + '.tmp', 'wb') as f:
         np.save(f, h.astype(np.float32))
     os.replace(p + '.tmp', p)
@@ -211,7 +245,9 @@ def cmd_bake(args):
     os.makedirs(OUT, exist_ok=True)
     land = land_keys()
     todo = region_tiles()
-    if args.tiles != 'all':
+    if args.tiles == 'new':
+        todo = new_tiles()
+    elif args.tiles != 'all':
         ri, rj = args.tiles.split(',')
         (i0, i1), (j0, j1) = parse_range(ri), parse_range(rj)
         todo = [(ti, tj) for ti, tj in todo if i0 <= ti <= i1 and j0 <= tj <= j1]
@@ -421,7 +457,7 @@ def cmd_quicklook(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--tiles', default=None, help="'all' or 'ti0:ti1,tj0:tj1' (inclusive)")
+    ap.add_argument('--tiles', default=None, help="'all', 'new' (v0.6.3's 26) or 'ti0:ti1,tj0:tj1' (inclusive)")
     ap.add_argument('--plan', action='store_true')
     ap.add_argument('--validate', action='store_true')
     ap.add_argument('--quicklook', action='store_true')

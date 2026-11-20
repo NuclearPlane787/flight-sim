@@ -65,6 +65,45 @@ PATCHES = {
     'yancheng': (120.06, 33.32, 120.35, 33.54),     # v0.6.1 (pending): Qingdao's size round ZSYN; GLO-30 N33 E120 only
 }
 COAST = ['ZSPD', 'RJTT', 'RJBB', 'RJFF', 'RKPK', 'RJAA', 'ZSSS', 'ZSQD', 'ZSYN']
+# v0.6.3 (pending), Beijing Capital and Daxing: one patch each, ~28 x 28 km round each (Qingdao's size and a
+# little more), not one over both: they are 65 km apart with the city between, so one box would be ~3x the cells
+# for land no approach crosses. GLO-30 N39 E116 and N40 E116. Both 16 km squares all land (the sea ~150 km east):
+# no coast patch (bake_region_patches.py coast ZBAA ZBAD, seaFraction 0).
+NEW_AIRPORTS += ['ZBAA', 'ZBAD']
+PATCHES.update({
+    'beijing-capital': (116.44, 39.96, 116.76, 40.22),
+    'beijing-daxing': (116.26, 39.38, 116.60, 39.62),
+})
+# v0.6.3: these airfields are flattened to the least-squares plane through their runway ends' elevations, not to
+# one level at the airport's elevM. OurAirports' elevM is 5 to 8 m above the ground there (Daxing: elevM 29.9 m, its
+# eight thresholds 21.0-25.3 m and GLO-30's ground round the stands 21-23 m; Capital: 35.4 m, thresholds 25.6-35.4 m,
+# the ground falling ~7 m west to east), so one level stood the aprons on a plateau with ramps down to the runways.
+FIELD_PLANE = {'ZBAA', 'ZBAD'}
+# v0.6.3 (pending), Shenyang, Dalian and Vladivostok: one patch each, Qingdao's size or a little more, taking in the
+# ground under each runway's finals to ~15 km out (Dalian's hills among the bays to the west and east of the field;
+# Vladivostok's Amur Bay to the south-west and the ridges to the north-east). GLO-30 N41 E123; N38 E121 and N39 E121;
+# N43 E131 and N43 E132. Their fields flattened to the plane through the runway ends (FIELD_PLANE): Vladivostok's AIP
+# thresholds are 9.7 and 13.2 m against the field's 18 m, Shenyang's 52 and 60 m (OurAirports). Coast patches: ZYTL
+# and UHWW (seaFraction > 0); ZYTX's square is all land.
+NEW_AIRPORTS += ['ZYTX', 'ZYTL', 'UHWW']
+PATCHES.update({
+    'shenyang': (123.33, 41.53, 123.63, 41.75),
+    'dalian': (121.36, 38.85, 121.74, 39.10),
+    'vladivostok': (131.95, 43.28, 132.36, 43.52),
+})
+COAST += ['ZYTX', 'ZYTL', 'UHWW']
+FIELD_PLANE = FIELD_PLANE | {'ZYTX', 'ZYTL', 'UHWW'}
+
+
+def field_plane(icao, x0, y0, cell, nx, ny):
+    """The plane through the runway ends (x, y, elevM) of data/airports/<icao>.json, at the grid's cell centres."""
+    d = json.load(open(os.path.join(AIRPORT_DIR, icao + '.json')))
+    E = np.array([(e['x'], e['y'], e['elevM']) for r in d['runways'] for e in r['ends']], float)
+    A = np.c_[E[:, 0] - E[:, 0].mean(), E[:, 1] - E[:, 1].mean(), np.ones(len(E))]
+    c = np.linalg.lstsq(A, E[:, 2], rcond=None)[0]
+    X = x0 + (np.arange(nx) + 0.5) * cell - E[:, 0].mean()
+    Y = y0 + (np.arange(ny) + 0.5) * cell - E[:, 1].mean()
+    return (c[0] * X[None, :] + c[1] * Y[:, None] + c[2]).astype(np.float32)
 
 
 def log(*a):
@@ -174,6 +213,8 @@ def cmd_patch(pid, force):
     del wat, land
 
     aero = airfields()
+    for icao in FIELD_PLANE & set(aero):
+        aero[icao] = (aero[icao][0], field_plane(icao, x0, y0, cell, nx, ny))   # (compose_height blends it as an array)
     h = bg.compose_height(dem, sea_sd, water_sd, urban, cell, x0, y0, airports=aero)
     del dem, water_sd, urban
     flat = []

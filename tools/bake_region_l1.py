@@ -9,6 +9,10 @@ negative), the same files as tools/cut_korea_tiles.mjs writes for l1:
 Row 0 south. Tiles cover the margin box 24-46 N, 112-148 E (briefs/V0-6-0.md decision 1), taken in
 the map frame through bake_common.to_map over the box's edges.
 
+v0.6.3: --new rewrites only the l1 tiles over a new l0 tile, from the shipped data/terrain/r1 with
+exactly the cells over new l0 tiles averaged from the sealed new tiles (cmd_new), into
+/tmp/flight-sim/v063/bake/l1/.
+
 Per l1 cell, from one of two sources (an l1 cell lies in exactly one l0 tile):
   - inside the 250 m data (its l0 tile is one of the region's l0 tiles, bake_region_height's
     region_tiles()): the rounded mean of its 4 x 4 l0 cells from the composed l0 tiles in
@@ -53,16 +57,19 @@ try:
     import bake_region_height as brh
     import bake_region_water as brw
     import bake_region_compose as brc
+    import bake_region_tiles as rt
 finally:
     os.makedirs = _makedirs
 
-STAGE = '/tmp/flight-sim/v060/bake'
-L0DIR = os.path.join(STAGE, 'l0')
-COMPOSE_STATE = os.path.join(STAGE, 'compose-state.json')
+STAGE = rt.STAGE                  # v0.6.3's staging (v0.6.0's, rt.STAGE_OLD, is read-only)
+L0DIR = os.path.join(rt.STAGE_OLD, 'l0')
+COMPOSE_STATE = os.path.join(rt.STAGE_OLD, 'compose-state.json')
 OUT = os.path.join(STAGE, 'l1')
 STATE = os.path.join(STAGE, 'l1-state.json')
 URBAN = os.path.join(bc.RAW, 'ne', 'ne_10m_urban_areas.geojson')
-PNG = os.path.join(bc.SHOTS, 'v060-bake-l1.png')
+PNG = os.path.join(bc.SHOTS, 'v063-bake-l1.png')
+R1 = os.path.join(bc.DATA, 'terrain', 'r1')        # the shipped l1 tiles (read)
+NEW_L0 = os.path.join(STAGE, 'l0')                 # v0.6.3's sealed new l0 tiles
 
 X0, Y0 = brh.X0, brh.Y0
 T0 = brh.TILE                     # 512 l0 cells a tile
@@ -136,9 +143,9 @@ def read_l0(ti, tj):
 
 
 def rmean(a):
-    """(n*4, n*4, ...) -> (n, n, ...): Math.round(mean of 4 x 4), as cut_korea_tiles.mjs."""
-    n = a.shape[0] // F
-    s = a.astype(np.int64).reshape((n, F, n, F) + a.shape[2:]).sum(axis=(1, 3))
+    """(n*4, m*4, ...) -> (n, m, ...): Math.round(mean of 4 x 4), as cut_korea_tiles.mjs."""
+    n, m = a.shape[0] // F, a.shape[1] // F
+    s = a.astype(np.int64).reshape((n, F, m, F) + a.shape[2:]).sum(axis=(1, 3))
     return np.floor(s / (F * F) + 0.5).astype(np.int64)
 
 
@@ -342,6 +349,68 @@ def cmd_plan(args):
     print('files:', sorted(st['files'], key=lambda s: tuple(int(v) for v in s.split('_')[::-1])))
 
 
+def cmd_new(args):
+    """v0.6.3: the l1 tiles over any new l0 tile (bake_region_tiles.EXTRA). Each is the shipped
+    data/terrain/r1 tile (open sea where it has no file) with exactly the cells, border included,
+    whose 4 x 4 l0 cells lie in a new l0 tile replaced by their rounded mean (fine_part's rule)
+    from the sealed new tiles (v0.6.3 staging l0/, open sea where a tile has no file). Every
+    other cell stays byte for byte. Writes OUT and l1-new-report.json."""
+    new = set(brh.new_tiles())
+    report = {}
+    for t in all_tiles():
+        touched = l0_tiles_touched(*t) & new
+        if not touched:
+            continue
+        name = f'{t[0]}_{t[1]}'
+        p = os.path.join(R1, name)
+        had = os.path.exists(p + '.h.i16.gz')
+        if had:
+            rd = lambda suf, dt, sh: np.frombuffer(gzip.open(p + suf).read(), dt).reshape(sh).copy()
+            h, w, c = rd('.h.i16.gz', '<i2', (S, S)), rd('.w.rg8.gz', np.uint8, (S, S, 2)), rd('.c.rgba8.gz', np.uint8, (S, S, 4))
+        else:
+            h = np.full((S, S), SEA['h'], '<i2')
+            w = np.tile(np.array(SEA['w'], np.uint8), (S, S, 1))
+            c = np.zeros((S, S, 4), np.uint8)
+        h0, w0, c0 = h.copy(), w.copy(), c.copy()
+        # which l0 tile each l1 cell's l0 cells lie in
+        gi = (t[0] * TILE - B + np.arange(S)) * F
+        gj = (t[1] * TILE - B + np.arange(S)) * F
+        oti, otj = np.floor_divide(gi, T0), np.floor_divide(gj, T0)
+        mask = np.zeros((S, S), bool)
+        for (a, b) in touched:
+            cs = np.nonzero(oti == a)[0]
+            rs = np.nonzero(otj == b)[0]
+            if not len(cs) or not len(rs):
+                continue
+            mask[np.ix_(rs, cs)] = True
+            q = os.path.join(NEW_L0, f'{a}_{b}')
+            if os.path.exists(q + '.h.i16.gz'):
+                rq = lambda suf, dt, sh: np.frombuffer(gzip.open(q + suf).read(), dt).reshape(sh)
+                th, tw, tc = rq('.h.i16.gz', '<i2', (brh.S, brh.S)), rq('.w.rg8.gz', np.uint8, (brh.S, brh.S, 2)), rq('.c.rgba8.gz', np.uint8, (brh.S, brh.S, 4))
+            else:
+                th, tw, tc = (np.full((brh.S, brh.S), SEA['h'], '<i2'), np.tile(np.array(SEA['w'], np.uint8), (brh.S, brh.S, 1)),
+                              np.zeros((brh.S, brh.S, 4), np.uint8))
+            # l0 core local rows/cols of those cells: (g - a * 512) + BORDER, 4 a cell
+            lc = (gi[cs][:, None] - a * T0 + np.arange(F)[None, :]).ravel() + brh.BORDER
+            lr = (gj[rs][:, None] - b * T0 + np.arange(F)[None, :]).ravel() + brh.BORDER
+            h[np.ix_(rs, cs)] = rmean(th[np.ix_(lr, lc)])
+            w[np.ix_(rs, cs)] = rmean(tw[np.ix_(lr, lc)])
+            c[np.ix_(rs, cs)] = rmean(tc[np.ix_(lr, lc)])
+        changed = (h != h0) | (w != w0).any(-1) | (c != c0).any(-1)
+        assert not changed[~mask].any()
+        sea = (h == SEA['h']).all() and (w[..., 0] == SEA['w'][0]).all() and (w[..., 1] == SEA['w'][1]).all() and not c.any()
+        if sea:
+            report[name] = dict(had_file=had, file=False, cells_new=int(mask.sum()), changed=int(changed.sum()))
+        else:
+            size = write(name, h, w, c)
+            report[name] = dict(had_file=had, file=True, cells_new=int(mask.sum()), changed=int(changed.sum()),
+                                changed_core=int(changed[B:B + TILE, B:B + TILE].sum()), bytes=size,
+                                l0=sorted(f'{a}_{b}' for a, b in touched))
+        print(name, report[name], flush=True)
+    with open(os.path.join(STAGE, 'l1-new-report.json'), 'w') as f:
+        json.dump(report, f, indent=1)
+
+
 def cmd_quicklook(args):
     """Whole extent at 2 km a pixel: hillshaded heights, sea by depth byte, built-up red,
     forest green; the fine box (yellow) and the l0 region's edge (magenta) outlined."""
@@ -415,8 +484,11 @@ def main():
     ap.add_argument('--force', action='store_true')
     ap.add_argument('--only', default='')
     ap.add_argument('--budget', type=float, default=17.0)
+    ap.add_argument('--new', action='store_true', help='v0.6.3: the l1 tiles over the new l0 tiles (cmd_new)')
     args = ap.parse_args()
-    if args.plan:
+    if args.new:
+        cmd_new(args)
+    elif args.plan:
         cmd_plan(args)
     elif args.quicklook:
         cmd_quicklook(args)

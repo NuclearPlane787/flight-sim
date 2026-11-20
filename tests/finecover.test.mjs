@@ -20,8 +20,9 @@ const classAt = (fw, lat, lon) => {
 
 test('fine cover: the index and the files agree; the classes are where the places are', { skip: !HAVE }, () => {
   assert.equal(index.px, FINE_PX); assert.equal(index.sub, FINE_SUB); assert.deepEqual(index.classes, FINE_CLASSES);
-  assert.equal(index.files.length, 1110);
-  for (const n of index.files.slice(0, 40)) assert.ok(existsSync(new URL(n + '.u8.gz', DIR)), n);
+  // (1,110 files in v0.6.0; v0.6.3's 26 tiles add 394, after the old ones, whose names and order stay.)
+  assert.equal(index.files.length, 1504);
+  for (const n of index.files.slice(0, 40).concat(index.files.slice(1110, 1150))) assert.ok(existsSync(new URL(n + '.u8.gz', DIR)), n);
   assert.equal(subName(-7, 5), '-2_1_1_1'); assert.equal(subName(8, -1), '2_-1_0_3');
   const fw = createFineWindow(index);
   const name = (c) => (c === null ? 'none' : FINE_CLASSES[c]);
@@ -33,6 +34,10 @@ test('fine cover: the index and the files agree; the classes are where the place
   assert.equal(name(classAt(fw, 33.36, 126.53)), 'tree', 'Hallasan\'s forest belt');
   assert.equal(name(classAt(fw, 31.0, 131.0)), 'water', 'open sea: a uniform sub-tile');
   assert.equal(name(classAt(fw, 44.0, 143.0)), 'none', 'Hokkaido: outside the fine box');
+  // v0.6.3's tiles: Beijing, Paektu's crater lake, Vladivostok's centre.
+  assert.equal(name(classAt(fw, 39.915, 116.44)), 'built', 'Beijing, east of the centre');
+  assert.equal(name(classAt(fw, 42.006, 128.057)), 'water', 'Paektu\'s crater lake');
+  assert.equal(name(classAt(fw, 43.118, 131.89)), 'built', 'Vladivostok\'s centre');
   // Every file is a megabyte of classes 0..7.
   const a = read(...fw.pixelOf(...toMap(35.681, 139.767)).map((v) => Math.floor(v / FINE_SUB)));
   assert.equal(a.length, FINE_SUB * FINE_SUB);

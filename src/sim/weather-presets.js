@@ -249,13 +249,14 @@ function windGroupMps(w) {
   const dir = Math.round(wrap(w.fromDeg) / 10) * 10 || 360;
   return `${pad(dir, 3)}${pad(ms, 2)}${gust > ms ? `G${pad(gust, 2)}` : ''}MPS`;
 }
-// v0.6.0: whose form the line takes ('kr' | 'jp' | 'cn'): Korea's everywhere with the region's flag off; else by
-// the ICAO's prefix (RJ, RO: Japan; Z: China; RK: Korea), or the country at the arrival when the code says nothing.
+// v0.6.0: whose form the line takes ('kr' | 'jp' | 'cn' | 'ru'): Korea's everywhere with the region's flag off; else by
+// the ICAO's prefix (RJ, RO: Japan; Z: China; RK: Korea; U: Russia, v0.6.3), or the country at the arrival when the code says nothing.
 export function metarFormOf(icao, ctx) {
   if (!EAST_ASIA_ON) return 'kr';
   const c = String(icao || '').toUpperCase();
   if (/^R[JO]/.test(c)) return 'jp';
   if (/^Z/.test(c)) return 'cn';
+  if (/^U/.test(c)) return 'ru';
   if (/^RK/.test(c)) return 'kr';
   const a = ctx?.arrival;
   return a && Number.isFinite(a.x) && Number.isFinite(a.y) ? rulesAt(a.x, a.y).metar : 'kr';
@@ -286,7 +287,7 @@ function dewpoint(s) {
 export function metarOf(settings, icao, ctx) {
   const s = normalizeWeather(settings);
   const form = metarFormOf(icao, ctx);
-  const parts = [icao || 'ZZZZ', form === 'cn' ? windGroupMps(s.wind) : windGroup(s.wind)];
+  const parts = [icao || 'ZZZZ', form === 'cn' || form === 'ru' ? windGroupMps(s.wind) : windGroup(s.wind)];   // (Russia's wind is in metres per second too)
   const wx = weatherGroup(s), layers = s.clouds.filter((c) => c.okta > 0).sort((a, b) => a.baseFt - b.baseFt);
   if (s.visM >= 10000 && !wx && layers.every((c) => c.baseFt >= 5000)) parts.push('CAVOK');
   else {

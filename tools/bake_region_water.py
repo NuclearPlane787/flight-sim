@@ -13,6 +13,10 @@ cells of 250 m on Korea's lattice with a 2-cell border):
     bake_geom.block_mean 2 x 2 onto 250 m, bake_common.signed_to_u8(d, 20). R = sea (+ on land),
     G = inland water (+ outside water).
 
+v0.6.3: the 206 tiles of bake_region_height.region_tiles(); --tiles new writes the 26 new ones to
+/tmp/flight-sim/v063/bake/{water,wc}/ (v0.6.0's are read from its staging), and a tile waits while a
+WorldCover tile its window needs (listed in the bucket's grid) isn't on disk.
+
 Each tile's transform runs over a window of MARGIN = 12 cells (3 km, past the 2,560 m saturation)
 beyond its border, so the field is continuous across tiles: a cell's value depends only on the
 masks within 3 km of it, and the masks are functions of the map position alone.
@@ -51,6 +55,7 @@ try:
     import bake_common as bc
     import bake_geom as bg
     import bake_region_height as brh
+    import bake_region_tiles as rt
 finally:
     os.makedirs = _makedirs
 
@@ -68,14 +73,15 @@ SUB = 12                        # sub-points per 125 m pixel side (10.4 m apart)
 EXT = 2                         # cover window: border + 2 cells (520)
 CW = S + 2 * EXT
 
-STAGE = '/tmp/flight-sim/v060/bake'
+STAGE = rt.STAGE                # v0.6.3: new tiles are written here; v0.6.0's read from rt.STAGE_OLD
 OUT = os.path.join(STAGE, 'water')
 WCOUT = os.path.join(STAGE, 'wc')
 LOG = os.path.join(OUT, 'log.tsv')
 LANDPOLY = '/tmp/flight-sim/v060/landpoly/land-polygons-split-4326/land_polygons'
 LPINDEX = '/tmp/flight-sim/v060/landpoly/bbox_index.npy'
 WCDIR = os.path.join(bc.RAW, 'worldcover')
-PNG = os.path.join(bc.SHOTS, 'v060-bake-water.png')
+PNG = os.path.join(bc.SHOTS, 'v063-bake-water.png')
+WCGRID = '/tmp/flight-sim/v060/lists/wc_grid.geojson'   # the bucket's tile grid: the tiles that exist (land)
 
 # WorldCover class -> category: 0 forest (10, 95), 1 crop (40), 2 grass (30), 3 shrub (20),
 # 4 built (50), 5 water (80), 6 bare 60 + snow 70, 7 everything else (wetland 90, moss 100, no data; not counted)
@@ -265,11 +271,34 @@ def geo_bounds_window(ti, tj):
 
 # ------------------------------------------------------------------ one tile
 def out_path(ti, tj):
-    return os.path.join(OUT, f'{ti}_{tj}.npy')
+    return rt.find('water', f'{ti}_{tj}.npy')
 
 
 def wc_path(ti, tj):
-    return os.path.join(WCOUT, f'{ti}_{tj}.npz')
+    return rt.find('wc', f'{ti}_{tj}.npz')
+
+
+def wc_listed():
+    """{(lat, lon)} of the WorldCover tiles in the bucket's grid (the ones that exist)."""
+    import json
+    with open(WCGRID) as f:
+        g = json.load(f)
+    out = set()
+    for ft in g['features']:
+        t = next(v for v in ft['properties'].values() if isinstance(v, str) and len(v) == 7 and v[0] in 'NS')
+        la = int(t[1:3]) * (1 if t[0] == 'N' else -1)
+        lo = int(t[4:7]) * (1 if t[3] == 'E' else -1)
+        out.add((la, lo))
+    return out
+
+
+def wc_missing(ti, tj, listed, have):
+    """WorldCover tiles that the tile's window touches, exist in the bucket and aren't on disk
+    (a tile must not be baked then: WorldCover.window reads a missing file as open sea)."""
+    lon0, lat0, lon1, lat1 = geo_bounds_window(ti, tj)
+    need = {(la, lo) for la in range(int(np.floor(lat0 / 3)) * 3, int(np.floor(lat1)) + 1, 3)
+            for lo in range(int(np.floor(lon0 / 3)) * 3, int(np.floor(lon1)) + 1, 3)}
+    return sorted(k for k in need if k in listed and k not in have)
 
 
 def done(ti, tj):
@@ -305,11 +334,11 @@ def bake_tile(ti, tj, lp, wc):
     c250 = cnt.astype(np.uint16).reshape(NCAT, W, 2, W, 2).sum(axis=(2, 4))[:, e:e + CW, e:e + CW]
     land250 = ((sea_sd > 0) & (water_sd > 0))[e:e + CW, e:e + CW]
     os.makedirs(WCOUT, exist_ok=True)
-    wp = wc_path(ti, tj)
+    wp = rt.new_path('wc', f'{ti}_{tj}.npz')
     with open(wp + '.tmp', 'wb') as f:
         np.savez_compressed(f, counts=c250, land=land250)
     os.replace(wp + '.tmp', wp)
-    p = out_path(ti, tj)
+    p = rt.new_path('water', f'{ti}_{tj}.npy')
     with open(p + '.tmp', 'wb') as f:
         np.save(f, rg)
     os.replace(p + '.tmp', p)
@@ -342,6 +371,8 @@ def select(spec):
     tiles = brh.region_tiles()
     if spec == 'all':
         return tiles
+    if spec == 'new':
+        return brh.new_tiles()
     if spec == 'priority':
         return priority_order(tiles)
     ri, rj = spec.split(',')
@@ -353,11 +384,16 @@ def cmd_bake(args):
     os.makedirs(OUT, exist_ok=True)
     todo = select(args.tiles)
     lp, wc = LandPolys(), WorldCover()
+    listed = wc_listed()
     t_start = time.time()
     nd = ns = 0
     for ti, tj in todo:
         if done(ti, tj):
             ns += 1
+            continue
+        miss = wc_missing(ti, tj, listed, set(wc.files))
+        if miss:
+            print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'N{a}E{b}' for a, b in miss))
             continue
         if time.time() - t_start > args.budget * 60:
             print(f'budget of {args.budget} min reached; stopping (resumable)')

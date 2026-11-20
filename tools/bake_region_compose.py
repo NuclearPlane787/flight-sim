@@ -23,6 +23,15 @@ present (resumable: a tile already written by this script, listed in the state f
 skipped unless --force). Korea's 35 tiles are rewritten only where their content changes
 (outside the poly), and their cells inside it are checked equal before writing.
 
+v0.6.3 (briefs/V0-6-3.md Part 1): only the 26 new tiles (bake_region_tiles.EXTRA) are composed,
+into /tmp/flight-sim/v063/bake/l0pre/, their mosaics reading the old tiles' staged layers from
+v0.6.0's staging through bake_region_tiles.find(). Then --seal writes /tmp/flight-sim/v063/bake/l0/:
+each new tile with its 2-cell border taken from the owning tiles' cores (old: data/terrain/r0,
+new: l0pre), and each old tile that gains a new neighbour with only those border cells taken from
+the new tile's core (its own core asserted unchanged). Old tiles are never composed again: their
+composition saw open sea where a new tile now is (the bank level and the filters would move
+their cells near the seam).
+
   python3 tools/cpu-guard.py --minutes 20 -- /tmp/flight-sim/venv/bin/python -I tools/bake_region_compose.py --tiles all
   ... --tiles 0:6,0:6      (ti range, tj range, inclusive)
   ... --plan               (what's ready, what's done)
@@ -42,8 +51,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
 DATA = os.path.join(GAME, 'data')
 L0 = os.path.join(DATA, 'terrain', 'l0')      # Korea's tiles (read); the output with --to-data
-OUT = '/tmp/flight-sim/v060/bake/l0'          # the output by default: staging, reviewed before data/
-STAGE = '/tmp/flight-sim/v060/bake'
+R0 = os.path.join(DATA, 'terrain', 'r0')      # the region's shipped tiles (read)
+sys.path.insert(0, HERE)
+import bake_region_tiles as rt  # noqa: E402
+STAGE = rt.STAGE                              # v0.6.3's staging; v0.6.0's (rt.STAGE_OLD) is read through rt.find
+PRE = os.path.join(STAGE, 'l0pre')            # v0.6.3: the new tiles as composed, before --seal
+OUT = os.path.join(STAGE, 'l0')               # the output by default: staging, reviewed before data/
 STATE = os.path.join(STAGE, 'compose-state.json')
 POLY = os.path.join(GAME, 'reference', 'raw', 'osm', 'south-korea.poly')
 
@@ -120,7 +133,7 @@ def tile_xy(ti, tj, pad=0):
 
 
 def stage(kind, ti, tj):
-    p = os.path.join(STAGE, kind, f'{ti}_{tj}.npy')
+    p = rt.find(kind, f'{ti}_{tj}.npy')
     return np.load(p, mmap_mode='r') if os.path.exists(p) else None
 
 
@@ -178,9 +191,10 @@ def read_korea(ti, tj):
     return rd('.h.i16.gz', '<i2', (S, S)), rd('.w.rg8.gz', np.uint8, (S, S, 2)), rd('.c.rgba8.gz', np.uint8, (S, S, 4))
 
 
-def write(ti, tj, h, w, c):
-    os.makedirs(OUT, exist_ok=True)
-    p = os.path.join(OUT, f'{ti}_{tj}')
+def write(ti, tj, h, w, c, out=None):
+    out = out or OUT
+    os.makedirs(out, exist_ok=True)
+    p = os.path.join(out, f'{ti}_{tj}')
     for suf, a in (('.h.i16.gz', h.astype('<i2')), ('.w.rg8.gz', w.astype(np.uint8)), ('.c.rgba8.gz', c.astype(np.uint8))):
         raw = np.ascontiguousarray(a).tobytes()
         if os.path.exists(p + suf) and gzip.open(p + suf).read() == raw:
@@ -236,16 +250,129 @@ def state():
 
 
 def tiles_in_stage():
-    out = []
-    for f in os.listdir(os.path.join(STAGE, 'raw-h')):
-        if f.endswith('.npy'):
-            a, b = f[:-4].split('_')
-            out.append((int(a), int(b)))
-    return sorted(out)
+    """v0.6.3: the new tiles (bake_region_tiles.EXTRA); v0.6.0's 180 are composed already
+    (data/terrain/r0) and are never composed again (their cores stay byte for byte)."""
+    import bake_region_height as brh
+    return brh.new_tiles()
 
 
 def ready(ti, tj):
-    return all(os.path.exists(os.path.join(STAGE, k, f'{ti}_{tj}.npy')) for k in ('raw-h', 'water', 'cover'))
+    return all(os.path.exists(rt.find(k, f'{ti}_{tj}.npy')) for k in ('raw-h', 'water', 'cover'))
+
+
+# ------------------------------------------------------------------ v0.6.3: the seal
+LAYERS = (('.h.i16.gz', '<i2', ()), ('.w.rg8.gz', np.uint8, (2,)), ('.c.rgba8.gz', np.uint8, (4,)))
+
+
+def read_tile(d, ti, tj):
+    """(h, w, c) of a composed tile in folder d, or None (no file: open sea, or not there)."""
+    p = os.path.join(d, f'{ti}_{tj}')
+    if not os.path.exists(p + '.h.i16.gz'):
+        return None
+    return tuple(np.frombuffer(gzip.open(p + suf).read(), dt).reshape((S, S) + tail).copy() for suf, dt, tail in LAYERS)
+
+
+def sea_tile():
+    return (np.full((S, S), SEA['h'], '<i2'), np.tile(np.array(SEA['w'], np.uint8), (S, S, 1)), np.zeros((S, S, 4), np.uint8))
+
+
+def seal(args):
+    """Every new tile's border cells and every old tile's border cells that lie in a new tile
+    take the owning tile's core values: an old tile's core from data/terrain/r0 (open sea where
+    it has no file), a new tile's from PRE. Old tiles are rewritten (into OUT) only if a border
+    cell changes; their cores are asserted unchanged. Writes OUT and seal-report.json."""
+    import bake_region_height as brh
+    old = set(brh.old_tiles())
+    new = brh.new_tiles()
+    news = set(new)
+    pre_sea = set(tuple(t) for t in state().get('sea', []))
+    cores = {}
+
+    def core_of(t):
+        """The owner's full (h, w, c) (its core is what's read), or None when it isn't in the region."""
+        if t in cores:
+            return cores[t]
+        if t in news:
+            v = read_tile(PRE, *t)
+            v = v if v is not None else sea_tile()
+        elif t in old:
+            v = read_tile(R0, *t)
+            v = v if v is not None else sea_tile()
+        else:
+            v = None
+        cores[t] = v
+        return v
+
+    def fill_border(ti, tj, arrs, only_new):
+        """Copy owners' cores into the tile's border; returns per-layer changed-cell counts."""
+        changed = [0, 0, 0]
+        cells = {}
+        g = np.arange(S) - B                                # local index -> cell within the core lattice
+        for dj in (-1, 0, 1):
+            for di in (-1, 0, 1):
+                if di == 0 and dj == 0:
+                    continue
+                o = (ti + di, tj + dj)
+                if only_new and o not in news:
+                    continue
+                src = core_of(o)
+                if src is None:
+                    continue
+                cs = np.nonzero((np.floor_divide(g, TILE) == di))[0]
+                rs = np.nonzero((np.floor_divide(g, TILE) == dj))[0]
+                if not len(cs) or not len(rs):
+                    continue
+                # our local (r, c) is the owner's local (r - dj * TILE, c - di * TILE)
+                for k in range(3):
+                    a = arrs[k]
+                    before = a[np.ix_(rs, cs)].copy()
+                    a[np.ix_(rs, cs)] = src[k][np.ix_(rs - dj * TILE, cs - di * TILE)]
+                    d = before != a[np.ix_(rs, cs)]
+                    if d.ndim == 3:
+                        d = d.any(-1)
+                    changed[k] += int(d.sum())
+                cells[f'{o[0]}_{o[1]}'] = len(rs) * len(cs)
+        return changed, cells
+
+    report = {'new': {}, 'old': {}}
+    os.makedirs(OUT, exist_ok=True)
+    for t in new:
+        arrs = list(core_of(t))
+        arrs = [a.copy() for a in arrs]
+        ch, cells = fill_border(*t, arrs, only_new=False)
+        h, w, c = arrs
+        name = f'{t[0]}_{t[1]}'
+        if all_sea(h, w, c):
+            for suf, _, _ in LAYERS:
+                if os.path.exists(os.path.join(OUT, name + suf)):
+                    os.remove(os.path.join(OUT, name + suf))
+            report['new'][name] = {'file': False, 'border_changed': ch, 'owners': cells}
+        else:
+            write(*t, h, w, c)
+            report['new'][name] = {'file': True, 'border_changed': ch, 'owners': cells}
+        print(f'new {name}: border cells changed by the seal h/w/c {ch}; file {report["new"][name]["file"]}')
+    for t in sorted(old):
+        if not any((t[0] + a, t[1] + b) in news for a in (-1, 0, 1) for b in (-1, 0, 1)):
+            continue
+        orig = core_of(t)
+        had_file = read_tile(R0, *t) is not None
+        arrs = [a.copy() for a in orig]
+        ch, cells = fill_border(*t, arrs, only_new=True)
+        core = (slice(B, B + TILE), slice(B, B + TILE))
+        for k in range(3):
+            assert np.array_equal(arrs[k][core], orig[k][core]), (t, k)
+        name = f'{t[0]}_{t[1]}'
+        h, w, c = arrs
+        if sum(ch) == 0:
+            report['old'][name] = {'changed': False, 'had_file': had_file, 'owners': cells}
+        elif not had_file and all_sea(h, w, c):
+            report['old'][name] = {'changed': False, 'had_file': False, 'owners': cells}
+        else:
+            write(*t, h, w, c)
+            report['old'][name] = {'changed': True, 'had_file': had_file, 'border_changed': ch, 'owners': cells}
+        print(f'old {name}: border cells changed h/w/c {ch}; file {had_file}; owners {cells}')
+    with open(os.path.join(STAGE, 'seal-report.json'), 'w') as f:
+        json.dump(report, f, indent=1)
 
 
 def main():
@@ -253,14 +380,14 @@ def main():
     ap.add_argument('--tiles', default='all')
     ap.add_argument('--plan', action='store_true')
     ap.add_argument('--force', action='store_true')
-    ap.add_argument('--to-data', action='store_true', help='write into data/terrain/l0 (else staging)')
     ap.add_argument('--budget', type=float, default=17.0, help='minutes: no new tile after this')
+    ap.add_argument('--seal', action='store_true', help='v0.6.3: the borders (see seal())')
     args = ap.parse_args()
-    global OUT, STATE
-    if args.to_data:
-        OUT = L0; STATE = os.path.join(STAGE, 'compose-state-data.json')
+    if args.seal:
+        return seal(args)
+    # (v0.6.3: --to-data is gone; staging only, installed by the lead after review)
     allt = tiles_in_stage()
-    if args.tiles != 'all':
+    if args.tiles not in ('all', 'new'):
         (a0, a1), (b0, b1) = [tuple(int(v) for v in r.split(':')) for r in args.tiles.split(',')]
         allt = [t for t in allt if a0 <= t[0] <= a1 and b0 <= t[1] <= b1]
     st = state()
@@ -281,8 +408,9 @@ def main():
         h, w, c, stats = compose_tile(ti, tj, rings)
         if all_sea(h, w, c):
             print(f'{ti}_{tj}: open sea (no file)')
+            st.setdefault('sea', []).append([ti, tj])
         else:
-            write(ti, tj, h, w, c)
+            write(ti, tj, h, w, c, out=PRE)
             print(f'{ti}_{tj}: written {stats}')
         st['done'].append([ti, tj]); done.add((ti, tj))
         json.dump(st, open(STATE + '.tmp', 'w')); os.replace(STATE + '.tmp', STATE)

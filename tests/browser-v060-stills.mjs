@@ -75,7 +75,7 @@ SHOTS['world-3000-shanghai-night'] = { q: look(31.235, 121.5, 3000, 285, -12), m
 SHOTS['world-10000-osaka'] = { q: look(34.69, 135.5, 10000, 30, -20), ms: DAY };
 SHOTS['world-10000-fukuoka'] = { q: look(33.59, 130.4, 10000, 160, -20), ms: DAY };
 SHOTS['world-10000-busan'] = { q: look(35.16, 129.06, 10000, 30, -20), ms: DAY };
-const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04' };   // (ZSYN: v0.6.1)
+const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04', ZBAA: '36R', ZBAD: '35L', UHWW: '25L', ZYTX: '24', ZYTL: '28' };   // (ZSYN: v0.6.1; ZBAA, ZBAD: v0.6.3)
 for (const [icao, end] of Object.entries(FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: NIGHT };
@@ -141,6 +141,26 @@ const GROUPS = {
   part7: Object.keys(SHOTS).filter((n) => n.startsWith('ground-')),
   gh: Object.keys(SHOTS).filter((n) => n.startsWith('gh-')),
 };
+
+// v0.6.3 Part 5 (--region --cities): the five new centres from 3,000 ft and FL350, and each new landmark
+// close (a ground point and the heading to look along), by day and by night. Their own groups, after
+// GROUPS's filters, so cities6 stays the six.
+const CITY063 = { beijing: [39.912, 116.42, 75], tianjin: [39.115, 117.20, 30], shenyang: [41.795, 123.43, 0], dalian: [38.915, 121.63, 300], vladivostok: [43.112, 131.90, 340] };
+for (const [k, [la, lo, h]] of Object.entries(CITY063)) {
+  for (const [alt, pitch] of [[3000, -12], [35000, -38]]) {
+    for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`cities-${k}-${alt === 3000 ? '3000' : 'fl350'}-${tod}`] = { q: look(la, lo, alt, h, pitch), ms };
+  }
+}
+const LANDMARK063 = {
+  citic: [39.91150, 116.46024, 2500, 30, -7], cctv: [39.91381, 116.45797, 1500, 225, -8], russky: [43.06333, 131.90786, 1500, 316, -5],
+  zolotoy: [43.10885, 131.89624, 1200, 268, -6], cctvtower: [39.91818, 116.30030, 2000, 270, -6], tjtower: [39.09192, 117.17534, 2000, 200, -6],
+  lntower: [41.78039, 123.42795, 1500, 0, -6],
+};
+for (const [k, [la, lo, ft, h, pitch]] of Object.entries(LANDMARK063)) {
+  for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`landmark-${k}-${tod}`] = { q: look(la, lo, ft, h, pitch), ms };
+}
+GROUPS['cities-v063'] = Object.keys(CITY063).flatMap((k) => ['3000', 'fl350'].flatMap((a) => ['day', 'night'].map((t) => `cities-${k}-${a}-${t}`)));
+GROUPS['landmarks-v063'] = Object.keys(LANDMARK063).flatMap((k) => ['day', 'night'].map((t) => `landmark-${k}-${t}`));
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {

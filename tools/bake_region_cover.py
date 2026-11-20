@@ -7,6 +7,9 @@ apart, reached through the frame's to_geo, in WorldCover's classes, and the 250 
 sea_sd > 0 and water_sd > 0), and the raw heights (/tmp/flight-sim/v060/bake/raw-h/, the window's
 extra cells taken from the neighbouring tiles' cores, NaN -> 30 m as bake_cover does).
 
+v0.6.3: inputs through bake_region_tiles.find() (v0.6.3 staging, else v0.6.0's); new tiles are
+written to /tmp/flight-sim/v063/bake/cover/ (--tiles new).
+
 Per cell, as area fractions of its footprint:
   R forest  tree cover (10) + mangroves (95)
   G farm    cropland (40), plus grassland (30) and shrubland (20) on the flat
@@ -45,6 +48,7 @@ try:
     import bake_cover as bcov
     import bake_region_height as brh
     import bake_region_water as brw
+    import bake_region_tiles as rt
 finally:
     os.makedirs = _makedirs
 
@@ -55,11 +59,11 @@ NSUB = 4 * brw.SUB * brw.SUB          # 576 sub-points a 250 m cell
 STAGE = brw.STAGE
 OUT = os.path.join(STAGE, 'cover')
 LOG = os.path.join(OUT, 'log.tsv')
-PNG = os.path.join(bc.SHOTS, 'v060-bake-cover.png')
+PNG = os.path.join(bc.SHOTS, 'v063-bake-cover.png')
 
 
 def out_path(ti, tj):
-    return os.path.join(OUT, f'{ti}_{tj}.npy')
+    return rt.find('cover', f'{ti}_{tj}.npy')
 
 
 def done(ti, tj):
@@ -126,7 +130,7 @@ def bake_tile(ti, tj, hs):
     for k, a in enumerate((f2, farm2, urban2)):
         cover[..., k] = np.clip(np.round(np.where(land, a, 0) * 255), 0, 255)
     cover = cover[EXT:EXT + S, EXT:EXT + S]
-    p = out_path(ti, tj)
+    p = rt.new_path('cover', f'{ti}_{tj}.npy')
     with open(p + '.tmp', 'wb') as f:
         np.save(f, np.ascontiguousarray(cover))
     os.replace(p + '.tmp', p)

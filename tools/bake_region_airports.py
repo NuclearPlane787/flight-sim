@@ -53,6 +53,12 @@ NOTES_DIR = '/tmp/flight-sim/v060/airports'
 # v0.6.1: Yancheng's box and notes live with that run's scratch
 OSM_DIRS = {'ZSYN': '/tmp/flight-sim/v061/zsyn/osm'}
 NOTES_DIRS = {'ZSYN': '/tmp/flight-sim/v061/zsyn/airports'}
+# v0.6.3, Shenyang, Dalian and Vladivostok: their boxes cut by /tmp/flight-sim/v063/osm/extract-ne.sh, notes beside them
+OSM_DIRS.update({i: '/tmp/flight-sim/v063/osm' for i in ('ZYTX', 'ZYTL', 'UHWW')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v063/airports/bake' for i in ('ZYTX', 'ZYTL', 'UHWW')})
+# v0.6.3, Beijing Capital and Daxing: their boxes cut by /tmp/flight-sim/v063/osm/extract-beijing.sh, notes beside them
+OSM_DIRS.update({i: '/tmp/flight-sim/v063/osm' for i in ('ZBAA', 'ZBAD')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v063/airports/bake' for i in ('ZBAA', 'ZBAD')})
 OUT_DIR = os.environ.get('FS_AIRPORT_OUT') or os.path.join(DATA, 'airports')
 osm_dir = lambda icao: OSM_DIRS.get(icao, OSM_DIR)
 FT = 0.3048
@@ -69,6 +75,12 @@ NAMES = {   # briefs/V0-6-0.md Part 3, the names table
     'ZSQD': ('Qingdao', 'Qingdao Jiaodong International Airport'),
     # v0.6.1, pending (manifest airportsPending)
     'ZSYN': ('Yancheng', 'Yancheng Nanyang International Airport'),
+    # v0.6.3 (briefs/V0-6-3.md Part 2), pending until each passes its check
+    'ZBAA': ('Beijing Capital', 'Beijing Capital International Airport'),
+    'ZBAD': ('Daxing', 'Beijing Daxing International Airport'),
+    'ZYTX': ('Shenyang', 'Shenyang Taoxian International Airport'),
+    'ZYTL': ('Dalian', 'Dalian Zhoushuizi International Airport'),
+    'UHWW': ('Vladivostok', 'Vladivostok International Airport'),
 }
 # Inside south-korea.poly the game's variation is frame.js magVar()'s plane (briefs/V0-6-0.md, "Magnetic variation"):
 # Gimhae's magVarDeg and magnetic headings come from bake_common.mag_var(), the rest from the WMM grid.
@@ -111,6 +123,15 @@ TWY_REFS = {'ZSYN': {
 }}
 TWY_REF_REASON = ('OSM maps no taxiway ref at Yancheng: named in the Chinese pattern (parallel A, its runway links A1-A3 '
                   'from the 04 end, the apron taxilane B); the military loop and hardstands unnamed')
+
+# v0.6.3, Shenyang and Dalian: OSM draws each stand as a chain of
+# aeroway=parking_position ways, the lead-in and the curved turn-in arcs (and short joining pieces) from the taxilane,
+# each its own way. The bake's usual rule made a stand of every piece (206 at Shenyang, 175 at Dalian). Here a stand is a
+# dead end of that network: a way's end joined to no other parking_position way (within 2 m) and at least PP_TWY_M from
+# every taxiway (an arc's end on a taxiway is not a stand). Its leadIn is that way, its heading the way's last 30 m, its
+# number the numbered parking_position node within 15 m. stands_from_pp_chains().
+PP_CHAINS = {'ZYTX', 'ZYTL'}
+PP_TWY_M = 20.0
 
 
 def military_polys(icao):
@@ -206,6 +227,32 @@ OVERRIDE_REASON = {
              "AIP: ILS II at 16 and 17 with a CAT II runway's lights (ALSF-II 900 m, TDZ, centreline lights on 17/35); "
              "34 and 35 stay the default, [EST]"),
 }
+# v0.6.3, Beijing Capital and Daxing: China's AIP not readable without an account. Open secondary sources only:
+# the ILS categories from X-Plane 12's nav data as listed on airports4xp.info; the approach lights, TDZ and centreline
+# lights and the PAPIs (all PAPI-4L, one an end; none at Daxing 11L) from the X-Plane Scenery Gateway's recommended
+# sceneries' runway rows and light fixtures (ZBAA scenery 110014, 2026-02; ZBAD 112658, 2026-10). Where they disagree
+# (Daxing 01L: CAT III in the nav data, ALSF-I with TDZ in the scenery) the CAT II/III lights Annex 14 requires.
+# Still [EST]: the approach lights' 900 m, the PAPIs' 3.0 deg and side, every threshold elevation (OurAirports').
+END_OVERRIDE.update({
+    'ZBAA': {'01': dict(CAT2, ils='II'), '19': dict(CAT2, ils='I'), '18L': dict(CAT2, ils='I'),
+             '36R': dict(CAT2, ils='III'), '18R': dict(CAT2, ils='I'), '36L': dict(CAT2, ils='I')},
+    'ZBAD': {'17R': dict(centrelineLights=True), '35L': dict(CAT2, ils='II'), '01L': dict(CAT2, ils='III'),
+             '11L': dict(papi=None, papiDeg=None, approachLights=None, approachLightsM=0, ils=None, tdzLights=False)},
+})
+OVERRIDE_REASON.update({
+    'ZBAA': ("open secondary sources, not the AIP: ILS II at 01, III at 36R, I at 19, 18L, 18R, 36L (X-Plane 12's nav data, "
+             "airports4xp.info); ALSF-II, TDZ and centreline lights at all six ends (the Scenery Gateway's scenery 110014); "
+             "PAPI-4L at each end (its fixtures); 18R/36L's centreline lights though 50 m wide (the scenery's). [EST]: the "
+             "approach lights' 900 m"),
+    'ZBAD': ("open secondary sources, not the AIP: ILS III at 01L, II at 35L, I at 17L, 35R, 17R, 19R, 29R, none at 11L "
+             "(X-Plane 12's nav data, airports4xp.info); ALSF-I at 17L, 35R, 17R, 19R, 29R, ALSF-II and TDZ at 35L, nothing "
+             "at 11L (no approach lights, no PAPI: a departure end), centreline lights on all four runways, 17R/35L's "
+             "too though 45 m wide (the Scenery Gateway's scenery 112658); 01L: CAT III in the nav data, so a CAT II/III "
+             "runway's lights (the scenery has ALSF-I with TDZ). [EST]: the approach lights' 900 m"),
+})
+# Daxing's west side borders the PLAAF's Nanjiao field (ZBNY; OSM aeroway=aerodrome + landuse=military, its own runway
+# 18/36 tagged "for military", outside ZBAD's aerodrome polygon): no stands may come from it.
+MILITARY = MILITARY | {'ZBAD'}
 # Where the pavement made round the stands is also closed over the gaps to the mapped aprons (m: half the widest gap closed).
 APRON_CLOSE = {'RKPK': 30.0}
 # How the stands OSM leaves unnumbered are numbered, west to east: R1.. unless the airport's own numbering is known.
@@ -216,6 +263,78 @@ STAND_FORMAT = {'ZSYN': '{:02d}'}
 DISPLACED_PUBLISHED = {('RKPK', '18R'): 600.0}
 # Widths where OurAirports' rounded figure is wrong: Hongqiao 18L/36R is 3,400 x 57.6 m (OSM's width tag), not 45 m.
 WIDTH_OVERRIDE = {('ZSSS', '18L/36R'): 57.6}
+# v0.6.3, Daxing: OSM's way for these three runways runs over both 120 m blast pads (OurAirports' ends 118-127 m in
+# from OSM's at each end, the first taxiway links ~130-200 m in; the X-Plane Scenery Gateway's runway rows: 120 m blast
+# pads, no displacement). Both ends are trimmed by the same amount, to the published length times the map frame's
+# scale there (Lambert's k, +0.22 % at Beijing), so the runway keeps OSM's middle.
+TRIM_BOTH = {('ZBAD', '17L/35R'), ('ZBAD', '17R/35L'), ('ZBAD', '01L/19R')}
+
+
+def frame_scale(lat, lon):
+    """The map frame's scale factor at (lat, lon): map metres per metre on the ellipsoid, north-south (conformal)."""
+    from bake_common import A, E
+    d = 1e-4
+    p0, p1 = np.array(to_map(lat - d / 2, lon), float), np.array(to_map(lat + d / 2, lon), float)
+    s = np.sin(np.radians(lat))
+    return float(np.hypot(*(p1 - p0)) / (A * (1 - E * E) / (1 - E * E * s * s) ** 1.5 * np.radians(d)))
+
+# v0.6.3, Shenyang (ZYTX), Dalian (ZYTL) and Vladivostok (UHWW), pending. No source document is kept in the repository.
+# - Vladivostok, from AIP Russia (Book 1, AD 2.1 UHWW, AIRAC AMDT 11/24 of 31 OCT 24; the ILS Z 25L chart, AMDT 07/25),
+#   read directly: one runway, 07R/25L 3,502 x 60 m, no displacement (TORA = LDA 3,502 m); 07R HIALS CAT I 900 m, PAPI
+#   left 3.0, no TDZ, ILS CAT I (109.3); 25L HIALS CAT II 900 m, PAPI left 3.0, TDZ 900 m, ILS CAT II (110.1);
+#   centreline lights on both; THR elevations 32 ft (07R) and 44 ft (25L); MAG BRG 072/252; MAG VAR 11 deg W (2020).
+#   The old 07L/25R is closed (OurAirports' closed=1) and OSM no longer draws it as a runway.
+AIP.update({
+    'UHWW': {'07R': ('ALSF-I', 900, 'left', 3.0, 'I', 32.0, False, True, 60, 0),
+             '25L': ('ALSF-II', 900, 'left', 3.0, 'II', 44.0, True, True, 60, 0)},
+})
+# - Shenyang and Dalian: China's AIP not readable without an account. Open secondary sources only: the ILS categories
+#   (CAT I at all four ends) from X-Plane 12's nav data as listed on airports4xp.info; ALSF-I at each end, no TDZ,
+#   centreline lights (both runways 45 m wide) and the PAPIs (PAPI-4L on the left; Dalian 10's at 3.3 deg, as its
+#   glide path in the nav data) from the X-Plane Scenery Gateway's recommended sceneries (ZYTX 97379, 2023-07; ZYTL
+#   105766, 2025-02). Dalian's displacements (10: 200 m, 28: 300 m) are OSM's segments, which the Gateway's scenery
+#   also has (OurAirports 198 m and 98 m). [EST]: the approach lights' 900 m.
+END_OVERRIDE.update({
+    'ZYTX': {'06': dict(centrelineLights=True), '24': dict(centrelineLights=True)},
+    'ZYTL': {'10': dict(centrelineLights=True, papiDeg=3.3), '28': dict(centrelineLights=True)},
+})
+OVERRIDE_REASON.update({
+    'ZYTX': ("open secondary sources, not the AIP: ILS I at 06 (110.5) and 24 (110.3) (X-Plane 12's nav data, "
+             "airports4xp.info); ALSF-I, no TDZ, PAPI-4L left, centreline lights at both ends though 45 m wide (the Scenery "
+             "Gateway's scenery 97379). [EST]: the approach lights' 900 m, the PAPIs' 3.0 deg"),
+    'ZYTL': ("open secondary sources, not the AIP: ILS I at 10 (109.1, glide path 3.3 deg) and 28 (111.1, 3.0 deg) (X-Plane "
+             "12's nav data, airports4xp.info); ALSF-I, no TDZ, PAPI-4L left (10's at 3.3 deg), centreline lights at both "
+             "ends though 45 m wide (the Scenery Gateway's scenery 105766). [EST]: the approach lights' 900 m"),
+})
+# Vladivostok's stands: OSM draws apron A's lead-ins as taxiways, most of them loops (the AIP's drive-through rows 12 to
+# 23) with no dead end to take a stop from, and maps no stand numbers. The stands are the X-Plane Scenery Gateway's
+# (scenery 66682, 2019: an open secondary source), whose numbers are the AIP parking chart's (AD 2.1 UHWW-40): 1A, 2 to
+# 4 at the bridges, 5A, 6A, 7 to 11 on the front row, 12 to 23 on the rows behind, all nose 151 deg true. Each gets a
+# 60 m lead-in along its heading. Stands 24 and 25 (the separate apron) and the AIP's letter variants are left out, and
+# so are OSM's two unnumbered parking_position nodes by a hangar south of the runway (no taxi route reaches them).
+#   (ref, lat, lon, true heading deg)
+STAND_POINTS = {'UHWW': [
+    ('1A', 43.39657916, 132.16341549, 150.96), ('2', 43.39688095, 132.16424597, 150.96),
+    ('3', 43.39711398, 132.16493590, 150.96), ('4', 43.39741090, 132.16568382, 150.96),
+    ('5A', 43.39782393, 132.16664689, 150.96), ('6A', 43.39820970, 132.16757314, 150.96),
+    ('7', 43.39864140, 132.16837311, 150.96), ('8', 43.39887413, 132.16901982, 150.96),
+    ('9', 43.39916006, 132.16965127, 150.96), ('10', 43.39942897, 132.17049681, 150.96),
+    ('11', 43.39976449, 132.17133177, 150.96), ('12', 43.39809877, 132.16279607, 150.96),
+    ('13', 43.39838780, 132.16355250, 150.96), ('14', 43.39864634, 132.16419384, 150.96),
+    ('15', 43.39895347, 132.16493048, 150.96), ('16', 43.39920631, 132.16556543, 150.96),
+    ('17', 43.39951149, 132.16631122, 150.96), ('18', 43.39976787, 132.16695082, 150.96),
+    ('19', 43.40002894, 132.16758484, 150.96), ('20', 43.40019000, 132.16798933, 150.96),
+    ('21', 43.40034861, 132.16840022, 150.96), ('22', 43.40060986, 132.16901380, 150.96),
+    ('23', 43.40085419, 132.16965268, 150.96),
+]}
+STAND_POINTS_LEADIN_M = 60.0
+# Vladivostok's taxiway names where OSM has none: A, the parallel taxiway on the apron side (the AIP parking chart's
+# TWY A and its aerodrome chart; AD 2.8 lists A, C, M, P, R, S). The others stay unnamed: their places on the chart
+# could not be matched to OSM's ways with confidence.
+TWY_REFS['UHWW'] = {519626005: 'A'}
+TWY_REF_REASONS = {'UHWW': ("OSM maps no taxiway ref at Vladivostok but the X taxilanes: the parallel named A from AIP Russia's "
+                            "parking and aerodrome charts (UHWW-40, -31); C, M, P, R and S (AD 2.8) not placed")}
+
 
 # Holding positions (Part 3's checks): OSM maps few at some airports (Qingdao none, Fukuoka 3, Gimhae 5). Where a
 # taxiway meets a runway and no mapped hold is on it, one is made on the taxiway at the standard distance from the
@@ -242,6 +361,11 @@ PUBLISHED_MAG = {
     # the listings' bearings carry an older variation (the runway's 04 too: 38.5 true is 045 magnetic today).
     'ZSYN': {'04': 44.0, '22': 224.0},
 }
+# v0.6.3: Vladivostok, AIP Russia AD 2.12's MAG BRG (with its 11 deg W of 2020); Shenyang and Dalian, the open nav-data
+# listing's bearings (airports4xp.info: 056/236 and 095/275): Shenyang's carry an older variation, Dalian's are within
+# 0.7 deg of its true bearing (95.65), so probably true; for the notes' table only.
+PUBLISHED_MAG.update({'UHWW': {'07R': 72.0, '25L': 252.0}, 'ZYTX': {'06': 56.0, '24': 236.0},
+                      'ZYTL': {'10': 95.0, '28': 275.0}})
 
 LIFECYCLE = ('construction', 'proposed', 'disused', 'abandoned', 'planned', 'demolished', 'razed')
 
@@ -417,6 +541,15 @@ def bake(icao, wmm, oa_ap, oa_rw):
             osm_disp = {{'a': 'b', 'b': 'a'}[k]: v for k, v in osm_disp.items()}
         length = float(np.hypot(*(b - a)))
         o0 = oa_rw.get((icao, ids[0]), {})
+        if (icao, ref) in TRIM_BOTH:
+            k = frame_scale(*(float(v) for v in to_geo(*((a + b) / 2))))
+            cut = (length - num(o0.get('length')) * FT * k) / 2
+            u = (b - a) / length
+            a, b = a + u * cut, b - u * cut
+            est.append((f'{ref} length', f'{length - 2 * cut:.1f} map m ({length - 2 * cut:.0f} / {k:.5f} = '
+                        f'{(length - 2 * cut) / k:.0f} m; OSM {length:.0f} m)',
+                        f'OSM\'s way over both 120 m blast pads: {cut:.0f} m trimmed from each end (TRIM_BOTH)'))
+            length = float(np.hypot(*(b - a)))
         # Haneda 16R/34L: OSM's 16R displaced-threshold segment runs 37 m past the published 3,000 m (its
         # 523 m against the 480 m that the AIP's LDA of 8,270 ft implies). Where OSM is over the published
         # length by more than 1% and one end has a displaced segment, that end is trimmed to the length.
@@ -529,7 +662,7 @@ def bake(icao, wmm, oa_ap, oa_rw):
             w = num(tags.get('width'), 23.0 if tags.get('aeroway') == 'taxiway' else 15.0)
             taxiways.append(dict(ref=tags.get('ref', '') or refs_est.get(wid, ''), kind=tags['aeroway'], widthM=w, points=pts(xy)))
     if refs_est:
-        est.append(('taxiway names', ', '.join(sorted(set(refs_est.values()))), TWY_REF_REASON))
+        est.append(('taxiway names', ', '.join(sorted(set(refs_est.values()))), TWY_REF_REASONS.get(icao, TWY_REF_REASON)))
     twy_lines = shapely.MultiLineString([t['points'] for t in taxiways if t['kind'] == 'taxiway'] or
                                         [t['points'] for t in taxiways])
 
@@ -548,7 +681,7 @@ def bake(icao, wmm, oa_ap, oa_rw):
     node_refs = [(tuple(float(v) for v in to_map(la, lo)), t['ref']) for _, t, lo, la in d['nodes']
                  if t.get('aeroway') == 'parking_position' and t.get('ref')]
     for _, tags, coords in d['ways']:
-        if tags.get('aeroway') != 'parking_position':
+        if tags.get('aeroway') != 'parking_position' or icao in PP_CHAINS:
             continue
         xy = to_xy(coords)
         a, b = xy[0], xy[-1]
@@ -569,6 +702,18 @@ def bake(icao, wmm, oa_ap, oa_rw):
         stands.append(dict(ref=ref, x=r1(b[0]), y=r1(b[1]), hdgGridDeg=round(hdg_g, 1),
                            gate=bool(near_gate(Point(b))), leadIn=pts(xy)))
         seen.add(ref)
+    if icao in STAND_POINTS:
+        stands += stands_from_points(icao, near_gate)
+        est.append(('stands', f'{len(STAND_POINTS[icao])} from STAND_POINTS',
+                    'OSM maps no stand numbers and draws the rows as taxiway loops: the X-Plane Scenery Gateway\'s stands '
+                    '(open secondary), numbered as AIP Russia\'s parking chart; a 60 m lead-in along each heading'))
+    if icao in PP_CHAINS:
+        got, n_pp = stands_from_pp_chains(d, area, twy_lines, near_gate, node_refs)
+        stands += got
+        seen |= {st['ref'] for st in got if st['ref']}
+        est.append(('stands from parking_position chains', f'{len(got)} dead ends of {n_pp} ways',
+                    'OSM draws each stand as a lead-in plus its turn-in arcs as separate parking_position ways: a stand '
+                    f'only at a dead end of that network, at least {PP_TWY_M:.0f} m from the taxiways (PP_CHAINS)'))
     if lines_as_stands:
         stands += stands_from_lines(d, lines_as_stands, runways, near_gate)
         est.append(('stands', f'{len(lines_as_stands)} from OSM taxiway ways (stand lead-in lines)',
@@ -576,7 +721,7 @@ def bake(icao, wmm, oa_ap, oa_rw):
                     'a dead end at the stop mark, ~48 m apart: code C) is a stand, its stop the dead end, its heading the '
                     f'line\'s last 30 m; {len(skip)} turn-in arcs dropped'))
     for _, tags, lo, la in d['nodes']:
-        if tags.get('aeroway') != 'parking_position':
+        if tags.get('aeroway') != 'parking_position' or icao in STAND_POINTS:
             continue
         ref = tags.get('ref', '')
         if ref and ref in seen:
@@ -727,6 +872,64 @@ def bake(icao, wmm, oa_ap, oa_rw):
     print(summary)
     write_notes(icao, out, table, est, summary)
     return table
+
+
+def stands_from_points(icao, near_gate):
+    """STAND_POINTS: stands at published or listed points, each with a straight lead-in behind it along its heading."""
+    out = []
+    for ref, la, lo, hdg in STAND_POINTS[icao]:
+        h = np.radians(hdg)
+        back = STAND_POINTS_LEADIN_M
+        la0 = la - back * np.cos(h) / 111320.0
+        lo0 = lo - back * np.sin(h) / (111320.0 * np.cos(np.radians(la)))
+        b = np.array(to_map(la, lo), float)
+        a = np.array(to_map(la0, lo0), float)
+        a = b + (a - b) * back / float(np.hypot(*(a - b)))
+        hdg_g = float(np.degrees(np.arctan2(b[0] - a[0], b[1] - a[1])) % 360)
+        out.append(dict(ref=ref, x=r1(b[0]), y=r1(b[1]), hdgGridDeg=round(hdg_g, 1), gate=bool(near_gate(Point(b))),
+                        leadIn=pts(np.array([a, b]))))
+    return out
+
+
+def stands_from_pp_chains(d, area, twy_lines, near_gate, node_refs):
+    """PP_CHAINS: a stand at each dead end of OSM's parking_position network (see PP_CHAINS). Returns (stands, ways read)."""
+    ways = []
+    for _, tags, coords in d['ways']:
+        if tags.get('aeroway') != 'parking_position':
+            continue
+        xy = to_xy(coords)
+        if not Point(xy[0]).within(area) and not Point(xy[-1]).within(area):
+            continue
+        ways.append((tags, xy))
+    lines = [LineString(xy) for _, xy in ways]
+    out = []
+    for k, (tags, xy) in enumerate(ways):
+        for P in (xy, xy[::-1]):
+            b = P[-1]
+            pb = Point(b)
+            if any(m != k and lines[m].distance(pb) < 2 for m in range(len(lines))):
+                continue                                    # joined to another piece: not a dead end
+            if twy_lines.distance(pb) < PP_TWY_M:
+                continue                                    # an arc's end on the taxiway
+            if np.hypot(*(P[-1] - P[0])) < 1 and len(P) < 3:
+                continue
+            ln = LineString(P)
+            ref = tags.get('ref', '')
+            if not ref:
+                cands = sorted((Point(q).distance(pb), r) for q, r in node_refs
+                               if Point(q).distance(pb) < 15)
+                if cands:
+                    ref = cands[0][1]
+            # the heading: from the point 30 m back along the way (as stands_from_lines)
+            back = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(P[::-1], axis=0).T))])
+            j = int(np.searchsorted(back, 30.0))
+            a = P[::-1][min(j, len(P) - 1)]
+            if np.hypot(*(b - a)) < 5:
+                continue
+            hdg_g = float(np.degrees(np.arctan2(b[0] - a[0], b[1] - a[1])) % 360)
+            out.append(dict(ref=ref, x=r1(b[0]), y=r1(b[1]), hdgGridDeg=round(hdg_g, 1), gate=bool(near_gate(pb)),
+                            leadIn=pts(P)))
+    return out, len(ways)
 
 
 def stands_from_lines(d, ids, runways, near_gate):

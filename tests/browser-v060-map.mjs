@@ -16,7 +16,7 @@ const OUT = path.resolve(HERE, '../../../Claude outputs/flight-sim');
 const ROOT = process.argv[2] || process.env.E2E_ROOT || 'http://127.0.0.1:8014/';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
-const NEW = ['RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN'];   // (ZSYN: v0.6.1)
+const NEW = ['RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW'];   // (ZSYN: v0.6.1; the last five: v0.6.3)
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist'] });
 const f2 = (v) => v.toFixed(2);
 try {

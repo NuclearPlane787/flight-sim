@@ -20,7 +20,7 @@
 // grid the nearest edge cell answers. This does not replace frame.js's magVar(): South Korea
 // keeps its plane exactly (briefs/V0-6-0.md, "Magnetic variation"), and the blend lives there.
 
-export const COUNTRY_NAMES = ['sea', 'KR', 'KP', 'JP', 'CN', 'other'];
+export const COUNTRY_NAMES = ['sea', 'KR', 'KP', 'JP', 'CN', 'other', 'RU'];   // (RU: v0.6.3, code 6; the raster's low three bits)
 const SEA_BIT = 8;
 
 function grid(part, Typed) {
