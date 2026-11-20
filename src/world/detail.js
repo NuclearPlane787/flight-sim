@@ -5,7 +5,8 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { GROUND_ON } from './region.js';
-import { FINE_GLSL } from './finecover.js';
+import { FINE_GLSL, FINE_PX, ihash } from './finecover.js';
+import { coverReader } from './clipwindow.js';
 
 // ------------------------------------------------------------------ field plots (GLSL)
 
@@ -121,7 +122,43 @@ function ringCells(half, hole) {
   return new Float32Array(cells);
 }
 
-export function createTrees(scene, uniforms, chunks) {
+// v0.6.1: with the new ground, only the cells whose tree the shader can keep are drawn. The
+// cells of the SPAN x SPAN square from (ai - half, aj - half) of a level (spacing m a cell)
+// that may hold a tree: the shader's own rule, never short of it. Where the fine cover holds
+// the tree's pixel (texel(P, Q): the class + 1, 0 where nothing is held, 16 more where the shader may not trust the window)
+// it is a tree pixel or it isn't. Where it holds none, or inside an airfield's mark, the shader
+// falls back to the 250 m forest share with up to 0.375 of noise on it: coverAt(x, y, o) gives
+// the most of the 250 m cells round the tree's cell, o.mark (the airfields', 0..1) and o.forest
+// (0..1; 1 when there is no cover to read), and the cell is listed if its hash could pass the
+// most forest that leaves. Offsets from the anchor go into `out`.
+export const TREE_SNAP = 16;
+const sstep = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
+export function treeCells(ai, aj, half, spacing, texel, coverAt, out) {
+  const E = 1e-6, EDGE = 0.02, X0 = -400000, Y0 = -400000, SPAN = 2 * half + TREE_SNAP - 1, o = { mark: 0, forest: 0 };
+  let n = 0;
+  for (let j = -half; j < -half + SPAN; j++) for (let i = -half; i < -half + SPAN; i++) {
+    const cx = ai + i, cy = aj + j;
+    const r2 = ihash(cx, cy, 3);
+    if (r2 > 0.92 + E) continue;                                     // never kept, whatever grows here
+    const px = ((cx + 0.15 + 0.7 * ihash(cx, cy, 1)) * spacing - X0) / FINE_PX, py = ((cy + 0.15 + 0.7 * ihash(cx, cy, 2)) * spacing - Y0) / FINE_PX;
+    const P = Math.floor(px), Q = Math.floor(py), fx = px - P, fy = py - Q;
+    // The pixel, and its neighbour where the tree stands on an edge (the shader's float32).
+    const a0 = fx < EDGE ? -1 : 0, a1 = fx > 1 - EDGE ? 1 : 0, b0 = fy < EDGE ? -1 : 0, b1 = fy > 1 - EDGE ? 1 : 0;
+    let keep = false, none = false;
+    // (16 on a value: a pixel the shader may not trust, so both its own word and the 250 m rule count.)
+    for (let b = b0; b <= b1 && !keep; b++) for (let a = a0; a <= a1; a++) { const t = texel(P + a, Q + b); if ((t & 15) === 2) { keep = true; break; } if (t === 0 || t > 15) none = true; }
+    if (!keep) {
+      coverAt((cx + 0.5) * spacing, (cy + 0.5) * spacing, o);
+      if (!none && o.mark < 0.15) continue;                          // the fine cover's word: not a tree pixel
+      if (r2 > 0.92 * sstep(0.35, 0.65, o.forest + 0.375) + 1e-4) continue;   // the 250 m rule can't keep it either
+    }
+    out[n * 2] = i; out[n * 2 + 1] = j; n++;
+  }
+  return n;
+}
+
+// fine: finecover.js's object (terrain.fine), for v0.6.1's lists; without it every cell is drawn.
+export function createTrees(scene, uniforms, chunks, { fine = null } = {}) {
   const base = treeGeometry();
   const group = new THREE.Group();
   group.name = 'trees';
@@ -143,8 +180,13 @@ export function createTrees(scene, uniforms, chunks) {
     let cells = ring;
     if (fill) { cells = new Float32Array(ring.length + fill.length); cells.set(ring); cells.set(fill, ring.length); }
     const ringCount = ring.length / 2, fullCount = cells.length / 2;
-    geo.setAttribute('cell', new THREE.InstancedBufferAttribute(cells, 2));
-    geo.instanceCount = ringCount;
+    // v0.6.1: the listed cells instead (treeCells()), their offsets from an anchor cell.
+    const LISTED = G && !!fine;
+    if (LISTED) cells = new Float32Array((2 * L.half + TREE_SNAP - 1) ** 2 * 2);
+    const cellAttr = new THREE.InstancedBufferAttribute(cells, 2);
+    if (LISTED) cellAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('cell', cellAttr);
+    geo.instanceCount = LISTED ? 0 : ringCount;
     const u = {
       ...uniforms,
       uGridBase: { value: new THREE.Vector2() },     // scene position of cell (0,0) of the snapped grid
@@ -154,6 +196,8 @@ export function createTrees(scene, uniforms, chunks) {
       uRange: { value: L.spacing * L.half },
       uInner: { value: k === 0 ? 0 : L.spacing * L.half / 2 },
       uOuter: { value: k === LEVELS.length - 1 ? 1 : 0 },
+      uCamOff: { value: new THREE.Vector2() },       // v0.6.1: the camera's cell from the list's anchor
+      uHole: { value: 0 },                           // cells each side of the camera left to the finer ring (0: none)
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: u,
@@ -164,6 +208,7 @@ export function createTrees(scene, uniforms, chunks) {
         ${G ? FINE_GLSL : ''}
         uniform vec2 uGridBase, uGridCell;
         uniform float uSpacing, uTreeScale, uRange, uInner, uOuter;
+        ${G ? 'uniform vec2 uCamOff;\n        uniform float uHole;' : ''}
         attribute vec2 cell;
         attribute float kind;
         varying vec3 vRel, vNormal, vCol;
@@ -209,6 +254,11 @@ export function createTrees(scene, uniforms, chunks) {
             edge = step(ihash(ic, 5u), thin) * mix(0.55, 1.0, thin);
           }
           float inner = uInner > 0.0 ? smoothstep(uInner * 0.9, uInner * 1.02, d) : 1.0;
+          ${G ? `// v0.6.1: the list covers every camera cell of one anchor; the cells this ring draws
+          // are the ones within its half of the camera's own cell, outside its hole, as before.
+          vec2 rc = cell - uCamOff;
+          keep *= step(${(-L.half).toFixed(1)}, min(rc.x, rc.y)) * step(max(rc.x, rc.y), ${(L.half - 1).toFixed(1)});
+          if (uHole > 0.0 && min(rc.x, rc.y) >= -uHole && max(rc.x, rc.y) < uHole) keep = 0.0;` : ''}
           float sc = keep * edge * inner * uTreeScale * (8.0 + 9.0 * r3) * (1.0 - smoothstep(${(MAX_AGL * 0.6).toFixed(1)}, ${MAX_AGL.toFixed(1)}, uCamAgl));
           float w = 1.0 + 0.5 * r0;
           vec3 p = position * vec3(sc * w, sc, sc * w);
@@ -252,9 +302,27 @@ export function createTrees(scene, uniforms, chunks) {
     mesh.frustumCulled = false;
     mesh.name = `trees${k}`;
     group.add(mesh);
-    levels.push({ L, mesh, u, geo, ringCount, fullCount, inner: u.uInner.value, per: base.getAttribute('position').count / 3, tris: (base.getAttribute('position').count / 3) * geo.instanceCount });
+    levels.push({ L, mesh, u, geo, ringCount, fullCount, inner: u.uInner.value, per: base.getAttribute('position').count / 3, tris: (base.getAttribute('position').count / 3) * geo.instanceCount,
+      LISTED, cells, cellAttr, hole: k === 0 ? 0 : L.half / 2, ai: NaN, aj: NaN, n: 0, fineV: -1, covV: -1 });
   });
   scene.add(group);
+  // v0.6.1: the lists' readers. The airfields' mark (the cover's fourth channel) from the very
+  // texels the shader samples (clipwindow.js's coverReader); the fine cover's pixels where the
+  // shader trusts the window (2 pixels inside its valid rectangle; the shader asks for 1).
+  const cov = G && fine ? coverReader(uniforms) : null;
+  const nat = uniforms.uNat.value;
+  const coverAt = (x, y, o) => {
+    if (!cov) { o.mark = 1; o.forest = 1; return; }
+    const i = Math.floor((x - nat.x) / nat.z - 0.5), j = Math.floor((y - nat.y) / nat.z - 0.5);
+    const cl = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+    let m = 0, f = 0;
+    // (The tree stands anywhere in its cell: the 250 m cells round the cell's whole square.)
+    for (let b = -1; b <= 2; b++) for (let a = -1; a <= 2; a++) {
+      const ci = cl(i + a, cov.lo[0], cov.hi[0]), cj = cl(j + b, cov.lo[1], cov.hi[1]);
+      m = Math.max(m, cov.at(ci, cj, 3)); f = Math.max(f, cov.at(ci, cj, 0));
+    }
+    o.mark = m / 255; o.forest = f / 255;
+  };
 
   return {
     group,
@@ -268,8 +336,10 @@ export function createTrees(scene, uniforms, chunks) {
         const { L, mesh, u, tris: t } = levels[k];
         // Snap the grid to whole cells; the instance cell index is relative to it.
         const cx = Math.floor(camMap.x / L.spacing), cy = Math.floor(camMap.y / L.spacing);
-        u.uGridCell.value.set(cx, cy);
-        u.uGridBase.value.set(cx * L.spacing - origin.x, cy * L.spacing - origin.y);
+        if (!levels[k].LISTED) {
+          u.uGridCell.value.set(cx, cy);
+          u.uGridBase.value.set(cx * L.spacing - origin.x, cy * L.spacing - origin.y);
+        }
         if (!G) { mesh.visible = true; tris += t; continue; }
         // v0.6.0 Part 7 (trees now show up to 3,000 m above the ground): a ring is drawn only while
         // the camera is lower than the ring is wide, and the next ring out fills its place.
@@ -278,9 +348,27 @@ export function createTrees(scene, uniforms, chunks) {
         const lv = levels[k];
         const off = k < levels.length - 1 && agl > L.spacing * L.half;
         mesh.visible = !off;
-        lv.geo.instanceCount = innerOff ? lv.fullCount : lv.ringCount;
         u.uInner.value = innerOff ? 0 : lv.inner;
-        if (!off) tris += lv.per * lv.geo.instanceCount;
+        if (lv.LISTED) {
+          // The list, by an anchor that moves TREE_SNAP cells at a time: made again when it
+          // moves and when the fine cover's or the 250 m cover's window changes.
+          const ai = Math.floor(cx / TREE_SNAP) * TREE_SNAP, aj = Math.floor(cy / TREE_SNAP) * TREE_SNAP;
+          if (!off && (ai !== lv.ai || aj !== lv.aj || fine.version !== lv.fineV || (cov && cov.version() !== lv.covV))) {
+            lv.n = treeCells(ai, aj, L.half, L.spacing, fine.reader(2), coverAt, lv.cells);
+            lv.cellAttr.clearUpdateRanges(); lv.cellAttr.addUpdateRange(0, Math.max(lv.n * 2, 2)); lv.cellAttr.needsUpdate = true;
+            lv.geo.instanceCount = lv.n;
+            lv.ai = ai; lv.aj = aj; lv.fineV = fine.version; lv.covV = cov ? cov.version() : 0;
+          }
+          u.uGridCell.value.set(lv.ai, lv.aj);
+          u.uGridBase.value.set(lv.ai * L.spacing - origin.x, lv.aj * L.spacing - origin.y);
+          u.uCamOff.value.set(cx - lv.ai, cy - lv.aj);
+          u.uHole.value = innerOff ? 0 : lv.hole;
+          if (!off && lv.n === 0) mesh.visible = false;
+          if (mesh.visible) tris += lv.per * lv.n;
+        } else {
+          lv.geo.instanceCount = innerOff ? lv.fullCount : lv.ringCount;
+          if (!off) tris += lv.per * lv.geo.instanceCount;
+        }
         innerOff = off;
       }
       shown = G ? levels.filter((l) => l.mesh.visible).length : levels.length;

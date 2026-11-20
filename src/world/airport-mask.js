@@ -46,7 +46,12 @@ export function maskAirportCover(hf, airports) {
         // v0.6.0 Part 7: the airfield marked in the unused fourth channel, so the fine cover
         // (which maps aprons and terminals as built-up) stays out of it: no village lots, houses
         // or woodlots inside the fence. Only with GROUND_ON: without it the bytes are v0.5.8's.
-        if (GROUND_ON) cover[k + 3] = 255;
+        // v0.6.1: 255 where the cell's own centre is inside the fence, 200 where only a neighbour's is
+        // (both read as "airfield" at a cell's centre by every rule that asks for more than 0.2 or
+        // 0.75; between a ring cell and the open ground the blend is 0.78 of what it was, so those
+        // rules' edges sit 15 to 50 m further in. The terrain's "no fields here" asks for the cell
+        // itself, so the paddies beside the fence stay).
+        if (GROUND_ON) cover[k + 3] = Math.max(cover[k + 3], inside(cx, cy, b) ? 255 : 200);
       }
     }
   }

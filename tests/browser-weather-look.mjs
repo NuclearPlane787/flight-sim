@@ -4,6 +4,8 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
 const BASE = process.env.FS_URL || 'http://localhost:8014/games/flight-sim/';
@@ -33,7 +35,7 @@ const SHOTS = {
   'snow-night': { wx: { precip: { kind: 'snow', rate: 0.4 }, tempC: -4, runway: 'snow', clouds: [{ okta: 5, baseFt: 6000, topFt: 9000 }], visM: 9000 }, ms: NIGHT, setup: AIR(-55000, 165000, 900, 100, 200), look: { yaw: 0, pitch: -0.15, fov: 62 } },
 };
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1280,800'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1280,800'] });
 const errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

@@ -403,7 +403,8 @@ const SIZES = [[1440, 900], [1280, 720], [1920, 1080], [1100, 700], [2560, 1440]
   c = await cardText();
   const expect = { runway: 'On the runway at Gimpo', taxi: 'Taxiing at Gimpo', parked: 'At Gimpo', air: 'En route to Jeju' }[sum.phase];
   ok(c.shown && c.title.startsWith(expect || '?') && c.sub === 'Scenario 6 · A321neo', `the card reads the save: ${c.title} | ${c.sub} | ${c.stats.join(' | ')}`);
-  if (sum.phase !== 'air') ok(c.stats.join(' | ') === 'RKSS / From | RKPC / To', `on the ground, the route: ${c.stats.join(' | ')}`);
+  // v0.6.0: with the region on (the default) the From and To stats name the airports; with it off, the codes (v0.5.8's 'RKSS / From | RKPC / To')
+  if (sum.phase !== 'air') ok(c.stats.join(' | ') === 'Gimpo / From | Jeju / To', `on the ground, the route: ${c.stats.join(' | ')}`);
   await shot('home-after-flight-1440x900');
 
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''));

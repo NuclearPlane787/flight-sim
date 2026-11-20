@@ -31,7 +31,7 @@ try {
   await page.reload();
   await page.waitForFunction(() => window.__fs && window.__fs.inMenu, null, { timeout: 120000 });
   const n = await page.evaluate(() => window.__fs.airports.map((a) => a.icao));
-  check('the region\'s eleven airports are in the game', n.length === 11, n.join(' '));
+  check('the region\'s twelve airports are in the game (eleven until v0.6.1\'s Yancheng)', n.length === 12, n.join(' '));
 
   // ---- the setup: Gimpo → Haneda ----
   await page.evaluate(() => { window.__fs.newScenario(); });

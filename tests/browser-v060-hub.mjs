@@ -32,7 +32,7 @@ try {
     await frame.evaluate(() => { window.__fs.newScenario(); });   // the menu's New row (its click is the same call; the row slides in with the home page's animation)
     await frame.waitForSelector('[data-f="origin"]', { timeout: 10000 });
     const n = await frame.evaluate(() => document.querySelectorAll('[data-f="origin"] option').length);
-    check(`${what}: the setup lists the region's airports`, n === 11, `${n} airports`);
+    check(`${what}: the setup lists the region's airports`, n === 12, `${n} airports`);
     await frame.click('[data-a="fly"]');
     await frame.waitForFunction(() => window.__fs && window.__fs.frames > 60 && window.__fs.sim && window.__fs.sim.state, null, { timeout: 60000 });
     await page.waitForTimeout(3000);

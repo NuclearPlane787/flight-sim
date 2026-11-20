@@ -22,6 +22,23 @@ export const FINE_PX = 31.25, FINE_SUB = 1024, FINE_N = 4096;
 export const FINE_CLASSES = ['water', 'tree', 'shrub', 'grass', 'crop', 'built', 'bare', 'wetland'];
 const PER = FINE_N / FINE_SUB;          // sub-tiles a side of the window (4)
 
+// glsl.js's ihash(c, s), bit for bit (a 24-bit integer over 2^24, exact in a float): what lets
+// the CPU list the cells whose house or tree the shaders will keep (rural.js, detail.js; v0.6.1).
+export function ihash(cx, cy, s) {
+  let h = (Math.imul(cx, 374761393) + Math.imul(cy, 668265263) + Math.imul(s, 2246822519)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  h ^= h >>> 16;
+  return (h & 0xffffff) / 16777216;
+}
+
+// FINE_GLSL's glassPatch() on the CPU: px, py the continuous fine pixel from the lattice's origin.
+export function glassPatch(px, py) {
+  const gx = px / 8, gy = py / 8, cx = Math.floor(gx), cy = Math.floor(gy);
+  const fx = gx - cx, fy = gy - cy, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  const a = ihash(cx, cy, 97), b = ihash(cx + 1, cy, 97), c = ihash(cx, cy + 1, 97), d = ihash(cx + 1, cy + 1, 97);
+  return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uy;
+}
+
 export const subName = (si, sj) => {
   const ti = Math.floor(si / 4), tj = Math.floor(sj / 4);
   return `${ti}_${tj}_${si - ti * 4}_${sj - tj * 4}`;
@@ -122,15 +139,43 @@ export function createFineCover(uniforms, { baseUrl = 'data/' } = {}) {
   const constant = new Map();              // class + 1 -> a sub-tile of that value
   const flat = (v) => { let a = constant.get(v); if (!a) { a = new Uint8Array(FINE_SUB * FINE_SUB).fill(v); constant.set(v, a); } return a; };
   const setExt = () => { const v = fw.valid(); uniforms.uFineExt.value.set(v[0], v[1], v[2] - 1, v[3] - 1); uniforms.uFineOn.value = v[2] > v[0] && v[3] > v[1] ? 1 : 0; };
+  // v0.6.1: the bytes of the sub-tiles the window holds stay on the CPU too (16 MB at most; the
+  // uniform ones share an array), so rural.js can list the cells that can hold a house instead
+  // of drawing every slot. `version` counts every change to what is held.
+  const held = new Map();                  // 'si_sj' -> Uint8Array (the class + 1 a pixel, as the texture)
+  const prune = () => { for (const k of held.keys()) if (!fw.filled.has(k)) held.delete(k); };
   const fine = {
     texture: tex, stats: { loaded: 0, uploads: 0, pending: 0 },
+    version: 0,
     get window() { return fw; },
+    // A reader of the held pixels for one pass: (P, Q) -> the class + 1, or 0 where nothing is
+    // held (global fine pixels, as the shaders' fineTexel() before the wrap).
+    // inset: within that many pixels of the edge of the valid rectangle and beyond it (where
+    // the shaders' fineInside() stops trusting the window, give or take a pixel) the value has
+    // 16 added, for a reader whose caller must know where the shader may fall back to the 250 m
+    // cover instead.
+    reader(inset = null) {
+      if (!fw) return () => 0;
+      const oi = fw.win.oi, oj = fw.win.oj, grid = new Array(PER * PER).fill(null);
+      for (let b2 = 0; b2 < PER; b2++) for (let a2 = 0; a2 < PER; a2++) grid[b2 * PER + a2] = held.get((oi + a2) + '_' + (oj + b2)) || null;
+      const v = inset === null ? null : fw.valid();
+      const p0 = v ? v[0] + inset : 0, q0 = v ? v[1] + inset : 0, p1 = v ? v[2] - inset : 0, q1 = v ? v[3] - inset : 0;
+      return (P, Q) => {
+        const si = Math.floor(P / FINE_SUB) - oi, sj = Math.floor(Q / FINE_SUB) - oj;
+        if (si < 0 || sj < 0 || si >= PER || sj >= PER) return 0;
+        const d = grid[sj * PER + si];
+        const c = d ? d[(Q & (FINE_SUB - 1)) * FINE_SUB + (P & (FINE_SUB - 1))] : 0;
+        // In the band the shader may or may not trust (and beyond it): what is held, with 16
+        // added, so the caller can allow for both readings.
+        return v && c && (P < p0 || P >= p1 || Q < q0 || Q >= q1) ? c | 16 : c;
+      };
+    },
     update(camMap) {
       if (!fw) {
         if (!loadingIndex) loadingIndex = fetch(dir + 'fine.json').then((r) => (r.ok ? r.json() : null)).then((ix) => { if (ix) fw = createFineWindow(ix); }).catch(() => {});
         return;
       }
-      if (fw.moveTo(camMap.x, camMap.y)) setExt();
+      if (fw.moveTo(camMap.x, camMap.y)) { setExt(); prune(); fine.version++; }
       const miss = fw.missing();
       fine.stats.pending = miss.length;
       for (const [si, sj] of miss) {
@@ -165,7 +210,9 @@ export function createFineCover(uniforms, { baseUrl = 'data/' } = {}) {
       renderer.copyTextureToTexture(src, tex, null, at.set(tx, ty));
       src.dispose();
       fw.filled.add(si + '_' + sj);
+      held.set(si + '_' + sj, data);
       fine.stats.uploads++;
+      fine.version++;
       setExt();
     },
     get pending() { return fw ? fw.missing().length : 1; },
@@ -206,6 +253,29 @@ void fineMix(vec2 fp, out vec4 lo, out vec4 hi) {
     if (c == 2) lo.x += w; else if (c == 5) lo.y += w; else if (c == 6) lo.z += w; else if (c == 1) lo.w += w;
     else if (c == 3 || c == 4) hi.x += w; else if (c == 7) hi.y += w; else if (c == 8) hi.z += w; else hi.w += w;
   }
+}
+// Which built-up patches of farm country are glass and which are villages (v0.6.1; it was a
+// float noise of the map position): a smooth value over a 250 m lattice (8 fine pixels) of
+// exact hashes, which the CPU works out the same (glassPatch() below), so greenhouses.js lists
+// only the tunnels that stand. fp: the continuous fine pixel from uFineOrg (finePos()).
+float glassPatch(vec2 fp) {
+  vec2 q = floor(fp);
+  ivec2 b = ivec2(q) + uFineOrg, c = b >> 3;
+  vec2 f = (vec2(b & 7) + (fp - q)) / 8.0, u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(ihash(c, 97u), ihash(c + ivec2(1, 0), 97u), u.x), mix(ihash(c + ivec2(0, 1), 97u), ihash(c + ivec2(1, 1), 97u), u.x), u.y);
+}
+// The water's share under a smoother footprint (a quadratic B-spline over the nine pixels round
+// fp): a bank drawn from it at one half is a curve where the four-pixel one steps along a
+// diagonal by a pixel (31 m) at a time. For the ponds' and rivers' edges only (nine fetches,
+// taken only where the four-pixel footprint already holds some water: v0.6.1).
+float fineWater(vec2 fp) {
+  vec2 p = fp - 0.5, c = floor(p + 0.5), t = p - c;
+  ivec2 b = ivec2(c) + uFineOrg;
+  vec3 wx = vec3(0.5 * (0.5 - t.x) * (0.5 - t.x), 0.75 - t.x * t.x, 0.5 * (0.5 + t.x) * (0.5 + t.x));
+  vec3 wy = vec3(0.5 * (0.5 - t.y) * (0.5 - t.y), 0.75 - t.y * t.y, 0.5 * (0.5 + t.y) * (0.5 + t.y));
+  float s = 0.0;
+  for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) if (fineTexel(b + ivec2(i - 1, j - 1)) == 1) s += wx[i] * wy[j];
+  return s;
 }
 `;
 

@@ -16,6 +16,8 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const CLOUD = !!process.env.FS_CLOUD;
 const { chromium } = CLOUD ? createRequire(import.meta.url)('playwright') : await import('/tmp/flight-sim/pw/node_modules/playwright/index.mjs');
@@ -29,7 +31,7 @@ mkdirSync(out, { recursive: true });
 let ffmpeg = true;
 try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); } catch { ffmpeg = false; }
 
-const browser = await chromium.launch(CLOUD ? { args: ['--mute-audio'] } : { channel: 'chrome', headless: false, args: ['--mute-audio'] });
+const browser = await chromium.launch(CLOUD ? { args: ['--mute-audio'] } : { channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist'])] });
 try {
   const page = await browser.newPage();
   const errors = [];

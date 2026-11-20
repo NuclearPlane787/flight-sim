@@ -7,13 +7,15 @@
 // Run from GameDump's root: python3 games/flight-sim/tools/cpu-guard.py -- node games/flight-sim/tests/browser-review-fixes.mjs
 
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const URL0 = process.env.FS_URL || 'http://localhost:8014/games/flight-sim/';
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 const KST = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h - 9, mi);
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 const errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

@@ -33,7 +33,10 @@ const WIDE = TYPE !== 'a321neo';
 const UTC_OFFSET_H = ICAO.startsWith('Z') ? 8 : 9;
 const CLOCK_MS = Date.UTC(2026, 10, 19, (MODE === 'day' ? 13 : 22) - UTC_OFFSET_H, 0, 0);
 const FT = 3.28084, KT = 1.943844, NM = 1852;
-const tag = (what) => `v060-${ICAO.toLowerCase()}-${what}${MODE === 'night' ? '-night' : ''}${WIDE ? '-' + TYPE : ''}.png`;
+// v0.6.1: E2E_EXTRA adds to the page's query ("&pending=1" for an airport still in the manifest's airportsPending),
+// E2E_PREFIX names the pictures (v060 by default).
+const EXTRA = process.env.E2E_EXTRA || '', PREFIX = process.env.E2E_PREFIX || 'v060';
+const tag = (what) => `${PREFIX}-${ICAO.toLowerCase()}-${what}${MODE === 'night' ? '-night' : ''}${WIDE ? '-' + TYPE : ''}.png`;
 
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
@@ -67,7 +70,7 @@ const ARR = process.env.ARR || (() => {
 })();
 console.log(`${ICAO} ${MODE} ${TYPE}: stand ${STAND} (offered ${offered.length} of ${ap.stands.length}), dep ${DEP}, arr ${ARR} (longest ILS runway ${ilsRw.id}, ${ilsRw.lengthM} m)`);
 
-const URL0 = `${BASE}?test&eastasia=1&origin=${ICAO}&dep=${DEP}&dest=${ICAO}&arr=${ARR}&start=gate&stand=${encodeURIComponent(STAND)}&view=orbit&type=${TYPE}`;
+const URL0 = `${BASE}?test&eastasia=1&origin=${ICAO}&dep=${DEP}&dest=${ICAO}&arr=${ARR}&start=gate&stand=${encodeURIComponent(STAND)}&view=orbit&type=${TYPE}${EXTRA}`;
 const profile = mkdtempSync(path.join(tmpdir(), 'fs-v060-ap-'));
 const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: true, viewport: { width: 1440, height: 900 },
   args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });

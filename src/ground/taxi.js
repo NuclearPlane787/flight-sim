@@ -30,7 +30,7 @@ const BRIDGE_M = 30;          // a piece of taxi line this close to the network,
 // routes, holds and stand lists stay exactly as they were: a departure's hold is the one on its own runway nearest
 // the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
 // stands after the real numbers (gate-flow.js standList).
-const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD']);
+const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN']);   // (ZSYN: v0.6.1)
 export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao);
 const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
 const HOLD_STD_M = 90;        // the standard hold from a code 4 precision runway's centreline (Annex 14 Table 3-2)
@@ -62,9 +62,16 @@ function intersect(p1, p2, p3, p4) {
 }
 
 // Runway as a rectangle: centre line between its two ends, half width.
+// v0.6.1: at the region's airports the rectangle runs from pavement end to pavement end. An end's
+// x, y is its landing threshold, so a displaced one (Gimhae 18R's 600 m, Haneda's three) left that
+// much pavement out of the runway: its exits weren't exits, and a departure's hold was looked for
+// abeam the displaced threshold instead of at the runway's end. Korea's three keep the thresholds
+// (Jeju 31's 411 m), as v0.5.8 has them.
 function runwayRects(airport) {
+  const pave = regionRules(airport);
   return (airport.runways || []).filter(r => r.ends && r.ends.length === 2).map(r => {
-    const [a, b] = r.ends;
+    const end = (e) => (pave && Array.isArray(e.pavementEnd) ? { x: e.pavementEnd[0], y: e.pavementEnd[1] } : e);
+    const a = end(r.ends[0]), b = end(r.ends[1]);
     const len = dist(a.x, a.y, b.x, b.y) || 1;
     return {
       id: r.id, ax: a.x, ay: a.y, bx: b.x, by: b.y, len,
@@ -597,8 +604,13 @@ const TAIL_MARGIN = 3;          // m, tailplane to a wall
 const PUSH_END_M = 8;           // m, how far off the taxi lines a pushback may end
 
 // exclude(ref): no code E here, whatever the geometry says. prefer: stands to offer first, best
-// first. Each with its reason, from the eAIP's AD 2.20 unless noted.
+// first. Each with its reason, from the eAIP's AD 2.20 unless noted. maxSpan (v0.6.1): no stand
+// at all for a wider aircraft than this (m), a design's own span included.
 const AIP_STANDS = {
+  // Yancheng: a 4C aerodrome, its 20 stands built for code C (the largest type about an A321;
+  // Wikipedia and an open scenery listing, no AIP read: [EST]). The geometry would let a code E
+  // aircraft take three stands' width on the made-up apron; the aerodrome wouldn't.
+  ZSYN: { exclude: () => false, prefer: [], maxSpan: 36 },
   // Gimpo: the 500s to 900s are the West apron and the helicopter and GA spots, reached over W1,
   // W2, T and S, all "up to code letter B" (§1.7). The widebodies use the International Terminal
   // (North apron), stands 34 to 39.
@@ -772,7 +784,8 @@ export function standsFor(airport, typeDef) {
   if (!list) {
     const rules = AIP_STANDS[airport.icao];
     const baseRefs = design && typeDef.base ? new Set(standsFor(airport, typeDef.base).map((s) => s.ref)) : null;
-    const fits = all.filter((s) => !rules?.exclude(s.ref) && (!baseRefs || baseRefs.has(s.ref)) && standFits(airport, c, s, size, geo));
+    const tooWide = !!(rules?.maxSpan && size.span > rules.maxSpan);
+    const fits = tooWide ? [] : all.filter((s) => !rules?.exclude(s.ref) && (!baseRefs || baseRefs.has(s.ref)) && standFits(airport, c, s, size, geo));
     const rank = (s) => { const i = rules ? rules.prefer.indexOf(s.ref) : -1; return i < 0 ? Infinity : i; };
     list = fits.map((s, i) => [rank(s), i, s]).sort((p, q) => (p[0] - q[0]) || (p[1] - q[1])).map((p) => p[2]);
     c.lists.set(key, list);

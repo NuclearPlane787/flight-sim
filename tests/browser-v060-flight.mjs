@@ -63,9 +63,25 @@ try {
   console.log('renderer:', gl, '(headless)');
   // The frame-time probe: every frame's interval, with the sim's time scale then.
   await page.evaluate(() => {
-    const p = window.__probe = { on: false, dts: [], last: 0, worst: 0, worstAt: null };
+    const p = window.__probe = { on: false, dts: [], last: 0, worst: 0, worstAt: null, long: [], prev: null };
+    // v0.6.1: what the world held on each frame (cheap counts), so a long frame can say what had just changed.
+    const snap = () => {
+      const fs = window.__fs, w = fs.world, ri = fs.renderer && fs.renderer.info, s = fs.sim.state;
+      const T = w && w.heightfield && w.heightfield.tiles, fine = w && w.terrain && w.terrain.fine;
+      return { t: +s.t.toFixed(1), x: Math.round(s.pos.x / 1000), y: Math.round(s.pos.y / 1000), altM: Math.round(s.pos.z), aglM: Math.round(s.agl || 0),
+        programs: ri && ri.programs ? ri.programs.length : -1, geo: ri ? ri.memory.geometries : -1, tex: ri ? ri.memory.textures : -1,
+        tiles: T ? T.loads : -1, fine: fine ? fine.stats.uploads : -1, built: (w && w.stats && w.stats.airportsBuilt) || '',
+        houses: w && w.rural ? w.rural.listed : -1, tunnels: w && w.greenhouses ? w.greenhouses.listed : -1, tris: ri ? ri.render.triangles : -1 };
+    };
     const f = (t) => {
-      if (p.on && p.last) { const d = t - p.last; p.dts.push(d); if (d > p.worst) { p.worst = d; const s = window.__fs.sim.state; p.worstAt = { t: s.t, x: s.pos.x, y: s.pos.y }; } }
+      if (p.on && p.last) {
+        const d = t - p.last; p.dts.push(d);
+        let now = null;
+        try { now = snap(); } catch (e) { now = { err: String(e) }; }
+        if (d > 25 && p.long.length < 12) p.long.push({ ms: +d.toFixed(1), now, before: p.prev });
+        p.prev = now;
+        if (d > p.worst) { p.worst = d; const s = window.__fs.sim.state; p.worstAt = { t: s.t, x: s.pos.x, y: s.pos.y }; }
+      }
       p.last = t; requestAnimationFrame(f);
     };
     requestAnimationFrame(f);
@@ -146,7 +162,7 @@ try {
     await waitFor((s) => s.ap && s.agl * FT > 3000, 180000, 'the AP climbing through 3,000 ft', steer);
     const ts = await page.evaluate((r) => window.__fs.setTimeScale(r), opt.rate);
     check(`${name}: ${opt.rate}x time compression`, ts === opt.rate, `rate ${ts}`);
-    await page.evaluate(() => { const p = window.__probe; p.dts = []; p.worst = 0; p.worstAt = null; p.last = 0; p.on = true; });
+    await page.evaluate(() => { const p = window.__probe; p.dts = []; p.worst = 0; p.worstAt = null; p.last = 0; p.long = []; p.prev = null; p.on = true; });
     // Climb: 250 kt to 10,000 ft, then 270 kt (about M 0.79 at FL350), the HDG bug kept on the destination.
     let fast = false, lastSteer = 0, shotCruise = false;
     // A whole flight leaves the cruise 3 nm a thousand feet above the approach's start, plus 15 nm.
@@ -158,11 +174,12 @@ try {
       if (!shotCruise && s.z * FT > opt.fl * 100 - 500) { shotCruise = true; await shot(`${li + 1}c-cruise`); }
       if (s.ts !== opt.rate && s.ap) await page.evaluate((r) => window.__fs.setTimeScale(r), opt.rate);
     });
-    const pr = await page.evaluate(() => { const p = window.__probe; p.on = false; const d = p.dts.slice().sort((a, b) => a - b); return { n: d.length, worst: p.worst, worstAt: p.worstAt, p99: d[Math.floor(d.length * 0.99)] || 0, p50: d[d.length >> 1] || 0, over25: d.filter((v) => v > 25).length, over34: d.filter((v) => v > 34).length }; });
+    const pr = await page.evaluate(() => { const p = window.__probe; p.on = false; const d = p.dts.slice().sort((a, b) => a - b); return { n: d.length, worst: p.worst, worstAt: p.worstAt, p99: d[Math.floor(d.length * 0.99)] || 0, p50: d[d.length >> 1] || 0, over25: d.filter((v) => v > 25).length, over34: d.filter((v) => v > 34).length, long: p.long }; });
     const c = await st();
     const m1 = await mem();
     console.log(`cruise: ${((Date.now() - tCruise) / 1000).toFixed(0)} s real, now ${(c.dist / NM).toFixed(0)} nm out at ${(c.z * FT).toFixed(0)} ft, M ${c.mach.toFixed(2)}, fuel ${c.fuel.toFixed(0)} kg, achieved ${c.ach}x`);
     console.log(`frames at ${opt.rate}x: ${pr.n}, median ${pr.p50.toFixed(1)} ms, p99 ${pr.p99.toFixed(1)} ms, worst ${pr.worst.toFixed(1)} ms (${pr.over25} over 25 ms, ${pr.over34} over 34 ms)${pr.worstAt ? ` at x ${(pr.worstAt.x / 1000).toFixed(0)} km y ${(pr.worstAt.y / 1000).toFixed(0)} km` : ''}`);
+    for (const L of pr.long || []) console.log(`  long frame ${L.ms} ms: now ${JSON.stringify(L.now)} | the frame before ${JSON.stringify(L.before)}`);
     check(`${name}: no hitch while tiles load (worst frame at most 25 ms)`, pr.worst <= 25, `worst ${pr.worst.toFixed(1)} ms`);
     check(`${name}: the sim never read a missing tile`, m1.misses === 0, `misses ${m1.misses}, ${m1.tiles} tiles resident, ${m1.loads} loaded, ${m1.evictions} released`);
     check(`${name}: reached the cruise level`, shotCruise || opt.whole && c.z * FT > opt.fl * 100 - 3000, `${(c.z * FT).toFixed(0)} ft`);

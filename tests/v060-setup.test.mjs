@@ -17,7 +17,7 @@ import { whereText, flightFields } from '../src/scenarios.js';
 import { logTimes, fmtLocal, placesText } from '../src/ui/logbook.js';
 import { kstMs } from '../src/clock.js';
 
-const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD'];   // the manifest's order
+const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN'];   // the manifest's order
 const AIRPORTS = ICAOS.map((id) => JSON.parse(readFileSync(new URL(`../data/airports/${id}.json`, import.meta.url), 'utf8')));
 const byIcao = (id) => AIRPORTS.find((a) => a.icao === id);
 // main.js's lookup for the home page and the Load list
@@ -35,11 +35,11 @@ test('flag off: the list text is v0.5.8\'s', () => {
 test('flag on: eleven airports grouped Korea, Japan, China, each by its short name', () => withRegion(() => {
   const g = airportGroups(AIRPORTS);
   assert.deepEqual(g.map((x) => x.label), ['Korea', 'Japan', 'China']);
-  assert.deepEqual(g.map((x) => x.airports.map((a) => a.icao)), [['RKSS', 'RKSI', 'RKPK', 'RKPC'], ['RJTT', 'RJAA', 'RJBB', 'RJFF'], ['ZSPD', 'ZSSS', 'ZSQD']]);
+  assert.deepEqual(g.map((x) => x.airports.map((a) => a.icao)), [['RKSS', 'RKSI', 'RKPK', 'RKPC'], ['RJTT', 'RJAA', 'RJBB', 'RJFF'], ['ZSPD', 'ZSSS', 'ZSYN', 'ZSQD']]);   // (Yancheng, v0.6.1: south to north along China's coast)
   const text = Object.fromEntries(AIRPORTS.map((a) => [a.icao, airportOption(a)]));
   assert.deepEqual(text, {
     RKSS: 'RKSS · Gimpo', RKPC: 'RKPC · Jeju', RKSI: 'RKSI · Incheon', ZSPD: 'ZSPD · Pudong', RJTT: 'RJTT · Haneda', RJAA: 'RJAA · Narita',
-    RKPK: 'RKPK · Gimhae', ZSSS: 'ZSSS · Hongqiao', RJBB: 'RJBB · Kansai', RJFF: 'RJFF · Fukuoka', ZSQD: 'ZSQD · Qingdao',
+    RKPK: 'RKPK · Gimhae', ZSSS: 'ZSSS · Hongqiao', RJBB: 'RJBB · Kansai', RJFF: 'RJFF · Fukuoka', ZSQD: 'ZSQD · Qingdao', ZSYN: 'ZSYN · Yancheng',
   });
   // the country by the code's region, the same as the country raster says at each airport
   for (const a of AIRPORTS) assert.equal(airportCountry(a), { RK: 'KR', RJ: 'JP', ZS: 'CN' }[a.icao.slice(0, 2)]);

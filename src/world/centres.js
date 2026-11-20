@@ -36,6 +36,7 @@ import { CELL_M, AVIATION_M, loadAndBuild } from './centres-worker.js';
 export const LOAD_M = 60000;           // load a centre within this of its box
 export const RELEASE_M = 120000;       // release it beyond this
 export const LOW_R = 7500;             // the low tier's reach (m, horizontal)
+const CULL_MARGIN = 250;               // m round a box tested against the view (v0.6.1): a building's reach past its chunk's square
 // The tall tier's cut (m of height below which a building isn't drawn) by its distance (m, from the
 // camera, with the camera's height above the ground): knots of a piecewise-linear function. A
 // building is full height once its top passes 1.25 x the cut.
@@ -534,7 +535,15 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
   }
 
   let compiling = false;
-  function update({ camMap, origin, agl = 0 }) {
+  // frustum (v0.6.1): the view's, in scene coordinates. A centre wholly out of view draws nothing,
+  // and each row of low chunks is trimmed to the chunks the view can see (a run, as before).
+  const cullBox = new THREE.Box3();
+  const seen = (frustum, origin, x0, y0, x1, y1, top) => {
+    cullBox.min.set(x0 - origin.x, -1500, -(y1 - origin.y));   // (far centres are drawn lower by the earth's curve: 280 m at 60 km)
+    cullBox.max.set(x1 - origin.x, top, -(y0 - origin.y));
+    return frustum.intersectsBox(cullBox);
+  };
+  function update({ camMap, origin, agl = 0, frustum = null }) {
     stats.drawCalls = 0; stats.triangles = 0; stats.buildings = 0; stats.staging = '';
     if (!CITIES_ON) { for (const c of centres.values()) if (c.state !== 'idle') release(c); return stats; }
     if (!index) return stats;
@@ -568,6 +577,14 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
       if (c.state !== 'ready') continue;
       ready += (ready ? ' ' : '') + c.info.id;
       const M = c.meta;
+      const B = c.info.box;
+      const inView = !frustum || seen(frustum, origin, B[0] - CULL_MARGIN, B[1] - CULL_MARGIN, B[2] + CULL_MARGIN, B[3] + CULL_MARGIN, 1500);
+      if (!inView) {
+        if (P.tall) P.tall.visible = false;
+        for (const R of P.rows) if (R) R.o.visible = false;
+        if (P.lights) P.lights.o.visible = false;
+        continue;
+      }
       // Tall: everything at least the cut at the box's nearest point.
       if (P.tall) {
         const cut = tallCut(Math.hypot(c.dist, Math.max(agl, 0)));
@@ -582,6 +599,12 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
         if (!R) continue;
         const rr = lowOn && c.dist < LOW_R ? rowRange(c.info.box, M.chunkM, M.chunkCols, R.row, cx, cy, LOW_R) : null;
         if (!rr) { R.o.visible = false; continue; }
+        if (frustum) {
+          const y0 = B[1] + R.row * M.chunkM, col = (k) => seen(frustum, origin, B[0] + k * M.chunkM - CULL_MARGIN, y0 - CULL_MARGIN, B[0] + (k + 1) * M.chunkM + CULL_MARGIN, y0 + M.chunkM + CULL_MARGIN, 1000);
+          while (rr[0] <= rr[1] && !col(rr[0])) rr[0]++;
+          while (rr[1] > rr[0] && !col(rr[1])) rr[1]--;
+          if (rr[0] > rr[1]) { R.o.visible = false; continue; }
+        }
         const s = M.chunkStart[R.row * M.chunkCols + rr[0]], e = M.chunkStart[R.row * M.chunkCols + rr[1] + 1];
         R.o.geometry.setDrawRange(s - R.i0, e - s);
         R.o.visible = e > s;

@@ -281,7 +281,7 @@ export function createMap(root, { airports, coast } = {}) {
     const off = Math.max(12, 2200 * k);
     return { x: X(ox) + (left ? -off : off), y: Y(oy) - off, left };
   }
-  // ---- v0.6.0: eleven airports across 2,250 km (EAST_ASIA_ON) ----
+  // ---- v0.6.0: eleven airports across 2,250 km (EAST_ASIA_ON); twelve since v0.6.1 ----
   // Each airport's label (its ICAO code over its short name) goes in the first of four places
   // round it (up right, up left, down right, down left) that overlaps no label placed before it
   // and no other airport; if none is free, the code alone; if that isn't free either, no label

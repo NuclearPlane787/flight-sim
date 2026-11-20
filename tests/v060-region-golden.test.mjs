@@ -51,7 +51,7 @@ test('the region on: the flights flew the region\'s terrain with eleven airports
     await hf.tiles.whenReady(fx, fy, 2000, 'test-fuji');
     assert.ok(hf.heightAt(fx, fy) > 3500, `Fuji's summit in the flights' terrain: ${hf.heightAt(fx, fy).toFixed(0)} m`);
     const icaos = (hf.airports || M.TILED.airports || []).map((a) => a.icao);
-    if (icaos.length) assert.equal(icaos.length, 11, icaos.join(' '));
+    if (icaos.length) assert.equal(icaos.length, 12, icaos.join(' '));   // (eleven until v0.6.1's Yancheng)
     hf.tiles.release('test-fuji');
   }
 });

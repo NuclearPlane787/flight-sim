@@ -138,9 +138,13 @@ for (const icao of ICAOS) {
     const { findRunwayEnd } = createAirports([load(icao)]);
     for (const r of ap.runways) {
       const oa = OA && (OA[`${icao} ${r.id}`] || OA[`${icao} ${r.id.split('/').reverse().join('/')}`]);
-      assert.ok(oa, `${r.id}: in OurAirports`);
-      const oaLen = Number(oa.length_ft) * FT;
-      assert.ok(Math.abs(r.lengthM / oaLen - 1) < 0.01, `${r.id}: ${r.lengthM.toFixed(0)} m vs OurAirports ${oaLen.toFixed(0)} m`);
+      // OurAirports' file is one of the raw downloads (reference/raw/, gitignored): a clone of the public
+      // repository runs every check here but the cross-checks against it (the Cowork review, 20 Nov).
+      if (OA) {
+        assert.ok(oa, `${r.id}: in OurAirports`);
+        const oaLen = Number(oa.length_ft) * FT;
+        assert.ok(Math.abs(r.lengthM / oaLen - 1) < 0.01, `${r.id}: ${r.lengthM.toFixed(0)} m vs OurAirports ${oaLen.toFixed(0)} m`);
+      }
       const [e0, e1] = r.ends;
       const p0 = pavementEnd(e0), p1 = pavementEnd(e1);
       assert.ok(Math.abs(Math.hypot(p1.x - p0.x, p1.y - p0.y) - r.lengthM) < 0.2, 'lengthM is the pavement\'s');
@@ -152,9 +156,10 @@ for (const icao of ICAOS) {
         const ux = (po.x - pe.x) / r.lengthM, uy = (po.y - pe.y) / r.lengthM;
         assert.ok(Math.hypot(e.x - (pe.x + ux * e.displacedM), e.y - (pe.y + uy * e.displacedM)) < 0.2, `${e.ident}: threshold`);
         assert.ok(Math.abs(f.ldaM - (r.lengthM - e.displacedM)) < 0.2);
-        const side = oa.le_ident === e.ident ? 'le' : 'he';
-        // the displacement: the AIP's (Japan), else OurAirports'
-        const wantDisp = AIP_THR[icao] ? AIP_THR[icao][e.ident][2] : (Number(oa[`${side}_displaced_threshold_ft`]) || 0) * FT;
+        const side = oa && (oa.le_ident === e.ident ? 'le' : 'he');
+        // the displacement: the AIP's (Japan; v0.6.1: Gimhae 18R's 600 m from Korea's eAIP, RKPK AD 2.13), else OurAirports'
+        const AIP_DISP = { 'RKPK 18R': 600 };
+        const wantDisp = AIP_THR[icao] ? AIP_THR[icao][e.ident][2] : AIP_DISP[`${icao} ${e.ident}`] ?? (oa ? (Number(oa[`${side}_displaced_threshold_ft`]) || 0) * FT : e.displacedM);
         assert.ok(Math.abs(e.displacedM - wantDisp) < 0.2, `${e.ident}: ${e.displacedM} m displaced, published ${wantDisp.toFixed(0)} m`);
         if (AIP_THR[icao]) {
           const [la, lo] = AIP_THR[icao][e.ident].slice(0, 2).map(dms);
@@ -177,8 +182,8 @@ for (const icao of ICAOS) {
         assert.ok(Math.abs(wrapd(e.hdgTrueDeg - o.hdgTrueDeg - 180)) < 0.2, `${e.ident}: the ends are reciprocal`);
         // OurAirports' ends are checked where the AIP's aren't (its Narita 16L is 325 m off the AIP's threshold)
         // (Hongqiao 18R/36L's OurAirports ends are given to 0.001°, 290-330 m from OSM's: not checked)
-        const coarse = (oa[`${side}_latitude_deg`] || '').split('.')[1]?.length <= 3;
-        if (!AIP_THR[icao] && oa[`${side}_latitude_deg`] && !coarse) {
+        const coarse = oa && (oa[`${side}_latitude_deg`] || '').split('.')[1]?.length <= 3;
+        if (oa && !AIP_THR[icao] && oa[`${side}_latitude_deg`] && !coarse) {
           const ll = [Number(oa[`${side}_latitude_deg`]), Number(oa[`${side}_longitude_deg`])];
           const off = Math.hypot((ll[0] - e.lat) * 111320, (ll[1] - e.lon) * 111320 * Math.cos(e.lat * DEG));
           // OurAirports' end is the threshold or the pavement end, rounded: within the displacement plus 60 m

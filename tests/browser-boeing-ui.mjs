@@ -5,13 +5,15 @@ import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const BASE = (process.env.FS_BASE || 'http://127.0.0.1:8014') + '/games/flight-sim/tests/dev-ui-boeing.html';
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', import.meta.url).pathname);
 const CROPS = process.env.FS_CROPS || '';   // a folder for each panel's close-up (for looking, not kept)
 if (CROPS) mkdirSync(CROPS, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), 'fs-boeing-ui-'));
-const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, args: ['--mute-audio', '--window-size=1440,960'] });
+const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: !HEADED, viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 let fails = 0;
 const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fails++; };
 try {

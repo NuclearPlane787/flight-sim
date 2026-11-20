@@ -4,11 +4,13 @@
 // the track, the jumps, play/pause, the speed, the date, Esc, and that flight keys still reach the game.
 //   python3 tools/cpu-guard.py -- node tests/browser-sky-window.mjs
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const ROOT = (process.env.BASE || 'http://localhost:8014') + '/games/flight-sim/';
 const DEV = ROOT + 'tests/dev-sky-window.html';
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', import.meta.url).pathname);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 let fails = 0;
 const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fails++; };
 try {

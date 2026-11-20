@@ -15,8 +15,12 @@ meta each, and manifest-patches.json ({patches, coastPatches}, paths as terrain/
 Never writes into data/.
 
 Usage (one item per guarded command; resumable, skips finished items unless --force):
-  bake_region_patches.py patch <id>      ids: pudong-hongqiao haneda-narita gimhae kansai fukuoka qingdao fuji
-  bake_region_patches.py coast <ICAO>    ZSPD RJTT RJBB RJFF RKPK RJAA ZSSS ZSQD
+  bake_region_patches.py patch <id>      ids: pudong-hongqiao haneda-narita gimhae kansai fukuoka qingdao fuji yancheng
+  bake_region_patches.py coast <ICAO>    ZSPD RJTT RJBB RJFF RKPK RJAA ZSSS ZSQD ZSYN
+
+v0.6.1: Yancheng (ZSYN, pending) is baked into /tmp/flight-sim/v061/zsyn/patches (FS_PATCH_OUT=<dir> sets the
+staging folder) and copied to data/terrain by hand; its entry goes in the manifest's patchesPending. Its 16 km
+square is all land (the coast is ~40 km east): no coast patch.
   bake_region_patches.py quicklook <id>
   bake_region_patches.py manifest
 """
@@ -45,9 +49,9 @@ finally:
 import shapely
 from shapely.geometry import Polygon
 
-OUT = '/tmp/flight-sim/v060/bake/patches'
+OUT = os.environ.get('FS_PATCH_OUT') or '/tmp/flight-sim/v060/bake/patches'
 AIRPORT_DIR = os.path.join(bc.DATA, 'airports')
-NEW_AIRPORTS = ['RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'RKPK', 'RJBB', 'RJFF', 'ZSQD']
+NEW_AIRPORTS = ['RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'RKPK', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN']
 
 # id: (lon0, lat0, lon1, lat1)
 PATCHES = {
@@ -58,8 +62,9 @@ PATCHES = {
     'fukuoka': (130.30, 33.48, 130.60, 33.70),
     'qingdao': (119.95, 36.25, 120.23, 36.47),
     'fuji': (138.507, 35.18, 138.948, 35.54),       # ~40 x 40 km round the summit (35.3606, 138.7274)
+    'yancheng': (120.06, 33.32, 120.35, 33.54),     # v0.6.1 (pending): Qingdao's size round ZSYN; GLO-30 N33 E120 only
 }
-COAST = ['ZSPD', 'RJTT', 'RJBB', 'RJFF', 'RKPK', 'RJAA', 'ZSSS', 'ZSQD']
+COAST = ['ZSPD', 'RJTT', 'RJBB', 'RJFF', 'RKPK', 'RJAA', 'ZSSS', 'ZSQD', 'ZSYN']
 
 
 def log(*a):

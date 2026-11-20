@@ -19,6 +19,13 @@ void latCell(vec2 fp, int k, out ivec2 cell, out vec2 local) {
   local = (vec2(P - cell * k) + (fp - fl)) * 31.25;
 }
 vec2 ihash2(ivec2 c, uint s) { return vec2(ihash(c, s), ihash(c, s + 101u)); }
+// The 250 m height of a cell (m, the sea as 0), by its index on the tiles' lattice (v0.6.1: one fetch,
+// for the shape of the ground round a point; the clip window's texel as glsl.js's bilinWin() takes it).
+float cellH(ivec2 p) {
+  p -= ivec2(floor((uNat.xy + 400000.0) / uNat.z + 0.5));    // from the lattice's origin to the window's (exact: whole cells)
+  p = clamp(p, ivec2(uNatExt.xy), ivec2(uNatExt.zw));
+  return max(float(texelFetch(uHeight, p & ivec2(uNatMask), 0).r) * H_SCALE, 0.0);
+}
 
 // The woods' canopy from above: a crown in each cell of a 10.4 m lattice (a third of a fine
 // pixel), jittered and of its own size, lit on the sun's side and dark in the gaps between, so
@@ -59,6 +66,29 @@ vec3 greenhouseGround(vec2 fp, float lod) {
   float lane = 1.0 - smoothstep(3.0, 3.5 + lod, min(e.x, e.y));
   float open = step(0.86, ihash(bc, 83u));                 // a block left as field or yard
   return mix(mix(glass, vec3(0.16, 0.15, 0.10), open), vec3(0.17, 0.16, 0.13), lane * 0.8);
+}
+
+// Bare ground (v0.6.1; it was one pale sheet): a new town's graded land, quarries, river bars and
+// tidal flats. Broad patches of damp and of dry earth, and weeds coming up in places, everywhere;
+// where made says people work the ground (flat, away from the water), the graders' parallel
+// passes in lots of 250 m, each lot its own direction, and the wheel tracks round the lots.
+vec3 bareGround(vec2 fp, float lod, vec2 m, float tex2, float made) {
+  float broad = 0.6 * vnoise(m * 0.0035 + 31.0) + 0.4 * vnoise(m * 0.017 + 7.0);
+  vec3 c = mix(vec3(0.125, 0.115, 0.095), vec3(0.19, 0.175, 0.14), smoothstep(0.30, 0.70, broad)) * (0.92 + 0.16 * tex2);
+  float fade = made * (1.0 - smoothstep(6.0, 20.0, lod));
+  if (fade > 0.001) {
+    ivec2 bc; vec2 bl;
+    latCell(fp, 8, bc, bl);
+    float ang = ihash(bc, 85u) * 3.14159;
+    float qx = cos(ang) * bl.x - sin(ang) * bl.y;
+    float pass = abs(fract(qx / 9.0) - 0.5) * 2.0;
+    c *= 1.0 - 0.08 * fade * smoothstep(0.70, 0.95, pass) * step(ihash(bc, 86u), 0.7);
+    vec2 e = min(bl, 250.0 - bl);
+    float track = 1.0 - smoothstep(2.5, 3.5 + lod, min(e.x, e.y));
+    c = mix(c, vec3(0.105, 0.097, 0.082), track * 0.6 * fade);
+  }
+  float weeds = smoothstep(0.58, 0.72, vnoise(m * 0.021 + 13.0)) * smoothstep(0.35, 0.60, vnoise(m * 0.09 + 3.0));
+  return mix(c, vec3(0.095, 0.105, 0.05), weeds * 0.55);
 }
 
 // Ground in a village or at a town's edge (built-up pixels outside the dense blocks): not one
@@ -131,6 +161,18 @@ vec3 fieldMosaic(vec2 fp, float paddy, vec2 m, float lod, float slope, float hgt
   // The fields, in the district's own frame, long along its grain. Paddies are narrow and long;
   // dry fields squarer; a district's size varies by a third either way.
   float ang = dh * 3.14159;
+  // v0.6.1: on a valley's floor the paddies run along the valley. Its axis from the 250 m heights
+  // round the district's site (the site's own cell, from integers, so every pixel of the district
+  // gets the same answer): across the direction the ground curves up most, the valley's sides
+  // (on a ridge that would be across the ridge; paddies are on low flat floors, not ridges). On a
+  // plain, where nothing curves much, the district keeps its own grain.
+  if (paddy > 0.5) {
+    ivec2 sc = (did * 32 + ivec2(floor((0.5 + (ihash2(did, 41u) - 0.5) * 0.72) * 32.0))) >> 3;
+    float h0 = cellH(sc);
+    float hxx = cellH(sc + ivec2(2, 0)) + cellH(sc - ivec2(2, 0)) - 2.0 * h0, hyy = cellH(sc + ivec2(0, 2)) + cellH(sc - ivec2(0, 2)) - 2.0 * h0;
+    float hxy = 0.25 * (cellH(sc + ivec2(2, 2)) + cellH(sc - ivec2(2, 2)) - cellH(sc + ivec2(2, -2)) - cellH(sc + ivec2(-2, 2)));
+    if (length(vec2(hxx - hyy, 2.0 * hxy)) > 25.0) ang = -0.5 * atan(2.0 * hxy, hxx - hyy);   // (25 m over 500 m: a valley's sides, not a plain's terrace edge)
+  }
   float ca = cos(ang), sa = sin(ang);
   vec2 q = vec2(ca * dq.x - sa * dq.y, sa * dq.x + ca * dq.y);
   vec2 size = (paddy > 0.5 ? vec2(26.0, 72.0) : vec2(44.0, 80.0)) * (0.75 + 0.6 * dk);

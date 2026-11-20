@@ -8,6 +8,8 @@ import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 import { statSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.STILLS_OUT || path.resolve(here, '../assets/menu');
@@ -56,7 +58,7 @@ const SHOTS = {
 };
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1600,1060'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1600,1060'] });
 let failed = 0;
 try {
   for (const name of names) {

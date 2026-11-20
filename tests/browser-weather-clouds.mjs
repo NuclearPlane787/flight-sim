@@ -5,6 +5,8 @@ import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -32,7 +34,7 @@ const SHOTS = {
 const LIGHTNING = { 'storm-night': { ms: NIGHT, z: 1200, clouds: [{ okta: 7, baseFt: 6000, topFt: 12000 }], view: 'nose', l: look(4) } };
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : [...Object.keys(SHOTS), ...Object.keys(LIGHTNING)];
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 try {

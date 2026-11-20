@@ -26,6 +26,10 @@ const COUNTRY_CODE = { KR: 0, KP: 0, other: 0, JP: 1, CN: 2 };
 const COUNTRY_SLOTS = [SLOTS, 30, 20];
 const MAX_SLOTS = 30;
 export const CITY_MAX_AGL = 4500;   // m above the ground: no buildings above this
+// v0.6.1: the blocks in 4 x 4 tiles of 10 x 10 (HALF * 2 = TILES * TB), culled by the view; with the region off one
+// tile of them all, in v0.5.8's order and one draw (the flags are fixed at page load).
+const TILES = EAST_ASIA_ON ? 4 : 1, TB = (2 * HALF) / TILES;
+const TILE_MARGIN = 120;          // m round a tile's square: a building reaches up to about 75 m past its block (275 m from the centre)
 
 // A unit box (x, z in -0.5..0.5, y 0..1) without a bottom; normals per face.
 function boxGeometry() {
@@ -49,15 +53,22 @@ export function createCities(scene, uniforms, chunks) {
   const MIX = EAST_ASIA_ON && CITIES_ON;
   const SK = MIX ? 'sk' : 'bc * 16 + ivec2(si, 0)';
   const box = boxGeometry();
-  const geo = new THREE.InstancedBufferGeometry();
-  geo.setAttribute('position', box.getAttribute('position'));
-  geo.setAttribute('normal', box.getAttribute('normal'));
-  const n = (2 * HALF) ** 2 * MAX_SLOTS;
-  const inst = new Float32Array(n * 3);
-  const slotAttr = new THREE.InstancedBufferAttribute(inst, 3);
-  slotAttr.setUsage(THREE.DynamicDrawUsage);
-  geo.setAttribute('slot', slotAttr);
-  geo.instanceCount = 0;
+  // v0.6.1: the ±8 km of blocks in TILES x TILES tiles of TB x TB blocks (4 km), each its own
+  // instanced geometry and mesh on the one material, so a tile behind the camera or beside its
+  // view isn't drawn at all (update() tests each tile's box against the view's frustum). The
+  // buildings drawn in view are the same ones as before.
+  const tiles = [];
+  for (let t = 0; t < TILES * TILES; t++) {
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute('position', box.getAttribute('position'));
+    geo.setAttribute('normal', box.getAttribute('normal'));
+    const inst = new Float32Array(TB * TB * MAX_SLOTS * 3);
+    const slotAttr = new THREE.InstancedBufferAttribute(inst, 3);
+    slotAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('slot', slotAttr);
+    geo.instanceCount = 0;
+    tiles.push({ geo, inst, slotAttr, k: 0, mesh: null, box: new THREE.Box3() });
+  }
 
   // Can block (bx, by) (map index) hold a building? The shader keeps a building only where
   // the cover's built-up share, plus at most 0.15 of noise, reaches 0.18: so 0.03 (8/255).
@@ -91,9 +102,9 @@ export function createCities(scene, uniforms, chunks) {
   // v0.6.0 Part 6: where the real centres' buildings stand (centres.js's maskAt), no procedural block.
   let maskAt = null, maskVersion = null, maskVer = 0;
   function fill(cx, cy) {
-    let k = 0;
     blocks = 0;
     const mix = MIX;
+    for (const T of tiles) T.k = 0;
     for (let j = -HALF; j < HALF; j++) for (let i = -HALF; i < HALF; i++) {
       if (!blockBuilt(cx + i, cy + j)) continue;
       if (maskAt && maskAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)) continue;
@@ -101,12 +112,17 @@ export function createCities(scene, uniforms, chunks) {
       // The block's country, by its centre (0, Korea's mix, everywhere unless Part 6 is on).
       const code = mix ? COUNTRY_CODE[countryAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)] || 0 : 0;
       const ns = COUNTRY_SLOTS[code];
+      const T = tiles[Math.floor((j + HALF) / TB) * TILES + Math.floor((i + HALF) / TB)], inst = T.inst;
+      let k = T.k;
       for (let s = 0; s < ns; s++) { inst[k++] = i; inst[k++] = j; inst[k++] = s + 64 * code; }
+      T.k = k;
     }
-    geo.instanceCount = k / 3;
-    slotAttr.needsUpdate = true;
-    slotAttr.clearUpdateRanges();
-    slotAttr.addUpdateRange(0, Math.max(k, 3));
+    for (const T of tiles) {
+      T.geo.instanceCount = T.k / 3;
+      T.slotAttr.needsUpdate = true;
+      T.slotAttr.clearUpdateRanges();
+      T.slotAttr.addUpdateRange(0, Math.max(T.k, 3));
+    }
   }
 
   const u = Object.assign({}, uniforms, {
@@ -369,9 +385,15 @@ export function createCities(scene, uniforms, chunks) {
         #include <colorspace_fragment>
       }`,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
+  const mesh = new THREE.Group();          // (still `mesh` to its users: hiding it hides the cities)
   mesh.name = 'cities';
+  tiles.forEach((T, t) => {
+    T.mesh = new THREE.Mesh(T.geo, mat);
+    T.mesh.frustumCulled = false;          // three.js can't know where the shader puts the instances: update() culls
+    T.mesh.name = `cities-${t}`;
+    T.mesh.visible = false;
+    mesh.add(T.mesh);
+  });
   scene.add(mesh);
   const tris = 10;   // per instance
 
@@ -379,7 +401,8 @@ export function createCities(scene, uniforms, chunks) {
     mesh,
     // The real centres' mask: at(x, y) true where a block is left out; version() rises when it changes.
     setMask(at, version) { maskAt = at || null; maskVersion = version || null; maskVer = version ? version() : 0; gridX = NaN; },
-    update(camMap, origin, agl) {
+    // frustum (v0.6.1): the view's THREE.Frustum in scene coordinates; without one every tile is drawn.
+    update(camMap, origin, agl, frustum = null) {
       const on = agl < CITY_MAX_AGL;
       mesh.visible = on;
       if (!on) return { instances: 0, tris: 0, drawCalls: 0 };
@@ -387,11 +410,25 @@ export function createCities(scene, uniforms, chunks) {
       if (cov && cov.version() !== coverVer) { coverVer = cov.version(); blockCache.clear(); gridX = NaN; }
       if (maskVersion && maskVersion() !== maskVer) { maskVer = maskVersion(); gridX = NaN; }
       if (cx !== gridX || cy !== gridY) { gridX = cx; gridY = cy; fill(cx, cy); }
-      mesh.visible = geo.instanceCount > 0;
       u.uGridCell.value.set(cx, cy);
       u.uGridBase.value.set(cx * BLOCK - origin.x, cy * BLOCK - origin.y);
-      const count = geo.instanceCount;
-      return { instances: count, tris: tris * count, drawCalls: count > 0 ? 1 : 0, blocks };
+      // Each tile's box in the scene (x east, z south; the buildings stand within ~230 m of their
+      // block's centre, so a block's own square and a margin; any height a city stands at).
+      let count = 0, calls = 0;
+      for (let t = 0; t < tiles.length; t++) {
+        const T = tiles[t];
+        let vis = T.k > 0;
+        if (vis && frustum) {
+          const i0 = (t % TILES) * TB - HALF, j0 = Math.floor(t / TILES) * TB - HALF;
+          const x0 = (cx + i0) * BLOCK - origin.x, y0 = (cy + j0) * BLOCK - origin.y;
+          T.box.min.set(x0 - TILE_MARGIN, -200, -(y0 + TB * BLOCK) - TILE_MARGIN);
+          T.box.max.set(x0 + TB * BLOCK + TILE_MARGIN, 4500, -y0 + TILE_MARGIN);
+          vis = frustum.intersectsBox(T.box);
+        }
+        T.mesh.visible = vis;
+        if (vis) { count += T.k / 3; calls++; }
+      }
+      return { instances: count, tris: tris * count, drawCalls: calls, blocks };
     },
   };
 }

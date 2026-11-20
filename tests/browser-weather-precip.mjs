@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -15,7 +17,7 @@ const URL0 = (process.env.E2E_URL || 'http://localhost:8014/games/flight-sim/') 
 const ONLY = process.env.ONLY || '';
 
 const profile = mkdtempSync(path.join(tmpdir(), 'fs-precip-'));
-const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1440, height: 900 }, args: ['--mute-audio', '--window-size=1440,960'] });
+const ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: !HEADED, viewport: { width: 1440, height: 900 }, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 let code = 0;
 try {
   const page = ctx.pages()[0] || await ctx.newPage();

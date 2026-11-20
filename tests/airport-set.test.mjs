@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { clusterAirports, clusterDistance, planSet, createAirportSet, NEAR_M, FAR_M, URGENT_M } from '../src/world/airport-set.js';
 
-const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD'];
+const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN'];   // (ZSYN: v0.6.1)
 const AIRPORTS = ICAOS.map((icao) => {
   const a = JSON.parse(readFileSync(new URL(`../data/airports/${icao}.json`, import.meta.url)));
   return { icao, origin: a.origin };
@@ -16,7 +16,7 @@ const at = (icao) => { const a = AIRPORTS.find((p) => p.icao === icao); return {
 test('clusters: the close pairs go together, the rest alone', () => {
   const cs = clusterAirports(AIRPORTS);
   const ids = cs.map((c) => c.id);
-  assert.deepEqual(ids, ['RKSS+RKSI', 'RKPC', 'ZSPD+ZSSS', 'RJTT+RJAA', 'RKPK', 'RJBB', 'RJFF', 'ZSQD']);
+  assert.deepEqual(ids, ['RKSS+RKSI', 'RKPC', 'ZSPD+ZSSS', 'RJTT+RJAA', 'RKPK', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN']);   // (Yancheng alone: 269 km from Hongqiao)
   // Korea's three alone: Gimpo and Incheon together, Jeju alone.
   assert.deepEqual(clusterAirports(AIRPORTS.slice(0, 3)).map((c) => c.id), ['RKSS+RKSI', 'RKPC']);
   assert.equal(clusterAirports([]).length, 0);

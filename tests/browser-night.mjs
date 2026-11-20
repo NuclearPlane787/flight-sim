@@ -11,6 +11,8 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -48,7 +50,7 @@ const SHOTS = {
 };
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : [...Object.keys(SHOTS), 'fps'];
-const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 const errors = [];
 try {
   for (const name of names) {
@@ -75,7 +77,8 @@ try {
       // so the cap is 1.2 M (was 1.05 M); the draws' cap is unchanged.
       // v0.6.0 Part 7: the new ground (countryside houses, two more tree rings) adds ~0.37 M here (1.12 M -> 1.49 M),
       // so the cap is 1.7 M (was 1.2 M); the frame-rate check and the 300 draws' cap are unchanged.
-      check('within ~1.7 M triangles and 300 draws', calls <= 300 && tris <= 1.7e6, `max ${calls} draws, ${(tris / 1e6).toFixed(2)} M triangles; readout: ${perf}`);
+      // v0.6.1: 0.93 M with the lists and the view's frustum, so the cap is v0.5.8's 1.05 M again.
+      check('within ~1.05 M triangles and 300 draws', calls <= 300 && tris <= 1.05e6, `max ${calls} draws, ${(tris / 1e6).toFixed(2)} M triangles; readout: ${perf}`);
       await page.close();
       continue;
     }

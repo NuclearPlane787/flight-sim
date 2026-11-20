@@ -43,7 +43,18 @@ export function setCities(on) { CITIES_ON = !!on; }
 export let GROUND_ON = urlFlag('ground') ?? envFlag('FS_GROUND') ?? (GROUND_DEFAULT && EAST_ASIA_ON);
 export function setGround(on) { GROUND_ON = !!on; }
 // The query to add to a worker's or a dev page's URL so it sees the same region as this page.
-export const regionQuery = () => (EAST_ASIA_ON === EAST_ASIA_DEFAULT ? '' : `?eastasia=${EAST_ASIA_ON ? 1 : 0}`);
+// An airport still being checked (v0.6.1: Yancheng) sits in the manifest's `airportsPending` and
+// `patchesPending`, which nothing reads unless ?pending=1 is on the page's URL (FS_PENDING=1 in
+// node): out of every list, the map and the terrain until it has passed the check the others
+// passed, then its entries move to `airportsRegion` and `patchesRegion`. Off by default, always.
+export let PENDING_ON = (urlFlag('pending') ?? envFlag('FS_PENDING') ?? false) && EAST_ASIA_ON;
+export function setPending(on) { PENDING_ON = !!on; }
+export const regionQuery = () => {
+  const q = [];
+  if (EAST_ASIA_ON !== EAST_ASIA_DEFAULT) q.push(`eastasia=${EAST_ASIA_ON ? 1 : 0}`);
+  if (PENDING_ON) q.push('pending=1');
+  return q.length ? '?' + q.join('&') : '';
+};
 
 // The map's extent (m, the map frame): Korea's 800 km square (frame.js's MAP_EXTENT, v0.5.8),
 // or the region's whole data, the 1 km level's rectangle round 24-46 N, 112-148 E. FINE_EXTENT
@@ -112,12 +123,13 @@ export function terrainSpec(manifest, on = EAST_ASIA_ON) {
   if (on === undefined || on === null) on = EAST_ASIA_ON;
   const m = manifest || {};
   const region = !!(on && m.tilesRegion);
+  const pending = region && PENDING_ON;
   return {
     region,
     tiles: region ? m.tilesRegion : m.tiles,
-    patches: (m.patches || []).concat(region ? m.patchesRegion || [] : []),
+    patches: (m.patches || []).concat(region ? m.patchesRegion || [] : [], pending ? m.patchesPending || [] : []),
     coastPatches: (m.coastPatches || []).concat(region ? m.coastPatchesRegion || [] : []),
-    airports: (m.airports || []).concat(region ? m.airportsRegion || [] : []),
+    airports: (m.airports || []).concat(region ? m.airportsRegion || [] : [], pending ? m.airportsPending || [] : []),
   };
 }
 

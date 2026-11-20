@@ -46,6 +46,7 @@ Output (ints, metres, map frame):
 
   python3 tools/cpu-guard.py --minutes 20 -- /tmp/flight-sim/venv/bin/python -I tools/bake_region_coast.py
   ... --blocks-only   (stage 1 only)    ... --stats   (the written file's numbers)
+  ... --water-only    (v0.6.1: the inland water again, the written file's land levels kept as they are)
 """
 import argparse
 import json
@@ -246,11 +247,18 @@ def lakes():
         x0 = bc.NAT['x0'] + ti * 512 * 250.0
         y0 = bc.NAT['y0'] + tj * 512 * 250.0
         tr = bg.transform_for(x0, y0, 250.0, 512)
+        x1, y1 = x0 + 512 * 250.0, y0 + 512 * 250.0
         for geom, v in features.shapes(m[::-1].copy(), mask=m[::-1].copy() > 0, transform=tr):
             g = to_shape(geom)
-            if g.area >= 250000:
+            # v0.6.1: a piece that touches its tile's edge may be part of a lake or a wide river cut
+            # small by that edge: keep it whatever its area (filtered after the union, below), or the
+            # water ends in a straight line on the tile's edge (the seam at x = -528 km).
+            gb = g.bounds
+            edge = gb[0] <= x0 + 1 or gb[1] <= y0 + 1 or gb[2] >= x1 - 1 or gb[3] >= y1 - 1
+            if edge or g.area >= 250000:
                 gs.append(g)
     u = shapely.union_all(gs, grid_size=1.0) if gs else shapely.Polygon()
+    u = shapely.MultiPolygon([p for p in polys_of(u) if p.area >= 250000])
     sq = box(*KOREA)
     out = []
     def put(ring):
@@ -288,13 +296,29 @@ def stats():
     print(f'  water: {len(d["water"])} rings, {sum(len(r) // 2 for r in d["water"])} vertices')
 
 
+def water_only():
+    """Bake the inland water again into the written file; its land levels stay as they are, byte for byte."""
+    with open(OUT) as f:
+        out = json.load(f)
+    water, n_wc = lakes()
+    print(f'water: {len(water)} rings ({n_wc} from WorldCover outside Korea\'s square)', flush=True)
+    out['water'] = water
+    with open(OUT + '.tmp', 'w') as f:
+        json.dump(out, f, separators=(',', ':'))
+    os.replace(OUT + '.tmp', OUT)
+    stats()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--blocks-only', action='store_true')
     ap.add_argument('--stats', action='store_true')
+    ap.add_argument('--water-only', action='store_true')
     args = ap.parse_args()
     if args.stats:
         return stats()
+    if args.water_only:
+        return water_only()
     idx = np.load(LPINDEX)
     reader = shapefile.Reader(LANDPOLY)
     t0 = time.time()

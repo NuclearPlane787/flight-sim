@@ -11,7 +11,7 @@ import * as THREE from '../vendor/three.module.js';
 import { clipSoupOutside, refineSoup, subdivideSoup, drawnRunwayRects, openRing, signedArea, dedupePolys } from '../src/world/apron-geom.js';
 
 const CHUNK = 6 * 16;
-const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD'];
+const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN'];   // (ZSYN: v0.6.1)
 const ground = (x, y) => 3 * Math.sin(x / 37) * Math.cos(y / 53) + 0.5 * Math.sin((x + y) / 7);
 
 function chunked(whole, rects) {

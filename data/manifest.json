@@ -685,6 +685,15 @@
       "nx": 1478,
       "ny": 1474,
       "height": "terrain/patch-fuji.i16.gz"
+    },
+    {
+      "id": "yancheng",
+      "x0": -691980,
+      "y0": -272970,
+      "cell": 30,
+      "nx": 958,
+      "ny": 878,
+      "height": "terrain/patch-yancheng.i16.gz"
     }
   ],
   "coastPatchesRegion": [
@@ -742,6 +751,7 @@
     "airports/ZSSS.json",
     "airports/RJBB.json",
     "airports/RJFF.json",
-    "airports/ZSQD.json"
+    "airports/ZSQD.json",
+    "airports/ZSYN.json"
   ]
 }

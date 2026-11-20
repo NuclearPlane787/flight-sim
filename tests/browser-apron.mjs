@@ -3,6 +3,8 @@
 // Writes Claude outputs/flight-sim/apron-<name>.png and prints fps, draw calls, triangles.
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim', import.meta.url).pathname);
 const BASE = 'http://localhost:8001/games/flight-sim/tests/dev-apron.html';
@@ -37,7 +39,7 @@ export const SHOTS = {
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
 mkdirSync(OUT, { recursive: true });
 mkdirSync('/tmp/flight-sim/apron', { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 const results = [];
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

@@ -7,13 +7,15 @@ import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
 const type = process.argv[2] || 'a321neo', xKt = Number(process.argv[3] || 15), autoland = process.argv[4] === 'autoland';
 const BASE = process.env.E2E_URL || 'http://localhost:8014/games/flight-sim/';
 const FT = 3.28084, KT = 1.943844;
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960', '--autoplay-policy=no-user-gesture-required'] });
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 try {

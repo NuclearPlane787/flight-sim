@@ -18,7 +18,7 @@
 // plan.design the design itself, whole and normalized (src/sim/designs.js); the limits, the fuel rule and the
 // stands are its type entry's (designDef(design)). defaults.design picks it again: as given with lockType (a
 // scenario keeps its copy), else the stored design with that id if it's still there (else its base).
-// v0.6.0 (with the region on, region.js's EAST_ASIA_ON; off, every line here draws as v0.5.8): the eleven airports
+// v0.6.0 (with the region on, region.js's EAST_ASIA_ON; off, every line here draws as v0.5.8): the region's airports (eleven; twelve since v0.6.1)
 // grouped by country, Korea first (airportGroups()), named by their short names; the small map fitted to the region,
 // its labels kept apart (Pudong and Hongqiao, Haneda and Narita); a filter on a long stand list; the fuel rule by the
 // cruise level a trip that long flies at (fuelEstimate()); the start's time in the departure's own zone (KST, JST, CST).
@@ -93,7 +93,7 @@ export function fitLoad({ pax, cargoKg }, type) {
 const COUNTRY_OF = [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN']];
 export const COUNTRY_LABEL = { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', other: 'Elsewhere' };
 const COUNTRY_ORDER = ['KR', 'JP', 'CN', 'KP', 'other'];
-export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSQD'];
+export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast)
 export const airportCountry = (ap) => (COUNTRY_OF.find(([p]) => String(ap?.icao || '').startsWith(p)) || [null, 'other'])[1];
 // The airport's short name: its data's shortName, else its name made short ("Seoul Gimpo International Airport" → "Gimpo").
 export const airportShort = (ap) => ap?.shortName || shortPlace(ap?.name) || ap?.icao || '';

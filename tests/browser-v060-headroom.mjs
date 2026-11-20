@@ -9,7 +9,9 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const ROOT = process.env.E2E_ROOT || 'http://127.0.0.1:8014/';
 const ground = arg('--ground', '1');
 const VIEWS = [['Tokyo, 3,000 ft', 35.66, 139.75, 3000, 20, -18], ['Seoul, 3,000 ft', 37.53, 126.98, 3000, 60, -18], ['Kanto plain, 1,000 ft', 36.05, 140.05, 1000, 30, -14],
-  ['Narita, a stand', 35.772, 140.386, 150, 330, -10], ['Gimpo, on final 14R', 37.585, 126.765, 1000, 143, -8]];
+  ['Narita, a stand', 35.772, 140.386, 150, 330, -10], ['Gimpo, on final 14R', 37.585, 126.765, 1000, 143, -8],
+  // v0.6.1: two views full of small water (the nine-pixel water filter's cost shows here if anywhere).
+  ['Yangtze delta, 1,000 ft', 31.25, 120.85, 1000, 280, -14], ['Nakdong delta, 1,000 ft', 35.13, 128.90, 1000, 200, -14]];
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist', '--disable-frame-rate-limit', '--disable-gpu-vsync'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

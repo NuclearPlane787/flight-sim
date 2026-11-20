@@ -22,8 +22,8 @@ const region = (opts = {}) => createTiledHeightfield(m, DATA.href, { region: tru
 
 test('the region: the manifest lists its tiles, patches and airports; the extents match region.js', { skip: !HAVE }, () => {
   assert.equal(spec.region, true);
-  assert.equal(spec.airports.length, 11);
-  assert.equal(spec.patches.length, 9);
+  assert.equal(spec.airports.length, 12);   // v0.6.1: Yancheng
+  assert.equal(spec.patches.length, 10);    // and its patch
   assert.equal(spec.coastPatches.length, 8);
   const t = m.tilesRegion, l0 = t.levels[0], l1 = t.levels[1];
   assert.deepEqual(FINE_EXTENT, { x0: t.x0 + l0.extent.i0 * l0.cell, y0: t.y0 + l0.extent.j0 * l0.cell, x1: t.x0 + l0.extent.i1 * l0.cell, y1: t.y0 + l0.extent.j1 * l0.cell });
@@ -90,7 +90,7 @@ test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by d
     }
   }
   assert.equal(hf.runwayRects.length, airportsAll.reduce((n, a) => n + a.runways.length, 0));
-  assert.equal(runwayRects(airportsAll).length, 29);
+  assert.equal(runwayRects(airportsAll).length, 30);   // (29 until v0.6.1's Yancheng)
   // Fuji's summit (the 30 m patch): within 60 m of 3,776 m; the 250 m data alone is lower.
   const [fx, fy] = toMap(35.3606, 138.7274);
   await T.whenReady(fx, fy, 20000, 'test');

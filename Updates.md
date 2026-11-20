@@ -4,6 +4,19 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.6.1 · 2026-11-20 · Yancheng, a lighter scene, and greenhouses
+
+- **A twelfth airport: Yancheng Nanyang,** halfway along the 325 nm of China's coast between Pudong and Qingdao, which had none. One runway, 04/22, 2,800 m with an ILS each way, and twenty stands. It's a code C airport, as the real one is, so the 787 and the 777 start there on the runway or on a final, not at a stand. The setup lists it in China between Hongqiao and Qingdao, with new routes from Incheon (390 nm, a real A321neo route), Pudong (159 nm) and Qingdao (176 nm).
+- **A lighter scene with the same picture.** Houses and trees are drawn only where they stand, and city blocks, buildings and parked aircraft only when they're in view, so near the big cities the scene is down from 1.3–1.9 million triangles to about a million or less: Tokyo at 3,000 ft from 1.8 M to 1.0 M, Seoul from 1.4 M to 0.85 M, a stand at Pudong from 1.7 M to 0.83 M. On the M5 the heaviest views now have about twice the headroom they had.
+- **Greenhouses:** Korea's white greenhouse ground now has rows of low plastic tunnels on it near you.
+- **Smoother small waters:** ponds and small rivers no longer step along their edges when you're low above them.
+- **Taxi-in after landing:** at Gimpo (32L and 14R), Incheon (33L) and Narita the route to a stand now leaves the runway by an exit ahead of you, as at the other new airports. Jeju's still turns back along the runway from late on 31 or 13: its map has no other way off.
+- **Gimhae as published** (Korea's AIP): ILS category II on 36L and I on 36R, their approach lights, and 18R's threshold displaced 600 m. Pudong's and Qingdao's ILS categories come from open navigation data.
+- **The countryside:** paddies follow their valleys, bare ground (the Nakdong delta's new town) has some texture, no fields grow inside an airfield's fence, and Gimhae's aprons are joined up. The greenhouse ground sits in slightly different places than in v0.6.0.
+- **The map:** the straight seam in the inland water west of Korea is gone.
+- **Under the hood:** `?greenhouses=0` and `?cull=0` after the address show the ground without the tunnels and the scene without the culling, for comparison; 1,232 unit tests, which now also pass in a fresh copy of the repository.
+- **Known:** Gimhae's 18L and 18R have no straight-in approach (the real ones are flown by circling from the approach to 36, because of the hills to the north), so a final start or Skip to final on them flies into the hills: pick 36L or 36R there for now. The trees are still conifers.
+
 ## v0.6.0 · 2026-11-20 · East Asia: eight new airports, Tokyo and Shanghai, nineteen landmarks, and a new countryside
 
 - **The map grows into East Asia.** The world now covers all of Korea, Kyushu, Shikoku and Honshu to Sendai, and China's coast from Ningbo to the Shandong peninsula at Korea's detail (real elevation every 250 m), with coarser land around it out past Beijing, Hokkaido's south and Taiwan's north, so the edge of the world never shows from cruise. It's still one map in Korea's own frame, so your saved scenarios keep their places. The terrain streams in as you fly, in 128 km tiles.

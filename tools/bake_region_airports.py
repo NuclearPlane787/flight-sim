@@ -19,6 +19,14 @@ Sources:
   is frame.js magVar()'s plane (bake_common.mag_var), and its military side (OSM landuse=military) has no stands.
   RJTT, RJAA and ZSPD bake byte-identical to the first pass.
 
+- v0.6.1, Yancheng (ZSYN, pending): its box cut by /tmp/flight-sim/v061/zsyn/extract.sh (the same cutter, box
+  120.14,33.375,120.27,33.485, from china-261118). OSM maps no aprons, stands, gates, holds or taxiway names there,
+  but draws each stand's lead-in line (and its turn-in arcs) as aeroway=taxiway: those lines become the stands
+  (STAND_LINES), the arcs are dropped (LEADIN_ARCS), the taxiways are named in TWY_REFS, all [EST]. Its military
+  side (OSM's second aerodrome, landuse=military, south-west of the civil apron) keeps its taxiways, no stands.
+  Bake it alone: `... bake_region_airports.py ZSYN` (FS_AIRPORT_OUT=<dir> writes elsewhere than data/airports, to
+  check that another airport still bakes byte-identical).
+
 Leaves out runways under construction or proposed (Narita's runway C, B's extension): only ways tagged
 aeroway=runway with no lifecycle tag are read, and a runway is one ref's ways merged end to end.
 
@@ -42,6 +50,11 @@ from bake_airports import bearing_true, building_height, num, pts, r1, to_xy
 
 OSM_DIR = '/tmp/flight-sim/v060/osm'
 NOTES_DIR = '/tmp/flight-sim/v060/airports'
+# v0.6.1: Yancheng's box and notes live with that run's scratch
+OSM_DIRS = {'ZSYN': '/tmp/flight-sim/v061/zsyn/osm'}
+NOTES_DIRS = {'ZSYN': '/tmp/flight-sim/v061/zsyn/airports'}
+OUT_DIR = os.environ.get('FS_AIRPORT_OUT') or os.path.join(DATA, 'airports')
+osm_dir = lambda icao: OSM_DIRS.get(icao, OSM_DIR)
 FT = 0.3048
 
 NAMES = {   # V060.md Part 3, the names table
@@ -54,17 +67,54 @@ NAMES = {   # V060.md Part 3, the names table
     'RJBB': ('Kansai', 'Kansai International Airport'),
     'RJFF': ('Fukuoka', 'Fukuoka Airport'),
     'ZSQD': ('Qingdao', 'Qingdao Jiaodong International Airport'),
+    # v0.6.1, pending (manifest airportsPending)
+    'ZSYN': ('Yancheng', 'Yancheng Nanyang International Airport'),
 }
 # Inside south-korea.poly the game's variation is frame.js magVar()'s plane (V060.md, "Magnetic variation"):
 # Gimhae's magVarDeg and magnetic headings come from bake_common.mag_var(), the rest from the WMM grid.
 PLANE = {'RKPK'}
 # Gimhae is a joint civil and military field (V060.md Part 3): the ROKAF side (OSM's landuse=military areas,
 # read from the unfiltered box) keeps its aprons and buildings but has no stands, so no traffic parks there.
-MILITARY = {'RKPK'}
+MILITARY = {'RKPK', 'ZSYN'}
+# Yancheng is a joint civil and air force field too (OSM's aerodrome alt_name 空军盐城场站, "PLAAF Yancheng station"; a
+# second aeroway=aerodrome + landuse=military area south-west of the civil apron, with a ladder of small hardstands
+# drawn as taxiways): those taxiways stay (a taxi line, no stand), no stands there.
+
+# v0.6.1, Yancheng (ZSYN): OSM has no aeroway=parking_position, apron, gate or holding_position there and no taxiway ref.
+# Its stands' lead-in lines are drawn as aeroway=taxiway (way 2020-09-28 edits, from Bing): straight lines square to the
+# runway from the apron taxilanes to a dead end at the stop mark, about 48 m apart (code C spacing). Each becomes a stand
+# (stop point = the dead end, heading along the line's last 30 m, the line its leadIn), numbered 01.. west to east (STAND_FORMAT)
+# by the bake's usual rule. The turn-in arcs between the taxilanes and the lines (and the two lead-in circles of
+# each pair of stands in the middle group) are dropped: they are stand markings, not taxi routes. All [EST].
+STAND_LINES = {'ZSYN': {
+    852305545, 852305547, 852305549, 852305551, 852305553, 852305555, 852305557,             # south group (7)
+    852289696, 852289694, 852289692, 852289689, 852289682, 852289679, 852289676, 852289672,  # middle group (10)
+    852289668, 852289666,
+    852305580, 852305578, 852305573,                                                        # north group (3)
+}}
+LEADIN_ARCS = {'ZSYN': {
+    852305544, 852305546, 852305548, 852305550, 852305552, 852305554, 852305556,
+    852289661, 852289662, 852289663, 852289664, 852289665, 852289667, 852289669, 852289671,
+    852289674, 852289675, 852289677, 852289678, 852289681, 852289683, 852289684, 852289685,
+    852289686, 852289687, 852289688, 852289690, 852289693,
+    852305570, 852305571, 852305574, 852305575, 852305576, 852305577, 852305579,
+}}
+# (kept, unnamed: 852289670, 852289673, 852289691 and 852305572, the S-curves from B down to A, B's only links)
+# Taxiway names where OSM has none (Yancheng): the Chinese pattern, the parallel taxiway A, its links to the runway
+# A1.. from the 04 end, the apron taxilane B. The military apron's loop and hardstands stay unnamed. All [EST].
+TWY_REFS = {'ZSYN': {
+    153970121: 'A', 852289680: 'A',     # the parallel, joining the runway at both ends (its end curves are its links)
+    153970109: 'A1',                    # 04 end + 400 m, across A from the military apron's loop
+    153970108: 'A2',                    # mid-field, square-ish to the runway
+    852305569: 'A3',                    # the angled exit for a landing on 22
+    852289695: 'B',                     # the apron taxilane behind the middle group's tails
+}}
+TWY_REF_REASON = ('OSM maps no taxiway ref at Yancheng: named in the Chinese pattern (parallel A, its runway links A1-A3 '
+                  'from the 04 end, the apron taxilane B); the military loop and hardstands unnamed')
 
 
 def military_polys(icao):
-    path = os.path.join(OSM_DIR, icao, 'box.osm.pbf')
+    path = os.path.join(osm_dir(icao), icao, 'box.osm.pbf')
     wkb = osmium.geom.WKBFactory()
     out = []
     fp = (osmium.FileProcessor(path).with_locations()
@@ -122,16 +172,48 @@ AIP = {
              '16R': (None, 0, 'left', 3.0, None, 15.1, False, True, 60, 0),
              '34L': (None, 0, 'left', 3.0, None, 32.5, False, True, 60, 0)},
 }
-# Part 3's checks (the in-game pass): ends that differ from the ICAO default where no AIP table is read. Gimhae: Korea's
-# eAIP gives the ILS to 36L and 36R only; 18L and 18R are the circling ends (the mountains to the north), so no ILS
-# there, the PAPIs kept. The approach lights and the ILS category at 36L/36R are still the default: [EST].
+# Ends that differ from the ICAO default where no AIP table is read.
+# v0.6.1, the published values (values only; no chart or page is kept in the repository):
+# - Gimhae, from Korea's eAIP (aim.koca.go.kr, RKPK AD 2.12 to 2.14 and 2.19, the 2026-11-12 package), read directly:
+#   ILS to 36L (CAT II) and 36R (CAT I) only, 18L and 18R being the circling ends; ALSF-II 900 m with touchdown
+#   zone lights at 36L and 36R; SSALF 420 m at 18R; SSALR 720 m at 18L (drawn as the game's SSALF, the nearest
+#   it has); PAPIs on both sides at 18R, 18L and 36R, left at 36L; centreline lights on both runways; and
+#   18R's landing threshold displaced by 600 m (LDA 2,600 m): DISPLACED_PUBLISHED.
+#   The threshold elevations and widths stay OurAirports' (the patch's flattening was baked with them).
+# - Pudong and Qingdao, China's AIP not readable without an account: the ILS categories from an open nav-data
+#   listing (X-Plane 12's, as shown on airports4xp.info; Pudong 34L's CAT III also in Shanghai's state media, 2018),
+#   and with a category II or III the lights Annex 14 requires of one (the 900 m system with side-row barrettes,
+#   touchdown zone and centreline lights), which an open scenery listing (the X-Plane Scenery Gateway's) also has.
+#   An open secondary source, not the AIP: marked so in the notes. The CAT I ends stay the default, [EST].
+CAT2 = dict(approachLights='ALSF-II', approachLightsM=900, tdzLights=True, centrelineLights=True)
 END_OVERRIDE = {
-    'RKPK': {'18L': dict(ils=None), '18R': dict(ils=None)},
+    'RKPK': {'18R': dict(ils=None, approachLights='SSALF', approachLightsM=420, papi='both', centrelineLights=True),
+             '36L': dict(CAT2, ils='II'),
+             '18L': dict(ils=None, approachLights='SSALF', approachLightsM=720, papi='both', centrelineLights=True),
+             '36R': dict(CAT2, ils='I', papi='both')},
+    'ZSPD': {'34L': dict(CAT2, ils='III'), '17L': dict(CAT2, ils='II'), '35R': dict(CAT2, ils='II')},
+    'ZSQD': {'16': dict(CAT2, ils='II'), '17': dict(CAT2, ils='II'), '35': dict(centrelineLights=True)},
 }
 OVERRIDE_REASON = {
-    'RKPK': ("Korea's eAIP: ILS on 36L and 36R only (18L/18R are the circling ends): ils None at 18L and 18R, their PAPI "
-             "kept; the approach lights at all four ends and the ILS category (I) at 36L/36R not confirmed: [EST]"),
+    'RKPK': ("Korea's eAIP (RKPK AD 2, the 2026-11-12 package), read 2026-11-20: ILS CAT II to 36L and CAT I to 36R, none to "
+             "18L/18R; ALSF-II 900 m and TDZ lights at 36L and 36R; SSALF 420 m at 18R; SSALR 720 m at 18L (drawn as SSALF); "
+             "PAPI both sides at 18R, 18L, 36R; centreline lights on both runways; 18R displaced 600 m. Published, not [EST]. "
+             "Still [EST]: the threshold elevations and widths (OurAirports')"),
+    'ZSPD': ("open nav data (X-Plane 12's ILS table as listed on airports4xp.info; 34L's CAT III also in state media, 2018), "
+             "not the AIP: ILS III at 34L, II at 17L and 35R, with a CAT II/III runway's lights (ALSF-II 900 m, TDZ); "
+             "the other ends stay the default, [EST]"),
+    'ZSQD': ("open nav data and an open scenery listing (X-Plane 12's ILS table; the Scenery Gateway's runway rows), not the "
+             "AIP: ILS II at 16 and 17 with a CAT II runway's lights (ALSF-II 900 m, TDZ, centreline lights on 17/35); "
+             "34 and 35 stay the default, [EST]"),
 }
+# Where the pavement made round the stands is also closed over the gaps to the mapped aprons (m: half the widest gap closed).
+APRON_CLOSE = {'RKPK': 30.0}
+# How the stands OSM leaves unnumbered are numbered, west to east: R1.. unless the airport's own numbering is known.
+# Yancheng: 01 to 20 from the south-west, as an open scenery listing has them (the X-Plane Scenery Gateway's, 2022;
+# an open secondary source, [EST]); which line is which number is the bake's west-to-east order.
+STAND_FORMAT = {'ZSYN': '{:02d}'}
+# A landing threshold's published displacement where neither OSM nor OurAirports has it (m).
+DISPLACED_PUBLISHED = {('RKPK', '18R'): 600.0}
 # Widths where OurAirports' rounded figure is wrong: Hongqiao 18L/36R is 3,400 x 57.6 m (OSM's width tag), not 45 m.
 WIDTH_OVERRIDE = {('ZSSS', '18L/36R'): 57.6}
 
@@ -155,6 +237,10 @@ PUBLISHED_MAG = {
     # (Kansai 24L's LOC is published to the whole degree, 238: AD 2.12's true 231.00 + 8 deg W instead)
     'RJBB': {'06R': 58.88, '24L': 239.0, '06L': 58.78, '24R': 238.94},
     'RJFF': {'16L': 158.0, '34R': 337.75, '16R': 158.20, '34L': 338.21},
+    # Yancheng: no AIP read; the open nav-data listings (SkyVector 043 for 04; airports4xp.info 044/224, with an ILS CAT I
+    # localizer on 04 at 110.9 MHz and one on 22 at 111.3 MHz). WMM2025 at 2026.0 gives 045.4/225.4 from OSM's true 38.5:
+    # the listings' bearings carry an older variation (the runway's 04 too: 38.5 true is 045 magnetic today).
+    'ZSYN': {'04': 44.0, '22': 224.0},
 }
 
 LIFECYCLE = ('construction', 'proposed', 'disused', 'abandoned', 'planned', 'demolished', 'razed')
@@ -212,7 +298,7 @@ def load_ourairports():
 
 def read_box(icao):
     """The small filtered box, read as bake_osm_extract.py's airports() reads Korea's."""
-    path = os.path.join(OSM_DIR, icao, 'aero.osm.pbf')
+    path = os.path.join(osm_dir(icao), icao, 'aero.osm.pbf')
     wkb = osmium.geom.WKBFactory()
     dst = dict(nodes=[], ways=[], areas=[])
     fp = (osmium.FileProcessor(path)
@@ -382,6 +468,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
             disp = osm_disp.get(key, oa_disp)
             if aip:
                 disp = float(aip[9])
+            elif (icao, ident) in DISPLACED_PUBLISHED:
+                disp = DISPLACED_PUBLISHED[(icao, ident)]
             elif key in osm_disp:
                 est.append((f'{ident} displaced threshold', f'{disp:.0f} m',
                             f"OSM's runway=displaced_threshold segment (OurAirports {oa_disp:.0f} m)"))
@@ -408,8 +496,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
                              hdgMagDeg=round(float(hdg_m), 2), pavementEnd=[r1(p[0]), r1(p[1])],
                              **(dict(papi=aip[2], papiDeg=aip[3], approachLights=aip[0], approachLightsM=aip[1],
                                      ils=aip[4], tdzLights=aip[6], centrelineLights=aip[7]) if aip else
-                                dict(DEFAULT_END, centrelineLights=width > 50,
-                                     **END_OVERRIDE.get(icao, {}).get(ident, {})))))
+                                {**DEFAULT_END, 'centrelineLights': width > 50,
+                                 **END_OVERRIDE.get(icao, {}).get(ident, {})})))
             table.append(dict(pub=PUBLISHED_MAG.get(icao, {}).get(ident), ident=ident, true=float(hdg_t), grid=float(hdg_g), mag=float(hdg_m), var=mv,
                               length=length, oaLength=(num(o.get('length')) or 0) * FT, width=width,
                               elev=e_elev, disp=disp, oaOff=oa_off, ways=nways))
@@ -419,19 +507,29 @@ def bake(icao, wmm, oa_ap, oa_rw):
     if icao not in AIP:
       est.insert(0, ('every end: approachLights ALSF-I 900 m, papi left 3.0 deg, ils I, centrelineLights, no tdzLights',
                    ', '.join(e['ident'] for r in runways for e in r['ends']), EST_REASON))
+      if any(not e['centrelineLights'] for r in runways for e in r['ends']):
+          est.insert(1, ('centrelineLights false', ', '.join(e['ident'] for r in runways for e in r['ends'] if not e['centrelineLights']),
+                         'the runway is 50 m wide: Annex 14 recommends centreline lights on a CAT I runway only wider than 50 m '
+                         '(they are required from CAT II); the ILS on both ends is in the nav data, its category not read: I'))
       if icao in END_OVERRIDE:
           est.insert(1, ('ends changed from the default: ' + '; '.join(f'{k} {v}' for k, v in END_OVERRIDE[icao].items()),
                          ', '.join(END_OVERRIDE[icao]), OVERRIDE_REASON[icao]))
 
     # ---- taxiways, aprons, stands, holds, buildings, service roads: bake_airports.py's rules
     taxiways = []
-    for _, tags, coords in d['ways']:
+    lines_as_stands, skip = STAND_LINES.get(icao, set()), LEADIN_ARCS.get(icao, set())
+    refs_est = TWY_REFS.get(icao, {})
+    for wid, tags, coords in d['ways']:
         if tags.get('aeroway') in ('taxiway', 'taxilane') and is_live(tags):
+            if wid in lines_as_stands or wid in skip:
+                continue
             xy = to_xy(coords)
             if not LineString(xy).intersects(area):
                 continue
             w = num(tags.get('width'), 23.0 if tags.get('aeroway') == 'taxiway' else 15.0)
-            taxiways.append(dict(ref=tags.get('ref', ''), kind=tags['aeroway'], widthM=w, points=pts(xy)))
+            taxiways.append(dict(ref=tags.get('ref', '') or refs_est.get(wid, ''), kind=tags['aeroway'], widthM=w, points=pts(xy)))
+    if refs_est:
+        est.append(('taxiway names', ', '.join(sorted(set(refs_est.values()))), TWY_REF_REASON))
     twy_lines = shapely.MultiLineString([t['points'] for t in taxiways if t['kind'] == 'taxiway'] or
                                         [t['points'] for t in taxiways])
 
@@ -471,6 +569,12 @@ def bake(icao, wmm, oa_ap, oa_rw):
         stands.append(dict(ref=ref, x=r1(b[0]), y=r1(b[1]), hdgGridDeg=round(hdg_g, 1),
                            gate=bool(near_gate(Point(b))), leadIn=pts(xy)))
         seen.add(ref)
+    if lines_as_stands:
+        stands += stands_from_lines(d, lines_as_stands, runways, near_gate)
+        est.append(('stands', f'{len(lines_as_stands)} from OSM taxiway ways (stand lead-in lines)',
+                    'no parking_position in OSM: each lead-in line drawn as aeroway=taxiway (straight, square to the runway, '
+                    'a dead end at the stop mark, ~48 m apart: code C) is a stand, its stop the dead end, its heading the '
+                    f'line\'s last 30 m; {len(skip)} turn-in arcs dropped'))
     for _, tags, lo, la in d['nodes']:
         if tags.get('aeroway') != 'parking_position':
             continue
@@ -489,7 +593,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
         n0 = len(stands)
         stands = [st for st in stands if not any(pp.contains(Point(st['x'], st['y'])) for _, pp in mil)]
         est.append(('military side', f'{n0 - len(stands)} OSM stands left out',
-                    'inside OSM landuse=military (' + '; '.join(n for n, _ in mil) + '): its aprons and buildings kept, no stands'))
+                    'inside OSM landuse=military (' + '; '.join(n or '(unnamed)' for n, _ in mil) + '): its aprons and buildings kept, no stands'
+                    + ('; OSM\'s small hardstands there are drawn as taxiways: kept as taxiways, no stands' if icao == 'ZSYN' else '')))
     merged = []
     for st in stands:
         if any(np.hypot(st['x'] - m['x'], st['y'] - m['y']) < 15 for m in merged):
@@ -532,15 +637,16 @@ def bake(icao, wmm, oa_ap, oa_rw):
                 used.add(cands[0][1])
                 st['gate'] = True
         k = 1
+        fmt = STAND_FORMAT.get(icao, 'R{}')
         for st in sorted((s for s in unnamed if not s['ref']), key=lambda s: s['x']):
-            while f'R{k}' in used:
+            while fmt.format(k) in used:
                 k += 1
-            st['ref'] = f'R{k}'
+            st['ref'] = fmt.format(k)
             used.add(st['ref'])
             numbered.append(st['ref'])
     if numbered:
         est.append(('stand numbers', f'{len(numbered)} stands {numbered[0]}..{numbered[-1]}',
-                    'no ref in OSM and no gate within 80 m: numbered R1.. west to east'))
+                    f'no ref in OSM and no gate within 80 m: numbered {fmt.format(1)}.. west to east'))
 
     if not aprons and stands:
         blob = shapely.unary_union([Point(s['x'], s['y']).buffer(40) for s in stands] +
@@ -562,7 +668,7 @@ def bake(icao, wmm, oa_ap, oa_rw):
             if Point(xy).within(area):
                 holds.append(dict(ref=tags.get('ref', ''), x=r1(xy[0]), y=r1(xy[1])))
 
-    extra = stand_aprons(stands, aprons, runways)
+    extra = stand_aprons(stands, aprons, runways, icao)
     if extra:
         est.append(('aprons added', f'{len(extra)} pieces, {sum(Polygon(a["points"]).area for a in extra) / 1e6:.2f} km2',
                     f'stands off OSM\'s aprons ({APRON_SYNTH_REASON}): pavement made round them, "synthetic": true'))
@@ -608,7 +714,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
                boundary=pts(outer.exterior.coords),
                runways=runways, taxiways=taxiways, aprons=aprons, stands=stands,
                holdingPositions=holds, buildings=buildings, serviceRoads=roads)
-    path = os.path.join(DATA, 'airports', f'{icao}.json')
+    os.makedirs(OUT_DIR, exist_ok=True)
+    path = os.path.join(OUT_DIR, f'{icao}.json')
     with open(path + '.tmp', 'w') as f:
         json.dump(out, f, separators=(',', ':'))
     os.replace(path + '.tmp', path)
@@ -622,10 +729,35 @@ def bake(icao, wmm, oa_ap, oa_rw):
     return table
 
 
+def stands_from_lines(d, ids, runways, near_gate):
+    """Stands from OSM taxiway ways that are really stand lead-in lines (STAND_LINES): the end farther from every
+    runway centreline is the stop point; the line, oriented towards it, is the leadIn."""
+    rws = [(np.array(r['ends'][0]['pavementEnd'], float), np.array(r['ends'][1]['pavementEnd'], float)) for r in runways]
+
+    def cl(p):
+        return min(LineString([a, b]).distance(Point(*p)) for a, b in rws)
+    out = []
+    for wid, tags, coords in d['ways']:
+        if wid not in ids:
+            continue
+        xy = to_xy(coords)
+        if cl(xy[0]) > cl(xy[-1]):
+            xy = xy[::-1]
+        b = xy[-1]
+        # the heading: from the point 30 m back along the line (its straight last part; some lines start in a curve)
+        back = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(xy[::-1], axis=0).T))])
+        k = int(np.searchsorted(back, 30.0))
+        a = xy[::-1][min(k, len(xy) - 1)]
+        hdg_g = float(np.degrees(np.arctan2(b[0] - a[0], b[1] - a[1])) % 360)
+        out.append(dict(ref='', x=r1(b[0]), y=r1(b[1]), hdgGridDeg=round(hdg_g, 1), gate=bool(near_gate(Point(b))),
+                        leadIn=pts(xy)))
+    return out
+
+
 APRON_SYNTH_REASON = 'a lead-in, or the stop point or 30 m behind it, off a mapped apron'
 
 
-def stand_aprons(stands, aprons, runways):
+def stand_aprons(stands, aprons, runways, icao=None):
     """Aprons made round the stands that OSM's aprons leave out (Qingdao maps only part of its apron): for each such
     stand a 50 x 44 m box behind the stop point, and every stand's lead-in widened to 25 m each side, merged, closed, less the
     mapped aprons and 30 m round each runway. Pieces under 500 m2 are dropped. Marked "synthetic": true, as
@@ -650,6 +782,11 @@ def stand_aprons(stands, aprons, runways):
     if not pieces:
         return []
     blob = shapely.unary_union(pieces).buffer(15).buffer(-15)
+    if icao in APRON_CLOSE:
+        # v0.6.1: the wedges of grass left between the made pieces and the mapped aprons, closed where they are
+        # narrower than twice this (Gimhae's remote stands stood on islands of pavement with turf between them).
+        c = APRON_CLOSE[icao]
+        blob = shapely.unary_union([blob, mapped]).buffer(c).buffer(-c)
     rw = shapely.unary_union([LineString([r['ends'][0]['pavementEnd'], r['ends'][1]['pavementEnd']]).buffer(r['widthM'] / 2 + 30)
                               for r in runways])
     blob = blob.difference(mapped.buffer(-0.5)).difference(rw)
@@ -787,7 +924,8 @@ def derive_holds(runways, taxiways, holds):
 
 
 def write_notes(icao, out, table, est, summary):
-    os.makedirs(NOTES_DIR, exist_ok=True)
+    notes = NOTES_DIRS.get(icao, NOTES_DIR)
+    os.makedirs(notes, exist_ok=True)
     L = [f'# {icao} {out["shortName"]}: bake notes (tools/bake_region_airports.py)', '', summary, '',
          f'magVarDeg {out["magVarDeg"]} (WMM2025 grid, epoch 2026.0, at the reference point)', '',
          '| End | True | Grid | Var | Mag | Published mag | Mag-published | Ident-mag | OSM length m | OA length m | Diff % | Width | Thr elev m | Displ m | OA end off m | OSM ways |',
@@ -806,7 +944,7 @@ def write_notes(icao, out, table, est, summary):
               'against AD 2.12\'s coordinates in tests/region-airports.test.mjs (all within 15 m).']
     L += ['', '## [EST] items', '', '| Item | Value | Reason |', '|---|---|---|']
     L += [f'| {a} | {b} | {c} |' for a, b, c in est]
-    with open(os.path.join(NOTES_DIR, f'{icao}.md'), 'w') as f:
+    with open(os.path.join(notes, f'{icao}.md'), 'w') as f:
         f.write('\n'.join(L) + '\n')
 
 
@@ -815,8 +953,8 @@ def main():
     wmm = Wmm()
     oa_ap, oa_rw = load_ourairports()
     for icao in want:
-        if not os.path.exists(os.path.join(OSM_DIR, icao, 'aero.osm.pbf')):
-            print(f'{icao}: no OSM box yet ({OSM_DIR}/{icao}/aero.osm.pbf), skipped')
+        if not os.path.exists(os.path.join(osm_dir(icao), icao, 'aero.osm.pbf')):
+            print(f'{icao}: no OSM box yet ({osm_dir(icao)}/{icao}/aero.osm.pbf), skipped')
             continue
         table = bake(icao, wmm, oa_ap, oa_rw)
         for t in table:

@@ -28,7 +28,7 @@ import { createMap } from '../src/ui/map.js';
 import { makeState, makeAp, derive, toMap, magToGrid } from './dev-ui-mock.js';
 
 const KOREA = ['RKSS', 'RKSI', 'RKPC'];
-const REGION = [...KOREA, 'RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD'];
+const REGION = [...KOREA, 'RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN'];
 const airports = (await Promise.all((EAST_ASIA_ON ? REGION : KOREA).map(async (i) => (await fetch(`../data/airports/${i}.json`)).json())))
   .map((a) => ({ ...a, runways: a.runways.map((r) => ({ ...r, ends: r.ends.map((e, j) => ({ ...e, hdgGridDeg: e.hdgGridDeg ?? Math.atan2(r.ends[1 - j].x - e.x, r.ends[1 - j].y - e.y) * 180 / Math.PI })) })) }));
 const coast = await (await fetch(EAST_ASIA_ON ? '../data/coast-region.json' : '../data/coast.json')).json();

@@ -16,7 +16,7 @@ const ICAOS = process.argv.slice(2).filter((a) => /^[A-Z]{4}$/.test(a));
 const GROUND = process.argv.includes('--ground') ? 1 : 0;                       // Part 7's ground on
 const SHOT = process.argv.includes('--shots') ? process.argv[process.argv.indexOf('--shots') + 1] : null;   // a picture at each stand: v060-<tag>-stand-<icao>-{day,night}.png
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', import.meta.url).pathname);
-const LIST = ICAOS.length ? ICAOS : ['ZSPD', 'ZSSS', 'ZSQD', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'RKPK'];   // (the Korean three work too: RKSS RKSI RKPC)
+const LIST = ICAOS.length ? ICAOS : ['ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'RKPK'];   // (the Korean three work too: RKSS RKSI RKPC)
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
 let bad = 0;
 try {
@@ -29,8 +29,8 @@ try {
     const rw = ap.runways.filter((r) => r.ends.some((e) => e.ils)).sort((p, q) => q.lengthM - p.lengthM)[0];
     const arr = rw.ends.find((e) => e.ils).ident;
     for (const st of ap.stands) if (!(st.leadIn && st.leadIn.length > 1)) { st.hdgGridDeg = ((standHeading(ap, st) * 180) / Math.PI + 360) % 360; st.hdgFixed = true; }
-    const want = standList(ap, typeById('a321neo')).find((x) => x.gate).ref;
-    await page.goto(`${BASE}?test&eastasia=1&cities=1&ground=${GROUND}&origin=${icao}&dep=${arr}&dest=${icao}&arr=${arr}&start=gate&stand=${encodeURIComponent(want)}&view=orbit`);
+    const offered = standList(ap, typeById('a321neo')); const want = (offered.find((x) => x.gate) || offered[0]).ref;   // (an airport with no gates mapped: its first stand; v0.6.1, Yancheng)
+    await page.goto(`${BASE}?test&eastasia=1&cities=1&ground=${GROUND}&origin=${icao}&dep=${arr}&dest=${icao}&arr=${arr}&start=gate&stand=${encodeURIComponent(want)}&view=orbit${process.env.E2E_EXTRA || ''}`);
     await page.waitForFunction(() => window.__fs && window.__fs.gate && window.__fs.gate.phase === 'parked' && window.__fs.frames > 30, null, { timeout: 60000 });
     const out = [];
     for (const [tod, hourUtc] of [['day', 3], ['night', 14]]) {

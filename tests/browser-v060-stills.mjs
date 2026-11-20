@@ -2,6 +2,8 @@
 // compared exactly (tests/v060-pixdiff.mjs). In Chrome on the Mac's GPU, through the CPU guard, from GameDump:
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 20 -- node games/flight-sim/tests/browser-v060-stills.mjs \
 //     --base http://127.0.0.1:8014/games/flight-sim/ --tag base [--headed] [names or groups: part1 part6 part7 ...]
+// v0.6.1: --prefix <p> names the pictures <p>-<tag>-<name>.png (v060 by default); --pending adds ?pending=1 (an airport
+// still in the manifest's airportsPending), --nocull ?cull=0 (draw what is out of view too), --q '<more query>' anything else.
 // Headless Chrome (ANGLE on Metal) by default; the JSON records the mode and the WebGL renderer string, and marks
 // the fps not valid on SwiftShader. Before and after pictures must be made the same way (both headless).
 // --base is the URL of the game's folder (the page used is <base>tests/dev-world.html). Writes
@@ -73,7 +75,7 @@ SHOTS['world-3000-shanghai-night'] = { q: look(31.235, 121.5, 3000, 285, -12), m
 SHOTS['world-10000-osaka'] = { q: look(34.69, 135.5, 10000, 30, -20), ms: DAY };
 SHOTS['world-10000-fukuoka'] = { q: look(33.59, 130.4, 10000, 160, -20), ms: DAY };
 SHOTS['world-10000-busan'] = { q: look(35.16, 129.06, 10000, 30, -20), ms: DAY };
-const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34' };
+const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04' };   // (ZSYN: v0.6.1)
 for (const [icao, end] of Object.entries(FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: NIGHT };
@@ -105,6 +107,24 @@ SHOTS['terrace-namhae-3000'] = { q: look(34.745, 127.90, 3000, 200, -20), ms: DA
 SHOTS['terrace-boso-1000'] = { q: look(35.12, 140.03, 1000, 90, -14), ms: DAY };
 SHOTS['terrace-hadong-1000'] = { q: look(35.17, 127.70, 1000, 0, -14), ms: DAY };
 for (const k of ['west-gimpo', 'kanto', 'yangtze']) SHOTS[`ground-${k}-1000-night`] = { q: SHOTS[`ground-${k}-1000`].q, ms: NIGHT };
+// v0.6.1: the greenhouses' tunnels, low over the Nakdong delta's and Gimpo's plain's glass, and from straight above.
+// v0.6.1: Gimhae's 18R, its landing threshold displaced 600 m (Korea's eAIP), from 500 ft on the approach and from 150 ft over the pavement's end.
+SHOTS['RKPK-18R-final'] = { q: 'app=RKPK:18R&ft=500&pitch=-5', ms: DAY };
+SHOTS['RKPK-18R-final-night'] = { q: 'app=RKPK:18R&ft=500&pitch=-5', ms: NIGHT };
+SHOTS['RKPK-36L-final-night'] = { q: 'app=RKPK:36L&ft=500&pitch=-5', ms: NIGHT };
+// v0.6.1: the aprons from above (the ground between an apron's pieces and round the remote stands), and the bare
+// ground of the Nakdong delta's new town from low.
+SHOTS['apron-rkpk'] = { q: 'x=131300&y=-90750&agl=600&hdg=30&pitch=-35', ms: DAY };
+SHOTS['apron-rkpk-south'] = { q: 'x=130850&y=-91950&agl=500&hdg=25&pitch=-32', ms: DAY };
+SHOTS['apron-zsyn'] = { q: 'x=-677750&y=-259750&agl=500&hdg=45&pitch=-30', ms: DAY };
+SHOTS['bare-nakdong-500'] = { q: look(35.13, 128.90, 500, 200, -18), ms: DAY };
+SHOTS['gh-pyeongchang-250'] = { q: look(37.3817, 128.4023, 250, 0, -14), ms: DAY };
+SHOTS['gh-pyeongchang-600'] = { q: look(37.3817, 128.4023, 600, 40, -25), ms: DAY };
+SHOTS['gh-nakdong-300'] = { q: look(35.13, 128.90, 300, 200, -16), ms: DAY };
+SHOTS['gh-nakdong-600'] = { q: look(35.13, 128.90, 600, 200, -22), ms: DAY };
+SHOTS['gh-nakdong-down-1200'] = { q: look(35.13, 128.90, 1200, 0, -80), ms: DAY };
+SHOTS['gh-gimpo-300'] = { q: look(37.68, 126.47, 300, 0, -16), ms: DAY };
+SHOTS['gh-gimpo-down-1200'] = { q: look(37.68, 126.47, 1200, 0, -80), ms: DAY };
 const GROUPS = {
   dod: ['fuji-haneda-arrival', 'gimhae-approach'],
   down: [800, 1500, 2500, 5000].map((ft) => `down-pyeongchang-${ft}`),
@@ -119,6 +139,7 @@ const GROUPS = {
   part1: ['gimpo-day', 'jeju-day', 'incheon-day', 'seoul-night'],
   part6: Object.keys(SHOTS).filter((n) => n.startsWith('seoul-') && n !== 'seoul-night'),
   part7: Object.keys(SHOTS).filter((n) => n.startsWith('ground-')),
+  gh: Object.keys(SHOTS).filter((n) => n.startsWith('gh-')),
 };
 
 // The page's frame clock, replaced before the page runs.
@@ -149,9 +170,11 @@ const INIT = () => {
 function args() {
   const a = process.argv.slice(2), o = { base: null, tag: null, names: [] };
   for (let i = 0; i < a.length; i++) {
-    if (['--headed', '--region', '--cities', '--ground'].includes(a[i])) continue;
+    if (['--headed', '--region', '--cities', '--ground', '--pending', '--nocull'].includes(a[i])) continue;
     else if (a[i] === '--base') o.base = a[++i];
     else if (a[i] === '--tag') o.tag = a[++i];
+    else if (a[i] === '--q') o.q = a[++i];             // v0.6.1: more for the page's query ("&trees=1")
+    else if (a[i] === '--prefix') o.prefix = a[++i];   // v0.6.1: the pictures' prefix (v060 by default; v061 for v0.6.1's)
     else o.names.push(a[i]);
   }
   if (!o.base || !o.tag) { console.error('usage: node browser-v060-stills.mjs --base <game folder url> --tag <tag> [names|part1|part6|part7]'); process.exit(2); }
@@ -170,7 +193,7 @@ const HEADED = process.argv.includes('--headed');
 const REGION = process.argv.includes('--region');
 // Part 6's and Part 7's own flags (?cities=1, ?ground=1), with or without the region.
 // Always explicit, whatever the shipped defaults: without --region, --cities or --ground the page is v0.5.8's Korea.
-const EXTRA = `&cities=${process.argv.includes('--cities') ? 1 : 0}&ground=${process.argv.includes('--ground') ? 1 : 0}`;
+const EXTRA = `&cities=${process.argv.includes('--cities') ? 1 : 0}&ground=${process.argv.includes('--ground') ? 1 : 0}${process.argv.includes('--pending') ? '&pending=1' : ''}${process.argv.includes('--nocull') ? '&cull=0' : ''}`;   // (--pending, v0.6.1: an airport still in the manifest's airportsPending)
 const browser = await chromium.launch(HEADED
   ? { channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--enable-precise-memory-info', '--js-flags=--expose-gc'] }
   : { channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist', '--enable-precise-memory-info', '--js-flags=--expose-gc'] });
@@ -190,7 +213,7 @@ try {
     const q = shot.q.replace(/&aglAt=[^&]*/, '');
     const t0 = Date.now();
     const log = (m) => { if (process.env.V060_DEBUG) console.log(`  [${((Date.now() - t0) / 1000).toFixed(1)} s] ${name}: ${m}`); };
-    await page.goto(`${opt.base}tests/dev-world.html?hud=0&${q}&eastasia=${REGION ? 1 : 0}${EXTRA}`);
+    await page.goto(`${opt.base}tests/dev-world.html?hud=0&${q}&eastasia=${REGION ? 1 : 0}${EXTRA}${opt.q || ''}`);
     log('loaded');
     try {
       await page.waitForFunction(() => window.__dev && window.__raf && window.__raf.has(), null, { timeout: 90000, polling: 250 });
@@ -245,7 +268,7 @@ try {
       const glRenderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
       return { url, glRenderer, lat, lon, cam: { ...cam }, calls: ri.calls, triangles: ri.triangles, stats: { ...w.stats }, sun: w.sky.state.sunAltDeg, night: w.uniforms.uNight.value, exposure: d.renderer.toneMappingExposure, loadMs: d.loadMs, tilesMs, storeTiles: w.heightfield.tiles ? w.heightfield.tiles.resident().length : 0, misses: w.heightfield.tiles ? w.heightfield.tiles.misses : 0 };
     }, { ms: shot.ms, aglAt: aglAt ? [parseFloat(aglAt[1]), parseFloat(aglAt[2])] : null, steps: STEPS, region: REGION });
-    const file = `${OUT}/v060-${opt.tag}-${name}.png`;
+    const file = `${OUT}/${opt.prefix || 'v060'}-${opt.tag}-${name}.png`;
     writeFileSync(file, Buffer.from(r.url.split(',')[1], 'base64'));
     log('captured');
     // The frame rate on real frames, then the heap after a GC.

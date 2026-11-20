@@ -6,6 +6,8 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -15,7 +17,7 @@ const DAY = KST(2026, 11, 10, 13), NIGHT = KST(2026, 11, 9, 23);
 const PRESETS = ['clear', 'few', 'overcast', 'rain', 'thunderstorm', 'snow', 'fog', 'crosswind'];
 const mode = process.argv[2] || 'all';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 const errors = [];
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };

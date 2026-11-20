@@ -6,6 +6,10 @@
 // One instanced mesh of gabled houses round the camera (±4 km), placed on the GPU like the
 // cities' blocks: a slot per 62.5 m cell (two fine pixels), seeded by the cell's index (the same
 // every run), kept where the fine cover (finecover.js's window) says built-up or, rarely, crop.
+// v0.6.1: only the slots that can hold a building are drawn. The CPU reads the same fine cover
+// and the same hashes (candidateCells(), exact integers) and lists a superset of what the
+// shader keeps, so the picture is the same and instanceCount falls from 16,384 to the few
+// hundred or thousand cells with a village, a shed or a farmhouse (229k triangles before).
 // Each country has its own look (the camera's country, region.js): Korea's blue, orange and grey
 // steel roofs over white walls; Japan's dark tiles; the Yangtze delta's three- and four-storey
 // village houses. A few warm windows at night.
@@ -13,11 +17,49 @@
 // origin"), never from float32 map metres.
 
 import * as THREE from '../../vendor/three.module.js';
-import { FINE_GLSL, FINE_PX } from './finecover.js';
+import { FINE_GLSL, FINE_PX, ihash } from './finecover.js';
 import { countryAt } from './region.js';
+import { coverReader } from './clipwindow.js';
 
 const CELL_PX = 2;                 // fine pixels a slot cell (62.5 m)
 const HALF = 64;                   // cells each side of the camera: ±4 km
+const SNAP = 16;                   // the list's anchor moves a kilometre at a time
+const SPAN = 2 * HALF + SNAP - 1;  // cells a side the list covers: ±HALF round every camera cell of one anchor
+const X0 = -400000, Y0 = -400000;  // the fine lattice's origin (finecover.js)
+
+
+// The cells of the SPAN x SPAN square from (ai - HALF, aj - HALF) that may hold a building: the
+// shader's own rule (its fine pixel built-up or crop, the hashes, the 250 m built-up share),
+// with a margin wherever a float could fall either side, so this is never short of what the
+// shader keeps (it still decides; a cell listed and not kept draws nothing). texel(P, Q): the
+// fine cover's class + 1; urbanAt(x, y, lohi): the least and the most built-up share (0..1) of
+// the four 250 m cells round the point, between which the shader's bilinear sample lies.
+// Writes the cells' offsets from the anchor into `out` (pairs) and returns how many.
+export function candidateCells(ai, aj, texel, urbanAt, out) {
+  const E = 1e-6, UM = 0.01, lohi = [0, 0];
+  let n = 0;
+  for (let j = -HALF; j < -HALF + SPAN; j++) for (let i = -HALF; i < -HALF + SPAN; i++) {
+    const cx = ai + i, cy = aj + j;
+    const h0 = ihash(cx, cy, 71), h1 = ihash(cx, cy, 72);
+    // The building's own pixel: floor(0.25 + 1.5 h); both where h sits on the step.
+    const px0 = h0 < 0.5 - E ? 0 : 1, px1 = h0 > 0.5 + E ? 1 : 0;       // px1..px0
+    const py0 = h1 < 0.5 - E ? 0 : 1, py1 = h1 > 0.5 + E ? 1 : 0;
+    let built = false, crop = false;
+    for (let b = py1; b <= py0; b++) for (let a = px1; a <= px0; a++) {
+      const fc = texel(cx * CELL_PX + a, cy * CELL_PX + b);
+      if (fc === 6) built = true; else if (fc === 5) crop = true;
+    }
+    if (!built && !crop) continue;
+    const h2 = ihash(cx, cy, 73);
+    let keep = crop && h2 <= 0.022 + E;
+    if (!keep && built) {
+      urbanAt(X0 + (cx * CELL_PX + 0.25 + 1.5 * h0) * FINE_PX, Y0 + (cy * CELL_PX + 0.25 + 1.5 * h1) * FINE_PX, lohi);
+      keep = (lohi[0] < 0.34 + UM && h2 <= 0.82 + E) || (ihash(cx, cy, 75) >= 0.86 - E && lohi[1] > 0.12 - UM && lohi[0] < 0.6 + UM);
+    }
+    if (keep) { out[n * 2] = i; out[n * 2 + 1] = j; n++; }
+  }
+  return n;
+}
 export const RURAL_MAX_AGL = 3500; // m above the ground: nothing above this
 const COUNTRY = { KR: 0, KP: 0, other: 0, JP: 1, CN: 2 };
 
@@ -43,21 +85,46 @@ function houseGeometry() {
   return g;
 }
 
-export function createRural(scene, uniforms, chunks) {
+// fine: finecover.js's object (terrain.fine). Without it (an older caller) every slot is
+// drawn, as in v0.6.0.
+export function createRural(scene, uniforms, chunks, { fine = null } = {}) {
   const base = houseGeometry();
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute('position', base.getAttribute('position'));
   geo.setAttribute('normal', base.getAttribute('normal'));
   geo.setAttribute('part', base.getAttribute('part'));
-  const cells = new Float32Array((2 * HALF) ** 2 * 2);
+  const LISTED = !!fine;
+  const cells = new Float32Array((LISTED ? SPAN * SPAN : (2 * HALF) ** 2) * 2);
   let k = 0;
-  for (let j = -HALF; j < HALF; j++) for (let i = -HALF; i < HALF; i++) { cells[k++] = i; cells[k++] = j; }
-  geo.setAttribute('cell', new THREE.InstancedBufferAttribute(cells, 2));
-  geo.instanceCount = cells.length / 2;
+  if (!LISTED) for (let j = -HALF; j < HALF; j++) for (let i = -HALF; i < HALF; i++) { cells[k++] = i; cells[k++] = j; }
+  const cellAttr = new THREE.InstancedBufferAttribute(cells, 2);
+  if (LISTED) cellAttr.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('cell', cellAttr);
+  geo.instanceCount = LISTED ? 0 : cells.length / 2;
   const u = Object.assign({}, uniforms, {
-    uRCell: { value: new THREE.Vector2() },      // the camera's slot cell (an integer)
+    uRCell: { value: new THREE.Vector2() },      // the list's anchor cell (v0.6.0: the camera's slot cell), an integer
     uCountry: { value: 0 },
+    uGlassOn: { value: 1 },                      // 0 with ?greenhouses=0 (no tunnels: the houses stand on the glass ground, as v0.6.0)
   });
+  // The list: made again when the anchor moves and when the fine cover's window or the 250 m
+  // cover's (clipwindow.js's coverReader: the very texels the shader samples) changes.
+  let listAi = NaN, listAj = NaN, listVersion = -1, covVersion = -1, listN = 0;
+  const cov = LISTED ? coverReader(uniforms) : null;
+  const nat = uniforms.uNat.value;
+  const urbanAt = (x, y, lohi) => {
+    if (!cov) { lohi[0] = lohi[1] = 0; return; }
+    const i = Math.floor((x - nat.x) / nat.z - 0.5), j = Math.floor((y - nat.y) / nat.z - 0.5);
+    const cl = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+    const i0 = cl(i, cov.lo[0], cov.hi[0]), i1 = cl(i + 1, cov.lo[0], cov.hi[0]), j0 = cl(j, cov.lo[1], cov.hi[1]), j1 = cl(j + 1, cov.lo[1], cov.hi[1]);
+    const a = cov.at(i0, j0), b = cov.at(i1, j0), c = cov.at(i0, j1), d = cov.at(i1, j1);
+    lohi[0] = Math.min(a, b, c, d) / 255; lohi[1] = Math.max(a, b, c, d) / 255;
+  };
+  const relist = (ai, aj) => {
+    listN = candidateCells(ai, aj, fine.reader(), urbanAt, cells);
+    cellAttr.clearUpdateRanges(); cellAttr.addUpdateRange(0, Math.max(listN * 2, 2)); cellAttr.needsUpdate = true;
+    geo.instanceCount = listN;
+    listAi = ai; listAj = aj; listVersion = fine.version; covVersion = cov ? cov.version() : 0;
+  };
   const RANGE = HALF * CELL_PX * FINE_PX;
   const mat = new THREE.ShaderMaterial({
     uniforms: u,
@@ -68,6 +135,7 @@ export function createRural(scene, uniforms, chunks) {
       ${FINE_GLSL}
       uniform ivec2 uRCell;
       uniform int uCountry;
+      uniform float uGlassOn;
       attribute vec2 cell;
       attribute float part;
       varying vec3 vRel, vN, vWall, vRoof, vLocal;
@@ -95,6 +163,11 @@ export function createRural(scene, uniforms, chunks) {
         float gh = max(flattenRunways(m, raw, zone), 0.0);
         vec2 nn = texture(uNormal, natUv(m)).rg * (255.0 / 127.0) - (128.0 / 127.0);
         keep *= step(cov.a, 0.2) * step(zone, 0.001) * step(length(nn), 0.32) * step(20.0, seaDistance(m, raw)) * step(15.0, inlandDistance(m));
+        // v0.6.1: not on glass ground (terrain.js's glassy, at the building's pixel), where
+        // greenhouses.js's tunnels stand now: a house there would rise through them.
+        float glassy = (1.0 - smoothstep(0.12, 0.30, cov.b)) * smoothstep(0.10, 0.30, cov.g) * (1.0 - smoothstep(0.03, 0.06, length(nn)))
+                     * smoothstep(0.50, 0.58, glassPatch(vec2(P - uFineOrg) + 0.5));
+        keep *= 1.0 - built * step(0.5, glassy) * uGlassOn;
         // Thin out towards the edge of the range and with height.
         vec2 dc = pm - vec2(uCamPos.x, -uCamPos.z);
         float dist = length(dc);
@@ -176,18 +249,25 @@ export function createRural(scene, uniforms, chunks) {
   mesh.frustumCulled = false;
   mesh.name = 'rural';
   scene.add(mesh);
-  const tris = (base.getAttribute('position').count / 3) * geo.instanceCount;
+  const TRIS_EACH = base.getAttribute('position').count / 3;
   return {
     mesh,
+    get listed() { return listN; },
+    setGlass(on) { u.uGlassOn.value = on ? 1 : 0; },
     // camMap: the camera's map position; agl: its height above the ground (m).
     update(camMap, origin, agl) {
       const on = agl < RURAL_MAX_AGL && uniforms.uFineOn && uniforms.uFineOn.value > 0.5;
       mesh.visible = !!on;
       if (!on) return { tris: 0, drawCalls: 0 };
       const s = CELL_PX * FINE_PX;
-      u.uRCell.value.set(Math.floor((camMap.x + 400000) / s), Math.floor((camMap.y + 400000) / s));
+      const ci = Math.floor((camMap.x - X0) / s), cj = Math.floor((camMap.y - Y0) / s);
       u.uCountry.value = COUNTRY[countryAt(camMap.x, camMap.y)] || 0;
-      return { tris, drawCalls: 1 };
+      if (!LISTED) { u.uRCell.value.set(ci, cj); return { tris: TRIS_EACH * geo.instanceCount, drawCalls: 1 }; }
+      const ai = Math.floor(ci / SNAP) * SNAP, aj = Math.floor(cj / SNAP) * SNAP;
+      if (ai !== listAi || aj !== listAj || fine.version !== listVersion || (cov && cov.version() !== covVersion)) relist(ai, aj);
+      u.uRCell.value.set(ai, aj);
+      mesh.visible = listN > 0;
+      return listN > 0 ? { tris: TRIS_EACH * listN, drawCalls: 1 } : { tris: 0, drawCalls: 0 };
     },
     dispose() { scene.remove(mesh); geo.dispose(); mat.dispose(); },
   };

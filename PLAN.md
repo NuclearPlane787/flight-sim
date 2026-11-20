@@ -156,6 +156,15 @@ Shane's decisions are in `V060.md` (2026-11-19, final); `STATUS.md`'s v0.6.0 ent
 - **The ground** (`GROUND_ON`): WorldCover's land cover at about 31 m near the camera (`finecover.js`), with Korea's 250 m cover re-aggregated from it; the field mosaic, tracks, tree lines and terraces, the canopy and trees to 3,000 m above the ground, houses and sheds by country (`rural.js`), greenhouse ground, ponds.
 - **Size and cost:** `data/` is 153 MB (13 MB before), no file over 6 MB; the worst frame in a 16× cruise from Seoul to Tokyo is 16.8 ms; 1.3 to 1.9 M triangles near the big cities at 60 fps.
 
+### v0.6.1 (2026-11-20)
+
+- **Yancheng Nanyang (ZSYN),** the twelfth airport, baked as the eight were (`tools/bake_region_airports.py`, its 30 m patch by `bake_region_patches.py`); its stands and holds are made from OSM's geometry where OSM names none (`[EST]`), and its widebody starts are on the runway or a final only (a code C aerodrome). It waited behind `PENDING_ON` (`src/world/region.js`; `?pending=1`, `FS_PENDING=1`; the manifest's `airportsPending` and `patchesPending`) until it passed the check the eight passed.
+- **The culling:** houses, trees and the greenhouses' tunnels are listed on the CPU only for the cells where one stands (from the same data and hashes the shaders use), and the cities' blocks, the centres' low buildings and the parked traffic are drawn only in view. Near the big cities the scene is about a million triangles (1.3 to 1.9 M in v0.6.0). `?cull=0` turns it off for comparison.
+- **Greenhouses** (`src/world/greenhouses.js`): low instanced tunnels on the glass ground near the camera, the glass patches on an exact lattice (`glassPatch()`) so the CPU can list them; `?greenhouses=0` leaves them out.
+- **The small waters** (`fineWater()` in `finecover.js`): a nine-pixel quadratic B-spline where the four-pixel footprint holds water.
+- **The taxi graph** (`ground/taxi.js`, `ground/gate-flow.js`): a runway's rectangle runs between its pavement ends, not its thresholds (Gimhae 18R's 600 m displacement, Haneda's three); taxi-in exits ahead at Narita and at Korea's airports with the region on (with it off, Korea's 624 cases are v0.5.8's exactly).
+- **Testing:** 1232 unit tests, which run in a clean clone of the public repository (`region-airports.test.mjs` skips OurAirports' cross-check without `reference/raw/`); every browser script headless by default, `--headed` to watch.
+
 ## The aircraft: A321neo
 
 ### Published numbers (Airbus's A321neo page)

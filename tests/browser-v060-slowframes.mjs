@@ -6,7 +6,7 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const icao = process.argv[2] || 'RJAA', stand = process.argv[3] || '11';
-const RW = { RJAA: '34L', RJTT: '34L', ZSSS: '36R', ZSPD: '34L', RJBB: '06R', RJFF: '16L', RKPK: '36L', ZSQD: '34', RKSS: '14R' }[icao];
+const RW = { RJAA: '34L', RJTT: '34L', ZSSS: '36R', ZSPD: '34L', RJBB: '06R', RJFF: '16L', RKPK: '36L', ZSQD: '34', ZSYN: '04', RKSS: '14R' }[icao];
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

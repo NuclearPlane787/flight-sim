@@ -32,6 +32,7 @@ import { createClouds } from './clouds.js';
 import { createPrecip } from './precip.js';
 import { EAST_ASIA_ON, GROUND_ON, CITIES_ON } from './region.js';
 import { createRural } from './rural.js';
+import { createGreenhouses } from './greenhouses.js';
 import { clusterAirports, createAirportSet, MORE } from './airport-set.js';
 import { placeParked, blockedByPlayer } from './traffic-layout.js';
 
@@ -50,13 +51,17 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
   const clouds = createClouds(scene, uniforms);
   const precip = createPrecip(scene, uniforms);
   const terrain = createTerrain(scene, uniforms, chunks);
-  const trees = createTrees(scene, uniforms, chunks);
+  const trees = createTrees(scene, uniforms, chunks, { fine: terrain.fine });
   const cities = createCities(scene, uniforms, chunks, ap);
   // M2: aprons, taxiways, stands and terminals; parked aircraft and ground vehicles. Each is
   // optional, so a failure there leaves the M1 world working.
   const optional = (name, make) => { try { return make(); } catch (e) { console.warn(`world: ${name} off:`, e); return null; } };
   // v0.6.0 Part 7 (behind GROUND_ON): the countryside's buildings (rural.js). Nothing without the flag.
-  const rural = GROUND_ON ? optional('rural', () => createRural(scene, uniforms, chunks)) : null;
+  const rural = GROUND_ON ? optional('rural', () => createRural(scene, uniforms, chunks, { fine: terrain.fine })) : null;
+  // v0.6.1: greenhouses as low tunnels on the greenhouse ground, near the camera (greenhouses.js; ?greenhouses=0 leaves them out).
+  const GH_ON = GROUND_ON && !(typeof location !== 'undefined' && /[?&]greenhouses=0\b/.test(location.search || ''));
+  if (rural && rural.setGlass) rural.setGlass(GH_ON);
+  const greenhouses = GH_ON ? optional('greenhouses', () => createGreenhouses(scene, uniforms, chunks, { fine: terrain.fine })) : null;
   // v0.6.0 Part 6 (behind CITIES_ON): the landmarks' own models (landmarks.js) and the dense
   // centres from real buildings (centres.js), whose mask keeps the procedural blocks out from
   // under them. Neither module is loaded without the flag.
@@ -91,6 +96,9 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
 
   const camMap = { x: 0, y: 0 };
   const camScene = new THREE.Vector3();
+  const viewFrustum = new THREE.Frustum(), projView = new THREE.Matrix4();   // v0.6.1: the view's, each frame
+  // (?cull=0 on the URL draws everything, in view or not, as v0.6.0 did: for comparing pictures.)
+  const CULL = !(typeof location !== 'undefined' && /[?&]cull=0\b/.test(location.search || ''));
   let time = 0;
   let lastCamGround = 0;   // the ground under the camera when its tile was last resident
   const stats = { drawCalls: 0, triangles: 0, terrainLevels: 0, finestStep: 0, trees: 0, buildings: 0, lights: 0, agl: 0 };
@@ -110,6 +118,11 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       camScene.setFromMatrixPosition(camera.matrixWorld);
       camMap.x = origin.x + camScene.x;
       camMap.y = origin.y - camScene.z;
+      // v0.6.1: the view's frustum (scene coordinates), for the parts that leave out what is
+      // behind the camera or beside its view (the cities' tiles, the centres' rows, parked aircraft).
+      projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      viewFrustum.setFromProjectionMatrix(projView);
+      const frustum = CULL && EAST_ASIA_ON ? viewFrustum : null;   // (with the region off the draws are v0.5.8's: nothing culled)
       // v0.6.0: the camera's own ground, only once its tile is in (a frame drawn behind the menu,
       // or the first after a jump, would read open sea and count a miss that isn't the sim's);
       // until then the last ground it knew. With Korea's tiles all resident this is heightAt().
@@ -132,15 +145,16 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       precip.update({ camera, origin, state, dt, paused });
       const t = terrain.update(camMap, origin, agl);
       const treeTris = trees.update(camMap, origin, agl);
-      const c = cities.update(camMap, origin, agl);
+      const c = cities.update(camMap, origin, agl, frustum);
       const ru = rural ? rural.update(camMap, origin, agl) : NONE;   // v0.6.0 Part 7
+      const gh = greenhouses ? greenhouses.update(camMap, origin, agl) : NONE;   // v0.6.1
       // v0.6.0 Part 6: their own stats objects ({ drawCalls, triangles, … }).
       if (landmarks) landmarks.update({ camMap, origin, camScene, agl });
-      if (centres) centres.update({ camMap, origin, camScene, agl });
+      if (centres) centres.update({ camMap, origin, camScene, agl, frustum });
       const p6calls = (landmarks?.stats.drawCalls || 0) + (centres?.stats.drawCalls || 0), p6tris = (landmarks?.stats.triangles || 0) + (centres?.stats.triangles || 0);
       const r = runways.update(camMap, origin, camScene);
       const a = aprons ? aprons.update({ camMap, origin }) : NONE;
-      const tr = traffic ? traffic.update({ camera, origin, camMap }, paused ? 0 : dt) : NONE;
+      const tr = traffic ? traffic.update({ camera, origin, camMap, frustum }, paused ? 0 : dt) : NONE;
       const cl = cityLights ? cityLights.update({ camMap, origin, camScene, agl }) || NONE : NONE;
       const tl = taxiLights ? taxiLights.update({ camMap, origin, camScene }) || NONE : NONE;
 
@@ -151,15 +165,15 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       stats.buildings = c.instances;
       stats.lights = r.lights + (tl.lights || 0);
       stats.cityLights = cl.lights || 0;
-      stats.drawCalls = (sky.drawCalls ?? 1) + t.drawCalls + trees.drawCalls + c.drawCalls + r.drawCalls + a.drawCalls + tr.drawCalls + (cl.drawCalls || 0) + (tl.drawCalls || 0) + (ru.drawCalls || 0) + p6calls;
-      stats.triangles = 960 * 2 + t.tris + treeTris + c.tris + r.tris + a.triangles + tr.triangles + (cl.tris || 0) + (tl.tris || 0) + (ru.tris || 0) + p6tris;
+      stats.drawCalls = (sky.drawCalls ?? 1) + t.drawCalls + trees.drawCalls + c.drawCalls + r.drawCalls + a.drawCalls + tr.drawCalls + (cl.drawCalls || 0) + (tl.drawCalls || 0) + (ru.drawCalls || 0) + (gh.drawCalls || 0) + p6calls;
+      stats.triangles = 960 * 2 + t.tris + treeTris + c.tris + r.tris + a.triangles + tr.triangles + (cl.tris || 0) + (tl.tris || 0) + (ru.tris || 0) + (gh.tris || 0) + p6tris;
       if (airportSet) stats.airportsBuilt = airportSet.built().join(' ');
     },
 
     // Ground height and kind for anything that needs it (same as the sim's).
     heightAt: (x, y) => hf.heightAt(x, y),
   };
-  Object.assign(world, { rural, landmarks, centres });   // v0.6.0 Parts 6 and 7 (null without their flags)
+  Object.assign(world, { rural, greenhouses, landmarks, centres });   // v0.6.0 Parts 6 and 7 (null without their flags)
   return world;
 }
 

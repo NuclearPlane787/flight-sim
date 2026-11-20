@@ -16,6 +16,8 @@
 
 import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const CLOUD = !!process.env.FS_CLOUD;
 const { chromium } = CLOUD ? createRequire(import.meta.url)('playwright') : await import('/tmp/flight-sim/pw/node_modules/playwright/index.mjs');
@@ -24,7 +26,7 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 
-const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
+const browser = await chromium.launch(CLOUD ? {} : { channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 let r, wx, eng = null;
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

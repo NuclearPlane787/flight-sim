@@ -7,13 +7,15 @@
 // PW: the playwright module (default /tmp/flight-sim/pw/node_modules/playwright/index.mjs).
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const { chromium } = await import(pathToFileURL(process.env.PW || '/tmp/flight-sim/pw/node_modules/playwright/index.mjs').href);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const TYPE = process.env.WH_TYPE || 'a321neo';
-const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 const errors = [];
 let fails = 0;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra !== '' ? ` (${extra})` : ''}`); if (!ok) fails++; };

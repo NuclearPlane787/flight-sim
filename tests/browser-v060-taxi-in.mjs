@@ -18,7 +18,7 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   for (const [icao, rwy] of LIST) {
-    await page.goto(`${BASE}?test&eastasia=1&origin=${icao}&dep=${rwy}&dest=${icao}&arr=${rwy}&start=runway&view=orbit`);
+    await page.goto(`${BASE}?test&eastasia=1&origin=${icao}&dep=${rwy}&dest=${icao}&arr=${rwy}&start=runway&view=orbit${process.env.E2E_EXTRA || ''}`);
     await page.waitForFunction(() => window.__fs && window.__fs.frames > 30 && window.__fs.sim.state.onGround, null, { timeout: 60000 });
     const r = await page.evaluate(async () => {
       const f = window.__fs, d = f.dest, ax = f.runwayAxis(d.end, d.other);
@@ -34,7 +34,7 @@ try {
     });
     check(`${icao} ${rwy}: a taxi-in route after landing`, !!r && r.phase === 'taxi-in' && r.ahead > -15 && !!r.stand, r ? `${r.text} (${r.lengthM.toFixed(0)} m, the exit ${r.ahead.toFixed(0)} m ahead)` : 'none');
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${OUT}v060-taxi-in-${icao.toLowerCase()}-${rwy.toLowerCase()}.png` });
+    await page.screenshot({ path: `${OUT}${process.env.E2E_PREFIX || 'v060'}-taxi-in-${icao.toLowerCase()}-${rwy.toLowerCase()}.png` });
   }
   check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 } finally { await browser.close(); }

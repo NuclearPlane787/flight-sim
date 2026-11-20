@@ -473,7 +473,7 @@ export function createClipWindow(store, opts = {}) {
 //   don't clamp), and version() changes whenever that valid rectangle does, so the callers
 //   drop their cached answers and list their blocks again once new tiles are in.
 export function coverGrid(data, nx, ny) {
-  return { fit: true, lo: [0, 0], hi: [nx - 1, ny - 1], at: (i, j) => data[(j * nx + i) * 4 + 2], version: () => 0 };
+  return { fit: true, lo: [0, 0], hi: [nx - 1, ny - 1], at: (i, j, ch = 2) => data[(j * nx + i) * 4 + ch], version: () => 0 };   // (ch, v0.6.1: 0 forest, 2 built-up, 3 the airfields' mark)
 }
 
 export function coverReader(uniforms) {
@@ -489,7 +489,7 @@ export function coverReader(uniforms) {
   return {
     fit: false,
     lo: [-Infinity, -Infinity], hi: [Infinity, Infinity],
-    at: (i, j) => (i < ex || i > ez || j < ey || j > ew ? 0 : c[cw.texel(i + W.bi, j + W.bj) * 4 + 2]),
+    at: (i, j, ch = 2) => (i < ex || i > ez || j < ey || j > ew ? 0 : c[cw.texel(i + W.bi, j + W.bj) * 4 + ch]),
     version() {
       if (e.x !== ex || e.y !== ey || e.z !== ez || e.w !== ew) { ex = e.x; ey = e.y; ez = e.z; ew = e.w; ver++; }
       return ver;

@@ -32,6 +32,9 @@ import { LIVERIES, linearRgb } from './liveries-other.js';
 const AIRCRAFT_RANGE = 15000;     // m from an airport's bounds: parked aircraft drawn
 const FAR_DIST = 2000;            // m from the camera: parked aircraft use the far model beyond this
 const REPACK_MOVE = 200;          // m the camera moves before the near/far split is redone
+const VIEW_TURN_COS = Math.cos(0.75 * Math.PI / 180);  // v0.6.1: or turns 1.5 degrees (a quaternion's dot is the cosine of half the turn): the full models are the ones in view
+const VIEW_MOVE = 25;             // m: and with a view to cull by, after this much movement (a few hundred instances rewritten)
+const VIEW_SLACK = 0.03;          // m of sphere per m of distance: 1.7 degrees, past the turn that repacks
 const VEHICLE_RANGE = 6000;       // m: vehicles drawn and moving
 const VEHICLE_MAX_AGL = 1524;     // m (5,000 ft) above the airport
 const MAX_AIRPORTS = 4;
@@ -472,9 +475,23 @@ export function* trafficInSteps(scene, uniforms, chunks, airports, heightfield =
   // Rewrite the airliner buffers for the airports that are near now, splitting them into
   // near and far models by their distance from the camera (map x, y and height z).
   const packAt = { x: 0, y: 0, z: 0 };
+  // v0.6.1: the full model only for the aircraft the view can see (the far model and the shadow
+  // as before). view: { frustum, origin } of this frame, or null (then every near one, as v0.6.0);
+  // the split is redone when the camera has turned VIEW_TURN too, and each aircraft's sphere
+  // is wider by that turn at its distance, so nothing comes into view unpacked.
+  let view = null;
+  const viewQ = new THREE.Quaternion(), packQ = new THREE.Quaternion(), sphere = new THREE.Sphere();
+  let packP0 = NaN, packP5 = NaN;          // the projection's scale at the last split (the field of view and the aspect)
   function packAirliners(cx = packAt.x, cy = packAt.y, cz = packAt.z) {
     packAt.x = cx; packAt.y = cy; packAt.z = cz;
+    packQ.copy(viewQ);
     const far2 = FAR_DIST * FAR_DIST;
+    const inView = (p, d2) => {
+      if (!view) return true;
+      sphere.center.set(p.x - view.origin.x, p.z + 6, -(p.y - view.origin.y));
+      sphere.radius = 48 + VIEW_MOVE + Math.sqrt(d2) * VIEW_SLACK;   // the aircraft, the move and the turn before the next split
+      return view.frustum.intersectsSphere(sphere);
+    };
     for (const A of airliners) {
       const outs = [A.geo, A.fgeo, A.sgeo].map((g) => ({ g, pos: g.attributes.iPos.array, dat: g.attributes.iData.array, n: 0 }));
       const put = (o, p, s, i) => {
@@ -487,7 +504,9 @@ export function* trafficInSteps(scene, uniforms, chunks, airports, heightfield =
         s.parked.forEach((p, i) => {
           if (p.type !== A.ti) return;
           const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
-          put(dx * dx + dy * dy + dz * dz > far2 ? outs[1] : outs[0], p, s, i);
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 > far2) put(outs[1], p, s, i);
+          else if (inView(p, d2)) put(outs[0], p, s, i);
           put(outs[2], p, s, i);
         });
       }
@@ -546,8 +565,15 @@ export function* trafficInSteps(scene, uniforms, chunks, airports, heightfield =
         if (dh < VEHICLE_RANGE && dz < VEHICLE_MAX_AGL && dh < bestD) { bestD = dh; next = s; }
         airRel[s.ai].set(s.ox - origin.x, s.oy - origin.y);
       }
-      const moved = Math.hypot(cx - packAt.x, cy - packAt.y, cz - packAt.z) > REPACK_MOVE;
-      if (changed || (moved && sites.some((s) => s.near))) packAirliners(cx, cy, cz);
+      view = ctx.frustum ? { frustum: ctx.frustum, origin } : null;
+      const moved = Math.hypot(cx - packAt.x, cy - packAt.y, cz - packAt.z) > (view ? VIEW_MOVE : REPACK_MOVE);
+      // The split is the view's: redone when the camera has turned (about any axis: a roll too) or
+      // its projection has changed (a zoom, a resize), not only when it has moved.
+      camera.getWorldQuaternion(viewQ);
+      const pe = camera.projectionMatrix.elements;
+      const turned = !!view && (Math.abs(viewQ.dot(packQ)) < VIEW_TURN_COS || pe[0] !== packP0 || pe[5] !== packP5);
+      if (turned) { packP0 = pe[0]; packP5 = pe[5]; }
+      if (changed || ((moved || turned) && sites.some((s) => s.near))) packAirliners(cx, cy, cz);
 
       // Vehicles: step and upload only for the active airport.
       if (next !== activeSite) {

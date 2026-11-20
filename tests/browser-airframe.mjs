@@ -8,6 +8,8 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -16,7 +18,7 @@ const parts = process.argv.slice(2);
 const want = (p) => !parts.length || parts.includes(p);
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
-const browser = await chromium.launch({ channel: 'chrome', headless: !!process.env.FS_HEADLESS, args: ['--mute-audio', ...(process.env.FS_HEADLESS ? ['--use-angle=metal', '--ignore-gpu-blocklist'] : []), '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 
 // A stretched (+6 m ahead, +2 m behind: balanced on its gear, designs.js's nose-load check), long-winged (span 1.25) design with a bigger tail, eight engines
 // (four pairs on the wing), made in the page with the designs API.
@@ -77,7 +79,9 @@ async function fps() {
       // (v0.5.8: 0.87 M / 0.80 M; v0.6.0: 1.22 M / 1.19 M), so the triangle cap is 1.3 M (was 1.2 M); fps and draws unchanged.
       // v0.6.0 Part 7: the new ground (countryside houses, two more tree rings) adds ~0.35-0.4 M more (1.61 M / 1.53-1.55 M),
       // so the triangle cap is 1.7 M (was 1.3 M); fps and draws unchanged.
-      const ok = r.fps > 55 && r.triangles < 1.7e6 && r.calls <= 300;
+      // v0.6.1: the houses, the trees and the tunnels are drawn only where one stands, and the cities, the centres and the
+      // parked aircraft only in view: 1.13 M on Gimpo 14R and 0.90 M over Seoul, so the cap is v0.5.8's 1.2 M again.
+      const ok = r.fps > 55 && r.triangles < 1.2e6 && r.calls <= 300;
       check(`${base} ${label}: 60 fps within budget`, ok, `${r.fps.toFixed(0)} fps, ${(r.triangles / 1e6).toFixed(2)} M tris, ${r.calls} draws, cpu ${r.cpuMs?.toFixed?.(1)} ms`);
     };
     if (base === 'b777-300er') await measure('on Gimpo 14R');

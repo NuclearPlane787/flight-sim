@@ -4,9 +4,11 @@
 //   python3 tools/cpu-guard.py -- node tests/browser-weather-integration.mjs
 // Env: FS_URL (default http://localhost:8014/games/flight-sim/).
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const BASE = process.env.FS_URL || 'http://localhost:8014/games/flight-sim/';
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 try {

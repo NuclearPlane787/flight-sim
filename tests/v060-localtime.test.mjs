@@ -15,7 +15,7 @@ import {
 import { afternoonKst, afternoonAt, ScenarioStore, LASTFLIGHT_KEY } from '../src/scenarios.js';
 import { kstFieldValues, kstFromFields } from '../src/ui/sky-window.js';
 
-const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'RKPK', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSQD'];
+const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'RKPK', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN'];   // (ZSYN: v0.6.1)
 const AIRPORTS = ICAOS.map((id) => JSON.parse(readFileSync(new URL(`../data/airports/${id}.json`, import.meta.url), 'utf8')));
 setEastAsia(false);   // the flag-off tests below, whatever the shipped default
 const withRegion = (fn) => { setEastAsia(true); loadNodeRules(); try { return fn(); } finally { uninstallNodeRules(); setEastAsia(false); } };

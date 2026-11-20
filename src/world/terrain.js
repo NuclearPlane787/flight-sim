@@ -176,6 +176,7 @@ export function createTerrain(scene, uniforms, chunks) {
         float forest = smoothstep(0.35, 0.65, cov.r + wob * 0.5);
         float urban = smoothstep(0.30, 0.60, cov.b + wob * 0.4);
         float farm = smoothstep(0.30, 0.60, cov.g + wob * 0.4) * (1.0 - urban);
+        ${GROUND ? '// v0.6.1: no fields inside an airfield (airport-mask.js clears its forest and built-up cover, not its farm share:\n        // the ground between the aprons and round the remote stands was tilled plots): the airfield\'s own grass.\n        farm *= 1.0 - smoothstep(0.86, 0.98, cov250.a);' : ''}
 
         // Distance-faded detail.
         float detailFade = (1.0 - smoothstep(2500.0, 9000.0, dist)) * (1.0 - smoothstep(1000.0, 1800.0, uCamAgl));
@@ -213,14 +214,23 @@ export function createTerrain(scene, uniforms, chunks) {
         }
         alb = mix(alb, canopy * 0.9, treeLine * farm);                       // the tree lines between districts
         // Bare ground (river bars, tidal flats, quarries) and marsh, where the fine cover has them.
-        alb = mix(alb, mix(vec3(0.14, 0.13, 0.105), vec3(0.19, 0.175, 0.14), tex2), fineW * smoothstep(0.4, 0.6, fHi.y + wob * 0.3));
+        // (The water's distances, taken here once and outside any branch: their texture reads want
+        // their derivatives. The sea's and the rivers' edges further down use the same two.)
+        float sea0 = outside ? -5000.0 : seaDistance(m, vRawH), inl0 = outside ? 5000.0 : inlandDistance(m);
+        float bare = fineW * smoothstep(0.4, 0.6, fHi.y + wob * 0.3);
+        if (bare > 0.0) {
+          // v0.6.1: not one pale sheet (ground.js's bareGround). The graders' passes and the wheel tracks only on
+          // flat ground well away from the water: a river's bars and a shore's flats are bare too, and nobody drives there.
+          float made = (1.0 - smoothstep(0.03, 0.08, slope)) * smoothstep(150.0, 400.0, outside ? 0.0 : min(sea0, inl0));
+          alb = mix(alb, bareGround(gfp, glod, m, tex2, made), bare);
+        }
         alb = mix(alb, mix(vec3(0.07, 0.085, 0.045), vec3(0.11, 0.10, 0.05), tex1), fineW * smoothstep(0.4, 0.6, fHi.z + wob * 0.3));` : ''}
         ${GROUND ? 'canopy *= canopyCrowns(gfp, glod, normalize(vec2(uSunDir.x, -uSunDir.z) + 1e-4));' : ''}
         alb = mix(alb, canopy, forest);
         ${GROUND ? `// Built-up pixels in farm country, outside the towns: glass (the land cover maps the plains'
         // greenhouses as built-up), not concrete.
         float glassy = fineW * (1.0 - smoothstep(0.12, 0.30, cov250.b)) * smoothstep(0.10, 0.30, cov250.g + cov250.a * 0.0) * (1.0 - smoothstep(0.03, 0.06, slope));
-        glassy *= smoothstep(0.50, 0.58, vnoise(m * 0.0045 + 17.0));          // about two built-up patches in five are glass; the others are villages
+        glassy *= smoothstep(0.50, 0.58, glassPatch(gfp));                    // about two built-up patches in five are glass; the others are villages (v0.6.1: an exact lattice's value, which the CPU shares)
         if (glassy > 0.0) city = mix(city, greenhouseGround(gfp, glod), glassy);
         // Villages and the towns' edges: lots with yards and gardens, not one sheet of concrete.
         // (Everywhere but the densest centres: the suburbs' 250 m cells are nearly all built-up too.)
@@ -244,8 +254,8 @@ export function createTerrain(scene, uniforms, chunks) {
         }` : ''}
 
         // Water: the sea (with beaches) and inland water.
-        float sea = outside ? -5000.0 : seaDistance(m, vRawH);
-        float inl = outside ? 5000.0 : inlandDistance(m);
+        float sea = ${GROUND ? 'sea0' : 'outside ? -5000.0 : seaDistance(m, vRawH)'};
+        float inl = ${GROUND ? 'inl0' : 'outside ? 5000.0 : inlandDistance(m)'};
         // Wobble the river banks a little near the camera (the data is a 250 m grid).
         inl += (vnoise(m * 0.011) - 0.5) * 40.0 * (1.0 - smoothstep(4000.0, 12000.0, dist)) * (1.0 - smoothstep(-300.0, -150.0, -abs(inl)));
         float aa = max(fwidth(sea), 0.5);
@@ -265,7 +275,7 @@ export function createTerrain(scene, uniforms, chunks) {
         float wSea = 1.0 - smoothstep(-aa, aa, sea);
         float aai = max(fwidth(inl), 0.5);
         float wInl = (1.0 - smoothstep(-aai, aai, inl)) * (1.0 - wSea);
-        ${GROUND ? '// Ponds, canals and reservoirs too small for the 250 m water field.\n        wInl = max(wInl, fineW * smoothstep(0.42, 0.58, fLo.w + wob * 0.15) * (1.0 - wSea) * (1.0 - smoothstep(0.3, 0.9, vZone)));' : ''}
+        ${GROUND ? '// Ponds, canals and reservoirs too small for the 250 m water field.\n        if (fineW > 0.0 && fLo.w > 0.0) wInl = max(wInl, fineW * smoothstep(0.44, 0.56, fineWater(gfp) + wob * 0.08) * (1.0 - wSea) * (1.0 - smoothstep(0.3, 0.9, vZone)));' : ''}
         if (wSea + wInl > 0.001) {
           float depth = wSea > 0.0 ? clamp(-sea / 1500.0, 0.0, 1.0) : clamp(-inl / 150.0, 0.0, 1.0);
           vec3 wc = waterShade(m, rel, depth, wInl / max(wSea + wInl, 1e-3));

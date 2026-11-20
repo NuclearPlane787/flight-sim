@@ -6,6 +6,8 @@
 import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
+process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.FS_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -14,7 +16,7 @@ const LIM = {
   max: { wing: { span: 1.3, chord: 1.3, sweep: 8, dihedral: 8 }, tail: 1.6, fin: 1.6, plugFwd: 6, plugAft: 6 },
   min: { wing: { span: 0.8, chord: 0.8, sweep: -8, dihedral: -3 }, tail: 0.6, fin: 0.6, plugFwd: -4, plugAft: -4 },
 };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !HEADED, args: ['--mute-audio', ...(HEADED ? [] : ['--use-angle=metal', '--ignore-gpu-blocklist']), '--window-size=1440,960'] });
 const errors = [];
 let fails = 0;
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
