@@ -1,4 +1,4 @@
-// The golden A321 flight (V030.md, Part 1): a scripted run of the sim from RKSS 14R over the real
+// The golden A321 flight (briefs/V0-3-0.md, Part 1): a scripted run of the sim from RKSS 14R over the real
 // terrain: the take-off, the climb on the autopilot, and 10 minutes on, with the state every
 // second. Recorded from v0.2.2's code BEFORE the type registry existed, by
 //   node tests/golden-a321-flight.mjs record

@@ -1,4 +1,4 @@
-// V060.md Part 5, the picture owed: the Weather tab's METAR line in each country's form, in the
+// briefs/V0-6-0.md Part 5, the picture owed: the Weather tab's METAR line in each country's form, in the
 // game, on a final at Haneda (Japan: Q and A), Pudong (China: the wind in MPS) and Gimpo (Korea,
 // as v0.5.8). Headless, muted.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 5 -- node games/flight-sim/tests/browser-v060-rules-metar.mjs

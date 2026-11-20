@@ -53,7 +53,7 @@
 .fsui-views .fsui-seat:empty { display: none; }
 .fsui-views.compact kbd { display: none; }
 .fsui-views.compact button { padding: 0 0.55em; }
-/* v0.4.4: the panels switch, top left, the view switch's twin. Under the top row (hud.js) when the FCU leaves no room. */
+/* v0.4.4: the panels switch, top left, the view switch's twin (since v0.6.2 in the top row with it and the FCU). */
 .fsui-panels-box { position: absolute; display: flex; align-items: stretch; gap: 0.35em;
   background: rgba(38, 44, 50, 0.92); border: 1px solid #4a535b; border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
 .fsui-panels-box button { display: flex; align-items: center; padding: 0 0.75em; font: 600 1em var(--font);
@@ -62,6 +62,17 @@
 .fsui-panels-box button.on { color: #d8dde1; }
 /* v0.5.4: the Pause button beside it (hidden after a crash: the flex display would show it anyway). */
 .fsui-panels-box button[hidden] { display: none; }
+/* v0.6.2: the top row (hud.js placeViews): the panels switch and Pause, the FCU or the MCP, the view switch, in one bar
+   that never wraps. The FCU is centred while the wider side leaves room for that; otherwise the row packs from the
+   edges (.packed); then the view switch drops its key caps, then the row's text comes down until it fits. */
+.fsui-topbar { position: absolute; top: 8px; left: 12px; right: 12px; display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: start; column-gap: 10px; pointer-events: none; }
+.fsui-topbar.packed { display: flex; justify-content: space-between; gap: 10px; }
+.fsui-topbar > .fsui-panels-box, .fsui-topbar > .fsui-fcu, .fsui-topbar > .fsui-views { position: relative; top: auto; left: auto;
+  right: auto; transform: none; flex: none; }
+.fsui-topbar > .fsui-panels-box { grid-column: 1; justify-self: start; }
+.fsui-topbar > .fsui-fcu { grid-column: 2; }
+.fsui-topbar > .fsui-views { grid-column: 3; justify-self: end; }
 /* v0.5.4: the Weight tab's Drop wing tanks row (load-window.js), for a design with wing tanks only. */
 .fslw-tanks { justify-content: flex-end; }
 .fslw-tanks[hidden] { display: none; }

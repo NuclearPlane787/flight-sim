@@ -11,7 +11,7 @@
 //   place(icao) → the airport's short name for the card ("Jeju"), or null (the card shows the code)
 //   menu.openWarehouse() → Promise (v0.5.0: the Warehouse page, ui/warehouse.js, loaded on first use; the menu
 //   opens and closes it itself, behind WAREHOUSE_ON or the URL's ?warehouse=1; onWarehouseClose() after it closes)
-//   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky?, onIndestructible?, onAutoTrim?, keyName? });
+//   const settings = createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky?, onIndestructible?, onAutoTrim?, onPanelScale?, keyName? });
 //   const controls = createControlsPage(root, { sky?, keys? });   controls.setFamily(def.family) for the type flown
 //     v0.5.7: keys: { load(), save(store) → ok }: the page edits every key but the warehouse's block (src/keys.js), with
 //     the keyboard drawn over them (ui/keyboard-map.js: controls.board)
@@ -436,12 +436,14 @@ function createPage(root, cls, title, bodyHtml) {
   return api;
 }
 
-export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky, onIndestructible, onAutoTrim, keyName = null } = {}) {
+export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky, onIndestructible, onAutoTrim, onPanelScale, keyName = null } = {}) {
   const seg = (k) => `<div class="fsui-seg" data-seg="${k}"><button data-v="on">On</button><button data-v="off">Off</button></div>`;
   const page = createPage(root, 'fsm-settings', 'Settings', `
     <div class="fsm-set">
       <label class="fsm-set-row"><span class="lab">Master volume</span>
         <span class="ctl"><input type="range" min="0" max="100" step="5" data-s="volume"><output data-s="volOut">100%</output></span></label>
+      ${onPanelScale ? `<label class="fsm-set-row"><span class="lab">Panel size<small>The PFD, the ND and the engine panel, from half their size to 120 %</small></span>
+        <span class="ctl"><input type="range" min="50" max="120" step="5" data-s="panelScale"><output data-s="panelOut">100%</output></span></label>` : ''}
       <div class="fsm-set-row"><span class="lab">Callouts<small>The radio-altitude calls on final, “retard” and the ground-proximity warnings</small></span><span class="ctl">${seg('callouts')}</span></div>
       <div class="fsm-set-row"><span class="lab">Performance readout<small data-s="perfNote">Frame rate, triangles and draw calls along the top (F3)</small></span><span class="ctl">${seg('perf')}</span></div>
       ${onIndestructible ? `<div class="fsm-set-row"><span class="lab">Indestructible<small>No crash ends the flight: the gear holds, the aircraft scrapes and slides instead. The landing card says what would have crashed</small></span><span class="ctl">${seg('indestructible')}</span></div>` : ''}
@@ -452,10 +454,13 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
   const q = (k) => el.querySelector(`[data-s="${k}"]`);
   const setSeg = (k, on) => { for (const b of el.querySelectorAll(`[data-seg="${k}"] button`)) b.classList.toggle('on', (b.dataset.v === 'on') === !!on); };
   const showVol = (v) => { q('volume').value = Math.round(v * 100); q('volOut').textContent = `${Math.round(v * 100)}%`; };
+  // v0.6.2: the side panels' size (Shane: "an option to the settings that scales up or down the size of the two side panels")
+  const showPanel = (k) => { q('panelScale').value = Math.round(k * 100); q('panelOut').textContent = `${Math.round(k * 100)}%`; };
 
   page.render = () => {
     const s = get?.() || {};
     showVol(Number.isFinite(s.volume) ? s.volume : 1);
+    if (onPanelScale) showPanel(Number.isFinite(s.panelScale) ? s.panelScale : 1);
     setSeg('callouts', s.callouts !== false);
     setSeg('perf', !!s.showPerf);
     if (onIndestructible) setSeg('indestructible', !!s.indestructible);
@@ -464,6 +469,7 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
     if (keyName) { const k = keyName('perf'); q('perfNote').textContent = `Frame rate, triangles and draw calls along the top${k ? ` (${k})` : ''}`; }
   };
   q('volume').addEventListener('input', () => { const v = Number(q('volume').value) / 100; showVol(v); onVolume?.(v); });
+  if (onPanelScale) q('panelScale').addEventListener('input', () => { const k = Number(q('panelScale').value) / 100; showPanel(k); onPanelScale(k); });
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-seg] button');
     if (b) {
@@ -486,7 +492,7 @@ const NOTES = `
         An ALT under 1,000 is a flight level (350 = FL350); a V/S of 60 or less is in hundreds (−15 = −1,500 ft/min).
         Esc, a click elsewhere or a flying key closes it unchanged.</p>
       <p><b>The map:</b> with the AP on, the bright line is where the aircraft will go: click a point on it to jump there.
-        The magenta line is the route to your destination and doesn't jump, so point the HDG along it first.
+        The magenta line is the route to your destination and doesn't jump, so point the HDG along it first: hover over it for the heading to set.
         A red cross means the path meets the terrain. “Skip to 15 nm final” puts you on the 3° path to the destination runway.
         Drag the magenta line to add a waypoint. “Change route”, or a click on an airport, picks a new destination and runway;
         the line then goes direct from where you are.</p>

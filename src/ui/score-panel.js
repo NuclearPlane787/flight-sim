@@ -35,6 +35,7 @@ function worstFlaw(parts) {
   }
   if (!w) return null;
   switch (w.name) {
+    // (the approach's two parts: on landings logged before v0.6.2, which no longer scores the approach)
     case 'Approach path': return `Off the path on final${w.note ? ` (${w.note})` : ''}. Get on it early and stay there.`;
     case 'Sink rate swings': return 'Bobbing on final. Hold a steady descent.';
     case 'Touchdown vs aiming point': return w.value > 0 ? 'Long. Put it down at the aiming point.' : 'Early. Carry it on to the aiming point.';

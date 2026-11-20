@@ -1,4 +1,4 @@
-// v0.6.0 Part 5 steps 1-3 (V060.md, "Magnetic variation", "The sky's north", "The wind, true
+// v0.6.0 Part 5 steps 1-3 (briefs/V0-6-0.md, "Magnetic variation", "The sky's north", "The wind, true
 // everywhere"): frame.js's magVar() with the region's model, the sky turned by the grid
 // convergence, and the wind's true direction kept along the way.
 import test from 'node:test';

@@ -1,4 +1,4 @@
-// The dense centres from real buildings (V060.md Part 6 step 2, behind CITIES_ON): OpenStreetMap's
+// The dense centres from real buildings (briefs/V0-6-0.md Part 6 step 2, behind CITIES_ON): OpenStreetMap's
 // footprints (ODbL) in nine city centres, extruded to their heights, with our own facades.
 //
 //   const centres = createCentres(scene, uniforms, chunks, { heightfield, renderer, baseUrl });

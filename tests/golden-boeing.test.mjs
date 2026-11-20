@@ -1,4 +1,4 @@
-// The 787-9 and the 777-300ER don't change (V050.md, Part 1): their golden flights, recorded from v0.4.4's code
+// The 787-9 and the 777-300ER don't change (briefs/V0-5-0.md, Part 1): their golden flights, recorded from v0.4.4's code
 // before the parts model, flown again and compared field by field, every second, to 1e-9.
 import test from 'node:test';
 import assert from 'node:assert/strict';

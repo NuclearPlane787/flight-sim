@@ -106,8 +106,6 @@ test('each part scores out of 10: good values 9–10, bad ones 0–3', () => {
     ['bank', [COST.bank(0), COST.bank(1), COST.bank(2)], [COST.bank(7), COST.bank(10)]],
     ['pitch', [COST.pitch(5.5), COST.pitch(4), COST.pitch(7.5)], [COST.pitch(1), COST.pitch(9.5)]],
     ['bounces', [COST.bounces(0)], [COST.bounces(2), COST.bounces(3)]],
-    ['path', [COST.path(0), COST.path(0.25)], [COST.path(1.4), COST.path(2), COST.path(3)]],
-    ['swing', [COST.swing(0), COST.swing(50), COST.swing(100)], [COST.swing(300), COST.swing(600)]],
   ]) {
     for (const c of good) assert.ok(rate(key, c) >= 9, `${key} good ${c}: ${rate(key, c)}`);
     for (const c of bad) assert.ok(rate(key, c) <= 3, `${key} bad ${c}: ${rate(key, c)}`);
@@ -115,9 +113,11 @@ test('each part scores out of 10: good values 9–10, bad ones 0–3', () => {
   assert.equal(rate('grass', COST.grass), 0);
   // Scores fall as costs grow, from 10 at 0.
   for (const key of Object.keys(RATE)) assert.equal(scoreFor(0, RATE[key][0]), 10);
+  // v0.6.2: the approach's two parts are gone (Shane: the score is the landing itself).
+  assert.ok(!('path' in COST) && !('swing' in COST) && !('path' in RATE) && !('swing' in RATE));
   // The heaviest: vertical speed, the touchdown point and the centreline.
   const w = (k) => RATE[k][1];
-  for (const k of ['g', 'bank', 'pitch', 'bounces', 'path', 'swing']) assert.ok(w(k) < w('vs') && w(k) < w('aim') && w(k) < w('centreline'), k);
+  for (const k of ['g', 'bank', 'pitch', 'bounces']) assert.ok(w(k) < w('vs') && w(k) < w('aim') && w(k) < w('centreline'), k);
 });
 
 test('only 10/10 in every part makes 100; one 9/10 already costs', () => {
@@ -142,29 +142,29 @@ test('only 10/10 in every part makes 100; one 9/10 already costs', () => {
   assert.ok(rising(COST.centreline, [0, 0.5, 2, 5, 15, 30]) && COST.centreline(-3) === COST.centreline(3));
   assert.ok(rising(COST.bank, [0, 0.5, 2, 5, 10]));
   assert.ok(rising(COST.g, [1, 1.2, 1.6, 2.2, 3]));
-  assert.ok(rising(COST.path, [0, 0.2, 1, 3]) && rising(COST.swing, [0, 50, 300, 900]));
   assert.ok(COST.pitch(5.5) === 0 && COST.pitch(4) > 0 && COST.pitch(1) > COST.pitch(4) && COST.pitch(9.5) > COST.pitch(8));
 });
 
-test("Shane's landing (190 ft/min, 2 m left, 150 m long, low at 1 km and a bob) scores 80", () => {
+// v0.6.2 (Shane, 2026-11-20: "the landing score is based mostly on just the landing itself rather than what led up to
+// it"): the approach is measured but not scored, so his bobbing final now scores as a steady one did.
+test("Shane's landing (190 ft/min, 2 m left, 150 m long, low at 1 km and a bob): the touchdown alone, about 90", () => {
   const ap = approachStats(shanesFinal, runwayFrame(r0927.ends[0], r0927.ends[1]), 0);
   assert.equal(ap.note, 'low');
   assert.ok(ap.pathDots > 0.6 && ap.pathDots < 1.1, `${ap.pathDots}`);
   assert.ok(ap.swingFpm > 150 && ap.swingFpm < 260, `${ap.swingFpm}`);
   const res = land({ vs: 190, g: 1.3, along: 550, cross: -2, bank: 0.5, pitch: 6, track: shanesFinal });
-  // (v0.1.3 to v0.5.4: exactly 80; v0.5.5's whole points per part make it 81)
-  assert.ok(res.points >= 79 && res.points <= 82, `${res.points} ${JSON.stringify(scores(res))} ${ap.pathDots} ${ap.swingFpm}`);
-  assert.equal(res.grade, 'B');
+  // (v0.1.3 to v0.5.4: exactly 80; v0.5.5: 81, the final costing about ten points; v0.6.2: the touchdown alone)
   assert.deepEqual(scores(res), { 'Vertical speed': 10, 'Peak g': 9, 'Touchdown vs aiming point': 7, 'From centreline': 8,
-    Bank: 10, Pitch: 10, Bounces: 0 === 0 ? 10 : 0, 'Approach path': part(res, 'Approach path').score, 'Sink rate swings': part(res, 'Sink rate swings').score });
-  assert.ok(part(res, 'Approach path').score <= 5 && part(res, 'Sink rate swings').score <= 6, JSON.stringify(scores(res)));
-  assert.equal(part(res, 'Approach path').note, 'low');
-  assert.match(verdict(res), /^Off the path on final \(low\)/);
-  // The same touchdown after a steady approach is an A, about 90.
+    Bank: 10, Pitch: 10, Bounces: 10 });
+  assert.ok(res.points >= 88 && res.points <= 91, `${res.points} ${JSON.stringify(scores(res))}`);
+  assert.equal(res.approach.note, 'low');            // measured, for the record, not scored
+  assert.ok(!part(res, 'Approach path') && !part(res, 'Sink rate swings') && !part(res, 'Held down by the approach path'));
+  // The same touchdown after a steady approach: the same score, part for part.
   const clean = land({ vs: 190, g: 1.3, along: 550, cross: -2, bank: 0.5, pitch: 6, track: approach(onPath) });
-  assert.ok(clean.points >= 90 && clean.points <= 92, `${clean.points} ${JSON.stringify(scores(clean))}`);
-  assert.equal(clean.grade, 'A');
-  assert.equal(verdict(clean), 'Smooth. The cabin barely noticed.');
+  assert.equal(clean.points, res.points);
+  assert.deepEqual(scores(clean), scores(res));
+  assert.equal(verdict(clean), verdict(res));
+  console.log(`# Shane's landing: ${res.points} ${res.grade}, "${verdict(res)}"`);
 });
 
 test('the parts lost add up to the points lost', () => {
@@ -183,24 +183,36 @@ test('the parts lost add up to the points lost', () => {
   }
 });
 
-test('several middling flaws make a C or a D; one bad part alone holds the total down (WORST_CAP); 0 takes everything bad', () => {
-  // 350 ft/min, 1.5 g, 250 m long, 4 m off, 2° bank, after an approach a dot low and bobbing ±250 ft/min.
+test('several middling flaws make a C or a D; a hard touchdown holds the total down (WORST_CAP), other parts average; 0 takes everything bad', () => {
+  // 350 ft/min, 1.5 g, 250 m long, 4 m off, 2° bank (the approach, a dot low and bobbing, isn't scored since v0.6.2).
   const middling = land({ vs: 350, g: 1.5, along: 650, cross: 4, bank: 2, pitch: 4,
     track: approach((d) => (d + 300) * Math.tan(2.6 * DEG) + 8 * Math.sin((d / 1500) * 2 * Math.PI)) });
   assert.ok(['C', 'D'].includes(middling.grade), `${middling.points} ${JSON.stringify(scores(middling))}`);
   // A firm, long landing: poor, but well above 0.
   const firm = land({ vs: 740, g: 2.5, along: 900, cross: 6 });
   assert.ok(firm.points >= 30 && firm.points < 64, `${firm.points} ${JSON.stringify(scores(firm))}`);
-  // The worst of any single part, the rest perfect.
-  for (const [what, opts] of [['900 ft/min', { vs: 900 }], ['2.6 g', { g: 2.6 }], ['1,000 m long', { along: 1400 }],
-    ['20 m off', { cross: 20 }], ['7° bank', { bank: 7 }], ['9.5° pitch', { pitch: 9.5 }], ['3 dots off all the way', { track: approach((d) => (d + 300) * Math.tan(1.8 * DEG)) }]]) {
+  // A hard touchdown, the rest perfect: vertical speed caps it at 50 + 10 × its score (v0.6.2: its cap alone).
+  for (const [what, opts] of [['900 ft/min', { vs: 900 }], ['750 ft/min', { vs: 750 }]]) {
+    const r = land(opts), w = part(r, 'Vertical speed').score;
+    assert.ok(r.points >= 50 && r.points <= WORST_CAP(w), `${what}: ${r.points} (vertical speed ${w}/10)`);
+    assert.ok(part(r, 'Held down by vertical speed'), `${what}: the cap's row`);
+    console.log(`# ${what}: ${r.points} ${r.grade} (vertical speed ${w}/10)`);
+    assert.doesNotMatch(verdict(r), /^(Butter|Smooth)/, `${what}: ${verdict(r)}`);
+  }
+  // The worst of any other single part, the rest perfect: no cap, it loses its share (v0.5.4 to v0.6.1 capped
+  // each at 50 + 10 × its score), and it's still named.
+  for (const [what, opts] of [['2.6 g', { g: 2.6 }], ['1,000 m long', { along: 1400 }], ['20 m off', { cross: 20 }],
+    ['7° bank', { bank: 7 }], ['9.5° pitch', { pitch: 9.5 }]]) {
     const r = land(opts);
-    // v0.5.4 (review): the rest perfect averages high, but the worst part caps it: 50 + 10 × its score.
-    const w = Math.min(...r.parts.filter((p) => p.weight > 0).map((p) => p.score));
-    assert.ok(r.points >= 50 && r.points <= WORST_CAP(w), `${what}: ${r.points} (worst ${w}/10)`);
-    console.log(`# ${what}: ${r.points} ${r.grade} (worst ${w}/10)`);
+    assert.ok(!r.parts.some((p) => p.kind === 'penalty'), `${what}: nothing comes off (${JSON.stringify(r.parts.filter((p) => p.kind === 'penalty'))})`);
+    const cats = r.parts.filter((p) => p.kind !== 'penalty');
+    assert.equal(r.points, cats.reduce((a, p) => a + p.points, 0), `${what}: the parts' points`);
+    assert.ok(r.points >= 70, `${what}: ${r.points}`);
+    console.log(`# ${what}: ${r.points} ${r.grade}`);
     assert.doesNotMatch(verdict(r), /^(Butter|Smooth)/, `${what}: ${verdict(r)}`); // and it's named
   }
+  // An approach 3 dots off all the way, the touchdown perfect: 100 (v0.6.1: 50, held down by the approach path).
+  assert.equal(land({ track: approach((d) => (d + 300) * Math.tan(1.8 * DEG)) }).points, 100);
   // Everything at once: hard, long, off the side, banked, nose high, two bounces, after an
   // approach swinging ±1,200 ft/min.
   const all = land({ vs: 880, g: 2.6, along: 1300, cross: 15, bank: 6, pitch: 9, bounceG: 2.6,

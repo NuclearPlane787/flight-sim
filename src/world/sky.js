@@ -40,7 +40,7 @@ export function sunDirection(out = new THREE.Vector3()) {
   return azElToScene(SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, out);
 }
 
-// v0.6.0 (V060.md, "The sky's north"): the map's north is the grid's, so a true azimuth turns by
+// v0.6.0 (briefs/V0-6-0.md, "The sky's north"): the map's north is the grid's, so a true azimuth turns by
 // the grid convergence at the camera (grid azimuth = true azimuth - convergence): -0.41° at
 // Gimpo, +7.13° at Haneda. Degrees; 0 with EAST_ASIA_ON off, so the flag-off sky is v0.5.8's.
 export function skyNorthDeg(lonDeg) {

@@ -1,5 +1,5 @@
 // v0.6.0, the region's terrain (data/terrain/r0, r1, the manifest's tilesRegion): South Korea's
-// heights, water and cover the same doubles as Korea's own tiles (V060.md, "Korea unchanged,
+// heights, water and cover the same doubles as Korea's own tiles (briefs/V0-6-0.md, "Korea unchanged,
 // exactly"), the new ground where it should be (Fuji, the new airports' runways, the margin's
 // 1 km level), loaded by distance with no misses, and the GPU's clip window following the
 // camera over it block by block. Skipped while the region's tiles aren't in data/.
@@ -62,7 +62,7 @@ test('the region: South Korea reads the same doubles as Korea\'s own tiles', { s
   const a = {}, b = {};
   for (const [x, y] of pts) {
     kor.coverAt(x, y, a); reg.coverAt(x, y, b);
-    // The region adds Gimhae's 30 m patch (V060.md's one exception): skip the points it reaches.
+    // The region adds Gimhae's 30 m patch (briefs/V0-6-0.md's one exception): skip the points it reaches.
     const inGimhae = reg.layers.patches.some((p) => p.id === 'gimhae' && x > p.x0 && y > p.y0 && x < p.x0 + p.nx * p.cell && y < p.y0 + p.ny * p.cell);
     if (!inGimhae && (kor.rawHeight(x, y) !== reg.rawHeight(x, y) || kor.heightAt(x, y) !== reg.heightAt(x, y))) bad++;
     if (kor.inlandDistance(x, y) !== reg.inlandDistance(x, y)) bad++;

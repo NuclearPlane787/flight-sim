@@ -223,7 +223,7 @@ export function createFineCover(uniforms, { baseUrl = 'data/' } = {}) {
 
 // The shaders' side, compiled in only with GROUND_ON. uFineOrg: the scene origin's fine pixel
 // (the integer part, set per frame from doubles) and uFineFrac its fraction, so a fragment's
-// pixel comes from small numbers wherever the map's origin is (V060.md, "Precision far from
+// pixel comes from small numbers wherever the map's origin is (briefs/V0-6-0.md, "Precision far from
 // the origin"). fineAt(rel): the class + 1 (0: none) at scene offset rel.xz from the origin;
 // fineMix(rel, ...): the classes' shares under a bilinear footprint, and how valid they are.
 export const FINE_GLSL = /* glsl */ `

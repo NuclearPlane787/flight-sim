@@ -12,7 +12,7 @@
 //     setWingFlex(metres), bones, shape, windows }
 //   opts.def (v0.5.0): a design's type entry (src/sim/designs.js designDef()): its engines, one per geo.NACELLES,
 //   each its own engine type (src/engine-model.js), its longer gear (GEAR, GEAR_EXTEND_M), its registration.
-//   setWingFlex is a hook for the bending wing (V030.md's "nice" list): metres of extra lift at the
+//   setWingFlex is a hook for the bending wing (briefs/V0-3-0.md's "nice" list): metres of extra lift at the
 //   tips, applied in the vertex shader. main.js drives it from the lift (def.wingFlexM).
 
 import * as THREE from '../vendor/three.module.js';

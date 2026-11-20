@@ -15,7 +15,7 @@ import { createClipWindow } from './clipwindow.js';
 export const MAX_PATCHES = 4;
 export const MAX_RUNWAYS = 12;
 
-// v0.6.0 (V060.md Part 1 step 3): the 250 m textures as a toroidal clip window over the tiles
+// v0.6.0 (briefs/V0-6-0.md Part 1 step 3): the 250 m textures as a toroidal clip window over the tiles
 // (clipwindow.js) instead of one Korea-sized texture assembled from them. Off: the textures are
 // tiles.assemble(), as since checkpoint 1.
 export const CLIP_WINDOW = true;

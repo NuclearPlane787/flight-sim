@@ -1,4 +1,4 @@
-// v0.6.0, Part 5 steps 5-7: the altimeter's local rules (V060.md). Inches of mercury in Japan (the BARO's unit, the
+// v0.6.0, Part 5 steps 5-7: the altimeter's local rules (briefs/V0-6-0.md). Inches of mercury in Japan (the BARO's unit, the
 // typed and turned settings, 29.92 as standard, Shift+B in the local unit), the transition by place (14,000 ft /
 // FL140 in Korea and Japan, 3,000 m / 3,600 m in China), the METAR's three forms, China's metres on the PFDs, and
 // with the region's flag off, v0.5.8's strings and numbers.

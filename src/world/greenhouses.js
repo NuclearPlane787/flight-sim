@@ -14,7 +14,7 @@
 // The CPU lists the slots that can hold a tunnel (greenhouseSlots(): exact hashes, the block's
 // fine pixels, the 250 m cover's bounds), a superset of the shader's rule; the shader decides the
 // rest (the patch noise, the slope, water, runways). A slot listed and not kept draws nothing.
-// Positions come from fine-pixel integers and small offsets (V060.md, "Precision far from the
+// Positions come from fine-pixel integers and small offsets (briefs/V0-6-0.md, "Precision far from the
 // origin"), never from float32 map metres.
 
 import * as THREE from '../../vendor/three.module.js';

@@ -4,7 +4,7 @@
 //
 // The terrain loader also lives here: it keeps the tiles round the aircraft, the camera, the
 // departure and the arrival resident, loads ahead along the track, and tells the sim's loop
-// whether this frame's steps may run (V060.md, "The sim never sees a missing tile"). Over
+// whether this frame's steps may run (briefs/V0-6-0.md, "The sim never sees a missing tile"). Over
 // Korea alone every tile is loaded at the start, so it never holds a step.
 
 import { setMagModel } from './frame.js';
@@ -32,7 +32,7 @@ export function setEastAsia(on) { EAST_ASIA_ON = !!on; setGeoRules(geo); }   // 
 export const eastAsiaOn = () => EAST_ASIA_ON;
 
 // Part 6 (each country's own city mix, the landmarks, the real centres) and Part 7 (the new
-// ground) have a flag each, off until that part was done (V060.md): ?cities=0 and ?ground=0 on
+// ground) have a flag each, off until that part was done (briefs/V0-6-0.md): ?cities=0 and ?ground=0 on
 // the page's URL turn them off, setCities() / setGround() in node. Both only do anything
 // with the region on, except where a part changes Korea's look on purpose.
 export const CITIES_DEFAULT = true, GROUND_DEFAULT = true;   // both on since the evening of 2026-11-19 (Part 6's and Part 7's views, flights and frame rates are in STATUS.md)
@@ -66,13 +66,13 @@ export const FINE_EXTENT = { x0: -912000, y0: -784000, x1: 1520000, y1: 624000 }
 export const mapExtent = () => (EAST_ASIA_ON ? REGION_EXTENT : KOREA_EXTENT);
 export const fineExtent = () => (EAST_ASIA_ON ? FINE_EXTENT : KOREA_EXTENT);
 
-// ---- The local rules by place (V060.md Part 5). One lookup the sim, the screens and the clock
+// ---- The local rules by place (briefs/V0-6-0.md Part 5). One lookup the sim, the screens and the clock
 // share. `geo` is geo-rules.js's object (the country raster and WMM2025), installed once it is
 // loaded: by main.js, by the prediction worker before its first run, and by node's tests. With
 // the flag off, or before it is installed, everywhere is Korea, as in v0.5.8. A function of
 // position only: nothing here may depend on the frame, the clock or what happens to be loaded.
 let geo = null;
-// Installing the geo rules also installs frame.js's magnetic model (V060.md, "Magnetic
+// Installing the geo rules also installs frame.js's magnetic model (briefs/V0-6-0.md, "Magnetic
 // variation"): geo.magVarAt while EAST_ASIA_ON is on, the plane itself while it is off.
 export function setGeoRules(g) {
   geo = g || null;

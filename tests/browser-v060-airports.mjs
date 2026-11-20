@@ -1,4 +1,4 @@
-// V060.md Part 3's "Done when", at one of the region's airports, headless, with EAST_ASIA_ON on (?eastasia=1):
+// briefs/V0-6-0.md Part 3's "Done when", at one of the region's airports, headless, with EAST_ASIA_ON on (?eastasia=1):
 //   1. a gate start at a stand standsFor() offers for the type (the setup's list, gate-flow.js standList());
 //   2. the pushback (Shift+G, at 4×), checked on pavement and clear of the buildings;
 //   3. a taxi along the game's own route to the hold short of a runway (a test-only pure pursuit on the route,

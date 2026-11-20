@@ -1,4 +1,4 @@
-// V030.md's Part 1 checks in the real game, in Chrome: a v0.2.2 save loads as the A321neo; a
+// briefs/V0-3-0.md's Part 1 checks in the real game, in Chrome: a v0.2.2 save loads as the A321neo; a
 // scenario's type round-trips through a page reload, flying on from where it was saved, with the
 // right model, the HUD's panels, and the type in the logbook.
 //   python3 tools/cpu-guard.py --minutes 8 -- node tests/browser-types.mjs [type id]

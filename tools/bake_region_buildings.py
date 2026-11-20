@@ -1,4 +1,4 @@
-"""V060.md Part 2 step 10: the real centres' buildings for Part 6, from OpenStreetMap (ODbL).
+"""briefs/V0-6-0.md Part 2 step 10: the real centres' buildings for Part 6, from OpenStreetMap (ODbL).
 
 One compact binary per centre (<id>.bin.gz) plus centres.json, written to a staging folder
 (/tmp/flight-sim/v060/bake/centres/); the lead copies it into data/ after review.

@@ -1,5 +1,5 @@
 // The local rules' data (src/world/geo-rules.js): WMM2025's variation grid and the country raster
-// (tools/bake_wmm.py, tools/bake_country.py; V060.md Part 2 step 8, Part 5 steps 1 and 4).
+// (tools/bake_wmm.py, tools/bake_country.py; briefs/V0-6-0.md Part 2 step 8, Part 5 steps 1 and 4).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

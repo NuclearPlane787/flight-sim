@@ -1,4 +1,4 @@
-// The A321neo doesn't change (V030.md, Part 1): the golden flight, recorded from v0.2.2's code
+// The A321neo doesn't change (briefs/V0-3-0.md, Part 1): the golden flight, recorded from v0.2.2's code
 // before the type registry, flown again and compared field by field, every second, to 1e-9.
 import test from 'node:test';
 import assert from 'node:assert/strict';

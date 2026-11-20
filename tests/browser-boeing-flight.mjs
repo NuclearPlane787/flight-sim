@@ -1,4 +1,4 @@
-// The Boeings' checks in Chrome on this Mac's GPU (V030.md, Definition of done), for one type:
+// The Boeings' checks in Chrome on this Mac's GPU (briefs/V0-3-0.md, Definition of done), for one type:
 //   python3 tools/cpu-guard.py -- node tests/browser-boeing-flight.mjs <type id> [flight1] [flight2] [views] [fps]
 // flight1 takes about 16 minutes alone, close to the guard's cap with another browser running. To
 // split it (the rules' way, not a bigger cap): FLIGHT1=ground stops once lined up; FLIGHT1=air starts on

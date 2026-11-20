@@ -1,4 +1,4 @@
-// V060.md's definition of done: 60 fps at each new airport at a stand. The game itself (not the
+// briefs/V0-6-0.md's definition of done: 60 fps at each new airport at a stand. The game itself (not the
 // free camera), parked at the first gate the setup offers the A321neo, the outside view, by day
 // and at night: frames counted over 4 s of real time, with the draws and triangles.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 8 -- node games/flight-sim/tests/browser-v060-stand-fps.mjs [ICAO ...]

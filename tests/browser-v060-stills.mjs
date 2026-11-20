@@ -88,7 +88,7 @@ for (const [k, [la, lo, h]] of Object.entries(CITY6)) {
   }
 }
 // The definition of done's two views, and the ground close to the camera far from the map's origin
-// (V060.md, "Precision far from the origin": Narita is 1,160 km east of it, Gimpo 60 km west).
+// (briefs/V0-6-0.md, "Precision far from the origin": Narita is 1,160 km east of it, Gimpo 60 km west).
 SHOTS['fuji-haneda-arrival'] = { q: 'lat=35.30&lon=139.62&alt=9000&hdg=268&pitch=-3', ms: DAY };          // Fuji from the arrival over Sagami Bay
 SHOTS['gimhae-approach'] = { q: 'lat=35.02&lon=128.925&alt=3500&hdg=2&pitch=-6', ms: DAY };               // Gimhae's runways under Sineosan and Geumjeongsan
 SHOTS['close-rkss'] = { q: 'rwy=RKSS:14R&back=150&eye=9&pitch=-14&hdg=176', ms: DAY };

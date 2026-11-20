@@ -13,7 +13,7 @@
 // Each country has its own look (the camera's country, region.js): Korea's blue, orange and grey
 // steel roofs over white walls; Japan's dark tiles; the Yangtze delta's three- and four-storey
 // village houses. A few warm windows at night.
-// Positions come from fine-pixel integers and small offsets (V060.md, "Precision far from the
+// Positions come from fine-pixel integers and small offsets (briefs/V0-6-0.md, "Precision far from the
 // origin"), never from float32 map metres.
 
 import * as THREE from '../../vendor/three.module.js';

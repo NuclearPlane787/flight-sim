@@ -1,4 +1,4 @@
-// v0.2.0's scripted check of the main menu and scenarios (V020.md → Definition of done, Part 1),
+// v0.2.0's scripted check of the main menu and scenarios (briefs/V0-2-0.md → Definition of done, Part 1),
 // in Chrome on this Mac's GPU with its own temporary profile (never Shane's):
 //   1. the page loads to the main menu, with a still, no console errors, and no frames rendered behind it;
 //   2. New scenario "Test A" from RKSS 14R: take off, AP on, Exit to menu;

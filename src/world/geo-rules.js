@@ -1,4 +1,4 @@
-// The local rules' data by map position (V060.md, Part 5 steps 1 and 4): WMM2025's magnetic
+// The local rules' data by map position (briefs/V0-6-0.md, Part 5 steps 1 and 4): WMM2025's magnetic
 // variation and the country, from tools/bake_wmm.py and tools/bake_country.py. Pure: no DOM,
 // so it runs in workers and node too. Synchronous once loaded.
 //
@@ -18,7 +18,7 @@
 // and the values the gunzipped grid (an Int16Array / Uint8Array, or their ArrayBuffer). Both
 // grids are cell-centred in the map frame (src/world/frame.js), row 0 the south row. Outside a
 // grid the nearest edge cell answers. This does not replace frame.js's magVar(): South Korea
-// keeps its plane exactly (V060.md, "Magnetic variation"), and the blend lives there.
+// keeps its plane exactly (briefs/V0-6-0.md, "Magnetic variation"), and the blend lives there.
 
 export const COUNTRY_NAMES = ['sea', 'KR', 'KP', 'JP', 'CN', 'other'];
 const SEA_BIT = 8;
@@ -61,7 +61,7 @@ export function createGeoRules({ magvar, country, krmask = null }) {
     return t * t * (3 - 2 * t);
   }
 
-  // V060.md, "Magnetic variation": the plane exactly where the weight is 0, WMM where it is 1.
+  // briefs/V0-6-0.md, "Magnetic variation": the plane exactly where the weight is 0, WMM where it is 1.
   function magVarAt(x, y, plane) {
     const w = krBlend(x, y);
     if (w === 0) return plane;

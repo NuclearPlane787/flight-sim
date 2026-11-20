@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The fine cover (data/terrain/fine/, ESA WorldCover 2021 resampled to 31.25 m) as a map of one
 place: north up, in WorldCover's own legend colours, with the view's direction drawn on it. For
-the Part 7 picture sets (V060.md: each view "beside WorldCover's map of the same place").
+the Part 7 picture sets (briefs/V0-6-0.md: each view "beside WorldCover's map of the same place").
 
   python3 tools/quicklook_fine_cover.py --at 36.05,140.05 --hdg 30 --km 16 --out <png>
   python3 tools/quicklook_fine_cover.py --views         # every Part 7 view, into the pictures folder

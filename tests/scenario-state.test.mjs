@@ -113,7 +113,12 @@ test('on final: a scorer saved through JSON and loaded scores the same landing t
   const ra = touchdownAndRollout(a, frames.at(-1).t), rb = touchdownAndRollout(b, frames.at(-1).t);
   assert.ok(ra && rb, 'both scored');
   const names = ra.parts.map((p) => p.name);
-  assert.ok(names.includes('Approach path') && names.includes('Sink rate swings'), `approach parts (${names.join(', ')})`);
+  // v0.6.2: the approach isn't scored any more, but it's still measured from the track the save carried
+  assert.ok(!names.includes('Approach path') && !names.includes('Sink rate swings'), `no approach parts (${names.join(', ')})`);
+  assert.ok(ra.approach && rb.approach && ra.approach.seconds > 20, 'the approach, measured both ways');
+  // (the saved track is rounded to 0.01 m, so the figures agree as the card's old rows showed them)
+  const shown = (ap) => ({ dots: ap.pathDots.toFixed(1), swing: Math.round(ap.swingFpm), seconds: ap.seconds, note: ap.note });
+  assert.deepEqual(shown(rb.approach), shown(ra.approach));
   assert.deepEqual(rb.parts, ra.parts);
   assert.equal(rb.points, ra.points);
   assert.equal(rb.runway, '07');

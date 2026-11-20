@@ -330,7 +330,8 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     sel.value = all.some((a) => a.icao === val) ? val : (airportGroups(all)[0]?.airports[0]?.icao ?? '');
     return sel.value;
   };
-  const ends = (icao) => (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends.map((e) => [e.ident, `RWY ${e.ident}  (${Math.round(r.lengthM || 0).toLocaleString()} m)`]));
+  // v0.6.2: an end with no straight-in approach (runways.js CIRCLING_ONLY: Gimhae's 18L and 18R) says so
+  const ends = (icao) => (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends.map((e) => [e.ident, `RWY ${e.ident}  (${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling ? ', circling only' : ''})`]));
   const endObj = (icao, ident) => {
     for (const r of list().find((a) => a.icao === icao)?.runways || []) for (const e of r.ends) if (e.ident === ident) return e;
     return null;
@@ -489,6 +490,12 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     if (zfw > L.MZFW) problems.push(`Zero-fuel weight is over the ${L.MZFW.toLocaleString()} kg limit.`);
     if (tow > L.MTOW) problems.push(`Take-off weight is over MTOW (${L.MTOW.toLocaleString()} kg).`);
     if (plan.fuelKg < 600) problems.push('Load some fuel.');
+    // v0.6.2: no 15 nm final to an end that's only flown by a circle (its straight-in path meets the hills)
+    const arr = endObj(plan.dest, plan.arrRunway);
+    if (plan.start === 'final' && arr?.circling) {
+      const other = (list().find((a) => a.icao === plan.dest)?.runways || []).find((r) => r.ends.includes(arr))?.ends.find((e) => e !== arr);
+      problems.push(`${plan.arrRunway} has no straight-in approach (it's flown by a circle from the approach to ${other?.ident || 'the other end'}): pick another runway for a 15 nm final.`);
+    }
     // v0.5.3: a design whose engines or tanks touch the ground standing would end the flight as it starts
     if (type.design && designNumbers(type).touchesGround) problems.push('Its engines or tanks touch the ground standing: lengthen the gear or move them up in the warehouse.');
     if (!problems.length && plan.fuelKg < est.total) warn = 'Less fuel than the trip + reserve estimate.';

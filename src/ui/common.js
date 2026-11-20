@@ -26,6 +26,14 @@ export const angDiff = (a, b) => ((a - b + 540) % 360) - 180; // a - b in -180..
 
 // Magnetic heading (deg) from a grid heading (rad) at a map point.
 export const magDeg = (hdgGrid, x, y) => wrap360(gridToMag(hdgGrid, x, y) / DEG);
+// v0.6.2: the heading (grid, rad) that holds a track (grid, rad) in a wind (windX, windY: the air's motion in map m/s)
+// at a true airspeed (m/s), crabbing into the wind's push across the track (the map's leg tip). No correction below
+// 40 m/s (on the ground, say), nor in a crosswind faster than the aircraft.
+export function headingForTrack(track, windX, windY, tas) {
+  if (!(tas > 40)) return track;
+  const c = (windX || 0) * Math.cos(track) - (windY || 0) * Math.sin(track);   // the push to the right of the track
+  return Math.abs(c) < tas ? track - Math.asin(c / tas) : track;
+}
 export const magToGridRad = (deg, x, y) => magToGrid(deg * DEG, x, y);
 
 // A canvas sized in CSS pixels, drawn at devicePixelRatio. Returns { canvas, ctx, w, h, size(w, h) }.

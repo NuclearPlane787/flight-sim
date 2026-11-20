@@ -28,6 +28,15 @@
 // worst part's cap (50 + 10 × its score out of 10), the grass (49 at most), a touchdown off a
 // runway (half) and a would-be crash (half). Bounces are counted from the wheels themselves
 // (bounceTracker below): Shane's clear bounce had scored 0.
+//
+// v0.6.2 (Shane, 2026-11-20: "remove the 'approach' scoring completely because the vast majority of my landings
+// are done on a whim, lining up very quickly. Basically, the landing score is based mostly on just the landing
+// itself rather than what led up to it", and no maximum set "by things like the approach. Like the 50 cap."):
+// the approach path and the sink rate's swings are no longer parts (approachStats still measures them, unscored,
+// in result.approach), and the worst part's cap is vertical speed's alone: a hard touchdown can't be averaged
+// away (900 ft/min with the rest right still scores 50, a D), but a long or off-centre touchdown just loses its
+// share (700 m long with the rest right: 78). The grass, a touchdown off a runway and a would-be crash still
+// come off, as they're the touchdown itself. Saved landings keep the scores they were given.
 
 import { GROUND_Z } from './geometry.js';
 import { gridToMag } from './world/frame.js';
@@ -150,24 +159,21 @@ export const COST = {
   grass: 0.35,      // the first main wheels landed on the grass (short of the runway or off its side)
   offRunway: 2.3,   // not on a runway at all: a perfect touchdown on a taxiway scores 10
   crash: 2.3,       // v0.4.1: Indestructible kept together what would have crashed (a damage event): as off a runway
-  // The approach (approachStats below). RMS dots off the PFD's glideslope and localizer from
-  // 1,000 ft to 100 ft: 0.25 → 0.007, 0.5 → 0.03, 1 → 0.12, 2 → 0.48 (full scale all the way).
-  path: (dots) => sq(dots / 2.9),
-  // ft/min, the sink rate's swing (its standard deviation) about a steady 3° descent from
-  // 1,000 ft to 50 ft: 50 → 0.003, 100 → 0.012, 200 → 0.05, 400 → 0.20, 700 → 0.60.
-  swing: (fpm) => sq(fpm / 900),
+  // (v0.5.4 to v0.6.1 also scored the approach: path, the RMS dots off the glideslope and localizer from 1,000 ft
+  // to 100 ft, sq(dots / 2.9); swing, the sink rate's standard deviation about a steady 3° descent, sq(fpm / 900).
+  // v0.6.2 dropped both.)
 };
 
 // v0.5.4: what makes each part's score out of 10 and how much it weighs: [k, weight]. A part
 // scores round(10 × e^(−cost / k)) (scoreFor). Vertical speed: 190 ft/min 10, 300 8, 400 6,
 // 600 3, 900 0. Peak g: 1.3 9, 1.5 7, 2.0 3. Aiming point: ±50 m 10, +150 m 7, +300 m 3,
 // +500 m 1. Centreline: 1 m 10, 2 m 8, 5 m 4, 10 m 1. Bank: 2° 9, 5° 5, 7° 3. Pitch: 3–8° 9–10,
-// 1° 3, 9.5° 1. Bounces: one 5, two 3. Approach path: 0.25 dots 9, 0.5 7, 1 3, 2 0. Sink rate
-// swings: ±100 ft/min 9, ±200 6, ±300 3. (The grass, the taxiway and the would-be crash were parts
-// in v0.5.4; since v0.5.5 they're rows of what comes off the total, so their entries here go unused.)
+// 1° 3, 9.5° 1. Bounces: one 5, two 3. (The grass, the taxiway and the would-be crash were parts
+// in v0.5.4; since v0.5.5 they're rows of what comes off the total, so their entries here go unused.
+// The approach's two parts, path [0.095, 2] and swing [0.1, 1.5], went in v0.6.2.)
 export const RATE = {
   vs: [0.4, 3], g: [0.07, 1.5], aim: [0.14, 3], centreline: [0.16, 3], bank: [0.25, 1], pitch: [0.25, 1],
-  bounces: [0.3, 1.5], path: [0.095, 2], swing: [0.1, 1.5], grass: [0.1, 3], offRunway: [0.1, 0], crash: [0.1, 0],
+  bounces: [0.3, 1.5], grass: [0.1, 3], offRunway: [0.1, 0], crash: [0.1, 0],
 };
 export const scoreFor = (cost, k) => Math.round(10 * Math.exp(-cost / k));
 // v0.5.4: the most a landing on the grass can score, 49 (an F). (v0.5.4 also capped a touchdown off a
@@ -175,7 +181,9 @@ export const scoreFor = (cost, k) => Math.round(10 * Math.exp(-cost / k));
 export const CAP = { grass: 49 };
 export const HALVED = ['offRunway', 'crash'];
 // v0.5.4: and the worst part's score caps it at 50 + 10 × that score (0/10: 50, 3/10: 80, 5/10 or better: none).
+// v0.6.2: vertical speed's alone (CAPPED_BY): a hard touchdown still holds the total down; the other parts average.
 export const WORST_CAP = (score) => 50 + 10 * score;
+export const CAPPED_BY = ['Vertical speed'];
 // v0.5.5: the parts' shares of the 100, by their weights (RATE), in whole points that add up to exactly 100
 // (largest remainders first; on a tie the earlier part), and each part's points: its share × its score out of 10,
 // rounded, but a point short of its share unless the score is 10 (so 100 still takes 10/10 everywhere). Sets
@@ -193,7 +201,7 @@ export function shareOut(parts) {
 }
 // v0.5.5: the worst part's name on its cap's row ("Held down by vertical speed").
 export const HELD_BY = { 'Vertical speed': 'vertical speed', 'Peak g': 'peak g', 'Touchdown vs aiming point': 'the touchdown point',
-  'From centreline': 'the centreline', Bank: 'bank', Pitch: 'pitch', Bounces: 'bounces', 'Approach path': 'the approach path', 'Sink rate swings': 'the sink rate' };
+  'From centreline': 'the centreline', Bank: 'bank', Pitch: 'pitch', Bounces: 'bounces' };
 
 // v0.5.5: bounces from the wheels (Shane, 2026-11-18: "I did bounce once very clearly in that landing but the report
 // showed 0 bounces"). The sim's own 'bounce' event needs half a second with no wheel at all on the ground before the
@@ -494,11 +502,8 @@ export function createScorer() {
       add('bank', 'Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
       add('pitch', 'Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch, pitchBand));
       add('bounces', 'Bounces', bounces, '', COST.bounces(bounces));
+      // v0.6.2: the approach is measured (result.approach) but not scored.
       const ap = td.approach;
-      if (ap) {
-        add('path', 'Approach path', +ap.pathDots.toFixed(1), 'dots', COST.path(ap.pathDots), ap.note ? { note: ap.note } : {});
-        add('swing', 'Sink rate swings', Math.round(ap.swingFpm), 'ft/min', COST.swing(ap.swingFpm));
-      }
       // v0.5.5: the parts' points out of their shares of the 100; the total is their sum, then what comes off,
       // each a row of its own (kind 'penalty': what it took off, `minus`, also as its `penalty`).
       shareOut(parts);
@@ -509,9 +514,9 @@ export function createScorer() {
         pens.push({ kind: 'penalty', name, value, unit: '', rule, cost: +cost.toFixed(4), minus, penalty: minus, ...extra });
         points -= minus;
       };
-      // The worst part holds the total down (v0.5.4's WORST_CAP), so one part gone badly isn't averaged away:
-      // 900 ft/min with the rest right scores 50, a D; 600 ft/min 80 at most. A part at 5/10 or better caps nothing.
-      const worst = parts.reduce((a, p) => (!a || p.score < a.score ? p : a), null);
+      // A hard touchdown holds the total down (v0.5.4's WORST_CAP; since v0.6.2 vertical speed's alone), so it isn't
+      // averaged away: 900 ft/min with the rest right scores 50, a D; 600 ft/min 80 at most; 5/10 or better caps nothing.
+      const worst = parts.filter((p) => CAPPED_BY.includes(p.name)).reduce((a, p) => (!a || p.score < a.score ? p : a), null);
       if (worst && WORST_CAP(worst.score) < points) {
         off(`Held down by ${HELD_BY[worst.name] || worst.name.toLowerCase()}`, '', `${WORST_CAP(worst.score)} at most`, WORST_CAP(worst.score), 0, { of: worst.name });
       }

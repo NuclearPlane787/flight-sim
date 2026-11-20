@@ -57,6 +57,6 @@ export const ENGINE_TYPES = Object.freeze({
 export const ENGINE_LIST = ['leap-1a', 'genx-1b', 'ge90-115b'].map((id) => ENGINE_TYPES[id]);
 const BY_TYPE = { a321neo: 'leap-1a', 'b787-9': 'genx-1b', 'b777-300er': 'ge90-115b' };
 export const engineOfType = (typeId) => ENGINE_TYPES[BY_TYPE[typeId] || 'leap-1a'];
-// The pylon's limit (V050.md): 1.5 times the engine type's rated take-off thrust (CS-25's ultimate factor), N.
+// The pylon's limit (briefs/V0-5-0.md): 1.5 times the engine type's rated take-off thrust (CS-25's ultimate factor), N.
 export const PYLON_FACTOR = 1.5;
 export const pylonLimitN = (eng) => PYLON_FACTOR * eng.data.T0_ENGINE;

@@ -1,4 +1,4 @@
-// The landmarks (V060.md Part 6 step 3): famous buildings as their own models, made here
+// The landmarks (briefs/V0-6-0.md Part 6 step 3): famous buildings as their own models, made here
 // (landmark-models.js: massing from public facts, no logos, signage or names, nothing copied).
 //
 //   const lm = createLandmarks(scene, uniforms, chunks, { heightfield, renderer });

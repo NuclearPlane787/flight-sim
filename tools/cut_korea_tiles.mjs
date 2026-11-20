@@ -4,7 +4,7 @@
 //
 //   python3 tools/cpu-guard.py --minutes 5 -- node tools/cut_korea_tiles.mjs
 //
-// The lattice (V060.md, "Bit-exact sampling"): 250 m cells, cell-centred, origin at Korea's
+// The lattice (briefs/V0-6-0.md, "Bit-exact sampling"): 250 m cells, cell-centred, origin at Korea's
 // south-west corner (−400 km, −400 km), extended both ways. A tile is TILE × TILE cells with a
 // BORDER of its neighbours' cells on each side, so a bilinear sample (and the GPU's Catmull-Rom
 // water taps, and the normals) never straddles two tiles. Cells outside the data's extent are

@@ -4118,3 +4118,37 @@ And straight after it:
 - **His calls:** Gimhae's 18L/18R finals (refuse those ends for final starts, or a circling start); the new ground's look (the glass patches' places, the paddies, bare ground); Gimhae's elevations and widths from its AIP; whether the flags and Korea's old files go before v0.7.0.
 
 **Next:** v0.7.0, the regions and Europe: a fresh session from `HANDOFF.md`'s first section.
+
+## 2026-11-20, 21:40 KST: v0.6.2 made and written up (Cowork session)
+
+**Shane** (after v0.6.1's write-up): "Wait v0.7 already? What is on the roadmap for next big updates? I have some bugs to fix that can be called v0.6.2." Then his list: (1) "The landing score thing, once again. Let's remove any 'maximum' scores set by things like the approach. Like the 50 cap. On that note, I think we should remove the 'approach' scoring completely because the vast majority of my landings are done on a whim, lining up very quickly"; (2) "The 'hide panels' and 'resume' buttons move onto another line and looks awkward. I would say that segment, the autopilot bar, and the view mode selector all into one bar so a bug like this doesn't happen"; (3) "an option to the settings that scales up or down the size of the two side panels ... maybe from like 50% to 110% or something you feel appropriate"; (4) on the map's pink lines, "when I hover over them on the map, let it show the heading I have to set to follow that line"; (5) the `V0XY.md` files "to a new folder with an appropriate name ... renaming them all to 'V0-X-Y.md'"; (6) "As a future rule, we don't have to keep every region a perfect rectangle"; "Whatever you think needs to be added, group them here. These tasks I think can be done right here in Cowork." Plus his ideas for v0.6.3 onwards (now in `ROADMAP.md`). After the session's plan: "Sure. You can go ahead with v0.6.2."
+
+### Decided (the plan Shane said go to)
+
+- **The cap:** the session showed him what dropping every cap does (with the rest perfect: a 900 ft/min thump 71, a C; 700 m long 78; 12 m off the centreline 78) and offered keeping it for vertical speed only as its default, or none; he went ahead on the default. So: the approach's two parts gone, the worst-part cap vertical speed's alone.
+- **Panel size:** 50 % to 120 % in 5 % steps (his "50% to 110% or something you feel appropriate": 120 % for big screens).
+- **The briefs:** `briefs/`, `V0-X-Y.md`. **This log's older entries name them as they were** (`V020.md` = `briefs/V0-2-0.md`, `V030.md`, `V040.md`, `V050.md`, `V053.md` = `briefs/V0-5-3.md`, `V060.md` = `briefs/V0-6-0.md`); every other file was changed (76 files, 148 mentions, by one script).
+- **The region rule:** written into `ROADMAP.md` ("A region's shape") and the v0.7.0 handover's question 3. East Asia isn't cut: its open sea has no tiles (an all-sea tile has no file), so its southeast corner costs nothing.
+- **Added by the session:** Gimhae's 18L and 18R circling-only (refused, rather than a circling start: the real ends have no straight-in approach), with a check of every end's final; `ui-shots.cjs` rewritten.
+
+### Built
+
+- **The score** (`src/score.js`): no `path` or `swing` parts (`approachStats()` still measures, `result.approach`); `CAPPED_BY = ['Vertical speed']`; the logbook card still shows old entries' approach rows. `tests/score.test.mjs` and `scenario-state.test.mjs` rewritten where they asserted the approach parts: Shane's 2026-10-31 landing now scores 89 after the bobbing final and after a steady one alike.
+- **The top bar** (`src/ui/hud.js`, `ui.css` `.fsui-topbar`): one row; a grid with the FCU centred while the wider side leaves room, else packed from the edges, then the view switch's key caps go, then the row's text shrinks together (to half at most). Laid out again on any part's resize (a ResizeObserver on all three, next frame), fonts arriving, and when it overflows (checked twice a second: the observers can lag on a busy machine, which the first check runs caught at 1,280 and 1,440 px).
+- **Panel size:** `hud.setPanelScale()`, Settings' slider (`menu.js`, wired in `main.js`), saved as `panelScale`.
+- **The heading tip** (`ui/map.js`, `headingForTrack()` in `ui/common.js`), and the map's help and the Controls page's note say so.
+- **Circling-only ends** (`CIRCLING_ONLY` in `world/runways.js`, `end.circling`): the setup's runway list says "circling only" and refuses a 15 nm final to them; a URL's final start to one starts on the runway; Skip to final says why ("Gimhae 18L has no straight-in approach: it's flown by a circle from the approach to 36R …"); the map draws "CIRCLING ONLY" instead of the 15 nm final; Change route says so.
+- **For checks:** `window.__fs.hud`.
+
+### Checked
+
+- **The unit suite: 1237 of 1237 with the defaults and 1237 of 1237 with `FS_EAST_ASIA=0 FS_CITIES=0 FS_GROUND=0`,** on the Mac (the device shell, three groups through the guard) and in the container (the clean clone with the changed files staged in, OurAirports' file too). New: `tests/v062-finals.test.mjs` (every runway end's straight-in final from 1 to 15 nm: Gimhae 18R 46 m under the ground 4.8 nm out and 18L 20 m at 4.5 nm, marked circling-only; every other end clears by 86 m or more, the least Gimpo 32R's at 1 nm), `tests/v062-heading.test.mjs` (the wind triangle).
+- **The cloud checks** (headless Chrome with SwiftShader): `v062-hud` **60 of 60** (the row level, in order, apart and on screen at 1,024 × 700, 1,280 × 720, 1,440 × 900, 1,920 × 1,080 and 2,560 × 1,440 in both cockpits, in a seat, paused and with the readout; the panels under it; Panel size at 50 % and 120 % live and kept after a reload); `v062-map` **11 of 11** (the tip "Set HDG 192° to follow this line" for Gimpo to Jeju, its heading checked against the leg's; Gimhae 18L's start, Skip to final, Change route and the setup); `ui-shots` **9 of 9** (rewritten); `land.cjs normal RKSI 33L` **A 90** (B 89 before: the approach no longer scored); `route-views` 16 of 16, `v044-hud` 36 ok, `v058-home` 344 of 344, `weather-final` 20 of 20, `weight-copy` 60 of 60, `v056-keys` 47 of 47, `v058-rename` 32 of 32, `athr-lever` 9 of 9, `camera-drag` 23 of 23; no page errors in any.
+- **Pictures looked at:** the cockpit at 1,024 and 1,440 px in the A321 and the 777 (one row: Hide panels and Resume, the FCU or MCP, Cockpit F/O · Nose · 3rd person); the panels at 50 % and 120 %; the map's tip; Gimhae 18L's "CIRCLING ONLY" and the route panel's note. (The pictures' selects show their first options: the snapshot copies the page's HTML, which doesn't carry a select's current value.)
+- **Not run:** the Mac's browser scripts (the device shell has no Chrome); v0.6.2 changes no rendering but the HUD's top row and panel sizes, which the container checked.
+
+### Written up
+
+`src/version.js` (`Flight Sim v0.6.2 · CL#261120`), `Updates.md`, `README.md` (the score, Settings, Hide panels' row, the map's tip, Gimhae's known issue), `ROADMAP.md` (the v0.6.2 row done, Shane's ideas for v0.6.3 onwards, "A region's shape", "Found while building v0.6.2"), `PLAN.md` ("v0.6.2"), `AGENTS.md` (the briefs' row, v0.6.2 in State, Next), `HANDOFF.md` (its first section's status and "Where you start", the versions table), this entry, and the Games project doc.
+
+**For Shane:** `sh tools/push.sh v0.6.2` from `games/flight-sim`, then Cmd+Shift+R. **Next:** his call between his v0.6.3 ideas and v0.7.0.

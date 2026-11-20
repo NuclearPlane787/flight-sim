@@ -1,4 +1,4 @@
-// The GPU's clip window over the 250 m tiles (v0.6.0, V060.md Part 1 step 3). Pure: no DOM, no
+// The GPU's clip window over the 250 m tiles (v0.6.0, briefs/V0-6-0.md Part 1 step 3). Pure: no DOM, no
 // three.js, so node can check it cell for cell. glsl.js turns its arrays into textures.
 //
 // One window of N x N texels per layer (heights, normals, water, cover). Texel (p, q) holds

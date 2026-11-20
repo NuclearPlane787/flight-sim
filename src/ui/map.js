@@ -8,7 +8,7 @@
 //   setPrediction(samples), onjump(sample), onskipfinal(), onroute(icao, ident) -> { ok, error? },
 //   openRoute(icao?), setCoast(coast), waypoints, setWaypoints(list) }
 
-import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg } from './common.js';
+import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg, headingForTrack } from './common.js';
 import { MAP_EXTENT } from '../world/frame.js';
 import { EAST_ASIA_ON, mapExtent, fineExtent } from '../world/region.js';
 import { fuelEstimate } from './setup.js';
@@ -31,7 +31,7 @@ export function createMap(root, { airports, coast } = {}) {
       <button class="fsui-b" data-a="close" tabindex="-1">Close (N)</button>
     </div>
     <div class="fsui-map-info"></div>
-    <div class="fsui-map-help">Drag to pan · pinch or wheel to zoom<br>Drag the magenta line to add a waypoint · double-click a waypoint to remove it<br>Click the bright path to jump there · click an airport to fly there instead</div>
+    <div class="fsui-map-help">Drag to pan · pinch or wheel to zoom<br>Hover over the magenta line for the heading that follows it · drag it to add a waypoint · double-click a waypoint to remove it<br>Click the bright path to jump there · click an airport to fly there instead</div>
     <div class="fsui-tip" hidden></div>
     <div class="fsui-confirm" hidden><div class="q"></div><div class="row">
       <button class="fsui-b" data-a="no" tabindex="-1">Cancel</button><button class="fsui-b primary" data-a="yes" tabindex="-1">Jump</button></div></div>
@@ -190,11 +190,16 @@ export function createMap(root, { airports, coast } = {}) {
       // 15 nm final fix on the extended centreline.
       const h = (view.dest.hdgGridDeg || 0) * DEG, [tx, ty] = pts[pts.length - 1];
       const fx = tx - Math.sin(h) * 15 * NM, fy = ty - Math.cos(h) * 15 * NM;
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([5, 5]);
-      ctx.beginPath(); ctx.moveTo(X(tx), Y(ty)); ctx.lineTo(X(fx), Y(fy)); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(X(fx), Y(fy), 3, 0, Math.PI * 2); ctx.fill();
-      ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillText('15 NM FINAL', X(fx) + 6, Y(fy));
+      if (view.dest.circling) {   // v0.6.2: no straight-in final to it (Gimhae 18L, 18R), so no 15 nm final drawn
+        ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText('CIRCLING ONLY', X(tx) + 10, Y(ty) + 14);
+      } else {
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(X(tx), Y(ty)); ctx.lineTo(X(fx), Y(fy)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(X(fx), Y(fy), 3, 0, Math.PI * 2); ctx.fill();
+        ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText('15 NM FINAL', X(fx) + 6, Y(fy));
+      }
       const wps = view.waypoints || route.waypoints;
       wps.forEach(([x, y], i) => {
         ctx.fillStyle = '#000'; ctx.strokeStyle = C.magenta; ctx.lineWidth = 2.5;
@@ -516,6 +521,10 @@ export function createMap(root, { airports, coast } = {}) {
       const apt = label || (s || wp ? null : hitRunway(sx, sy));
       canvas.classList.toggle('hot', !!(s || wp || apt));
       if (s !== hover) { hover = s; showTip(s, sx, sy); redraw(); } else if (s) showTip(s, sx, sy);
+      // v0.6.2: over the magenta line (not a waypoint, a label or the bright path), the heading that follows it.
+      const leg = !s && !label && hitWaypoint(sx, sy) < 0 ? hitSegment(sx, sy) : -1;
+      if (leg >= 0) { showLegTip(leg, sx, sy); return; }
+      if (tipLeg) { tip.hidden = true; tipLeg = false; }
       if (!s && apt) {
         const isDest = apt.runways?.some((r) => r.ends.includes(view?.dest));
         tip.textContent = isDest ? `${apt.icao}: click to change the runway` : `${apt.icao}: click to fly there instead`;
@@ -594,6 +603,28 @@ export function createMap(root, { airports, coast } = {}) {
     tip.textContent = `${d.time} · ${d.alt} · click to jump`;
     tip.hidden = false; tip.style.left = sx + 14 + 'px'; tip.style.top = sy + 12 + 'px';
   }
+  // v0.6.2 (Shane: "setting a heading to follow them takes some guessing, so when I hover over them on the map, let it
+  // show the heading I have to set to follow that line"): the magnetic heading that holds the leg's track in the wind
+  // at the aircraft now (its mean wind, at its true airspeed; none below 40 m/s), at the point under the pointer: a
+  // long leg's heading drifts a little along it, as the map's north and the variation turn.
+  let tipLeg = false;         // the tip is showing a leg's heading
+  function legHeading(seg, x, y) {
+    const pts = routePts(), [ax, ay] = pts[seg], [bx, by] = pts[seg + 1];
+    const T = Math.atan2(bx - ax, by - ay);                 // the leg's track, grid
+    const st = view?.state, w = st?.wind;
+    const H = headingForTrack(T, w?.meanX, w?.meanY, st?.tas || 0);
+    return { hdg: magDeg(H, x, y), trk: magDeg(T, x, y) };
+  }
+  const hdg3 = (d) => String((Math.round(d) % 360) || 360).padStart(3, '0');
+  function showLegTip(seg, sx, sy) {
+    const [x, y] = toMapXY(sx, sy);
+    const { hdg, trk } = legHeading(seg, x, y);
+    const wca = ((hdg - trk + 540) % 360) - 180;
+    tip.textContent = Math.abs(wca) >= 0.5 ? `Set HDG ${hdg3(hdg)}° to follow this line (track ${hdg3(trk)}°, ${Math.round(Math.abs(wca))}° into the wind)`
+      : `Set HDG ${hdg3(hdg)}° to follow this line`;
+    tip.hidden = false; tip.style.left = Math.max(8, Math.min(sx + 14, W - 380)) + 'px'; tip.style.top = sy + 12 + 'px';
+    tipLeg = true;
+  }
   function showConfirm(s) {
     pending = { jump: s };
     const d = describe(s);
@@ -623,6 +654,7 @@ export function createMap(root, { airports, coast } = {}) {
     let best = null, bd = Infinity;
     for (const r of apt.runways || []) {
       for (const [e, o] of [[r.ends[0], r.ends[1]], [r.ends[1], r.ends[0]]]) {
+        if (e.circling) continue;   // v0.6.2: not one you'd fly straight in to (Gimhae 18L, 18R)
         const [tx, ty] = thresholdOf(e), land = Math.atan2(o.x - e.x, o.y - e.y);
         const d = st ? Math.abs(wrapPi(land - Math.atan2(tx - st.pos.x, ty - st.pos.y))) : 0;
         if (d < bd) { bd = d; best = e.ident; }
@@ -653,6 +685,8 @@ export function createMap(root, { airports, coast } = {}) {
     if (sel) {
       const same = view?.dest === sel.e;
       lines.push(`<b>${apt.icao} ${sel.e.ident}</b> · ${Math.round(sel.r.lengthM || 0).toLocaleString()} m${sel.e.ils ? ` · ILS CAT ${sel.e.ils}` : ''}${same ? ' · <span class="dim">your destination now</span>' : ''}`);
+      // v0.6.2: an end with no straight-in approach (Gimhae 18L, 18R)
+      if (sel.e.circling) lines.push(`<span class="warn">Circling only: no straight-in approach, so no Skip to final. It's flown by a circle from the approach to ${sel.r.ends.find((x) => x !== sel.e)?.ident || 'the other end'}.</span>`);
       if (st) {
         const [tx, ty] = thresholdOf(sel.e), nm = Math.hypot(tx - st.pos.x, ty - st.pos.y) / NM;
         const brg = Math.round(magDeg(Math.atan2(tx - st.pos.x, ty - st.pos.y), st.pos.x, st.pos.y)) || 360;

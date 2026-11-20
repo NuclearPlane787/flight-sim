@@ -1,4 +1,4 @@
-// The landmarks' models (V060.md Part 6 step 3): massing made here from public facts (the height,
+// The landmarks' models (briefs/V0-6-0.md Part 6 step 3): massing made here from public facts (the height,
 // the floors, the plan, the taper and the crown), no logos, signage or names, nothing copied.
 // Pure geometry: each builder returns { geometry (a non-indexed THREE.BufferGeometry), lights }
 // in the landmark's own frame: x east (grid), y up from the base (0 at the ground), z = -north,

@@ -1,4 +1,4 @@
-// Node's way to install the local rules (V060.md Part 5), as main.js and the prediction worker do
+// Node's way to install the local rules (briefs/V0-6-0.md Part 5), as main.js and the prediction worker do
 // with loadLocalRules(): the geo rules (WMM2025's grid, the country raster, South Korea's mask)
 // read from data/, installed by region.js's setGeoRules(), which also installs frame.js's model.
 import { readFileSync } from 'node:fs';

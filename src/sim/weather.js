@@ -9,7 +9,7 @@
 // are degrees magnetic, "from", as the tower gives them; they're converted once, at the settings' reference
 // point (refX, refY: the arrival airport), so the wind is one vector everywhere.
 //
-// v0.6.0 (V060.md, "The wind, true everywhere"): with EAST_ASIA_ON, the wind keeps its true
+// v0.6.0 (briefs/V0-6-0.md, "The wind, true everywhere"): with EAST_ASIA_ON, the wind keeps its true
 // direction as set at the arrival (its magnetic direction there plus the variation there) and is
 // turned into grid coordinates at each point by the local convergence: the mean wind (surface,
 // aloft, the shear) and the gusts' direction turn by windTurnAt(C, x, y), exactly 0 at

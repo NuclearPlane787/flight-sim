@@ -48,7 +48,7 @@ export function createHud(root, { airports, coast } = {}) {
   // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()), for the Boeing MCP's tooltips (made on its first use).
   let keyNames = null;
   function setKeyNames(fn) { keyNames = typeof fn === 'function' ? fn : null; boeing?.fcu.setKeyNames?.(keyNames); }
-  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, onlaw: null, onview: null, onpause: null, poke, el };
+  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, setPanelScale, get panelScale() { return panelScale; }, onlaw: null, onview: null, onpause: null, poke, el };
   const airbus = {
     pfd: createPfd(pfdCv),
     nd: createNd(ndCv, { airports, coast: builtCoast }),
@@ -80,6 +80,21 @@ export function createHud(root, { airports, coast } = {}) {
   panelsBox.innerHTML = '<button class="fsui-panels-btn" tabindex="-1"></button><button class="fsui-pause-btn" tabindex="-1" title="Pause the flight (the views, the camera, the levers and the panel still work; Esc opens the menu, which doesn’t pause)">Pause</button>';
   el.appendChild(panelsBox);
   shield(panelsBox);
+  // v0.6.2 (Shane: "The 'hide panels' and 'resume' buttons move onto another line and looks awkward. I would say that
+  // segment, the autopilot bar, and the view mode selector all into one bar so a bug like this doesn't happen"): one
+  // row along the top: the panels switch and Pause, the FCU (or the MCP), the view switch. It never wraps: on a narrow
+  // window the view switch drops its key caps, then the whole row's text comes down until it fits (placeViews). The
+  // side panels start under it.
+  const bar = document.createElement('div');
+  bar.className = 'fsui-topbar';
+  el.appendChild(bar);
+  bar.append(panelsBox, airbus.fcu.el, views);
+  // v0.6.2 (Shane: "an option to the settings that scales up or down the size of the two side panels"): the PFD, the
+  // ND and the engine panel at 50 % to 120 % of the size the window gives them (Settings → Panel size), kept on screen.
+  const PANEL_SCALE = { min: 0.5, max: 1.2 };
+  const clampScale = (k) => (Number.isFinite(+k) ? Math.max(PANEL_SCALE.min, Math.min(PANEL_SCALE.max, +k)) : 1);
+  let panelScale = clampScale((store.load('settings', {}) || {}).panelScale ?? 1);
+  function setPanelScale(k) { const n = clampScale(k); if (n !== panelScale) { panelScale = n; placeViews(); } }
   const panelsBtn = panelsBox.querySelector('.fsui-panels-btn'), pauseBtn = panelsBox.querySelector('.fsui-pause-btn');
   let panelsHidden = !!(store.load('settings', {}) || {}).hidePanels;
   function showPanels() {
@@ -146,8 +161,9 @@ export function createHud(root, { airports, coast } = {}) {
         eng: createEicas(engCv),
         fcu: createMcp(el, hud),
       };
+      bar.insertBefore(boeing.fcu.el, views);   // v0.6.2: in the top row, where the FCU is
       if (keyNames) boeing.fcu.setKeyNames?.(keyNames);
-      if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(boeing.fcu.el);
+      barRO?.observe(boeing.fcu.el);
     }
     if (toBoeing) { boeing.pfd.setType(def); boeing.eng.setType(def); } else airbus.eng.setType(def);
     if (toBoeing === isBoeing) { poke(); return; }
@@ -168,9 +184,13 @@ export function createHud(root, { airports, coast } = {}) {
     showView(v.viewId);
     const now = performance.now();
     pfd.update(v, now);
+    // v0.6.2: a safety net for the top row, twice a second: if it overflows (a size change the ResizeObserver hasn't
+    // delivered yet, on a slow or busy machine), lay it out again now.
+    if (now - barChecked > 500) { barChecked = now; if (lay && bar.scrollWidth > bar.clientWidth + 1) placeViews(); }
     if (now - last < MIN_DT) { schedule(); return; }
     draw(now);
   }
+  let barChecked = 0;
 
   function draw(now) {
     last = now;
@@ -219,26 +239,18 @@ export function createHud(root, { airports, coast } = {}) {
   let inset = 0;
   function setTopInset(px) { if (px !== inset) { inset = px; resize(); } }
 
-  // Layout: panel size s from the window, PFD left, ND and engine panel right, FCU top.
+  // Layout: the top row (v0.6.2: one bar), then the panels under it, PFD left, ND and engine panel right.
   function resize() {
     const W = window.innerWidth, H = window.innerHeight - inset;
     const fcuH = Math.max(38, Math.min(56, H * 0.052));
     const pad = 12;
-    Object.assign(fcu.el.style, { top: (8 + inset) + 'px', height: fcuH + 'px', fontSize: (fcuH * 0.36) + 'px' });
-    // The MCP has more on it than the FCU: on a narrow window its text comes down until it fits. It's
-    // also wide enough to reach over the panels, so they start under it, its padding included.
-    if (isBoeing) {
-      const room = W - 2 * pad, w = fcu.el.scrollWidth;
-      if (w > room) fcu.el.style.fontSize = (fcuH * 0.36 * room / w) + 'px';
-    }
-    const top = isBoeing ? inset + 8 + fcu.el.offsetHeight + 6 : inset + fcuH + 16;
-    const s = Math.max(200, Math.min(H * 0.43, W * 0.27, 560));
-    lay = { W, H, s, top, pad, fcuH };
+    Object.assign(bar.style, { top: (8 + inset) + 'px', left: pad + 'px', right: pad + 'px' });
+    fcu.el.style.height = fcuH + 'px';
     // The view switch and the panels switch: the same box as the FCU's (fcuH inside, the FCU's 0.35em above and below).
     const padY = 0.35 * fcuH * 0.36;
-    const box = { top: (8 + inset) + 'px', height: fcuH + 'px', padding: `${padY}px 0.45em`, fontSize: (fcuH * 0.33) + 'px' };
-    Object.assign(views.style, box, { right: pad + 'px' });
-    Object.assign(panelsBox.style, box, { left: pad + 'px' });
+    for (const b of [views, panelsBox]) Object.assign(b.style, { height: fcuH + 'px', padding: `${padY}px 0.45em` });
+    // The panels' size from the window (the Settings' panel size scales it, in placeViews).
+    lay = { W, H, pad, fcuH, base: Math.max(200, Math.min(H * 0.43, W * 0.27, 560)) };
     placeViews();
   }
   const place = (p, cv, x, y, w, h) => {
@@ -247,45 +259,57 @@ export function createHud(root, { airports, coast } = {}) {
     p._at = k;
     Object.assign(p.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); cv.size(w, h);
   };
-  // The corners, level with the FCU: the view switch right of it, without its key caps if that's too
-  // tight; the panels switch left of it. One that still runs into the FCU (the MCP on a narrow window,
-  // or the seat's label in the cockpit) goes just under the top row in its own corner, and the panels
-  // on that side start under it: v0.4.4, Shane: "When in cockpit view, still keep the view change
-  // panel in the top right instead of bottom center." Again whenever the FCU's width changes (its LAW
-  // label fills in after the first frame), a font arrives, or the seat's label changes.
-  let lay = null;
+  // The top row (v0.6.2): at full size if it fits; if not, the view switch without its key caps; if still not, every
+  // part's text smaller, together, until it fits (down to half). Again whenever the FCU's width changes (its LAW label
+  // fills in after the first frame), a font arrives, Pause turns to Resume, or the seat's label changes. Then the
+  // panels, under the row, at the Settings' size, kept on the screen and clear of each other.
+  let lay = null, barK = 1;
+  const BAR_GAP = 10;   // px between the row's parts (ui.css .fsui-topbar's gap)
+  function barFonts(k) {
+    barK = k;
+    fcu.el.style.fontSize = (lay.fcuH * 0.36 * k) + 'px';
+    views.style.fontSize = panelsBox.style.fontSize = (lay.fcuH * 0.33 * k) + 'px';
+  }
   function placeViews() {
     if (!lay) return;
-    const { W, H, s, top, pad } = lay;
-    const fr = fcu.el.getBoundingClientRect();
-    views.classList.remove('compact', 'under'); panelsBox.classList.remove('under');
-    views.style.top = panelsBox.style.top = (8 + inset) + 'px';
-    const clearR = () => views.getBoundingClientRect().left >= fr.right + 10;
-    const clearL = () => panelsBox.getBoundingClientRect().right <= fr.left - 10;
-    const vFont = lay.fcuH * 0.33, below = Math.max(top, fr.bottom + 6);
-    views.style.fontSize = vFont + 'px';
-    if (!clearR()) {
-      views.classList.add('compact');
-      if (!clearR()) {   // a smaller font first (to 72%), so it stays in the top row
-        const k = ((W - pad) - (fr.right + 10)) / views.getBoundingClientRect().width;
-        if (k >= 0.72) views.style.fontSize = (vFont * k * 0.97) + 'px';
-        if (!clearR()) { views.style.fontSize = vFont + 'px'; views.classList.add('under'); views.style.top = below + 'px'; }
-      }
-    }
-    if (!clearL()) { panelsBox.classList.add('under'); panelsBox.style.top = below + 'px'; }
-    // The side panels start under their corner's switch (the A321's used to tuck 6 px under the view switch).
-    const rTop = Math.max(top, views.getBoundingClientRect().bottom + 6), lTop = Math.max(top, panelsBox.getBoundingClientRect().bottom + 6);
-    const sr = Math.min(s, (H - (rTop - inset) - pad * 2 - 8) / 1.62);
-    place(pfdEl, pfdCv, pad, lTop, s, s);
-    place(ndEl, ndCv, W - sr - pad, rTop, sr, sr);
-    place(engEl, engCv, W - sr - pad, rTop + sr + 8, sr, sr * 0.62);
+    const { W, pad } = lay;
+    views.classList.remove('compact');
+    barFonts(1);
+    const room = bar.clientWidth;
+    const pw = () => panelsBox.offsetWidth, fw = () => fcu.el.offsetWidth, vw = () => views.offsetWidth;
+    // The FCU centred, if the wider side leaves room for that on both sides; else packed from the edges (.packed).
+    const fitsCentred = () => 2 * Math.max(pw(), vw()) + fw() + 2 * BAR_GAP <= room;
+    const need = () => pw() + fw() + vw() + 2 * BAR_GAP;
+    let centred = fitsCentred();
+    if (!centred && need() > room) { views.classList.add('compact'); centred = fitsCentred(); }
+    bar.classList.toggle('packed', !centred);
+    for (let i = 0; i < 4 && need() > room; i++) barFonts(Math.max(0.5, barK * (room / need()) * 0.99));
+    const top = Math.round(bar.getBoundingClientRect().bottom + 6);
+    const below = window.innerHeight - top - pad;
+    const s = Math.max(80, Math.min(lay.base * panelScale, below, (W - 3 * pad) / 2));
+    const sr = Math.max(60, Math.min(s, (below - 8) / 1.62));
+    place(pfdEl, pfdCv, pad, top, s, s);
+    place(ndEl, ndCv, W - sr - pad, top, sr, sr);
+    place(engEl, engCv, W - sr - pad, top + sr + 8, sr, sr * 0.62);
     force = true;
     if (view) draw(performance.now());
   }
+  // From a ResizeObserver or a font arriving: next frame, once (a layout change inside the observer's callback would
+  // be a loop).
+  let relayoutQueued = false;
+  function relayout() {
+    if (relayoutQueued) return;
+    relayoutQueued = true;
+    requestAnimationFrame(() => { relayoutQueued = false; placeViews(); });
+  }
 
   window.addEventListener('resize', resize);
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => placeViews()).observe(airbus.fcu.el);
-  document.fonts?.addEventListener?.('loadingdone', () => placeViews());
+  // Any of the row's parts changing size (the FCU's LAW label filling in, a font arriving for the switches' labels, the
+  // seat's label) lays the row out again: the switches too, since v0.6.2, as their widths now decide the row's fit.
+  const barRO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => relayout()) : null;
+  for (const e of [panelsBox, views, airbus.fcu.el]) barRO?.observe(e);
+  document.fonts?.addEventListener?.('loadingdone', () => relayout());
+  document.fonts?.ready?.then(() => relayout());
   resize();
   return hud;
 }

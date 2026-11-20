@@ -1,4 +1,4 @@
-// v0.5.3 (the run's extra time, one of V053.md's extras): the A321's sharklets can come off in the warehouse.
+// v0.5.3 (the run's extra time, one of briefs/V0-5-3.md's extras): the A321's sharklets can come off in the warehouse.
 // Without them: the span 34 m (the parts' tip, 17.0 m a side) not 35.8, about 8 % less effective aspect ratio (more
 // induced drag in the climb and cruise, a slightly flatter lift curve), 2 × 200 kg [EST] off the wingtips; the model
 // has no sharklets. With them (the default), and on the Boeings (no such switch), nothing changes.

@@ -6,7 +6,7 @@ negative), the same files as tools/cut_korea_tiles.mjs writes for l1:
   .h.i16   int16, 0.25 m units
   .w.rg8   uint8: R sea (128 + d/20 m, clamped), G inland (the same; 255 where none)
   .c.rgba8 uint8: R forest, G farm, B built-up, A 0
-Row 0 south. Tiles cover the margin box 24-46 N, 112-148 E (V060.md decision 1), taken in
+Row 0 south. Tiles cover the margin box 24-46 N, 112-148 E (briefs/V0-6-0.md decision 1), taken in
 the map frame through bake_common.to_map over the box's edges.
 
 Per l1 cell, from one of two sources (an l1 cell lies in exactly one l0 tile):

@@ -5,7 +5,7 @@
 //
 // Everything is built from the fine-pixel coordinate (finePos(), 31.25 m units relative to an
 // integer origin set per frame from doubles), never from float32 map metres: at Haneda the map's
-// x is 1,100 km, where a float steps by 0.125 m and patterns made from it go blocky (V060.md,
+// x is 1,100 km, where a float steps by 0.125 m and patterns made from it go blocky (briefs/V0-6-0.md,
 // "Precision far from the origin"). A lattice's cell index is integer arithmetic on the pixel
 // index; the position inside the cell comes from small numbers.
 

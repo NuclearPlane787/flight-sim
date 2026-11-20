@@ -1,4 +1,4 @@
-// v0.6.0: close-ups on the ground at the airports far from the map's origin (V060.md "Precision far from the
+// v0.6.0: close-ups on the ground at the airports far from the map's origin (briefs/V0-6-0.md "Precision far from the
 // origin"), against the same at Gimpo: the runway's paint, a painted taxiway name with its signs, a stand's
 // lead-in and number, and the grass beside the runway (the terrain's fine noise). By day (13:00 KST), the
 // region on, the free camera (dev-world.html). Headless, through the guard, from GameDump:

@@ -1,4 +1,4 @@
-// The Boeings' golden flights (V050.md, Part 1): the A321's golden flight (tests/golden-a321-flight.mjs) for the
+// The Boeings' golden flights (briefs/V0-5-0.md, Part 1): the A321's golden flight (tests/golden-a321-flight.mjs) for the
 // 787-9 and the 777-300ER: a scripted run of the sim from RKSS 14R over the real terrain: the take-off, the climb on
 // the autopilot, and 10 minutes on, with the state every second. Recorded from v0.4.4's pushed code (d484689),
 // BEFORE the parts model, by

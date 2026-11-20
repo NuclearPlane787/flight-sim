@@ -1,4 +1,4 @@
-"""V060.md Part 3, first pass: the region's airports as JSON (data/airports/<ICAO>.json), in map metres,
+"""briefs/V0-6-0.md Part 3, first pass: the region's airports as JSON (data/airports/<ICAO>.json), in map metres,
 in the same shape as Korea's (tools/bake_airports.py; RKSI.json field for field) plus `shortName`.
 
 Not in data/manifest.json: the new airports stay behind EAST_ASIA_ON, and the integration adds them.
@@ -57,7 +57,7 @@ OUT_DIR = os.environ.get('FS_AIRPORT_OUT') or os.path.join(DATA, 'airports')
 osm_dir = lambda icao: OSM_DIRS.get(icao, OSM_DIR)
 FT = 0.3048
 
-NAMES = {   # V060.md Part 3, the names table
+NAMES = {   # briefs/V0-6-0.md Part 3, the names table
     'RJTT': ('Haneda', 'Tokyo International Airport (Haneda)'),
     'RJAA': ('Narita', 'Narita International Airport'),
     'ZSPD': ('Pudong', 'Shanghai Pudong International Airport'),
@@ -70,10 +70,10 @@ NAMES = {   # V060.md Part 3, the names table
     # v0.6.1, pending (manifest airportsPending)
     'ZSYN': ('Yancheng', 'Yancheng Nanyang International Airport'),
 }
-# Inside south-korea.poly the game's variation is frame.js magVar()'s plane (V060.md, "Magnetic variation"):
+# Inside south-korea.poly the game's variation is frame.js magVar()'s plane (briefs/V0-6-0.md, "Magnetic variation"):
 # Gimhae's magVarDeg and magnetic headings come from bake_common.mag_var(), the rest from the WMM grid.
 PLANE = {'RKPK'}
-# Gimhae is a joint civil and military field (V060.md Part 3): the ROKAF side (OSM's landuse=military areas,
+# Gimhae is a joint civil and military field (briefs/V0-6-0.md Part 3): the ROKAF side (OSM's landuse=military areas,
 # read from the unfiltered box) keeps its aprons and buildings but has no stands, so no traffic parks there.
 MILITARY = {'RKPK', 'ZSYN'}
 # Yancheng is a joint civil and air force field too (OSM's aerodrome alt_name 空军盐城场站, "PLAAF Yancheng station"; a

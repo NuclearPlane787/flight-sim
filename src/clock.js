@@ -95,7 +95,7 @@ export function fmtKstDate(ms) {
   return `${DOW[p.dow]} ${p.d} ${MON[p.mo - 1]} ${p.y}`;
 }
 
-// ---- v0.6.0: local time (V060.md Part 5 step 8) ----
+// ---- v0.6.0: local time (briefs/V0-6-0.md Part 5 step 8) ----
 // The clock by the time zone where you are: `rulesAt()`'s IANA zone, read through the browser's (or node's) Intl,
 // which has every zone offline, so a later region with summer time needs nothing here. No fixed offsets below:
 // with the region off everything stays the KST functions above, exactly as v0.5.8 drew them. The epoch ms never

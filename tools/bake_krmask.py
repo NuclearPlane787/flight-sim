@@ -1,4 +1,4 @@
-"""South Korea's mask for the local rules' blend (V060.md, Part 5 step 1, "Magnetic variation").
+"""South Korea's mask for the local rules' blend (briefs/V0-6-0.md, Part 5 step 1, "Magnetic variation").
 
 frame.js's magVar() is today's plane exactly inside south-korea.poly (Geofabrik's boundary of
 Korea's OSM extract, the one the region's bake cut Korea with) and WMM2025 elsewhere, blended

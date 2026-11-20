@@ -4,6 +4,15 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.6.2 · 2026-11-20 · The landing itself, one bar along the top, panel size, and the heading on the map
+
+- **The landing score is the landing itself.** The approach no longer counts: the glide path and the sink rate's swings are gone, so lining up late and putting it down well scores well (a good touchdown after a quick line-up went from 50 to 99). Nothing caps the total any more but a hard touchdown: 900 ft/min with the rest right still scores 50, a D, but landing long or off the centreline just loses those parts' points (700 m long with the rest perfect: 78). The grass, a touchdown off a runway and a would-be crash still come off. Landings already in your logbook keep the scores they were given.
+- **One bar along the top:** Hide panels and Pause, the autopilot panel and the view switch now sit in one row that never wraps. On a narrow window the view switch drops its key labels, then the whole row's text shrinks to fit. The side panels start under it.
+- **Panel size:** Settings → Panel size scales the PFD, the ND and the engine panel from 50 % to 120 % as you drag, and it's kept for next time.
+- **The heading to fly:** hover over the magenta line on the map to see the heading that follows it, as "Set HDG 118° to follow this line (track 123°, 5° into the wind)": magnetic, as the FCU takes it, for the wind where you are, at the point under the pointer.
+- **Gimhae's 18L and 18R are circling-only,** as the real ones are: their straight-in path runs into the hills north of the field. The setup marks them and won't start you on a 15 nm final to them, the map draws no 15 nm final for them, and Skip to final says why instead of flying you into the hillside. Every other runway end's final was checked against the terrain: all clear by 86 m or more.
+- **Behind the scenes:** the briefs for the Claude Code runs moved to `briefs/` as `V0-X-Y.md`; new browser checks for the top bar, the panel size, the map's tip and Gimhae (`tests/cloud/v062-hud.cjs`, `v062-map.cjs`), and the old UI check rewritten for today's menu; 1,237 unit tests. A rule for the regions to come: they needn't be rectangles (`ROADMAP.md`).
+
 ## v0.6.1 · 2026-11-20 · Yancheng, a lighter scene, and greenhouses
 
 - **A twelfth airport: Yancheng Nanyang,** halfway along the 325 nm of China's coast between Pudong and Qingdao, which had none. One runway, 04/22, 2,800 m with an ILS each way, and twenty stands. It's a code C airport, as the real one is, so the 787 and the 777 start there on the runway or on a final, not at a stand. The setup lists it in China between Hongqiao and Qingdao, with new routes from Incheon (390 nm, a real A321neo route), Pudong (159 nm) and Qingdao (176 nm).

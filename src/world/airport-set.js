@@ -1,4 +1,4 @@
-// The airports built near the camera (v0.6.0, V060.md "The airports are built near the camera").
+// The airports built near the camera (v0.6.0, briefs/V0-6-0.md "The airports are built near the camera").
 //
 // Eleven airports' meshes, lights, signs and traffic shouldn't all be resident. The airports are
 // grouped into clusters (airports closer than CLUSTER_LINK_M are built together: Incheon-Gimpo,

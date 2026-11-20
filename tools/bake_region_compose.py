@@ -6,7 +6,7 @@ Inputs, per l0 tile (516 x 516 cells: 512 + a border of 2, on Korea's 250 m latt
   /tmp/flight-sim/v060/bake/cover/<ti>_<tj>.npy   uint8 x4: R forest, G farm, B built-up, A
 and Korea's existing tiles in data/terrain/l0/ (from tools/cut_korea_tiles.mjs).
 
-What it does (V060.md, Part 2 steps 2, 3, 4 and 6; "Korea unchanged, exactly"):
+What it does (briefs/V0-6-0.md, Part 2 steps 2, 3, 4 and 6; "Korea unchanged, exactly"):
   - the heights as bake_geom.compose_height() makes them (the built-up filter, inland water
     at the bank level minus 2 m, land at least 0.5 m, the sea from -5 m to -40 m), on a
     mosaic of the tile and its neighbours (a HALO of cells) so the filters see across seams;

@@ -27,7 +27,7 @@ export function terrainGround(hf) {
 // and run.reason why it stopped ('time' | 'fuel' | 'map' | 'crash' | 'terrain' | 'landed').
 // hf: an optional heightfield (heightfield.js); without it the ground is flat sea.
 // v0.6.0: the tiles the next `steps` of a run can reach are in before it runs them
-// (V060.md: the worker never samples a stand-in where the live sim reads 250 m). Resolves at
+// (briefs/V0-6-0.md: the worker never samples a stand-in where the live sim reads 250 m). Resolves at
 // once when they are; the wait isn't the run's CPU. hf without tiles: nothing to wait for.
 export function tilesForChunk(run, hf, steps) {
   const T = hf && hf.layers && hf.layers.tiles;

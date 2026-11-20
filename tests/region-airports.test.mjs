@@ -1,4 +1,4 @@
-// V060.md Part 3, first pass: the region's airport JSONs (tools/bake_region_airports.py) hold what
+// briefs/V0-6-0.md Part 3, first pass: the region's airport JSONs (tools/bake_region_airports.py) hold what
 // Korea's do, and the game's loaders read them. Not in the manifest yet (behind EAST_ASIA_ON).
 //   python3 tools/cpu-guard.py -- node --test tests/region-airports.test.mjs
 import { test } from 'node:test';
@@ -20,7 +20,7 @@ const SHORT = { RJTT: 'Haneda', RJAA: 'Narita', ZSPD: 'Pudong',
   RKPK: 'Gimhae', ZSSS: 'Hongqiao', RJBB: 'Kansai', RJFF: 'Fukuoka', ZSQD: 'Qingdao' };
 // Gimhae is inside south-korea.poly: its variation is frame.js magVar()'s plane, the others the WMM grid's.
 const PLANE = new Set(['RKPK']);
-// The AIPs' published variation (V060.md, "Magnetic variation"): 8° W at Haneda and Narita, 5°47′ W at
+// The AIPs' published variation (briefs/V0-6-0.md, "Magnetic variation"): 8° W at Haneda and Narita, 5°47′ W at
 // Pudong (2017). The WMM at 2026.0 may differ by the drift since. The second pass's AIPs weren't read:
 // their magVarDeg is checked against the grid (or the plane) only.
 const AIP_VAR = { RJTT: -8, RJAA: -8, ZSPD: -5.78, RJBB: -8, RJFF: -8 };

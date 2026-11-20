@@ -1,11 +1,11 @@
-// V060.md Part 6 step 3: the landmarks' list and models (node, no WebGL: three.js's BufferGeometry only).
+// briefs/V0-6-0.md Part 6 step 3: the landmarks' list and models (node, no WebGL: three.js's BufferGeometry only).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LANDMARKS, CITY_BOXES, buildModel, landmarkFootprints, baseHeight, createLandmarks, landmarkOn } from '../src/world/landmarks.js';
 import { MODELS } from '../src/world/landmark-models.js';
 import { setCities, setEastAsia, CITIES_ON, EAST_ASIA_ON } from '../src/world/region.js';
 
-// The brief's heights (V060.md Part 6 and the subagent's brief): within 2 %.
+// The brief's heights (briefs/V0-6-0.md Part 6 and the subagent's brief): within 2 %.
 const BRIEF = {
   lotte: 555, b63: 250, nseoul: 237, parc1: 333, shtower: 632, swfc: 492, jinmao: 420, pearl: 468,
   skytree: 634, tokyotower: 333, azabudai: 325, tmg: 243, ylmt: 296, lct: 411, neatt: 305, harukas: 300,

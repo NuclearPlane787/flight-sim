@@ -1,4 +1,4 @@
-// V060.md Part 3 by night, short (the guard's slots are shared): for each airport given, with EAST_ASIA_ON on, the clock
+// briefs/V0-6-0.md Part 3 by night, short (the guard's slots are shared): for each airport given, with EAST_ASIA_ON on, the clock
 // at 22:00 local (Japan and Korea UTC+9, China UTC+8): a gate start, the aircraft lined up on the longest ILS runway,
 // and a 3 nm final to it (placed directly, paused for the picture). Checks the world's runway and taxiway light count
 // (world.stats.lights) at each, and no console errors. The real-time taxi, take-off and landing are the day check's

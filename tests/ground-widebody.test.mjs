@@ -1,4 +1,4 @@
-// Stands for widebodies (V030.md, Part 1 item 5): a code E type gets stands that fit at all three
+// Stands for widebodies (briefs/V0-3-0.md, Part 1 item 5): a code E type gets stands that fit at all three
 // airports, the parked traffic keeps clear of it, its pushback has room, and the A321neo is untouched.
 // The numbers below are a local mock: the Boeings' own data modules are Part 2's and Part 3's.
 //   python3 tools/cpu-guard.py -- node --test tests/ground-widebody.test.mjs

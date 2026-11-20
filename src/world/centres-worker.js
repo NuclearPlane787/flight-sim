@@ -1,4 +1,4 @@
-// The dense centres' builder (V060.md Part 6 step 2): OpenStreetMap's footprints (ODbL), baked by
+// The dense centres' builder (briefs/V0-6-0.md Part 6 step 2): OpenStreetMap's footprints (ODbL), baked by
 // tools/bake_region_buildings.py into data/centres/<id>.bin.gz, parsed, triangulated and turned into
 // vertex buffers. No DOM and no three.js here: centres.js imports these functions (node's tests, and
 // a fallback without workers), and the same file runs as a module Worker that builds one centre per

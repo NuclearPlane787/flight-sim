@@ -741,7 +741,7 @@ export function createClouds(scene, uniforms) {
       if (a && a.kt > 0) {
         const rx = settings.refX || 0, ry = settings.refY || 0;
         let r = magToGrid(a.fromDeg * Math.PI / 180, rx, ry);   // the wind's magnetic direction, on the map
-        // v0.6.0 (V060.md, "The wind, true everywhere"): with the region on, the drift keeps the wind's
+        // v0.6.0 (briefs/V0-6-0.md, "The wind, true everywhere"): with the region on, the drift keeps the wind's
         // true direction and turns by the convergence at the camera, as weather.js's windTurnAt() does.
         if (settings.trueWind && eastAsiaOn()) r += convergenceAt(rx, ry) - convergenceAt(mapX, mapY);
         const v = a.kt * 0.5144 * 0.7;

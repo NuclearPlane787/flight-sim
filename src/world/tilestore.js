@@ -8,7 +8,7 @@
 //   store.water(x, y, ch)                  // ch 0: sea, 1: inland distance bytes
 //   store.cover(x, y, ch)                  // ch 0 forest, 1 farm, 2 built-up (0..255)
 //
-// The lattice (V060.md, "Bit-exact sampling"): l0 cells of 250 m, cell-centred, the origin at
+// The lattice (briefs/V0-6-0.md, "Bit-exact sampling"): l0 cells of 250 m, cell-centred, the origin at
 // Korea's south-west corner, extended both ways. The cell index is computed as the old loader
 // computed it, fx = (x − x0) / cell − 0.5, clamped only at the region's outer edge; the tile
 // and the cell within it by integer arithmetic; the same bilinear expression. Each tile file
@@ -202,7 +202,7 @@ export function createTileStore(spec, opts = {}) {
   }
 
   // The extent as one grid, from the resident l0 tiles (open sea where a tile has no file): the
-  // GPU's textures read this until the clip window (V060.md Part 1, step 3) replaces it. Over
+  // GPU's textures read this until the clip window (briefs/V0-6-0.md Part 1, step 3) replaces it. Over
   // Korea it is the old national grid, cell for cell.
   function assemble() {
     const nx = I1 - I0, ny = J1 - J0;

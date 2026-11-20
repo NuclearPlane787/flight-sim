@@ -1,4 +1,4 @@
-"""WMM2025's magnetic declination on a grid in the map frame (V060.md, Part 2 step 1 and
+"""WMM2025's magnetic declination on a grid in the map frame (briefs/V0-6-0.md, Part 2 step 1 and
 Part 5 step 1: "Magnetic variation" under "Decided in the Cowork session").
 
 A short spherical-harmonics routine (NOAA NCEI's World Magnetic Model, public domain):

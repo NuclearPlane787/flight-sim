@@ -111,7 +111,7 @@ export async function loadHeightfield(baseUrl, opts = {}) {
 }
 
 // v0.6.0: the same heightfield over the tiles (tilestore.js) instead of the national grid.
-// Beside loadHeightfield() until the GPU and the loader's waits read tiles too (V060.md Part 1).
+// Beside loadHeightfield() until the GPU and the loader's waits read tiles too (briefs/V0-6-0.md Part 1).
 // opts.layers: which of 'h', 'w', 'c' to load (the worker wants heights only);
 // opts.all: load every tile in the extent before resolving (Korea's 35, as the old loader read
 // the whole grid); else opts.at = [x, y, r] loads those first; opts.onTile edits each new tile.

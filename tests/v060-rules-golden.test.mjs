@@ -1,4 +1,4 @@
-// v0.6.0 Part 5 (V060.md, "Magnetic variation"): with EAST_ASIA_ON and the local rules installed
+// v0.6.0 Part 5 (briefs/V0-6-0.md, "Magnetic variation"): with EAST_ASIA_ON and the local rules installed
 // (WMM2025 beyond South Korea), the golden A321 flight, which flies magnetic headings from Gimpo in
 // calm air, still matches v0.5.8's recording to 1e-9: inside south-korea.poly magVar() is the plane.
 import test from 'node:test';

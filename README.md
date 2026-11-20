@@ -4,7 +4,7 @@ Airliners over East Asia (the A321neo, the Boeing 787-9 and the 777-300ER), flow
 
 - realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777 (or, with Boeing auto-trim on in Settings, a path that holds itself as the A321's does);
 - a holds-only autopilot with up to 16× time compression;
-- a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final;
+- a path map that lets you jump ahead along the predicted path, change the route in flight, and skip to a 15 nm final; hover over the magenta route for the heading that follows it (v0.6.2);
 - gate starts with pushback and a taxi route drawn on the ground, and taxiway and runway signs (v0.4.1; runway exit and distance remaining signs, v0.4.2);
 - parked aircraft and ground vehicles at the airports;
 - synthesised engine sound built from each engine's real tones (LEAP-1A, GEnx-1B, GE90-115B: the fan's blade-passing tone, the buzz-saw, the core's whine, the jet's roar), muffled but clearly there in the cockpit, warning sounds, the radio-altitude callouts (RETARD included), a landing score and a logbook.
@@ -58,9 +58,9 @@ From a gate:
 2. Release the parking brake (B).
 3. Follow the green-yellow line to the holding point.
 
-After landing, a new line leads from the runway to a free stand. Every landing is scored, approach included, and logged with its scenario: the Esc menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. Each part (vertical speed, peak g, the touchdown point, the centreline, bank, pitch, bounces, the approach path, the sink rate's swings) scores out of its share of the 100 (v0.5.5: vertical speed, the touchdown point and the centreline the largest shares, bank and pitch the smallest), so the rows add up to the total; what comes off after that is a row of its own: the worst part holds the total to 50 + 10 × its score out of 10, the grass to 49, and a taxiway or a would-be crash halves it. 100 still takes a perfect landing in every part, but several middling flaws make a C or a D, not 0. Bounces are counted from the main wheels leaving the ground (v0.5.5).
+After landing, a new line leads from the runway to a free stand. Every landing is scored on the touchdown itself (v0.6.2: the approach isn't scored, and only a hard touchdown holds the total down) and logged with its scenario: the Esc menu's Logbook shows this scenario's flights, the main menu's all of them with a filter. Each part (vertical speed, peak g, the touchdown point, the centreline, bank, pitch, bounces, the approach path, the sink rate's swings) scores out of its share of the 100 (v0.5.5: vertical speed, the touchdown point and the centreline the largest shares, bank and pitch the smallest), so the rows add up to the total; what comes off after that is a row of its own: the worst part holds the total to 50 + 10 × its score out of 10, the grass to 49, and a taxiway or a would-be crash halves it. 100 still takes a perfect landing in every part, but several middling flaws make a C or a D, not 0. Bounces are counted from the main wheels leaving the ground (v0.5.5).
 
-Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the callouts and the performance readout, and (v0.4.1) two for practice: **Indestructible**, so no crash ends a flight (the landing card says what would have crashed; v0.4.2: the crash screen can turn it on as it rewinds), and **Boeing auto-trim**, so the 787 and 777 hold their flight path hands off and flare as the A321 does (v0.4.2); on final the nose stops within about a degree of where you let go, and pitches at 2.2°/s at most outside the flare and a go-around (v0.4.3).
+Sound starts with the first click or key, because browsers don't play audio before then. Settings has the master volume, the size of the side panels (v0.6.2: 50 % to 120 %), the callouts and the performance readout, and (v0.4.1) two for practice: **Indestructible**, so no crash ends a flight (the landing card says what would have crashed; v0.4.2: the crash screen can turn it on as it rewinds), and **Boeing auto-trim**, so the 787 and 777 hold their flight path hands off and flare as the A321 does (v0.4.2); on final the nose stops within about a degree of where you let go, and pitches at 2.2°/s at most outside the flare and a go-around (v0.4.3).
 
 ## Controls
 
@@ -87,7 +87,7 @@ The keys below are the defaults (v0.5.7). **Two kinds of keys** (v0.5.7): a bloc
 | ] / [ | time compression faster / slower (v0.5.6, was = and −; Num + and Num − too): with the AP on and 2,000 ft up, or in a pushback (up to 4×) |
 | N | map (predicted path, jumps, waypoints, Change route, skip to final; v0.5.7, was M) |
 | 1 / 2 / 3 | cockpit (the captain's seat; 1 again swaps to the first officer's and back), nose, 3rd person view, as the switch at the top right does |
-| Hide panels (top left, v0.4.4) | hides the PFD, the ND and the engine panel for a wide view (the FCU or MCP and the view switch stay); Show panels brings them back, and the choice is kept |
+| Hide panels (top left, v0.4.4) | hides the PFD, the ND and the engine panel for a wide view (the FCU or MCP and the view switch stay); Show panels brings them back, and the choice is kept. Since v0.6.2 it, Pause, the FCU or MCP and the view switch share one row along the top, which shrinks to fit rather than wrap |
 | Pause (beside it, v0.5.4) | the only pause (v0.5.5): Pause stops the flight and Resume goes on. While paused the views and the camera move, and the thrust levers (R and F; the engine panel's command ring follows), flaps, gear, speedbrake, the autopilot and the FCU or MCP take their settings, which act on Resume. A hidden page pauses too |
 | V | next view (Nose, 3rd person, Captain, First Officer) |
 | Shift+G | pushback start / stop (v0.5.7, was P) |
@@ -113,7 +113,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 - **Autopilot:** set HDG and ALT on the FCU (scroll, or click and type; Enter on ALT starts the level change, OP CLB/OP DES), then Z (AP) and X (A/THR). The FCU heading starts at your heading. Time compression (=) needs the AP on and 2,000 ft above the ground.
 - **Autothrust:** while A/THR is on it moves the thrust levers, and the blue ring on the N1 dials with them ("A/THR" between the dials). R or F takes the levers from where it left them and turns A/THR off; X turns it back on.
 - **The map (M):** with the AP on, the bright line is where the aircraft will go. Click a point on it to jump there. The magenta line is the route to your destination and doesn't jump: point the HDG along it first. A red cross means the path meets the terrain. "Skip to 15 nm final" puts you on the 3° path to the destination runway.
-  - **Waypoints:** drag the magenta line to add one; double-click a waypoint to remove it.
+  - **Waypoints:** drag the magenta line to add one; double-click a waypoint to remove it. Hover over the magenta line for the heading to set to follow it, worked out for the wind where you are (v0.6.2).
   - **Change route** (or a click on an airport) picks a new destination and runway in flight, with the distance, bearing and fuel needed direct from where you are. The line then goes direct from where you are.
 - **Landing:**
   1. Gear down; flaps 2, 3, FULL; Shift+C to arm the ground spoilers.
@@ -130,7 +130,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 - No agent has listened to the sound: the levels and the engines' frequencies are measured (`tests/audio-render.mjs`), not judged by ear. `tests/audio-clips.mjs` renders flight phases to listen to. v0.3.1 raised the engines in the cockpit by about 7 dB, by measurement.
 - On the A321neo the predicted path is a straight line on the selected heading, because its autopilot has holds only (route following is on the roadmap). A Boeing's follows LNAV and its ILS.
 - Triangles: v0.6.0 drew 1.3 to 1.9 M near cities; v0.6.1 draws the houses, trees and greenhouse tunnels only where one stands and the cities, the centres' low buildings and parked aircraft only in view, so the same views are 0.5 to 1.0 M (Tokyo at 3,000 ft 1.03 M; low over Narita's woods up to 1.3 M) at 60 fps with two thirds of the frame to spare on the M5 (`tests/browser-v060-headroom.mjs`). `?cull=0` draws everything in or out of view, for comparison.
-- Gimhae's runways 18L and 18R: a straight-in 3° final passes through the hills north of the field (the real approach circles to land), so Skip to final and a final start there end in the hillside. Land on 36L or 36R, or fly the circle by hand.
+- Gimhae's runways 18L and 18R have no straight-in approach: the 3° final passes through the hills north of the field, and the real approach circles to land from the approach to 36. Since v0.6.2 the game offers no final start, Skip to final or 15 nm final line to them (the setup and the map say why); land on 36L or 36R, or fly the circle by hand.
 - Some airport details are estimates. v0.6.1 read Korea's AIP for Gimhae (its ILS categories, approach lights, PAPIs and 18R's threshold, displaced 600 m, are the published ones now) and open nav data for Pudong's and Qingdao's ILS categories; China's AIP wasn't readable, so the Chinese airports' PAPI sides, Pudong's and Hongqiao's approach lights at their CAT I ends, Hongqiao's thresholds and nearly everything at Yancheng (above) stay estimates, as do the holds made where OpenStreetMap maps none. After landing on Jeju's 31 (from halfway along) or 13 (from three quarters), the taxi-in route runs back along the runway: the map has no other way off.
 
 ## Types
@@ -229,7 +229,7 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/ui/load-window.js` | the Weight window, the Sky window's second tab (v0.3.2) |
 | `src/world/sky.js` | the sky by day, twilight and night (stars, Milky Way, Moon, the aurora), and the light, haze and fog following the sun |
 | `src/world/citylights.js`, `src/world/taxilights.js`, `src/aircraft-lights.js` | the city lights, the taxiway lights and stop bars, the A321's lights by phase |
-| `src/score.js`, `src/store.js` | the landing score (v0.5.4: each part round(10 × e^(−cost/k)) out of 10; v0.5.5: its points out of its share of the 100 (`shareOut()`, `rowPoints()`), the total their sum, then the penalty rows: the worst part's cap, the grass, a taxiway or a would-be crash halving it; bounces from the wheels, `bounceTracker()`; the approach included); localStorage under `gamedump:flight-sim:` |
+| `src/score.js`, `src/store.js` | the landing score (v0.5.4: each part round(10 × e^(−cost/k)) out of 10; v0.5.5: its points out of its share of the 100 (`shareOut()`, `rowPoints()`), the total their sum, then the penalty rows: the worst part's cap, the grass, a taxiway or a would-be crash halving it; bounces from the wheels, `bounceTracker()`; v0.6.2: the approach measured, not scored, and the cap vertical speed's alone); localStorage under `gamedump:flight-sim:` |
 | `src/ground/` | the taxi graph and routing, pushback, the gate flow (gate starts, routes out and in) |
 | `src/world/apron*.js`, `src/world/traffic*.js`, `src/world/liveries-other.js` | taxiways, aprons, stands, jet bridges and terminals; parked aircraft (made-up airlines) and ground vehicles |
 | `src/world/taxisigns.js` | where the taxiway and runway signs stand and what they say, from the taxi graph and the runways (v0.4.1; exit and distance remaining signs, v0.4.2; `apron.js` draws them) |
@@ -270,7 +270,7 @@ All in localStorage, under `gamedump:flight-sim:`:
 - Copernicus DEM GLO-90 and GLO-30, © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA: the elevation.
 - Natural Earth (public domain): the neighbouring coastlines.
 - OurAirports (public domain): the runway cross-check.
-- v0.6.0's region (see `V060.md`):
+- v0.6.0's region (see `briefs/V0-6-0.md`):
   - ESA WorldCover 10 m 2021 v200, under CC BY 4.0: "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium": the land cover and inland water outside South Korea, and the fine land cover (`data/terrain/fine/`).
   - OpenStreetMap's land polygons (osmdata.openstreetmap.de) and its airports and buildings, © OpenStreetMap contributors, under the ODbL: the coastline (`data/coast-region.json`), the new airports and the city centres' buildings (`data/centres/`).
   - The World Magnetic Model WMM2025 (NOAA NCEI and the British Geological Survey, public domain): the magnetic variation outside South Korea (`data/magvar.*`).

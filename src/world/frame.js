@@ -65,7 +65,7 @@ export function convergenceAt(x, y) {
 // Magnetic declination (degrees, east positive) for 2026, a plane fitted to WMM2025
 // at Seoul (-9.1), Busan (-8.0), Jeju (-7.6) and Gangneung (-8.9). Good to ~0.3°.
 //
-// v0.6.0 (V060.md, "Magnetic variation"): the region's model, once installed, takes over
+// v0.6.0 (briefs/V0-6-0.md, "Magnetic variation"): the region's model, once installed, takes over
 // outside South Korea: setMagModel(fn) with fn(x, y, plane) -> degrees, which region.js
 // installs from geo-rules.js (magVarAt: the plane exactly inside south-korea.poly, WMM2025
 // beyond a 50 km band, blended across it; and the plane everywhere while EAST_ASIA_ON is off).

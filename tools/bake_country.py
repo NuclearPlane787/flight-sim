@@ -1,4 +1,4 @@
-"""The country raster (V060.md, Part 2 step 8): about 2 km cells in the map frame over the
+"""The country raster (briefs/V0-6-0.md, Part 2 step 8): about 2 km cells in the map frame over the
 margin box (24-46 N, 112-148 E), each the country its centre falls in, from Natural Earth's
 ne_10m_admin_0_countries (public domain), and the sea taking its nearest land cell's country
 (close to the FIR boundaries: the Korea-Japan median, the Yellow Sea).

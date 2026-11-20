@@ -1,4 +1,4 @@
-// The type registry (V030.md, Part 1): a v0.2.2 save is the A321neo, a type round-trips through
+// The type registry (briefs/V0-3-0.md, Part 1): a v0.2.2 save is the A321neo, a type round-trips through
 // the snapshot and the prediction, and sim.setType() really changes the numbers. A mock second
 // type (the A321's numbers with a heavier empty weight) stands in, so this doesn't lean on any
 // real type's tuning.

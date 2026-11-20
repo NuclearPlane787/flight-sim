@@ -1,4 +1,4 @@
-// v0.6.0 (V060.md, "Saves stay exact"): a flight saved at Haneda, at Pudong or at Gimhae, over the
+// v0.6.0 (briefs/V0-6-0.md, "Saves stay exact"): a flight saved at Haneda, at Pudong or at Gimhae, over the
 // region's terrain with the local rules installed, comes back from JSON into a fresh sim and
 // flies on identically for 120 s (within 1e-6 m), in the air on the approach and on the take-off
 // roll, with each country's altimeter unit and weather carried along. And a v0.5.8 save (no

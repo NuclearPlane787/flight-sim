@@ -1,4 +1,4 @@
-// V060.md Part 6 step 3: pictures of the landmarks, headless, from a fixed clock. For every landmark a
+// briefs/V0-6-0.md Part 6 step 3: pictures of the landmarks, headless, from a fixed clock. For every landmark a
 // close pass by day (about 1.5x its height away, a little above mid-height) and one at night, a skyline per
 // city from about 3,000 ft a few km away, and the frame rate, draw calls and triangles with the landmarks on
 // and off at Lujiazui and central Tokyo (3,000 ft, night). One page load per city. Through the CPU guard:

@@ -26,7 +26,7 @@ const HOLD_SNAP_M = 60;       // a holding position farther than this from any t
 const RUNWAY_CROSS_PENALTY = 400; // metres added to an edge that crosses a runway (prefer not to)
 const BRIDGE_M = 30;          // a piece of taxi line this close to the network, but not joined to it, gets a link
 
-// v0.6.0 (V060.md Part 3): the region's eight airports. They take a few rules Korea's three don't, so that Korea's
+// v0.6.0 (briefs/V0-6-0.md Part 3): the region's eight airports. They take a few rules Korea's three don't, so that Korea's
 // routes, holds and stand lists stay exactly as they were: a departure's hold is the one on its own runway nearest
 // the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
 // stands after the real numbers (gate-flow.js standList).

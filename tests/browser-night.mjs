@@ -1,4 +1,4 @@
-// v0.2.0 Part 2's screenshots and frame rate (V020.md → Definition of done, Part 2), in the real
+// v0.2.0 Part 2's screenshots and frame rate (briefs/V0-2-0.md → Definition of done, Part 2), in the real
 // game in Chrome on this Mac's GPU, with the clock set and stopped:
 //   Seoul at night from FL100 and from 3,000 ft; final to Gimpo 14R at night; Jeju 07 from 12 nm
 //   (close finals and Incheon's taxiways are in tests/dev-airportlights.mjs); the A321

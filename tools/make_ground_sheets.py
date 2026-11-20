@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Part 7's picture sets (V060.md): for each place one sheet, `v060-ground-<place>.png`: the old
+"""Part 7's picture sets (briefs/V0-6-0.md): for each place one sheet, `v060-ground-<place>.png`: the old
 ground and the new one side by side from 1,000 ft, 3,000 ft and 10,000 ft by day (and from
 1,000 ft at night where it was taken), with WorldCover's map of the same place beside them.
 

@@ -294,6 +294,9 @@ async function boot() {
   let apKey = '';
   let lastPredictReal = 0;
 
+  // v0.6.2: why a circling-only end has no final (Skip to final, the setup and the map say it the same way).
+  const circlingNote = (d) => `${d.airport.shortName || d.airport.icao} ${d.end.ident} has no straight-in approach: it's flown by a circle `
+    + `from the approach to ${d.other.ident}. Change the runway on the map for a final, or fly the circle yourself.`;
   function runwayEnds(icao, ident) {
     const a = byIcao(icao);
     if (!a) return null;
@@ -416,7 +419,8 @@ async function boot() {
     } else {
       gate.clear();
       world.traffic?.setPlayerStand(p.origin, null);
-      if (p.start === 'final' && dest) placeOnFinal(null);
+      // v0.6.2: no 15 nm final to a circling-only end (the setup won't offer one; a check's URL might): the runway instead
+      if (p.start === 'final' && dest && !dest.end.circling) placeOnFinal(null);
       else placeOnRunway(p.origin, p.depRunway, null);
     }
     sim.setLocalQnh();   // v0.4.0: the altimeter set to the day's QNH before the flight, as a crew sets it (1013.25 in calm)
@@ -638,6 +642,8 @@ async function boot() {
 
   function skipToFinal() {
     if (!dest) { toast('No destination runway set'); return; }
+    // v0.6.2: Gimhae's 18L and 18R are flown by a circle from the approach to 36: their straight-in final meets the hills.
+    if (dest.end.circling) { toast(circlingNote(dest), 6000); return; }
     fadeThen(() => {
       const s = sim.state;
       // The load as it is now (v0.3.2: the Weight window may have changed it from the plan's).
@@ -900,8 +906,9 @@ async function boot() {
   function setCallouts(on) { callouts.muted = !on; saveSetting('muted', callouts.muted); }
   const settingsPage = createSettingsPage($('pages-root'), {
     keyName: (id) => keyName(id),   // v0.5.7: the readout's key as bound
-    get: () => ({ volume: callouts.volume ?? 1, callouts: !callouts.muted, showPerf: !ui.perf.hidden, ...flightOpts }),
+    get: () => ({ volume: callouts.volume ?? 1, callouts: !callouts.muted, showPerf: !ui.perf.hidden, panelScale: hud.panelScale, ...flightOpts }),
     onVolume: (v) => { setVolume(v); previewVolume(); },
+    onPanelScale: (k) => { hud.setPanelScale(k); saveSetting('panelScale', hud.panelScale); },   // v0.6.2
     onCallouts: (on) => setCallouts(on),
     onIndestructible: (on) => setFlightOpt('indestructible', on),
     onAutoTrim: (on) => setFlightOpt('autoTrim', on),
@@ -1241,7 +1248,7 @@ async function boot() {
       spray.update({ gs: s.gs, onGround: s.onGround, runway: runwayStateOf(wx), rain: wx?.precip?.kind === 'rain' ? wx.precip.rate : 0, dt, paused });
     }
     // A Boeing's wings bend with the lift they carry (none on the wheels), eased so they rise through
-    // the rotation. V030.md's "nice" list.
+    // the rotation. briefs/V0-3-0.md's "nice" list.
     if (aircraft.setWingFlex) {
       const lift = s.onGround ? 0 : Math.max(-0.5, s.nz) * s.mass / sim.type.limits.MTOW;
       wingLift += (lift - wingLift) * Math.min(1, dt / 1.5);
@@ -1447,7 +1454,7 @@ async function boot() {
 
   // ---- Test hooks (used by tests/browser-*.mjs) ----
   window.__fs = {
-    sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, scene, menu, setup, logbook, settingsPage, controlsPage,
+    sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, scene, menu, setup, logbook, settingsPage, controlsPage, hud,   // v0.6.2: hud for checks
     get aircraft() { return aircraft; }, get cockpit() { return cockpit; }, useType,
     get synth() { return synth; },
     get prediction() { return prediction; },

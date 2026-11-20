@@ -1,4 +1,4 @@
-// v0.4.0's pictures and frame rates (V040.md → Definition of done), in the real game in Chrome on this Mac's GPU:
+// v0.4.0's pictures and frame rates (briefs/V0-4-0.md → Definition of done), in the real game in Chrome on this Mac's GPU:
 // every preset by day and at night, from the cockpit and in 3rd person, on a final at Jeju; then the frame rate at
 // night in heavy rain, in a thunderstorm and in fog, and clear weather's draw calls.
 //   python3 games/flight-sim/tools/cpu-guard.py -- node games/flight-sim/tests/browser-weather-shots.mjs [shots|fps]

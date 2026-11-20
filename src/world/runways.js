@@ -240,9 +240,18 @@ export function onPaved(index, x, y) {
   return false;
 }
 
+// v0.6.2: runway ends with no straight-in approach, only a circle to land from the approach to the other end. Gimhae's
+// 18L and 18R (Korea's AIP, RKPK AD 2: its ILS is on 36L and 36R; 18L and 18R are the circling ends): the 3° path
+// from 15 nm out runs into the hills north of the field (18R's 46 m under the ground 4.8 nm out, 18L's 20 m at 4.5 nm). No final start, Skip to
+// final or 15 nm final line is offered for them (createAirports marks the ends `circling`); tests/v062-finals.test.mjs
+// checks every other end's straight-in final clears the terrain.
+export const CIRCLING_ONLY = { RKPK: ['18L', '18R'] };
+export const circlingOnly = (icao, ident) => !!CIRCLING_ONLY[icao]?.includes(String(ident).toUpperCase());
+
 // Normalise and index a list of airport JSONs.
 export function createAirports(list, opts = {}) {
   const airports = list || [];
+  for (const a of airports) for (const r of a.runways || []) for (const e of r.ends) if (circlingOnly(a.icao, e.ident)) e.circling = true;
   const rects = runwayRects(airports);
   const byIcao = new Map(airports.map((a) => [a.icao, a]));
   let hf = opts.heightfield || null;
@@ -271,6 +280,7 @@ export function createAirports(list, opts = {}) {
           elevM: e.elevM ?? a.elevM ?? 0,
           lengthM: len, widthM: r.widthM, displacedM: disp,
           ldaM: len - disp,
+          circling: !!e.circling,                           // v0.6.2: no straight-in approach (CIRCLING_ONLY)
         };
       }
     }
