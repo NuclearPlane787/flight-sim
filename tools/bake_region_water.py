@@ -298,7 +298,20 @@ def wc_missing(ti, tj, listed, have):
     lon0, lat0, lon1, lat1 = geo_bounds_window(ti, tj)
     need = {(la, lo) for la in range(int(np.floor(lat0 / 3)) * 3, int(np.floor(lat1)) + 1, 3)
             for lo in range(int(np.floor(lon0 / 3)) * 3, int(np.floor(lon1)) + 1, 3)}
-    return sorted(k for k in need if k in listed and k not in have)
+    miss = sorted(k for k in need if k in listed and k not in have)
+    # v0.6.4: the box above is the lat/lon box of a skewed window, so it can name a WorldCover tile
+    # that the window never enters (10_8's box meets N42E135 by its corner). A missing tile counts only
+    # if the window's outline, padded by 2 km, enters it: what isn't entered is never read.
+    if miss:
+        x0, y0 = window_origin(ti, tj)
+        pad, span = 2000.0, W * CELL
+        t = np.linspace(-pad, span + pad, 20001)
+        ex = np.concatenate([x0 + t, np.full(t.size, x0 + span + pad), x0 + t, np.full(t.size, x0 - pad)])
+        ey = np.concatenate([np.full(t.size, y0 - pad), y0 + t, np.full(t.size, y0 + span + pad), y0 + t])
+        la, lo = bc.to_geo(ex, ey)
+        miss = [(a, b) for a, b in miss if ((la >= a) & (la < a + 3) & (lo >= b) & (lo < b + 3)).any()
+                or (a <= la.min() and la.max() < a + 3 and b <= lo.min() and lo.max() < b + 3)]
+    return miss
 
 
 def done(ti, tj):

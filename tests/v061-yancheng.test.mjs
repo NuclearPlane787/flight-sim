@@ -69,8 +69,8 @@ test('the manifest: ZSYN pending (unlisted without the switch) or in the region\
   assert.ok(!off.airports.some((f) => f.includes('ZSYN')) && !off.patches.some((p) => p.id === 'yancheng'), 'region off: no ZSYN, no patch');
   if (LISTED) {
     assert.ok(on.airports.includes('airports/ZSYN.json') && on.patches.some((p) => p.id === 'yancheng'), 'listed with its patch');
-    // (Twelve when Yancheng was listed; seventeen since v0.6.3's five. No airport twice.)
-    assert.equal(on.airports.length, 17);
+    // (Twelve when Yancheng was listed; seventeen since v0.6.3's five; twenty-three since v0.6.4's six. No airport twice.)
+    assert.equal(on.airports.length, 23);
     assert.equal(new Set(on.airports).size, on.airports.length);
     assert.ok(!(m.airportsPending || []).includes('airports/ZSYN.json') && !(m.patchesPending || []).some((p) => p.id === 'yancheng'), 'not pending any more');
   } else {
@@ -85,7 +85,7 @@ test('pending on: terrainSpec adds ZSYN and its patch to the region\'s lists (an
   const m = manifest(), on = terrainSpec(m, true);
   assert.ok(on.airports.includes('airports/ZSYN.json'));
   // (Twelve when this was written; seventeen since v0.6.3's five were listed, and nothing waits in airportsPending.)
-  assert.equal(on.airports.length, 17 + (m.airportsPending || []).length);
+  assert.equal(on.airports.length, 23 + (m.airportsPending || []).length);   // (17 until v0.6.4's six were listed)
   assert.equal(new Set(on.airports).size, on.airports.length, 'no airport listed twice');
   const p = on.patches.find((q) => q.id === 'yancheng');
   assert.ok(p, 'the patch is listed');

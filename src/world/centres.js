@@ -59,9 +59,12 @@ const CUT_GLSL = (() => {
 // The look by country (0 Korea, 1 Japan, 2 China); Korea's three stand with CITIES_ON alone.
 // v0.6.3: Beijing, Tianjin, Shenyang and Dalian China's; Vladivostok Korea's (its Soviet-era slab
 // blocks are nearest Korea's apartment slabs, as cities.js maps RU), behind EAST_ASIA_ON as the rest.
+// v0.6.4: Pyongyang Korea's look (cities.js maps KP to Korea's mix), Sapporo, Sendai and Niigata
+// Japan's; all four behind EAST_ASIA_ON (Pyongyang is not in KOREA's set: the flags off are v0.5.8's Korea).
 const COUNTRY = {
   seoul: 0, songdo: 0, busan: 0, tokyo: 1, yokohama: 1, osaka: 1, fukuoka: 1, shanghai: 2, qingdao: 2,
   beijing: 2, tianjin: 2, shenyang: 2, dalian: 2, vladivostok: 0,
+  pyongyang: 0, sapporo: 1, sendai: 1, niigata: 1,
 };
 const KOREA = new Set(['seoul', 'songdo', 'busan']);
 export function centreAllowed(id, cities = CITIES_ON, region = EAST_ASIA_ON) {

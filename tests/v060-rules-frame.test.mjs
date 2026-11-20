@@ -145,7 +145,7 @@ test('magVar costs: flag off as v0.5.8, flag on small', () => {
 
 test('the new airports\' runways: their magnetic headings from the grid, Gimhae\'s from the plane', () => {
   const man = JSON.parse(readFileSync(new URL('../data/manifest.json', import.meta.url), 'utf8'));
-  assert.equal(man.airportsRegion.length, 14);   // (eight until v0.6.1's Yancheng, nine until v0.6.3's five)
+  assert.equal(man.airportsRegion.length, 20);   // (eight until v0.6.1's Yancheng, nine until v0.6.3's five, fourteen until v0.6.4's six)
   withRules(true, () => {
     for (const f of man.airportsRegion) {
       const a = JSON.parse(readFileSync(new URL('../data/' + f, import.meta.url), 'utf8'));

@@ -297,7 +297,7 @@ async function boot() {
 
   // v0.6.2: why a circling-only end has no final (Skip to final, the setup and the map say it the same way).
   const circlingNote = (d) => `${d.airport.shortName || d.airport.icao} ${d.end.ident} has no straight-in approach: it's flown by a circle `
-    + `from the approach to ${d.other.ident}. Change the runway on the map for a final, or fly the circle yourself.`;
+    + `from the approach to ${(rwMod.circleFrom(d.airport, d.end.ident) || d.other).ident}. Change the runway on the map for a final, or fly the circle yourself.`;   // (v0.6.4: circleFrom(): Wonsan's 33R is circled from 15R, not from its own unlit other end)
   function runwayEnds(icao, ident) {
     const a = byIcao(icao);
     if (!a) return null;

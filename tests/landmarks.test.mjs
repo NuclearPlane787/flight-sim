@@ -12,9 +12,11 @@ const BRIEF = {
   umeda: 173, fktower: 234, fkdome: 84,
   // v0.6.3 (briefs/V0-6-3.md Part 5)
   citic: 528, cctv: 234, russky: 321, zolotoy: 226, cctvtower: 405, tjtower: 415, lntower: 305,
+  // v0.6.4 (briefs/V0-6-4.md, "Centres and landmarks")
+  ryugyong: 330, juche: 170, sapporotv: 147, daikannon: 100,
 };
 const ORDER = ['lotte', 'b63', 'nseoul', 'parc1', 'shtower', 'swfc', 'jinmao', 'pearl', 'skytree', 'tokyotower', 'azabudai', 'tmg', 'ylmt', 'lct', 'neatt', 'harukas', 'umeda', 'fktower', 'fkdome',
-  'citic', 'cctv', 'russky', 'zolotoy', 'cctvtower', 'tjtower', 'lntower'];
+  'citic', 'cctv', 'russky', 'zolotoy', 'cctvtower', 'tjtower', 'lntower', 'ryugyong', 'juche', 'sapporotv', 'daikannon'];
 const TRI_BUDGET = 6000, TOTAL_BUDGET = 60000;
 
 test('the list: unique ids, the brief\'s order, a model for each, a source', () => {
@@ -262,4 +264,105 @@ test('v0.6.3: no landmark on a runway or its strip', () => {
       assert.ok(along > r.halfLen + 60 + c.r || across > 150 + c.r, `${L.id} on ${r.icao}'s runway strip`);
     }
   }
+});
+
+// ------------------------------------------------------------------ v0.6.4 (briefs/V0-6-4.md, "Centres and landmarks")
+const NEW4 = ['ryugyong', 'juche', 'sapporotv', 'daikannon'];
+// The heights as the sources give them (Wikipedia, read 2026-11-21): within 0.5 %.
+const SOURCE4 = { ryugyong: 330, juche: 170, sapporotv: 147.2, daikannon: 100 };
+const bearingOf = (x, z) => ((Math.atan2(x, -z) * 180 / Math.PI) + 360) % 360;   // scene x east, z = -north
+
+test('v0.6.4: the four new landmarks\' countries, cities, heights and sources; behind both flags', () => {
+  const city = { ryugyong: 'pyongyang', juche: 'pyongyang', sapporotv: 'sapporo', daikannon: 'sendai' };
+  for (const id of NEW4) {
+    const L = byId(id);
+    assert.equal(L.city, city[id], id);
+    assert.equal(L.country, L.city === 'pyongyang' ? 'KP' : 'JP', id);
+    assert.match(L.source, /Wikipedia/, `${id}: a public source`);
+    assert.match(L.source, /OSM/, `${id}: placed from OSM`);
+    assert.ok(Math.abs(L.heightM - SOURCE4[id]) / SOURCE4[id] < 0.005, `${id}: ${L.heightM} m against ${SOURCE4[id]} m`);
+    assert.equal(landmarkOn(L), CITIES_ON && EAST_ASIA_ON, `${id}: behind both flags`);
+    for (const [c, e] of [[true, false], [false, true]]) {
+      const wc = CITIES_ON, we = EAST_ASIA_ON;
+      setCities(c); setEastAsia(e);
+      assert.equal(landmarkOn(L), false, `${id}: off with cities ${c}, region ${e}`);
+      setCities(wc); setEastAsia(we);
+    }
+  }
+  // the Juche Tower on the Taedong's east bank: east of Kim Il Sung Square (39.0195 N, 125.7527 E) across the river
+  assert.ok(byId('juche').lon > 125.758);
+  // the Daikannon on its hill north-west of Sendai's centre, outside the centre's box
+  const sendai = CENTRES.find((c) => c.id === 'sendai'), dk = byId('daikannon');
+  assert.ok(dk.x < sendai.box[0] && dk.y > sendai.box[3], 'north-west of, and outside, the centre');
+});
+
+test('v0.6.4: each reads as itself: three wings at 120 degrees, a lattice, an obelisk with its flame, a figure', () => {
+  // the Ryugyong Hotel: its far points (over 90 m out) in three clusters, along OSM's wing bearings 77, 197, 317
+  {
+    const p = buildModel(byId('ryugyong')).geometry.getAttribute('position');
+    const far = [];
+    for (let i = 0; i < p.count; i++) if (Math.hypot(p.getX(i), p.getZ(i)) > 90 && p.getY(i) > 12) far.push(bearingOf(p.getX(i), p.getZ(i)));
+    for (const w of [77, 197, 317]) assert.ok(far.some((b) => Math.abs(((b - w + 540) % 360) - 180) < 8), `a wing towards ${w}`);
+    assert.ok(far.every((b) => [77, 197, 317].some((w) => Math.abs(((b - w + 540) % 360) - 180) < 12)), 'nothing else so far out');
+    // the slope: each wing's reach shrinks with height (at 230 m about 40 m), the crown narrow at 310 m
+    let r230 = 0, r310 = 0;
+    for (let i = 0; i < p.count; i++) { const r = Math.hypot(p.getX(i), p.getZ(i)), y = p.getY(i); if (Math.abs(y - 230) < 5) r230 = Math.max(r230, r); if (y > 305 && y < 316) r310 = Math.max(r310, r); }
+    assert.ok(r230 > 30 && r230 < 55, `reach at 230 m: ${r230}`);
+    assert.ok(r310 < 12, `the crown at 310 m: ${r310}`);
+  }
+  // the Sapporo TV Tower: a lattice (thin members and the far stand-in shell), the deck about 90 m up
+  {
+    const g = buildModel(byId('sapporotv')).geometry, e = g.getAttribute('aExt'), p = g.getAttribute('position'), f = g.getAttribute('aFac');
+    let shell = 0, deckY = [];
+    for (let i = 0; i < e.count; i++) { if (e.getZ(i) > 0.5) shell++; if (f.getX(i) > 0 && p.getY(i) > 60 && p.getY(i) < 120) deckY.push(p.getY(i)); }
+    assert.ok(shell > 0 && shell < e.count / 4, `the shell is a small share (${shell} of ${e.count})`);
+    assert.ok(e.count / 3 > 1500, 'members, not a shaft');
+    assert.ok(deckY.length && Math.abs((Math.min(...deckY) + Math.max(...deckY)) / 2 - 90.4) < 2, 'the deck at 90 m');
+  }
+  // the Juche Tower: slender (under 20 m across above the terrace), the torch's flame lit at night
+  {
+    const g = buildModel(byId('juche')).geometry, p = g.getAttribute('position'), gl = g.getAttribute('aGlow');
+    let wide = 0, flame = 0;
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) > 10) wide = Math.max(wide, Math.hypot(p.getX(i), p.getZ(i)));
+      if (p.getY(i) > 152 && gl.getX(i) > 1) flame++;
+    }
+    assert.ok(wide < 13.5, `the spire's half-width ${wide}`);
+    assert.ok(flame > 30, 'the flame glows');
+  }
+  // the Daikannon: a figure, not a tower: broader at the shoulders than at the waist, the head narrower than both
+  {
+    const p = buildModel(byId('daikannon')).geometry.getAttribute('position');
+    const halfAt = (y0, y1) => { let r = 0; for (let i = 0; i < p.count; i++) if (p.getY(i) >= y0 && p.getY(i) <= y1) r = Math.max(r, Math.hypot(p.getX(i), p.getZ(i))); return r; };
+    const waist = halfAt(42, 46), shoulders = halfAt(78, 80), head = halfAt(90, 97);
+    assert.ok(shoulders > waist + 1.5, `shoulders ${shoulders} against waist ${waist}`);
+    assert.ok(head < waist * 0.65 && head > 3, `head ${head}`);
+  }
+});
+
+test('v0.6.4: a landmark inside a centre\'s box replaces its building there (the Ryugyong Hotel, the Juche Tower, the Sapporo TV Tower)', () => {
+  const ex = landmarkExclusions(LANDMARKS);
+  const inBox = (c, L) => L.x > c.box[0] && L.x < c.box[2] && L.y > c.box[1] && L.y < c.box[3];
+  const seen = {};
+  for (const id of NEW4) {
+    const L = byId(id);
+    const c = CENTRES.find((cc) => inBox(cc, L));
+    if (!c) continue;
+    const p = parseCentre(gunzipSync(readFileSync(new URL(`../data/centres/${c.file}`, import.meta.url))).buffer);
+    let tallestOut = 0, tallestKept = 0;
+    for (let i = 0; i < p.count; i++) {
+      const [mx, my] = recordMean(p, i);
+      const X = c.origin[0] + mx / 2, Y = c.origin[1] + my / 2;
+      if (Math.hypot(X - L.x, Y - L.y) >= L.footprintM) continue;
+      if (ex.some((e) => (X - e.x) ** 2 + (Y - e.y) ** 2 < e.r * e.r)) tallestOut = Math.max(tallestOut, p.height[i] / 10);
+      else tallestKept = Math.max(tallestKept, p.height[i] / 10);
+    }
+    seen[id] = [c.id, tallestOut, tallestKept];
+  }
+  assert.deepEqual(Object.keys(seen).sort(), ['juche', 'ryugyong', 'sapporotv']);
+  // OSM's own: the hotel's 322 m pinnacle part and its wings, the tower's 170 m torch and stages, the TV tower's 147.2 m
+  assert.equal(seen.ryugyong[0], 'pyongyang'); assert.ok(seen.ryugyong[1] >= 322, `ryugyong ${seen.ryugyong[1]}`);
+  assert.equal(seen.juche[0], 'pyongyang'); assert.ok(seen.juche[1] >= 170);
+  assert.equal(seen.sapporotv[0], 'sapporo'); assert.ok(seen.sapporotv[1] >= 147);
+  for (const id of Object.keys(seen)) assert.equal(seen[id][2], 0, `${id}: nothing of OSM's left inside its footprint`);
 });

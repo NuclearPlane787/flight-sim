@@ -19,6 +19,7 @@ export const FLAT_MARGIN_U = 90;     // m beyond each runway end that's flattene
 export const FLAT_MARGIN_V = 90;     // m each side of the runway edge that's flattened
 export const FLAT_BLEND = 300;       // m over which the flattening fades out
 export const PAVE_BLEND_M = 8;       // m: off the pavements, nearby runways' surfaces blend over about this
+export const FREE_TILES = 27;   // v0.6.4: resident tiles the flight and the view may hold beside the airports' pinned ones (48 less v0.6.1's 21)
 export const AIRPORT_TILES_M = 30000; // the region: the tiles this far round each airport stay resident (a 10 nm final starts inside it)
 
 // ------------------------------------------------------------------------- loading
@@ -70,7 +71,8 @@ export async function loadHeightfield(baseUrl, opts = {}) {
   // (the airports' ground is built from them, and a flight starts on them).
   if (manifest.tiles && opts.tiles !== false) {
     const region = terrainSpec(manifest, opts.region).region;
-    // (48 tiles resident at most, 100 MB: the airports' pinned ones, about 25, and the flight's.)
+    // (48 tiles resident at least: v0.6.1's cap, raised below to the airports' pinned ones plus FREE_TILES; with
+    // twenty-three airports 75 tiles, about 155 MB at most.)
     return createTiledHeightfield(manifest, base, region ? { airportTiles: true, maxTiles: 48, ...opts } : { all: true, ...opts });
   }
   const scale = manifest.heightScale || 0.25;
@@ -154,6 +156,12 @@ export async function createTiledHeightfield(manifest, base, opts = {}) {
   // opts.airportTiles: the tiles within AIRPORT_TILES_M of each airport, in and pinned.
   if (opts.airportTiles) {
     await Promise.all((airports || []).filter((a) => a.origin).map((a) => store.whenReady(a.origin[0], a.origin[1], AIRPORT_TILES_M, 'ap:' + a.icao)));
+    // v0.6.4: room for the flight beside them. The cap was a flat 48 "for the airports' pinned ones, about 25, and
+    // the flight's" (v0.6.1, twelve airports: 21 pinned). Seventeen airports pin 33 and twenty-three pin 48: none
+    // left, so the view's own tiles were dropped as fast as they came and the terrain's window never finished filling
+    // from cruise near Seoul (found by the 16x cruise's check, 2026-11-21). The flight keeps FREE_TILES whatever the
+    // airports pin.
+    store.setMaxTiles(store.pinnedKeys().length + FREE_TILES);
   }
   layers.patches.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   layers.coastPatches.sort((a, b) => String(a.id).localeCompare(String(b.id)));

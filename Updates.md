@@ -4,6 +4,25 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.6.4 · 2026-11-21 · Pyongyang, Wonsan, Niigata, Sendai, Aomori and Sapporo
+
+- **Six more airports, twenty-three in all.** North Korea and northern Japan:
+  - **Sapporo New Chitose** (RJCC): two 3,000 m runways, ILS category III to 19R, the curved terminal, 68 stands with their real spot numbers.
+  - **Pyongyang Sunan** (ZKPY): one runway, 17/35, 3,440 m, the terminal with its jet bridges, 24 stands. The old crossing runway, closed for years, isn't drawn.
+  - **Sendai** (RJSS): 09/27, 3,000 m, by the Pacific, and the short 12/30; ILS to 27; 28 stands.
+  - **Niigata** (RJSN): 10/28, 2,500 m, on the Sea of Japan's shore, crossed by the short 04/22; ILS to 28; 39 stands.
+  - **Aomori** (RJSA): 06/24, 3,000 m, on a plateau 200 m up; ILS category III to 24; six stands, none for the widebodies (the real airport takes nothing bigger than a 767).
+  - **Wonsan Kalma** (ZKWS): two long runways on a spit in the bay, six stands. Runways 33L and 33R are circling-only: a ridge stands under their straight-in paths, so the setup and Skip to final won't put you on a final to them.
+
+  The four Japanese airports' runways, lights and ILS are the published ones (Japan's AIP). The setup lists them after Fukuoka, south to north, and Pyongyang and Wonsan under North Korea. Some routes: Gimpo–Sapporo 751 nm, Haneda–Sapporo 443 nm, Haneda–Sendai 165 nm, Gimpo–Niigata 585 nm, Incheon–Pyongyang 112 nm, Gimpo–Wonsan 102 nm, Wonsan–Vladivostok 330 nm.
+- **Hokkaido in detail:** ten more tiles of 250 m terrain and 30 m countryside, from the Tsugaru Strait to north of Sapporo and east to Kushiro's coast. Nothing already there moved.
+- **North Korea's rules:** hectopascals and feet, a transition altitude of 12,000 ft (FL130 above it), Pyongyang's own time, and the tower's wind in metres per second on the weather line. There is no official source online for these, so they are the best open ones.
+- **Real buildings in four more centres:** Pyongyang along the Taedong, Sapporo, Sendai and Niigata.
+- **Four more landmarks,** thirty in all: Pyongyang's Ryugyong Hotel (the 330 m three-winged pyramid) and Juche Tower with its flame, the Sapporo TV Tower, and the Sendai Daikannon, a 100 m white statue on its hill.
+- **Fixed on the way:** with twenty-three airports the terrain far from the aircraft could stop filling in from cruise (every airport keeps its own ground loaded, and together they had filled the terrain's memory). The memory now grows with the airports.
+- **Under the hood:** 1,383 unit tests; `data/` is 217 MB (204 MB before).
+- **Known:** North Korea publishes no AIP, so Pyongyang's and Wonsan's lights and ILS come from open navigation data and scenery, and nearly everything at Wonsan is an estimate (its six stands are made up). Aomori's runway sits about 60 m along its own line from where it is published, as OpenStreetMap draws it. At Niigata, stand 10's taxi route starts along the short runway; at Sendai and Wonsan a landing rolled far down the short or the unlit runway may find no taxi route in. Stand numbers OpenStreetMap doesn't carry are made up (R1 and on).
+
 ## v0.6.3 · 2026-11-21 · Beijing, Shenyang, Dalian and Vladivostok; cities on the map
 
 - **Five new airports, seventeen in all.** East Asia grows west to Beijing and north to Vladivostok:

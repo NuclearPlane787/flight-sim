@@ -59,6 +59,10 @@ SOURCES = {
     'china': 'osm/china-261118.osm.pbf',
     'korea': 'south-korea-latest.osm.pbf',
     'fareast': 'osm/far-eastern-fed-district-261119.osm.pbf',   # v0.6.3: Vladivostok
+    'nkorea': 'osm/north-korea-261119.osm.pbf',                # v0.6.4: Pyongyang
+    'hokkaido': 'osm/hokkaido-261119.osm.pbf',                 # v0.6.4: Sapporo
+    'tohoku': 'osm/tohoku-261119.osm.pbf',                     # v0.6.4: Sendai
+    'chubu': 'osm/chubu-261119.osm.pbf',                       # v0.6.4: Niigata
 }
 
 # id: (name, source, nominal box W, S, E, N, quick-look core: lat, lon, size km)
@@ -79,6 +83,12 @@ CENTRES = {
     'shenyang': ('Shenyang', 'china', (123.380, 41.760, 123.480, 41.830), (41.795, 123.432, 5.0)),
     'dalian': ('Dalian', 'china', (121.580, 38.885, 121.680, 38.935), (38.915, 121.635, 5.0)),
     'vladivostok': ('Vladivostok', 'fareast', (131.860, 43.085, 131.945, 43.135), (43.112, 131.895, 4.0)),
+    # v0.6.4 (briefs/V0-6-4.md): Pyongyang along the Taedong from the Ryugyong Hotel to the Juche Tower and the May Day
+    # Stadium, Sapporo from the station to Susukino, Sendai round its station, Niigata from its station to Toki Messe.
+    'pyongyang': ('Pyongyang', 'nkorea', (125.700, 38.990, 125.790, 39.055), (39.022, 125.750, 5.0)),
+    'sapporo': ('Sapporo', 'hokkaido', (141.320, 43.040, 141.380, 43.080), (43.062, 141.354, 4.0)),
+    'sendai': ('Sendai', 'tohoku', (140.850, 38.240, 140.900, 38.280), (38.260, 140.878, 4.0)),
+    'niigata': ('Niigata', 'chubu', (139.025, 37.900, 139.080, 37.935), (37.918, 139.052, 4.0)),
 }
 
 

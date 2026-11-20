@@ -245,13 +245,28 @@ export function onPaved(index, x, y) {
 // from 15 nm out runs into the hills north of the field (18R's 46 m under the ground 4.8 nm out, 18L's 20 m at 4.5 nm). No final start, Skip to
 // final or 15 nm final line is offered for them (createAirports marks the ends `circling`); tests/v062-finals.test.mjs
 // checks every other end's straight-in final clears the terrain.
-export const CIRCLING_ONLY = { RKPK: ['18L', '18R'] };
+// v0.6.4: Wonsan's 33L and 33R too. A ridge stands south-south-east of the bay under their straight-in paths (33L's
+// 17 m under the ground 11.5 nm out, 33R's only 49 m clear at 9.9 nm; no approach to either is published anywhere
+// open, [EST]): they are flown by a circle from the approach to 15R, over the sea.
+export const CIRCLING_ONLY = { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'] };
 export const circlingOnly = (icao, ident) => !!CIRCLING_ONLY[icao]?.includes(String(ident).toUpperCase());
+// The end a circling-only end is circled from (v0.6.4, the review): its runway's other end when that one has an
+// ILS (Gimhae's 18L from 36R), else the airport's first end with an ILS that isn't circling-only itself (Wonsan's
+// 33R: its own other end, 15L, is unlit, so 15R), else the other end.
+export function circleFrom(airport, ident) {
+  const rws = airport?.runways || [], id = String(ident).toUpperCase();
+  const rw = rws.find((r) => r.ends.some((e) => String(e.ident).toUpperCase() === id));
+  const other = rw?.ends.find((e) => String(e.ident).toUpperCase() !== id) || null;
+  const usable = (e) => !!e && !!e.ils && !circlingOnly(airport.icao, e.ident);
+  if (usable(other)) return other;
+  for (const r of rws) for (const e of r.ends) if (usable(e)) return e;
+  return other;
+}
 
 // Normalise and index a list of airport JSONs.
 export function createAirports(list, opts = {}) {
   const airports = list || [];
-  for (const a of airports) for (const r of a.runways || []) for (const e of r.ends) if (circlingOnly(a.icao, e.ident)) e.circling = true;
+  for (const a of airports) for (const r of a.runways || []) for (const e of r.ends) if (circlingOnly(a.icao, e.ident)) { e.circling = true; e.ils = null; }   // (v0.6.4: no ILS shown or tuned to an end with no straight-in path: Wonsan 33L's was an estimate; Gimhae's two have none)
   const rects = runwayRects(airports);
   const byIcao = new Map(airports.map((a) => [a.icao, a]));
   let hf = opts.heightfield || null;

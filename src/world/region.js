@@ -59,11 +59,11 @@ export const regionQuery = () => {
 // The map's extent (m, the map frame): Korea's 800 km square (frame.js's MAP_EXTENT, v0.5.8),
 // or the region's whole data, the 1 km level's rectangle round 24-46 N, 112-148 E. FINE_EXTENT
 // is the 250 m data's bounding rectangle (v0.6.0: the tiles meeting 29-40 N, 119-142 E; v0.6.3 adds 26 tiles
-// round Beijing and north to Vladivostok: the data itself is the manifest's `covered` tiles, fineOutline()). The predicted path ends at mapExtent(),
+// round Beijing and north to Vladivostok, v0.6.4 ten over Hokkaido: the data itself is the manifest's `covered` tiles, fineOutline()). The predicted path ends at mapExtent(),
 // and the path map draws it. (tests/region-loader.test.mjs checks both against the manifest.)
 export const KOREA_EXTENT = { x0: -400000, y0: -400000, x1: 400000, y1: 400000 };
 export const REGION_EXTENT = { x0: -1600000, y0: -1338000, x1: 2110000, y1: 1284000 };
-export const FINE_EXTENT = { x0: -1040000, y0: -784000, x1: 1520000, y1: 880000 };   // (v0.6.3: Beijing's column in the west, two rows north to Vladivostok; v0.6.2's was -912000 .. 624000)
+export const FINE_EXTENT = { x0: -1040000, y0: -784000, x1: 1520000, y1: 1008000 };   // (v0.6.3: Beijing's column in the west, two rows north to Vladivostok, y1 880000; v0.6.4: Hokkaido's row, y1 1008000; v0.6.2's was -912000 .. 624000)
 export const mapExtent = () => (EAST_ASIA_ON ? REGION_EXTENT : KOREA_EXTENT);
 // v0.6.3: the 250 m data is a set of tiles, not a rectangle (Shane, 2026-11-20: "we don't have to keep every
 // region a perfect rectangle"). fineOutline() is its edge for the map: every side of a covered tile whose
@@ -129,7 +129,12 @@ const KR_RULES = { country: 'KR', timeZone: 'Asia/Seoul', zoneName: 'KST', baroU
   transAltM: 14000 * FT_M, transLevelM: 14000 * FT_M, metricAlt: false, metar: 'kr' };
 export const COUNTRY_RULES = {
   KR: KR_RULES,
-  KP: { ...KR_RULES, country: 'KP', timeZone: 'Asia/Pyongyang' },
+  // North Korea (v0.6.4; Korea's rules with Pyongyang's zone until then, when nothing landed there). It publishes
+  // no AIP online, so these are open secondary sources' ([EST]; the notes, with each source, were read 2026-11-21):
+  // QNH in hPa and altitudes in feet (RVSM in feet since 2009), the transition altitude 12,000 ft and level FL130
+  // (open nav data and an open scenery agree for Pyongyang; Wonsan's 5,000 ft there is older and isn't taken), the
+  // wind in metres per second (sure: its own TAFs), UTC+9.
+  KP: { ...KR_RULES, country: 'KP', timeZone: 'Asia/Pyongyang', transAltM: 12000 * FT_M, transLevelM: 13000 * FT_M, metar: 'kp' },
   // Japan: inches of mercury (hPa on request), 14,000 ft / FL140 (AIP Japan), `Q1014 ... RMK A2997`.
   JP: { ...KR_RULES, country: 'JP', timeZone: 'Asia/Tokyo', zoneName: 'JST', baroUnit: 'inHg', metar: 'jp' },
   // China: hPa, metres on the PFD, Pudong's 3,000 m / 3,600 m (Hongqiao's and Qingdao's [EST] the

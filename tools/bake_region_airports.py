@@ -81,6 +81,13 @@ NAMES = {   # briefs/V0-6-0.md Part 3, the names table
     'ZYTX': ('Shenyang', 'Shenyang Taoxian International Airport'),
     'ZYTL': ('Dalian', 'Dalian Zhoushuizi International Airport'),
     'UHWW': ('Vladivostok', 'Vladivostok International Airport'),
+    # v0.6.4 (briefs/V0-6-4.md), pending until each passes its check
+    'ZKPY': ('Pyongyang', 'Pyongyang Sunan International Airport'),
+    'ZKWS': ('Wonsan', 'Wonsan Kalma International Airport'),
+    'RJSN': ('Niigata', 'Niigata Airport'),
+    'RJSS': ('Sendai', 'Sendai Airport'),
+    'RJSA': ('Aomori', 'Aomori Airport'),
+    'RJCC': ('New Chitose', 'New Chitose Airport (Sapporo)'),
 }
 # Inside south-korea.poly the game's variation is frame.js magVar()'s plane (briefs/V0-6-0.md, "Magnetic variation"):
 # Gimhae's magVarDeg and magnetic headings come from bake_common.mag_var(), the rest from the WMM grid.
@@ -367,6 +374,158 @@ PUBLISHED_MAG = {
 PUBLISHED_MAG.update({'UHWW': {'07R': 72.0, '25L': 252.0}, 'ZYTX': {'06': 56.0, '24': 236.0},
                       'ZYTL': {'10': 95.0, '28': 275.0}})
 
+# v0.6.4, Pyongyang Sunan (ZKPY) and Wonsan Kalma (ZKWS), pending: their boxes cut by /tmp/flight-sim/v064/osm/extract-kp.sh
+# (north-korea-261119), notes in /tmp/flight-sim/v064/airports/bake. North Korea publishes no AIP online: open secondary
+# sources only (X-Plane 12's nav data as listed on airports4xp.info; the X-Plane Scenery Gateway's recommended sceneries,
+# ZKPY 112628 of 2026-10, its ramp starts "acc. to Jeppesen of 12 Jun 26", ZKWS 93376 of 2022-12); no source kept here.
+OSM_DIRS.update({i: '/tmp/flight-sim/v064/osm' for i in ('ZKPY', 'ZKWS')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v064/airports/bake' for i in ('ZKPY', 'ZKWS')})
+# Runways OSM draws as live that the bake leaves out: Pyongyang's 01/19 (OurAirports closed=1; the Gateway's scenery
+# draws it unlit, no approach lights, no ILS in the nav data; the ILS, PAPIs and lights are all 17/35's), and Wonsan's
+# 02/20 (a 500 x 30 m strip by the terminal apron, no lights, no procedure).
+RUNWAY_SKIP = {('ZKPY', '01/19'), ('ZKWS', '02/20')}
+# - Pyongyang 17/35: ILS CAT I at both ends (17: 109.5, 35: 109.9, 3.0 deg glide paths; the nav data); 17 ALSF-I, PAPI-4R
+#   (right), 35 SALS (drawn as the game's SSALF, 420 m [EST]) and PAPI-4L, centreline lights, no TDZ (the scenery's runway
+#   row and light fixtures, and OSM's PAPI node beside 35). Its stopways (99 m and 72 m, OSM's aeroway=stopway and the
+#   scenery's blast pads) are not runway: OSM's 17/35 way ends at the thresholds, no displacement.
+END_OVERRIDE.update({
+    'ZKPY': {'17': dict(papi='right', centrelineLights=True),
+             '35': dict(approachLights='SSALF', approachLightsM=420, centrelineLights=True)},
+})
+OVERRIDE_REASON.update({
+    'ZKPY': ("open secondary sources, no AIP published online: ILS I at 17 (109.5) and 35 (109.9), 3.0 deg (X-Plane 12's nav "
+             "data, airports4xp.info); 17 ALSF-I with PAPI-4R, 35 SALS (drawn as SSALF 420 m) with PAPI-4L, centreline "
+             "lights, no TDZ (the Scenery Gateway's scenery 112628, 2026-10). [EST]: the approach lights' lengths"),
+})
+PUBLISHED_MAG.update({'ZKPY': {'17': 163.0, '35': 343.0}})     # OurAirports' heading_degT (true, older); notes only
+MILITARY = MILITARY | {'ZKPY'}
+# Pyongyang 17/35 is 60 m wide (OSM's width tag, the Gateway's runway row); OurAirports' 230 ft would be 70 m.
+WIDTH_OVERRIDE[('ZKPY', '17/35')] = 60.0
+# - Wonsan Kalma: two runways, 15L/33R (3,500 x 60 m, the 2015 runway) and 15R/33L (3,125 m, the old one; OSM's length tag).
+#   The Gateway's scenery 93376 (2022-12): 15R/33L 50 m wide, centreline lights, PAPI-4L at 15R and 33L, 15R ALSF-II, 33L
+#   RAIL (alignment flashers only); 15L/33R unlit (no edge or centreline lights, no PAPI, no approach lights). The nav
+#   data's ZKWS (airports4xp.info) is the old field (one 2,422 m runway, no ILS): no ILS is listed anywhere open. So 15R
+#   and 33L take the ICAO default ILS I [EST] with ALSF-I 900 m at 15R and SSALF 420 m at 33L [EST: the scenery's ALSF-II
+#   and RAIL], and 15L/33R is drawn unlit, as the scenery has it. Every threshold elevation is the field's 7 ft [EST]
+#   (OurAirports has no end rows' elevations here); no displacements (OSM's ways end at the thresholds; the stopways,
+#   100 m at each end in the scenery, are OSM's aeroway=stopway).
+UNLIT = dict(papi=None, papiDeg=None, approachLights=None, approachLightsM=0, ils=None, tdzLights=False,
+             centrelineLights=False)
+END_OVERRIDE.update({
+    'ZKWS': {'15R': dict(centrelineLights=True), '33L': dict(approachLights='SSALF', approachLightsM=420, centrelineLights=True),
+             '15L': dict(UNLIT), '33R': dict(UNLIT)},
+})
+OVERRIDE_REASON.update({
+    'ZKWS': ("open secondary source, no AIP published online and no ILS in any open nav data: the Scenery Gateway's scenery "
+             "93376 (2022-12): 15R/33L centreline lights, PAPI-4L at both ends; 15L/33R unlit. [EST]: ILS I at 15R and 33L, "
+             "15R's ALSF-I 900 m (the scenery's ALSF-II), 33L's SSALF 420 m (the scenery's RAIL), the PAPIs' 3.0 deg"),
+})
+WIDTH_OVERRIDE[('ZKWS', '15R/33L')] = 50.0     # the Gateway's runway row (OurAirports' 148 ft would round to 45 m)
+# Wonsan's stands: OSM maps none (no parking_position, gate or apron taxilane at the terminal, only its four jet bridges).
+# The Gateway's six gates at the 2015 terminal, numbered 1 to 6 from the south, each with its nose heading; a 60 m lead-in
+# along it. The air force side (OSM's hardened shelters and the aprons south of the terminal) has no stands. OSM's whole
+# aerodrome is landuse=military (a joint field), so ZKWS is not in MILITARY: the stands are only these. [EST]
+STAND_POINTS['ZKWS'] = [
+    ('1', 39.16415269, 127.48315116, 236.2), ('2', 39.16457618, 127.48283220, 236.4),
+    ('3', 39.16522001, 127.48235492, 254.7), ('4', 39.16572468, 127.48192710, 220.8),
+    ('5', 39.16630151, 127.48140875, 236.3), ('6', 39.16670964, 127.48106715, 238.2),
+]
+
+# v0.6.4, New Chitose (RJCC) and Aomori (RJSA), pending: their boxes cut by /tmp/flight-sim/v064/osm/extract-jp.sh
+# (hokkaido-261119, tohoku-261119), notes in /tmp/flight-sim/v064/airports/bake. From AIP Japan as Haneda's were (the AD 2
+# pages as mirrored at nagodede.github.io/aip/japan, read with pypdf; no page kept in the repository):
+# - RJCC AD 2.12 (EFF 26 DEC 2024), 2.13, 2.14, 2.19 (EFF 22 JAN 2026), MAG VAR 10 deg W (2024): 01L/19R and 01R/19L
+#   3000 x 60 m, no displacements (LDA 3000 m at all four); PALS CAT I 900 m at 01L and 01R, PALS CAT III 900 m at 19R,
+#   PALS CAT I 570 m at 19L; TDZ (900 m) and centreline lights at all four; PAPI left 3.0 at all four; an ILS at each
+#   end (the category from the PALS, as Kansai's: III at 19R, I elsewhere); LOC BRG(MAG) 002 / 182. The air force's
+#   Chitose base (RJCJ: its 18L/36R and 18R/36L, OSM's second aerodrome, landuse=military) lies west of the civil
+#   boundary and isn't read; no stands inside any landuse=military area.
+# - RJSA AD 2.12 (EFF 28 NOV 2024), 2.13, 2.14, 2.19 (EFF 22 JAN 2026), MAG VAR 9 deg W (2025): 06/24 3000 x 60 m, no
+#   displacements; 06 SALS 420 m (drawn as the game's SSALF, the nearest it has), no TDZ, no ILS; 24 PALS CAT III 900 m
+#   with TDZ, ILS (LOC BRG(MAG) 240.93); PAPI left 3.0 and centreline lights at both.
+OSM_DIRS.update({i: '/tmp/flight-sim/v064/osm' for i in ('RJCC', 'RJSA')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v064/airports/bake' for i in ('RJCC', 'RJSA')})
+AIP.update({
+    'RJCC': {'01L': ('ALSF-I', 900, 'left', 3.0, 'I', 62.0, True, True, 60, 0),
+             '19R': ('ALSF-II', 900, 'left', 3.0, 'III', 82.0, True, True, 60, 0),
+             '01R': ('ALSF-I', 900, 'left', 3.0, 'I', 57.4, True, True, 60, 0),
+             '19L': ('ALSF-I', 570, 'left', 3.0, 'I', 77.1, True, True, 60, 0)},
+    'RJSA': {'06': ('SSALF', 420, 'left', 3.0, None, 647.0, False, True, 60, 0),
+             '24': ('ALSF-II', 900, 'left', 3.0, 'III', 664.0, True, True, 60, 0)},
+})
+PUBLISHED_MAG.update({'RJCC': {'01L': 2.0, '01R': 2.0, '19R': 182.0, '19L': 182.0},
+                      'RJSA': {'06': 60.91, '24': 240.93}})
+MILITARY = MILITARY | {'RJCC'}
+# Aomori's stands: OSM maps no parking_position, gate or jet bridge there. AIP Japan's AD 2.8 (INS checkpoints) publishes
+# the positions of spots 1 to 6, the terminal's apron (the N apron's N1 to N11 are light aircraft's, AUW 5.7 t, left
+# out); each nose 319.7 deg true, square to the row (049.7 deg) towards the terminal ([EST]: the heading), a 60 m
+# lead-in behind it. Code D at most: AD 2.20's pushback rules are for aircraft "up to and including the B767-300"
+# (AIP_STANDS.RJSA's maxSpan in taxi.js).
+STAND_POINTS['RJSA'] = [
+    ('1', 40.73713333, 140.68843611, 319.7), ('2', 40.73748889, 140.68894444, 319.7),
+    ('3', 40.73791667, 140.68959444, 319.7), ('4', 40.73826389, 140.69021389, 319.7),
+    ('5', 40.73865278, 140.69082778, 319.7), ('6', 40.73901389, 140.69136111, 319.7),
+]
+STAND_POINTS_REASONS = {'RJSA': ("OSM maps no stands: spots 1 to 6 at AIP Japan's published INS checkpoint positions (RJSA AD "
+                                 "2.8), the heading square to the row towards the terminal [EST]; a 60 m lead-in along each")}
+
+# v0.6.4, Sendai (RJSS, tohoku-261119) and Niigata (RJSN, chubu-261119), pending: their boxes cut by
+# /tmp/flight-sim/v064/osm/extract-ss-sn.sh, notes in /tmp/flight-sim/v064/airports/bake. From AIP Japan as Haneda's were
+# (the AD 2 pages as mirrored at nagodede.github.io/aip/japan, read with pypdf; no page kept in the repository):
+# - RJSS AD 2.12 (EFF 28 NOV 2024), 2.13, 2.14 (EFF 1 JUL 2021), 2.19 (EFF 20 MAR 2025), MAG VAR 9 deg W (2024): 09/27
+#   3000 x 45 m, 12/30 1200 x 45 m, no displacements (LDA = TORA at all four); 09 SALS 420 m (the game's SSALF), RCLL, no
+#   TDZ, no ILS; 27 PALS CAT I 900 m, TDZ 900 m, RCLL, ILS (LOC BRG(MAG) 270, GP 3.0); 12 and 30 no approach lights, no
+#   RCLL, PAPI 3.0 (12) and 3.1 (30). The PAPIs' side isn't in AD 2.14: left [EST]. 12/30 doesn't cross 09/27: 12's
+#   threshold is ~105 m south of 09/27's centreline, joined to it by a taxiway.
+# - RJSN AD 2.12 (EFF 20 FEB 2025), 2.13, 2.14 (EFF 1 DEC 2022), 2.19 (EFF 10 AUG 2023), MAG VAR 9 deg W (2025): 10/28
+#   2500 x 45 m, 04/22 1314 x 45 m, no displacements; 10 SALS 420 m, PAPI 3.0 left, RCLL, no ILS; 28 PALS CAT I 660 m,
+#   TDZ 900 m, PAPI 3.0 left, RCLL, ILS (LOC BRG(MAG) 281.26); 04 nothing but edge lights (no PAPI); 22 PAPI 3.0 left;
+#   no RCLL on 04/22. 04/22 crosses 10/28 ~240 m in from the 28 threshold. The JASDF and coast guard's corner has no stands.
+OSM_DIRS.update({i: '/tmp/flight-sim/v064/osm' for i in ('RJSS', 'RJSN')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v064/airports/bake' for i in ('RJSS', 'RJSN')})
+AIP.update({
+    'RJSS': {'09': ('SSALF', 420, 'left', 3.0, None, 11.5, False, True, 45, 0),
+             '27': ('ALSF-I', 900, 'left', 3.0, 'I', 15.1, True, True, 45, 0),
+             '12': (None, 0, 'left', 3.0, None, 6.0, False, False, 45, 0),
+             '30': (None, 0, 'left', 3.1, None, 5.0, False, False, 45, 0)},
+    'RJSN': {'10': ('SSALF', 420, 'left', 3.0, None, 27.1, False, True, 45, 0),
+             '28': ('ALSF-I', 660, 'left', 3.0, 'I', 10.1, True, True, 45, 0),
+             '04': (None, 0, None, None, None, 22.7, False, False, 45, 0),
+             '22': (None, 0, 'left', 3.0, None, 5.9, False, False, 45, 0)},
+})
+PUBLISHED_MAG.update({'RJSS': {'27': 270.0, '09': 90.0}, 'RJSN': {'28': 281.26, '10': 101.26}})
+MILITARY = MILITARY | {'RJSN'}
+# OSM draws all four runways over their blast pads (Sendai 09/27 3,122 m, 12/30 1,474 m; Niigata 10/28 2,619 m, 04/22
+# 1,431 m): each end is put at AIP Japan's threshold (AD 2.12's coordinates, projected on OSM's axis), so the length is
+# the published one times the frame's scale and both ends sit where the AIP has them (THR_AT).
+_dms = lambda s: int(s[:-1][:2 if s[-1] in 'NS' else 3]) + int(s[:-1][2 if s[-1] in 'NS' else 3:][:2]) / 60 + \
+    float(s[:-1][(2 if s[-1] in 'NS' else 3) + 2:]) / 3600
+THR_AT = {(i, e): (_dms(la), _dms(lo)) for i, e, la, lo in (
+    ('RJSS', '09', '380819.58N', '1405355.40E'), ('RJSS', '27', '380832.18N', '1405557.56E'),
+    ('RJSS', '12', '380822.05N', '1405453.09E'), ('RJSS', '30', '380803.96N', '1405536.72E'),
+    ('RJSN', '10', '375724.71N', '1390541.78E'), ('RJSN', '28', '375720.91N', '1390724.09E'),
+    ('RJSN', '04', '375653.73N', '1390652.82E'), ('RJSN', '22', '375729.96N', '1390721.31E'))}
+# The stands: OSM's (Sendai's lead-ins along the terminal's row, Niigata's), numbered by AIP Japan's AD 2.8 INS checkpoint
+# positions (Sendai spots 1 to 14, 2L left out as spot 2's variant 3 m away; Niigata spots 1 to 10): OSM's refs there are
+# the bridges' gate numbers (Sendai's run one ahead of the spots) or letters (Niigata's A to D).
+SPOT_REFS = {i: [(r, _dms(la), _dms(lo)) for r, la, lo in L] for i, L in (
+    ('RJSS', [('1', '380820.38N', '1405556.75E'), ('2', '380820.12N', '1405554.31E'), ('3', '380819.91N', '1405551.55E'),
+              ('4', '380819.59N', '1405548.49E'), ('5', '380819.29N', '1405545.54E'), ('6', '380819.18N', '1405542.89E'),
+              ('7', '380819.18N', '1405540.69E'), ('8', '380819.64N', '1405538.75E'), ('9', '380819.45N', '1405536.92E'),
+              ('10', '380819.26N', '1405535.09E'), ('11', '380817.91N', '1405533.18E'), ('12', '380817.70N', '1405531.10E'),
+              ('13', '380817.48N', '1405529.02E'), ('14', '380817.27N', '1405526.95E')]),
+    ('RJSN', [('1', '375711.53N', '1390636.75E'), ('2', '375711.93N', '1390638.19E'), ('3', '375710.93N', '1390640.71E'),
+              ('4', '375710.86N', '1390642.55E'), ('5', '375710.82N', '1390644.71E'), ('6', '375710.78N', '1390647.37E'),
+              ('7', '375710.68N', '1390650.23E'), ('8', '375710.51N', '1390652.89E'), ('9', '375710.48N', '1390655.65E'),
+              ('10', '375710.27N', '1390658.41E')]))}
+SPOT_REF_M = 20.0
+# The small aircraft's aprons, no stands there (map metres south of the reference point, grid y): Sendai's South One to
+# Three aprons and the run-up apron by the 09 end (AD 2.8: asphalt, PCR 183-265 and AUW 5.7 t; the flying school's and the
+# coast guard's), Niigata's S apron (AD 2.8: AUW 11 t), reached only over runway 04/22.
+STAND_EXCLUDE = {'RJSS': (-380.0, "AD 2.8's South One to Three and run-up aprons (PCR 183-265, AUW 5.7 t): light aircraft"),
+                 'RJSN': (-300.0, "AD 2.8's S apron (AUW 11 t), its taxiway S joining only runway 04/22: light aircraft")}
+THR_LEN = {('RJSS', '09/27'): 3000, ('RJSS', '12/30'): 1200, ('RJSN', '10/28'): 2500, ('RJSN', '04/22'): 1314}   # AD 2.12
+
 LIFECYCLE = ('construction', 'proposed', 'disused', 'abandoned', 'planned', 'demolished', 'razed')
 
 
@@ -531,6 +690,9 @@ def bake(icao, wmm, oa_ap, oa_rw):
     # ---- runways
     runways = []
     for ref, tags, a, b, nways, osm_disp in merged_runways(d, area):
+        if (icao, ref) in RUNWAY_SKIP:
+            est.append((f'{ref} left out', 'not baked', 'drawn as a live runway in OSM but closed or unusable (RUNWAY_SKIP)'))
+            continue
         ids = ref.split('/')
         t_ab, _ = bearing_true(a[0], a[1], b[0], b[1])
         la, lo = to_geo(a[0], a[1])
@@ -541,6 +703,31 @@ def bake(icao, wmm, oa_ap, oa_rw):
             osm_disp = {{'a': 'b', 'b': 'a'}[k]: v for k, v in osm_disp.items()}
         length = float(np.hypot(*(b - a)))
         o0 = oa_rw.get((icao, ids[0]), {})
+        if any((icao, i) in THR_AT for i in ids):
+            # v0.6.4 (THR_AT): each listed end moved along OSM's axis to the AIP's threshold (its projection on the axis)
+            u, a0, len0 = (b - a) / length, a.copy(), length
+            moved = []
+            for i, key in ((ids[0], 'a'), (ids[1], 'b')):
+                if (icao, i) in THR_AT:
+                    s = float((np.array(to_map(*THR_AT[(icao, i)]), float) - a0) @ u)
+                    if key == 'a':
+                        a = a0 + u * s
+                        moved.append(f'{i} {s:+.0f} m')
+                    else:
+                        b = a0 + u * s
+                        moved.append(f'{i} {s - len0:+.0f} m')
+            length = float(np.hypot(*(b - a)))
+            k = frame_scale(*(float(v) for v in to_geo(*((a + b) / 2))))
+            if (icao, ref) in THR_LEN:
+                # then both ends by the same amount to the AD 2.12 length times the frame's scale (the AIP's points lie
+                # a metre or two off OSM's axis's own length)
+                cut = (length - THR_LEN[(icao, ref)] * k) / 2
+                a, b = a + u * cut, b - u * cut
+                moved.append(f'then {cut:+.1f} m each to {THR_LEN[(icao, ref)]} m')
+                length = float(np.hypot(*(b - a)))
+            est.append((f'{ref} ends', f'{length:.1f} map m ({length / k:.1f} m after the frame\'s scale {k:.5f}; OSM {len0:.0f} m)',
+                        'OSM\'s way runs over the blast pads: each end moved along its axis to AIP Japan\'s threshold '
+                        f'(AD 2.12) ({", ".join(moved)}; THR_AT)'))
         if (icao, ref) in TRIM_BOTH:
             k = frame_scale(*(float(v) for v in to_geo(*((a + b) / 2))))
             cut = (length - num(o0.get('length')) * FT * k) / 2
@@ -704,9 +891,9 @@ def bake(icao, wmm, oa_ap, oa_rw):
         seen.add(ref)
     if icao in STAND_POINTS:
         stands += stands_from_points(icao, near_gate)
-        est.append(('stands', f'{len(STAND_POINTS[icao])} from STAND_POINTS',
+        est.append(('stands', f'{len(STAND_POINTS[icao])} from STAND_POINTS', STAND_POINTS_REASONS.get(icao,
                     'OSM maps no stand numbers and draws the rows as taxiway loops: the X-Plane Scenery Gateway\'s stands '
-                    '(open secondary), numbered as AIP Russia\'s parking chart; a 60 m lead-in along each heading'))
+                    '(open secondary), numbered as AIP Russia\'s parking chart; a 60 m lead-in along each heading')))
     if icao in PP_CHAINS:
         got, n_pp = stands_from_pp_chains(d, area, twy_lines, near_gate, node_refs)
         stands += got
@@ -740,6 +927,26 @@ def bake(icao, wmm, oa_ap, oa_rw):
         est.append(('military side', f'{n0 - len(stands)} OSM stands left out',
                     'inside OSM landuse=military (' + '; '.join(n or '(unnamed)' for n, _ in mil) + '): its aprons and buildings kept, no stands'
                     + ('; OSM\'s small hardstands there are drawn as taxiways: kept as taxiways, no stands' if icao == 'ZSYN' else '')))
+    if icao in STAND_EXCLUDE:
+        ymin, why = STAND_EXCLUDE[icao]
+        n0 = len(stands)
+        stands = [st for st in stands if st['y'] - oy >= ymin]
+        est.append(('small aircraft aprons', f'{n0 - len(stands)} OSM stands left out', why + ' (STAND_EXCLUDE)'))
+    if icao in SPOT_REFS:
+        # v0.6.4: the AIP's spot numbers on OSM's stands (the nearest within SPOT_REF_M of each published position)
+        named = 0
+        for r, la, lo in SPOT_REFS[icao]:
+            x, y = to_map(la, lo)
+            near = sorted((float(np.hypot(st['x'] - x, st['y'] - y)), k) for k, st in enumerate(stands))
+            if near and near[0][0] < SPOT_REF_M:
+                for st in stands:
+                    if st['ref'] == r:
+                        st['ref'] = ''
+                stands[near[0][1]]['ref'] = r
+                named += 1
+        est.append(('stand numbers from the AIP', f'{named} of {len(SPOT_REFS[icao])} spots',
+                    f'AIP Japan AD 2.8\'s INS checkpoint positions: OSM\'s stand within {SPOT_REF_M:.0f} m of each takes the '
+                    'spot\'s number (OSM\'s own refs there are gate or bridge numbers); the rest numbered R1.. (SPOT_REFS)'))
     merged = []
     for st in stands:
         if any(np.hypot(st['x'] - m['x'], st['y'] - m['y']) < 15 for m in merged):

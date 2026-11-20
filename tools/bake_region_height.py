@@ -167,20 +167,25 @@ def tile_meets_box(ti, tj):
 
 
 def region_tiles():
-    """v0.6.3: the region's l0 tiles, v0.6.0's 180 (box_tiles(), in their order) then the 26 of
-    bake_region_tiles.EXTRA (any already among the 180 kept once, as old)."""
-    old = box_tiles()
-    have = set(old)
-    return old + [t for t in rt.EXTRA_TILES if t not in have]
+    """v0.6.3: the region's l0 tiles, v0.6.0's 180 (box_tiles(), in their order) then
+    bake_region_tiles.EXTRA (v0.6.3's 26, then v0.6.4's 10; any already listed kept once, as old)."""
+    return old_tiles() + new_tiles()
 
 
 def old_tiles():
-    return box_tiles()
+    """v0.6.4: the tiles baked before this batch: v0.6.0's 180, then the earlier batches' extras."""
+    old = box_tiles()
+    have = set(old)
+    for t in rt.OLD_EXTRA_TILES:
+        if t not in have:
+            old.append(t); have.add(t)
+    return old
 
 
 def new_tiles():
-    have = set(box_tiles())
-    return [t for t in rt.EXTRA_TILES if t not in have]
+    """v0.6.4: this batch's tiles (bake_region_tiles.NEW_TILES), less any already old."""
+    have = set(old_tiles())
+    return [t for t in rt.NEW_TILES if t not in have]
 
 
 _BOX_TILES = None
@@ -457,7 +462,7 @@ def cmd_quicklook(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--tiles', default=None, help="'all', 'new' (v0.6.3's 26) or 'ti0:ti1,tj0:tj1' (inclusive)")
+    ap.add_argument('--tiles', default=None, help="'all', 'new' (this batch's: v0.6.4's 10) or 'ti0:ti1,tj0:tj1' (inclusive)")
     ap.add_argument('--plan', action='store_true')
     ap.add_argument('--validate', action='store_true')
     ap.add_argument('--quicklook', action='store_true')

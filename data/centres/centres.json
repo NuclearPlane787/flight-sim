@@ -394,6 +394,118 @@
    "maxHeightM": 155.5,
    "minKeepHeightM": 12.0,
    "bytes": 74448
+  },
+  {
+   "id": "pyongyang",
+   "name": "Pyongyang",
+   "file": "pyongyang.bin.gz",
+   "origin": [
+    -152117,
+    336739
+   ],
+   "box": [
+    -156017,
+    333128,
+    -148217,
+    340350
+   ],
+   "latlon": [
+    38.98937,
+    125.69926,
+    39.05561,
+    125.79071
+   ],
+   "cols": 16,
+   "rows": 15,
+   "count": 6616,
+   "vertices": 57410,
+   "maxHeightM": 322.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 201532
+  },
+  {
+   "id": "sapporo",
+   "name": "Sapporo",
+   "file": "sapporo.bin.gz",
+   "origin": [
+    1133585,
+    865301
+   ],
+   "box": [
+    1131146,
+    863083,
+    1136024,
+    867519
+   ],
+   "latlon": [
+    43.03734,
+    141.31681,
+    43.08266,
+    141.38319
+   ],
+   "cols": 10,
+   "rows": 9,
+   "count": 4605,
+   "vertices": 32798,
+   "maxHeightM": 175.2,
+   "minKeepHeightM": 12.0,
+   "bytes": 118913
+  },
+  {
+   "id": "sendai",
+   "name": "Sendai",
+   "file": "sendai.bin.gz",
+   "origin": [
+    1167260,
+    329957
+   ],
+   "box": [
+    1165092,
+    327757,
+    1169428,
+    332157
+   ],
+   "latlon": [
+    38.23773,
+    140.84707,
+    38.28227,
+    140.90294
+   ],
+   "cols": 9,
+   "rows": 9,
+   "count": 4140,
+   "vertices": 28013,
+   "maxHeightM": 148.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 98187
+  },
+  {
+   "id": "niigata",
+   "name": "Niigata",
+   "file": "niigata.bin.gz",
+   "origin": [
+    1013436,
+    272091
+   ],
+   "box": [
+    1011035,
+    270162,
+    1015837,
+    274020
+   ],
+   "latlon": [
+    37.8977,
+    139.02282,
+    37.93728,
+    139.08219
+   ],
+   "cols": 10,
+   "rows": 8,
+   "count": 740,
+   "vertices": 7604,
+   "maxHeightM": 140.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 27760
   }
  ]
 }

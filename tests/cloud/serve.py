@@ -4,6 +4,10 @@
 import functools, http.server, sys
 
 class NoStore(http.server.SimpleHTTPRequestHandler):
+    # HTTP/1.1, so a browser keeps its connections (2026-11-21: with HTTP/1.0's one connection a file, a night of
+    # checks over thousands of tile files left 17,000 sockets in TIME_WAIT, more than the Mac has local ports, and
+    # pages began to log net::ERR_ADDRESS_INVALID).
+    protocol_version = 'HTTP/1.1'
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store')
         super().end_headers()

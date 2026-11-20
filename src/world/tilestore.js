@@ -25,7 +25,7 @@ export function createTileStore(spec, opts = {}) {
   const X0 = spec.x0, Y0 = spec.y0;
   const sea = spec.sea || { h: -160, w: [0, 255], c: [0, 0, 0, 0] };
   const wanted = new Set(opts.layers || ['h', 'w', 'c']);
-  const maxTiles = opts.maxTiles || DEFAULT_MAX_TILES;
+  let maxTiles = opts.maxTiles || DEFAULT_MAX_TILES;
   const read = opts.readGz || defaultReader(opts.base || 'data/');
   const RETRY_MS = opts.retryMs ?? RETRY_MS_DEFAULT, RETRY_MAX_MS = Math.max(RETRY_MS, opts.retryMaxMs ?? 8000);
   let onTile = opts.onTile || null;     // (tile) => void: edits a freshly decoded l0 tile (the airport mask)
@@ -249,6 +249,9 @@ export function createTileStore(spec, opts = {}) {
   store.isReady = isReady;
   store.loadAll = loadAll;
   store.release = (who) => { pins.delete(who); trim(); };
+  // v0.6.4: raise the cap (never lower it): heightfield.js keeps room for the flight beside the airports' pinned tiles.
+  store.setMaxTiles = (n) => { if (Number.isFinite(n) && n > maxTiles) maxTiles = Math.floor(n); return maxTiles; };
+  store.maxTiles = () => maxTiles;
   store.pinnedKeys = () => { const out = new Set(); for (const set of pins.values()) for (const k of set) out.add(k); return [...out]; };
   store.resident = () => [...tiles.entries()].filter(([, t]) => t.state === 'ready').map(([k]) => k);
   store.tileGrid = (k) => { const t = tiles.get(k); return t && t.state === 'ready' ? tileGrid(t) : null; };

@@ -181,6 +181,15 @@ Shane's decisions are in `briefs/V0-6-0.md` (2026-11-19, final); `STATUS.md`'s v
 - **The map's cities** (`tools/bake_region_urban.py` → `data/urban-region.json`; `buildUrban()`, `pickPlaces()` in `src/ui/common.js`; `src/ui/map.js`): the built-up cover on a 500 m grid, a Gaussian of 1.6 cells cut at 0.30, shapes under 6 km² dropped, rounded and simplified into rings drawn as a tint on the land at four levels of detail; names from Natural Earth's populated places, the smallest named city falling with the zoom (`placePopMin()`: about five million with the region on the screen, every place from about 0.003 px a metre), each centred on its city or moved off an airport's label. `?mapcities=0` leaves both out; with the region off the file isn't loaded.
 - **Centres and landmarks:** five more centres (`data/centres/`), seven more landmarks, two of them bridges: a bridge is based at the sea, its deck's ends take the ground at both shores (`bridgeEnds()`), and the centres leave out only its pylons' circles.
 
+### v0.6.4 (2026-11-21)
+
+- **Ten more tiles over Hokkaido** (`tools/bake_region_tiles.py`'s `BATCHES`: each version's tiles and staging; `FLIGHT_SIM_TILES_VERSION` picks one, so an earlier batch still re-bakes as it was). `wc_missing()` tests a tile's real outline, not its lat/lon box.
+- **Six airports** (RJCC, RJSA, RJSS, RJSN, ZKPY, ZKWS). New in the bake: `THR_AT` and `THR_LEN` (an OSM runway drawn over its blast pads: each end put at the published threshold along OSM's axis, both trimmed to the published length times the frame's scale), `SPOT_REFS` (OSM's stands numbered from the AIP's published spot positions), `STAND_EXCLUDE` (light-aircraft aprons), `RUNWAY_SKIP` (Pyongyang's closed 01/19, Wonsan's strip), `FIELD_RUNWAYS` (a field that follows each runway's own slope where one plane can't: Sendai, Niigata).
+- **Circling-only ends** (`CIRCLING_ONLY` in `world/runways.js`): Wonsan's 33L and 33R join Gimhae's 18L and 18R.
+- **North Korea** (`COUNTRY_RULES.KP`): hPa and feet, 12,000 ft and FL130, Asia/Pyongyang, the `kp` METAR form (metres per second): open secondary sources, `[EST]`.
+- **Centres and landmarks:** four more centres, four more landmarks (thirty).
+- **The terrain cache** (`src/world/heightfield.js`, `tilestore.js`): the airports' pinned tiles plus `FREE_TILES` (27) for the flight and the view, where it was a flat 48 (twenty-three airports pin 48 themselves). A new airport no longer eats the view's room.
+
 ## The aircraft: A321neo
 
 ### Published numbers (Airbus's A321neo page)

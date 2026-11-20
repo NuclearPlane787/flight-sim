@@ -61,10 +61,11 @@ test('a Russian METAR: metres per second, Q in hPa', () => on(() => {
 }));
 
 test('the setup\'s lists: Russia after North Korea, Beijing\'s two first in China', () => on(() => {
+  // (v0.6.4 added Japan's northern four and North Korea's two to AIRPORT_ORDER: tests/v064-*.test.mjs has theirs.)
   assert.equal(airportCountry({ icao: 'UHWW' }), 'RU');
   assert.equal(COUNTRY_LABEL.RU, 'Russia');
   const groups = airportGroups(AIRPORT_ORDER.map((icao) => ({ icao })));
-  assert.deepEqual(groups.map((g) => g.country), ['KR', 'JP', 'CN', 'RU']);
+  assert.deepEqual(groups.map((g) => g.country), ['KR', 'JP', 'CN', 'KP', 'RU']);   // (KP: v0.6.4's Pyongyang and Wonsan)
   assert.deepEqual(groups.find((g) => g.country === 'CN').airports.map((a) => a.icao), ['ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX']);
   assert.deepEqual(groups.find((g) => g.country === 'RU').airports.map((a) => a.icao), ['UHWW']);
 }));

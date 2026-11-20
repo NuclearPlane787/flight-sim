@@ -22,9 +22,9 @@ const region = (opts = {}) => createTiledHeightfield(m, DATA.href, { region: tru
 
 test('the region: the manifest lists its tiles, patches and airports; the extents match region.js', { skip: !HAVE }, () => {
   assert.equal(spec.region, true);
-  assert.equal(spec.airports.length, 17);   // v0.6.1: Yancheng (12); v0.6.3: Beijing's two, Shenyang, Dalian, Vladivostok
-  assert.equal(spec.patches.length, 15);    // and a patch each
-  assert.equal(spec.coastPatches.length, 10);   // v0.6.3: Dalian's and Vladivostok's
+  assert.equal(spec.airports.length, 23);   // v0.6.1: Yancheng (12); v0.6.3: Beijing's two, Shenyang, Dalian, Vladivostok (17); v0.6.4: New Chitose, Aomori, Sendai, Niigata, Pyongyang, Wonsan
+  assert.equal(spec.patches.length, 21);    // and a patch each
+  assert.equal(spec.coastPatches.length, 13);   // v0.6.3: Dalian's and Vladivostok's; v0.6.4: Wonsan's, Sendai's, Niigata's
   assert.equal(new Set(spec.airports).size, spec.airports.length, 'no airport listed twice');
   const t = m.tilesRegion, l0 = t.levels[0], l1 = t.levels[1];
   assert.deepEqual(FINE_EXTENT, { x0: t.x0 + l0.extent.i0 * l0.cell, y0: t.y0 + l0.extent.j0 * l0.cell, x1: t.x0 + l0.extent.i1 * l0.cell, y1: t.y0 + l0.extent.j1 * l0.cell });
@@ -91,7 +91,7 @@ test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by d
     }
   }
   assert.equal(hf.runwayRects.length, airportsAll.reduce((n, a) => n + a.runways.length, 0));
-  assert.equal(runwayRects(airportsAll).length, 40);   // (29 until v0.6.1's Yancheng, 30 until v0.6.3: Capital's 3, Daxing's 4, Shenyang's, Dalian's, Vladivostok's)
+  assert.equal(runwayRects(airportsAll).length, 50);   // (29 until v0.6.1's Yancheng, 30 until v0.6.3, 40 until v0.6.4: New Chitose's 2, Sendai's 2, Niigata's 2, Wonsan's 2, Aomori's, Pyongyang's)
   // Fuji's summit (the 30 m patch): within 60 m of 3,776 m; the 250 m data alone is lower.
   const [fx, fy] = toMap(35.3606, 138.7274);
   await T.whenReady(fx, fy, 20000, 'test');
@@ -165,16 +165,18 @@ test('the region: the clip window follows the camera in blocks, from the tiles a
   // East of Tokyo the window reaches past the 250 m data: those blocks are the 1 km level's (open Pacific here).
   assert.equal(cw.blockKind(15, 3), 'l1');
   assert.equal(cw.blockKind(8, 3), 'l0');
-  // Over Aomori the window holds Hokkaido, in the margin: land from the 1 km level, the store's bilinear.
+  // Over Aomori the window holds Hokkaido's north, in the margin: land from the 1 km level, the store's bilinear.
+  // (42.9 N 141.3 E until v0.6.4, whose tiles took the 250 m data over Hokkaido to y = 1,008 km: Nayoro's basin, north of it, now.)
   const [ax, ay] = toMap(40.82, 140.74);
   await settle(ax, ay);
-  const [nx, ny] = toMap(42.9, 141.3);
+  const [nx, ny] = toMap(44.55, 142.45);
+  assert.ok(ny > FINE_EXTENT.y1, 'the point lies north of the 250 m data');
   [gi, gj] = cellAt(nx, ny);
   assert.equal(cw.blockKind(Math.floor(gi / 512), Math.floor(gj / 512)), 'l1');
   await T.whenReady(nx, ny, 1000, 'test');
   const mx = cw.win.x0 + (gi + 0.5) * 250, my = cw.win.y0 + (gj + 0.5) * 250;
   assert.equal(cw.h[cw.texel(gi, gj)], Math.round(T.height(mx, my)), 'the 1 km level, the store\'s bilinear');
-  assert.ok(T.height(mx, my) > 0, 'land at 42.9 N 141.3 E');
+  assert.ok(T.height(mx, my) > 0, 'land at 44.55 N 142.45 E');
   assert.equal(cw.w[cw.texel(gi, gj) * 2], Math.round(T.water(mx, my, 0)));
   assert.equal(cw.c[cw.texel(gi, gj) * 4], Math.round(T.cover(mx, my, 0)));
   await settle(tx, ty);

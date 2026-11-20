@@ -13,6 +13,7 @@ import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, 
 import { MAP_EXTENT } from '../world/frame.js';
 import { EAST_ASIA_ON, mapExtent, fineExtent, fineOutline } from '../world/region.js';
 import { fuelEstimate } from './setup.js';
+import { circleFrom } from '../world/runways.js';
 
 const PRED = '#c6ff2e';      // the predicted path: bright lime
 // v0.6.3: the city areas' tint over the land, and a switch for comparing (?mapcities=0 draws the map without them).
@@ -740,7 +741,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
       const same = view?.dest === sel.e;
       lines.push(`<b>${apt.icao} ${sel.e.ident}</b> · ${Math.round(sel.r.lengthM || 0).toLocaleString()} m${sel.e.ils ? ` · ILS CAT ${sel.e.ils}` : ''}${same ? ' · <span class="dim">your destination now</span>' : ''}`);
       // v0.6.2: an end with no straight-in approach (Gimhae 18L, 18R)
-      if (sel.e.circling) lines.push(`<span class="warn">Circling only: no straight-in approach, so no Skip to final. It's flown by a circle from the approach to ${sel.r.ends.find((x) => x !== sel.e)?.ident || 'the other end'}.</span>`);
+      if (sel.e.circling) lines.push(`<span class="warn">Circling only: no straight-in approach, so no Skip to final. It's flown by a circle from the approach to ${circleFrom(apt, sel.e.ident)?.ident || 'the other end'}.</span>`);
       if (st) {
         const [tx, ty] = thresholdOf(sel.e), nm = Math.hypot(tx - st.pos.x, ty - st.pos.y) / NM;
         const brg = Math.round(magDeg(Math.atan2(tx - st.pos.x, ty - st.pos.y), st.pos.x, st.pos.y)) || 360;

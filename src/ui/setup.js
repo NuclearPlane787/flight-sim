@@ -29,6 +29,7 @@ import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypo
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
 import { fmtKst, fmtKstDate, zoneAt, zoneLabel, fmtZone, fmtZoneDate, zoneFieldValues, zoneFromFields } from '../clock.js';
 import { eastAsiaOn } from '../world/region.js';
+import { circleFrom } from '../world/runways.js';
 import { shortPlace } from './home-card.js';
 import { kstFieldValues, kstFromFields } from './sky-window.js';
 import { esc } from './score-panel.js';
@@ -93,7 +94,7 @@ export function fitLoad({ pax, cargoKg }, type) {
 const COUNTRY_OF = [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN'], ['U', 'RU']];   // (U: Russia, v0.6.3)
 export const COUNTRY_LABEL = { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', RU: 'Russia', other: 'Elsewhere' };
 const COUNTRY_ORDER = ['KR', 'JP', 'CN', 'KP', 'RU', 'other'];
-export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok)
+export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'RJSN', 'RJSS', 'RJSA', 'RJCC', 'ZKPY', 'ZKWS', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok; v0.6.4: Niigata, Sendai, Aomori and New Chitose after Fukuoka, south to north, and North Korea's Pyongyang and Wonsan)
 export const airportCountry = (ap) => (COUNTRY_OF.find(([p]) => String(ap?.icao || '').startsWith(p)) || [null, 'other'])[1];
 // The airport's short name: its data's shortName, else its name made short ("Seoul Gimpo International Airport" → "Gimpo").
 export const airportShort = (ap) => ap?.shortName || shortPlace(ap?.name) || ap?.icao || '';
@@ -493,7 +494,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     // v0.6.2: no 15 nm final to an end that's only flown by a circle (its straight-in path meets the hills)
     const arr = endObj(plan.dest, plan.arrRunway);
     if (plan.start === 'final' && arr?.circling) {
-      const other = (list().find((a) => a.icao === plan.dest)?.runways || []).find((r) => r.ends.includes(arr))?.ends.find((e) => e !== arr);
+      const other = circleFrom(list().find((a) => a.icao === plan.dest), plan.arrRunway);   // (v0.6.4: the end with the approach, not always this runway's other end)
       problems.push(`${plan.arrRunway} has no straight-in approach (it's flown by a circle from the approach to ${other?.ident || 'the other end'}): pick another runway for a 15 nm final.`);
     }
     // v0.5.3: a design whose engines or tanks touch the ground standing would end the flight as it starts

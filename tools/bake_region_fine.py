@@ -89,6 +89,9 @@ OUT_OLD = os.path.join(rt.STAGE_OLD, 'fine')      # v0.6.0's (read-only)
 WORK = os.path.join(rt.WORK, 'fine')
 STATE = os.path.join(WORK, 'state')
 STATE_OLD = '/tmp/flight-sim/v060/fine-work/state'
+# v0.6.4: earlier batches' sub-tiles and states (read-only), newest first, then v0.6.0's
+OUT_EARLIER = [os.path.join(d, 'fine') for d in rt.STAGES_EARLIER] + [OUT_OLD]
+STATE_EARLIER = [os.path.join(d, 'fine', 'state') for d in rt.WORKS_EARLIER] + [STATE_OLD]
 LOG = os.path.join(WORK, 'log.tsv')
 CLASSES = ['water', 'tree', 'shrub', 'grass', 'crop', 'built', 'bare', 'wetland']
 NC = len(CLASSES)
@@ -108,16 +111,27 @@ def name(ti, tj, a, b):
 
 
 def sub_path(n):
-    """v0.6.3's sub-tile if it exists, else v0.6.0's, else where v0.6.3 writes it."""
+    """This batch's sub-tile if it exists, else the newest earlier batch's, else v0.6.0's, else
+    where this batch writes it."""
     p = os.path.join(OUT, n + '.u8.gz')
-    q = os.path.join(OUT_OLD, n + '.u8.gz')
-    return q if (not os.path.exists(p) and os.path.exists(q)) else p
+    if os.path.exists(p):
+        return p
+    for d in OUT_EARLIER:
+        q = os.path.join(d, n + '.u8.gz')
+        if os.path.exists(q):
+            return q
+    return p
 
 
 def state_path(ti, tj):
     p = os.path.join(STATE, f'{ti}_{tj}.json')
-    q = os.path.join(STATE_OLD, f'{ti}_{tj}.json')
-    return q if (not os.path.exists(p) and os.path.exists(q)) else p
+    if os.path.exists(p):
+        return p
+    for d in STATE_EARLIER:
+        q = os.path.join(d, f'{ti}_{tj}.json')
+        if os.path.exists(q):
+            return q
+    return p
 
 
 # ------------------------------------------------------------------ sampling

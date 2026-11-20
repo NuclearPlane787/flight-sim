@@ -82,6 +82,10 @@ FINE = (-912000, -784000, 1520000, 624000)     # v0.6.0's 250 m data's rectangle
 # v0.6.3: the cells over the new 250 m tiles (bake_region_tiles.EXTRA) take the fine detail too
 FINE_NEW = [(-400000 + ti * 128000, -400000 + tj * 128000, -400000 + (ti + 1) * 128000, -400000 + (tj + 1) * 128000)
             for ti, tj in rt.EXTRA_TILES]
+# v0.6.4: the lakes merged from this bake are those near this batch's tiles only (earlier batches'
+# lakes, shipped, stay byte for byte)
+FINE_BATCH = [(-400000 + ti * 128000, -400000 + tj * 128000, -400000 + (ti + 1) * 128000, -400000 + (tj + 1) * 128000)
+              for ti, tj in rt.NEW_TILES]
 KOREA = (-400000, -400000, 400000, 400000)
 BLOCK = 512000
 NBX = int(np.ceil((REGION[2] - REGION[0]) / BLOCK))
@@ -99,7 +103,7 @@ WORK = '/tmp/flight-sim/v060/map-work'
 BLOCKS = os.path.join(WORK, 'blocks')
 LANDPOLY = '/tmp/flight-sim/v060/landpoly/land-polygons-split-4326/land_polygons'
 LPINDEX = '/tmp/flight-sim/v060/landpoly/bbox_index.npy'
-WATER_TILES = [os.path.join(rt.STAGE_OLD, 'water'), os.path.join(rt.STAGE, 'water')]   # v0.6.0's tiles, then v0.6.3's
+WATER_TILES = [os.path.join(d, 'water') for d in [rt.STAGE_OLD] + rt.STAGES_EARLIER[::-1] + [rt.STAGE]]   # v0.6.0's tiles, then each batch's
 SHIPPED = os.path.join(bc.DATA, 'coast-region.json')       # read (--water-only keeps its land levels)
 OUT = os.path.join(rt.STAGE, 'coast-region.json')         # v0.6.3: staging; the lead installs it
 KOREA_COAST = os.path.join(bc.DATA, 'coast.json')
@@ -327,7 +331,7 @@ def merge_water(shipped, baked):
     """v0.6.3: the shipped inland water stays byte for byte except the lakes that reach the new 250 m
     tiles (within 1 km of their rectangles), which come from this bake (they now see the new tiles'
     water). Returns (rings, counts)."""
-    reach = shapely.union_all([box(*f).buffer(1000) for f in FINE_NEW])
+    reach = shapely.union_all([box(*f).buffer(1000) for f in FINE_BATCH])
     keep, drop, add = [], 0, []
     for rs, g in ring_groups(shipped):
         if g.intersects(reach):

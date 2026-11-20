@@ -15,8 +15,9 @@ const HAVE = !!m.tilesRegion;
 const NM = 1852, DEG = Math.PI / 180;
 const CLEAR_M = 60;   // what a straight-in final keeps between itself and the ground, 1 to 15 nm out
 
-test('the circling-only ends: Gimhae 18L and 18R, marked on the airports, and nothing else', () => {
-  assert.deepEqual(CIRCLING_ONLY, { RKPK: ['18L', '18R'] });
+test('the circling-only ends: Gimhae 18L and 18R (and since v0.6.4 Wonsan 33L and 33R), marked on the airports, and nothing else', () => {
+  assert.deepEqual(CIRCLING_ONLY, { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'] });
+  assert.ok(circlingOnly('ZKWS', '33L') && circlingOnly('ZKWS', '33R') && !circlingOnly('ZKWS', '15R') && !circlingOnly('ZKPY', '35'));
   assert.ok(circlingOnly('RKPK', '18l') && circlingOnly('RKPK', '18R') && !circlingOnly('RKPK', '36L') && !circlingOnly('RKSS', '14R'));
   const aps = createAirports([{ icao: 'RKPK', runways: [{ ends: [{ ident: '18L', x: 0, y: 1000 }, { ident: '36R', x: 0, y: -1000 }] }] }]);
   assert.equal(aps.airports[0].runways[0].ends[0].circling, true);
@@ -46,5 +47,7 @@ test('every straight-in final clears the ground by 60 m from 1 to 15 nm out, but
     if (r.circling) assert.ok(r.worst < CLEAR_M, `${r.end} is marked circling-only but its final clears the ground by ${r.worst.toFixed(0)} m`);
     else assert.ok(r.worst >= CLEAR_M, `${r.end}: the straight-in final is ${r.worst.toFixed(0)} m over the ground ${r.at.toFixed(1)} nm out`);
   }
-  assert.equal(rows.filter((r) => r.circling).length, 2);
+  // Every listed airport's circling-only ends were met (2 at Gimhae; 2 more once Wonsan is listed, v0.6.4).
+  assert.equal(rows.filter((r) => r.circling).length, aps.reduce((n, a) => n + (CIRCLING_ONLY[a.icao] || []).length, 0));
+  assert.ok(rows.filter((r) => r.circling).length >= 2);
 });

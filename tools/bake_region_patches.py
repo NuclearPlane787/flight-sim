@@ -93,6 +93,57 @@ PATCHES.update({
 })
 COAST += ['ZYTX', 'ZYTL', 'UHWW']
 FIELD_PLANE = FIELD_PLANE | {'ZYTX', 'ZYTL', 'UHWW'}
+# v0.6.4 (pending), New Chitose and Aomori: one patch each, ~22 x 32 km and ~25 x 23 km, taking in the ground under
+# every final to ~15 km out (New Chitose's two parallel runways north and south over the Ishikari lowland; Aomori's
+# plateau edge to the north-east and the hills south of it). GLO-30 N42 E141; N40 E140. Both fields flattened to the
+# plane through their runway ends (FIELD_PLANE): AIP Japan's thresholds 17.5 to 25.0 m at New Chitose (field 21.3 m),
+# 197.2 and 202.4 m at Aomori. Coast: bake_region_patches.py coast RJCC RJSA says whether either square touches the sea.
+NEW_AIRPORTS += ['RJCC', 'RJSA']
+PATCHES.update({
+    'new-chitose': (141.56, 42.635, 141.83, 42.925),
+    'aomori': (140.55, 40.63, 140.85, 40.84),
+})
+COAST += ['RJCC', 'RJSA']
+FIELD_PLANE = FIELD_PLANE | {'RJCC', 'RJSA'}
+# v0.6.4 (pending), Pyongyang Sunan: one patch, ~29 x 29 km round the field, taking in the ground under both finals
+# to ~15 km out (17's from the north-north-west over the low hills along the Taedong's tributaries, 35's from the
+# south-south-east over the city). GLO-30 N39 E125. Flattened to the plane through its runway's ends (FIELD_PLANE):
+# OurAirports' thresholds 29.3 and 26.2 m against the field's 35.7 m. Coast: its 16 km square is all land (the sea
+# ~40 km west), checked with bake_region_patches.py coast ZKPY.
+NEW_AIRPORTS += ['ZKPY']
+PATCHES.update({
+    'pyongyang': (125.50, 39.08, 125.84, 39.34),
+})
+COAST += ['ZKPY']
+FIELD_PLANE = FIELD_PLANE | {'ZKPY'}
+# v0.6.4 (pending), Wonsan Kalma: one patch, ~29 x 30 km, taking in the ground under all four finals to ~15 km out
+# (15L/15R's from the north-north-west over Yonghung Bay's shore and the hills west of it, 33L/33R's from the
+# south-south-east over the bay and Kalma's spit; the mountains west and south of Wonsan). GLO-30 N39 E127. Flattened to
+# the plane through its four runway ends (FIELD_PLANE: all at the field's 7 ft, OurAirports having no end elevations
+# here). Coast patch: the field stands on the Kalma peninsula between the bay and the open sea.
+NEW_AIRPORTS += ['ZKWS']
+PATCHES.update({
+    'wonsan': (127.32, 39.03, 127.66, 39.30),
+})
+COAST += ['ZKWS']
+FIELD_PLANE = FIELD_PLANE | {'ZKWS'}
+# v0.6.4 (pending), Sendai and Niigata: one patch each, ~31 x 27 km and ~29 x 26 km, taking in the ground under every
+# final to ~15 km out (Sendai's 09 over the Natori plain, 27 over the Pacific a kilometre east, 12/30 across the coast
+# plain; Niigata's 10 over the city and the Shinano's mouth, 28 over the plain east of the Agano, 22 over the Sea of
+# Japan, 04 over the city's south). GLO-30 N38 E140, N38 E141; N37 E138, N37 E139, N38 E139. Both fields flattened to the
+# plane through their four runway ends (FIELD_PLANE; AIP Japan's thresholds: Sendai 1.5 to 4.6 m, Niigata 1.8 to 8.3 m).
+# Coast patches for both (each stands by the sea).
+NEW_AIRPORTS += ['RJSS', 'RJSN']
+PATCHES.update({
+    'sendai': (140.74, 38.02, 141.10, 38.26),
+    'niigata': (138.96, 37.84, 139.29, 38.07),
+})
+COAST += ['RJSS', 'RJSN']
+# Their four ends lie on no one plane (Sendai's 12/30 1.5 to 2 m below the plane of 09/27; Niigata's two runways fall
+# 5 m each, at right angles to each other): the least-squares plane missed their runways by up to 0.7 m. Each is
+# flattened instead to its runways' own profiles, blended by 1 / (1 + d^2) of the distance d to each runway's centreline
+# (field_runways(); tests/v063-ne-airport.mjs's fieldSurface 'runways' checks the stands against the same surface).
+FIELD_RUNWAYS = {'RJSS', 'RJSN'}
 
 
 def field_plane(icao, x0, y0, cell, nx, ny):
@@ -104,6 +155,29 @@ def field_plane(icao, x0, y0, cell, nx, ny):
     X = x0 + (np.arange(nx) + 0.5) * cell - E[:, 0].mean()
     Y = y0 + (np.arange(ny) + 0.5) * cell - E[:, 1].mean()
     return (c[0] * X[None, :] + c[1] * Y[:, None] + c[2]).astype(np.float32)
+
+
+def field_runways(icao, x0, y0, cell, nx, ny):
+    """FIELD_RUNWAYS: each runway's straight profile between its ends' elevations, blended by 1 / (1 + d^2) of the
+    distance d (m) to its centreline segment, at the grid's cell centres (row by row)."""
+    d = json.load(open(os.path.join(AIRPORT_DIR, icao + '.json')))
+    R = [((r['ends'][0]['x'], r['ends'][0]['y'], r['ends'][0]['elevM']), (r['ends'][1]['x'], r['ends'][1]['y'], r['ends'][1]['elevM']))
+         for r in d['runways']]
+    X = x0 + (np.arange(nx) + 0.5) * cell
+    out = np.zeros((ny, nx), np.float32)
+    for j in range(ny):
+        y = y0 + (j + 0.5) * cell
+        num_, den = np.zeros(nx), np.zeros(nx)
+        for (ax, ay, az), (bx, by, bz) in R:
+            L = np.hypot(bx - ax, by - ay)
+            ux, uy = (bx - ax) / L, (by - ay) / L
+            t = np.clip((X - ax) * ux + (y - ay) * uy, 0, L)
+            dd = np.hypot(X - ax - ux * t, y - ay - uy * t)
+            w = 1.0 / (1.0 + dd * dd)
+            num_ += w * (az + (bz - az) * t / L)
+            den += w
+        out[j] = num_ / den
+    return out
 
 
 def log(*a):
@@ -215,6 +289,8 @@ def cmd_patch(pid, force):
     aero = airfields()
     for icao in FIELD_PLANE & set(aero):
         aero[icao] = (aero[icao][0], field_plane(icao, x0, y0, cell, nx, ny))   # (compose_height blends it as an array)
+    for icao in FIELD_RUNWAYS & set(aero):
+        aero[icao] = (aero[icao][0], field_runways(icao, x0, y0, cell, nx, ny))
     h = bg.compose_height(dem, sea_sd, water_sd, urban, cell, x0, y0, airports=aero)
     del dem, water_sd, urban
     flat = []

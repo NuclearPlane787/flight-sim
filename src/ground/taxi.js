@@ -30,7 +30,7 @@ const BRIDGE_M = 30;          // a piece of taxi line this close to the network,
 // routes, holds and stand lists stay exactly as they were: a departure's hold is the one on its own runway nearest
 // the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
 // stands after the real numbers (gate-flow.js standList).
-const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW']);   // (ZSYN: v0.6.1; the last five: v0.6.3)
+const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW', 'ZKPY', 'ZKWS', 'RJSN', 'RJSS', 'RJSA', 'RJCC']);   // (ZSYN: v0.6.1; then five: v0.6.3; the last six: v0.6.4)
 export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao);
 const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
 const HOLD_STD_M = 90;        // the standard hold from a code 4 precision runway's centreline (Annex 14 Table 3-2)
@@ -617,6 +617,25 @@ const AIP_STANDS = {
   // The list is the widebodies' (a span over code D's 52 m): a narrower design keeps every stand its shape fits,
   // as the A321neo does (the review, 2026-11-20: a design the A321's size was held to these six).
   UHWW: { exclude: (ref, span) => span > 52 && !['1A', '4', '5A', '6A', '10', '11'].includes(ref), prefer: ['1A', '4', '5A', '6A', '10', '11'] },
+  // Pyongyang Sunan (v0.6.4, pending): no AIP online. The open scenery listing (the X-Plane Scenery Gateway's 112628,
+  // ramp starts after Jeppesen's chart of June 2026) takes heavies only on the north apron (21 to 25) and the west
+  // apron's 33, 35, 36 and 37; the bridges at the 2015 terminal serve Air Koryo's code D Tu-204s and Il-62s. [EST]
+  ZKPY: { exclude: (ref, span) => span > 52 && !['21', '22', '23', '24', '25', '33', '35', '36', '37'].includes(ref), prefer: ['21', '22', '23', '24', '25'] },
+  // Wonsan Kalma (v0.6.4, pending): six stands at the 2015 terminal (the Gateway's gates), built for Air Koryo's code D
+  // Il-62s and Tu-204s and the charters' A320s; no widebody is known to use it. [EST]
+  ZKWS: { exclude: () => false, prefer: [], maxSpan: 52 },
+  // New Chitose (v0.6.4): AIP Japan (RJCC AD 2.20) clears spots 27, 47, 48, 49, 57 and 58 for the A380-800 and
+  // B747-8, so code E certainly fits there: offered first. The rest as the geometry says.
+  // (The review, 2026-11-21: the list is the AIP's for the A380 and B747-8, so a span over code E's 65 m is held to it.)
+  RJCC: { exclude: (ref, span) => span > 65 && !['27', '47', '48', '49', '57', '58'].includes(ref), prefer: ['27', '47', '48', '49', '57', '58'] },
+  // Aomori (v0.6.4): AIP Japan (RJSA AD 2.20) gives the pushback rules for aircraft "up to and including the
+  // B767-300" (47.57 m): code D at most, no stand for a wider aircraft (the 787 and 777 divert).
+  RJSA: { exclude: () => false, prefer: [], maxSpan: 52 },
+  // Niigata (v0.6.4): AIP Japan (RJSN AD 2.20) parks a B747-8 only at spot 9, and spots 1 to 10 are the terminal's
+  // row (AD 2.8, PCR 1132); the R stands west of it are the small aircraft's spots. Code E on spots 3 to 10 only, 9
+  // first [EST: which of 3 to 10 take code E isn't published; 1 and 2 are the small aircraft's in AD 2.20].
+  // (And a span over code E's 65 m only at spot 9, the AIP's B747-8 spot.)
+  RJSN: { exclude: (ref, span) => (span > 65 && ref !== '9') || (span > 52 && !['3', '4', '5', '6', '7', '8', '9', '10'].includes(ref)), prefer: ['9'] },
   // Gimpo: the 500s to 900s are the West apron and the helicopter and GA spots, reached over W1,
   // W2, T and S, all "up to code letter B" (§1.7). The widebodies use the International Terminal
   // (North apron), stands 34 to 39.

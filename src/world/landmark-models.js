@@ -1146,5 +1146,165 @@ export function zolotoy(brg = -1.7, geo = {}) {
   return b.result();
 }
 
+// ------------------------------------------------------------------ v0.6.4: Pyongyang, Sapporo, Sendai
+
+// The Ryugyong Hotel (Pyongyang): 330 m, 105 floors. Three wings at 120°, each 100 m long and 18 m
+// wide, their outer faces sloping at about 75° to the ground and stepped once, meeting at a common point
+// (drawn at OSM's slope, 235 m in 70 m, 73°, so the three meet under the crown);
+// on top a truncated cone of stacked rings (the article: 40 m wide, eight floors meant to turn and
+// six static above), then the pinnacle. Glass-clad. Local north: one wing (OSM: the wings point at
+// grid bearings about 77, 197 and 317). The low podium round the wings' feet is drawn too (OSM's
+// 10 m base, which this replaces), out to the wings' tips.
+export function ryugyong(brg = 77) {
+  const b = new Builder(0.71).frame(0, 0, brg);
+  const H = 330, TAN = 235 / 70;
+  const W = 9;                              // the wing's half width (18 m)
+  const TIP = 104, TIP_H = 24;              // the wing's end: a short upright face, then the slope
+  const STEP_Y = 160, STEP = 3.5;           // the one step in the slope
+  // the wing's reach at height y (m from the centre)
+  const reach = (y) => {
+    if (y <= TIP_H) return TIP;
+    const d = TIP - (y - TIP_H) / TAN;
+    return y < STEP_Y ? d : d - STEP;
+  };
+  const glass = GLASS([0.27, 0.34, 0.42], 3.1, 3.0, 0.9, 0.06, { spec: 0.35, glow: [0.05, 0.08, 0.13] });
+  const ys = [0, TIP_H, STEP_Y - 0.01, STEP_Y, 230, 290];
+  for (let w = 0; w < 3; w++) {
+    b.set({ ...glass, seed: 0.71 + w * 0.1 });
+    const a = w * 120 * DEG;
+    const secs = ys.map((y) => {
+      const d = reach(y);
+      // the wing's plan: from just inside the core to its reach, W either side (turned by a)
+      return at(rotRing([[W, 6], [W, d], [-W, d], [-W, 6]], a), y);
+    });
+    b.loft(secs, { capTop: true });
+  }
+  // the core between the wings: a triangle with rounded corners round the wings' roots, to where the
+  // wings' slopes meet it
+  const core = (r) => { const out = []; for (let k = 0; k < 3; k++) { const a0 = (k * 120 + 60) * DEG; for (let m = -2; m <= 2; m++) { const t = a0 + m * 18 * DEG; out.push([r * Math.sin(t), r * Math.cos(t)]); } } return out; };
+  b.set(glass);
+  b.loft([at(core(22), 0), at(core(22), 160), at(core(19), 260), at(core(15), 284)], { capTop: true });
+  // the crown: the truncated cone in rings (each ring a lighter band with a shadow gap under it)
+  const ringMat = PLAIN([0.58, 0.60, 0.62], 0.45, { glow: [0.40, 0.42, 0.48] });
+  const cone = GLASS([0.22, 0.28, 0.35], 3.2, 2.5, 0.8, 0, { spec: 0.3, glow: [0.07, 0.09, 0.13] });
+  const rOf = (y) => lerp(20, 7, (y - 280) / (316 - 280));
+  for (let k = 0; k < 5; k++) {
+    const y0 = 280 + k * 7.2, y1 = y0 + 7.2;
+    b.set(cone);
+    b.loft([at(circle(rOf(y0) - 1.2, 24), y0), at(circle(rOf(y1) - 1.2, 24), y1 - 2)], { smooth: true, capTop: false });
+    b.set(ringMat);
+    b.loft([at(circle(rOf(y1 - 2) - 1.2, 24), y1 - 2), at(circle(rOf(y1 - 2) + 0.8, 24), y1 - 1.6), at(circle(rOf(y1) + 0.8, 24), y1)], { smooth: false, capTop: true });
+  }
+  // the pinnacle
+  b.set(PLAIN([0.55, 0.57, 0.60], 0.5, { glow: [0.30, 0.32, 0.38] }));
+  b.loft([[316, 6.5], [322, 4], [326, 2.5], [H, 0.4]].map(([y, r]) => at(circle(r, 12), y)), { smooth: true });
+  // the podium: a low base along each wing, wider than it, to the tips
+  b.set(GLASS([0.50, 0.49, 0.46], 4.5, 3.0, 0.4, 0.15));
+  for (let w = 0; w < 3; w++) b.loft([at(rotRing([[20, 0], [20, TIP - 4], [-20, TIP - 4], [-20, 0]], w * 120 * DEG), 0), at(rotRing([[20, 0], [20, TIP - 4], [-20, TIP - 4], [-20, 0]], w * 120 * DEG), 10)]);
+  b.light([0, H, 0], 1);
+  for (let w = 0; w < 3; w++) {
+    const a = w * 120 * DEG, pt = (d) => [-d * Math.sin(a), d * Math.cos(a)];      // along the wing (as rotRing turns it)
+    for (const y of [290, 200, 120, TIP_H]) { const [x, n] = pt(reach(y) - 0.5); b.light([x, y + 0.5, n], y === 290 ? 1 : 0); }
+  }
+  return b.result();
+}
+
+// The Juche Tower (Pyongyang): 170 m, a four-sided tapering 150 m spire of white stone (OSM: its plan
+// a square with deep recessed corners, about 18.5 m across at the foot, the faces 10.3 m, to about
+// 9 m across at 145 m), a small platform at its top and a 20 m torch whose flame is lit at night,
+// on a 59 m square terrace (OSM). Local north along the terrace's side (grid bearing about 13°).
+export function juche(brg = 13) {
+  const b = new Builder(0.83).frame(0, 0, brg);
+  const H = 170, SPIRE = 148;
+  // the plan at half-side a: a cross whose arms are (a - n) wide either side, the corners recessed by n
+  const plan = (a) => {
+    const n = a * 0.44, c = a - n;
+    return [[a, -c], [a, c], [c, c], [c, a], [-c, a], [-c, c], [-a, c], [-a, -c], [-c, -c], [-c, -a], [c, -a], [c, -c]];
+  };
+  const half = (y) => lerp(9.25, 4.4, (y / SPIRE) ** 1.15);
+  const stone = PLAIN([0.70, 0.68, 0.62], 0.08, { glow: [0.30, 0.28, 0.22] });
+  // the terrace and the spire's foot
+  b.set(PLAIN([0.56, 0.55, 0.52], 0.05, { glow: [0.10, 0.10, 0.09] }));
+  b.loft([at(roundedRect(29.5, 29.5, 1, 1), 0), at(roundedRect(29.5, 29.5, 1, 1), 5)]);
+  b.set(stone);
+  b.loft([at(scaleRing(plan(11.5), 1), 5), at(plan(11.5), 9), at(plan(9.6), 9.5)], { capTop: false });
+  const secs = [];
+  for (let k = 0; k <= 10; k++) { const y = lerp(9.5, SPIRE, k / 10); secs.push(at(plan(half(y)), y)); }
+  b.loft(secs, { capTop: true });
+  // the platform under the torch
+  b.set(PLAIN([0.62, 0.58, 0.48], 0.15, { glow: [0.25, 0.22, 0.12] }));
+  b.loft([at(circle(3.6, 12), SPIRE), at(circle(6.2, 12), 149.5), at(circle(6.2, 12), 151.2), at(circle(4.2, 12), 151.8)]);
+  // the torch: a flame swelling from its cup and drawn up to a point, lit from inside at night
+  b.set(PLAIN([0.80, 0.16, 0.05], 0.3, { glow: [1.35, 0.30, 0.06] }));
+  const flame = [[151.8, 3.0], [154, 4.6], [157, 5.5], [160, 5.3], [163, 4.3], [166, 2.6], [168.5, 1.1], [H, 0.15]];
+  b.loft(flame.map(([y, r], i) => at(rotRing(superellipse(r, r * 0.92, 2, 16), i * 0.35), y)), { smooth: true });
+  b.light([0, H, 0], 1);
+  for (const y of [146, 100, 50]) ringLights(b, plan(half(y) + 0.3).filter((_, i) => i % 3 === 0), y, 0);
+  return b.result();
+}
+
+// The Sapporo TV Tower: 147.2 m to the antenna, the observation deck at 90.38 m. A four-legged steel
+// lattice in red, straight-tapering from a square about 33 m a side (OSM) at the ground to the deck,
+// a glazed deck, a slimmer lattice above it and the antenna; a low building between the legs.
+// Local north along the footprint's side (grid bearing about -10°).
+export function sapporotv(brg = -10) {
+  const b = new Builder(0.39).frame(0, 0, brg);
+  const H = 147.2, DECK = 90.4, TOP = 136;
+  const w = (y) => (y <= DECK ? 4.6 + 11.9 * (1 - y / DECK) ** 1.35 : lerp(4.6, 1.3, (y - DECK) / (TOP - DECK)));
+  const fn = (y) => { const h = w(y); return [[h, h], [-h, h], [-h, -h], [h, -h]]; };
+  const RED = [0.66, 0.13, 0.05];
+  const paint = PLAIN(RED, 0.3, { glow: [0.95, 0.30, 0.10] });
+  const shell = PLAIN(RED.map((v) => v * 0.7), 0.1, { glow: [0.55, 0.16, 0.05] });
+  const ys = [];
+  for (let y = 0; y < DECK - 0.5; y += Math.max(6.5, w(y) * 0.9)) ys.push(y);
+  ys.push(DECK - 4);
+  lattice(b, fn, ys, { rv: 1.0, rd: 0.38, rr: 0.45, sides: 4, cross: true, base: paint, shell: () => shell });
+  const ym = [];
+  for (let k = 0; k <= 6; k++) ym.push(lerp(DECK + 4, TOP, k / 6));
+  lattice(b, fn, ym, { rv: 0.55, rd: 0.25, rr: 0.3, sides: 4, cross: true, base: paint, shell: () => shell });
+  // the deck: a glazed box round the lattice, its roof and floor slabs
+  b.set(GLASS([0.30, 0.32, 0.33], 4.0, 2.0, 0.6, 0.65, { glow: [0.45, 0.35, 0.22] }));
+  b.loft([at(chamferRect(7.6, 7.6, 1.2), DECK - 4), at(chamferRect(7.6, 7.6, 1.2), DECK + 4)]);
+  b.set(PLAIN([0.40, 0.40, 0.40], 0.2));
+  b.loft([at(chamferRect(8.2, 8.2, 1.3), DECK + 4), at(chamferRect(8.2, 8.2, 1.3), DECK + 4.8)]);
+  // the antenna
+  b.set(paint);
+  b.loft([[TOP, 1.4], [TOP + 5, 0.9], [H, 0.25]].map(([y, r]) => at(circle(r, 8), y)), { smooth: true });
+  // the building between the legs (three floors)
+  b.set(GLASS([0.40, 0.39, 0.36], 4.2, 3.0, 0.4, 0.4));
+  b.loft([at(chamferRect(13.5, 13.5, 2), 0), at(chamferRect(13.5, 13.5, 2), 13)]);
+  b.light([0, H, 0], 1);
+  for (const y of [TOP, DECK + 5, 45]) ringLights(b, fn(y), y, 0);
+  return b.result();
+}
+
+// The Sendai Daikannon: a 100 m white statue of a standing bodhisattva, 92 m of figure on an 8 m
+// pedestal, on its hill north-west of the city. Massing only: a robed column that tapers a little to
+// the waist and widens to the shoulders, the neck and a rounded head with a low crown; no face, hands
+// or folds. Local north: the way it faces [EST: towards the city, south-east].
+export function daikannon(brg = 135) {
+  const b = new Builder(0.55).frame(0, 0, brg);
+  const H = 100, PED = 8;
+  const white = PLAIN([0.74, 0.74, 0.71], 0.12, { glow: [0.42, 0.42, 0.44] });
+  // the pedestal: an octagonal hall about 39 m across (OSM), its sides north, south, east and west
+  b.set(PLAIN([0.55, 0.54, 0.51], 0.05, { glow: [0.12, 0.12, 0.12] }));
+  b.loft([at(circle(21, 8, Math.PI / 8), 0), at(circle(21, 8, Math.PI / 8), PED - 1.5), at(circle(18.5, 8, Math.PI / 8), PED)]);
+  // the figure: elliptical sections [y, half width (shoulders' axis, x), half depth (n), forward shift]
+  b.set(white);
+  const S = [[PED, 10.5, 8.5, 0], [PED + 3, 10.0, 8.0, 0], [24, 8.9, 7.0, 0.3], [44, 8.2, 6.4, 0.5], [60, 8.6, 6.2, 0.6],
+    [72, 10.0, 6.4, 0.4], [79, 11.0, 6.4, 0], [82.5, 10.4, 6.0, 0], [85, 7.0, 4.6, 0], [86.5, 3.4, 3.4, 0]];
+  b.loft(S.map(([y, a, d, f]) => at(shift(superellipse(a, d, 2.3, 24), 0, f), y)), { smooth: true, capTop: false });
+  // the neck and the head (an ellipsoid about 11 m tall), the crown's low dome on it
+  const HEAD_C = 93.5, HA = 4.3, HV = 5.6;
+  const head = [[86.5, 3.0], [88, 3.0]];
+  for (let k = 1; k <= 9; k++) { const t = -1 + (k / 10) * 2, y = HEAD_C + HV * t; head.push([y, Math.max(HA * Math.sqrt(1 - t * t), 0.6)]); }
+  head.push([HEAD_C + HV * 0.98, 1.2]);
+  b.loft(head.map(([y, r]) => at(superellipse(r, r * 1.05, 2, 16), y)).filter((s, i, A) => i === 0 || s[0][1] > A[i - 1][0][1]), { smooth: true });
+  b.loft([[HEAD_C + 2.5, 2.4], [HEAD_C + 5.0, 2.6], [H - 0.6, 1.6], [H, 0.3]].map(([y, r]) => at(circle(r, 12), y)), { smooth: true });
+  b.light([0, H, 0], 0);
+  for (const sx of [-1, 1]) b.light([sx * 11.2, 79, 0], 0);
+  return b.result();
+}
+
 export const MODELS = { lotte, b63, nseoul, parc1, shtower, swfc, jinmao, pearl, skytree, tokyotower, azabudai, tmg, ylmt, lct, neatt, harukas, umeda, fktower, fkdome,
-  citic, cctv, russky, zolotoy, cctvtower, tjtower, lntower };
+  citic, cctv, russky, zolotoy, cctvtower, tjtower, lntower, ryugyong, juche, sapporotv, daikannon };

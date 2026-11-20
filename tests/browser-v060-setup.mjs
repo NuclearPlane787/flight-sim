@@ -31,7 +31,7 @@ try {
   await page.reload();
   await page.waitForFunction(() => window.__fs && window.__fs.inMenu, null, { timeout: 120000 });
   const n = await page.evaluate(() => window.__fs.airports.map((a) => a.icao));
-  check('the region\'s seventeen airports are in the game (eleven until v0.6.1\'s Yancheng, twelve until v0.6.3)', n.length === 17, n.join(' '));
+  check('the region\'s twenty-three airports are in the game (eleven until v0.6.1\'s Yancheng, twelve until v0.6.3, seventeen until v0.6.4)', n.length === 23, n.join(' '));
 
   // ---- the setup: Gimpo → Haneda ----
   await page.evaluate(() => { window.__fs.newScenario(); });
@@ -54,7 +54,8 @@ try {
   });
   console.log('lists:', JSON.stringify(lists, null, 1));
   // (v0.6.3: Beijing's two head China's list, and Russia is a fourth group with Vladivostok.)
-  check('the lists: Korea, Japan, China, Russia, by short name', lists.groups.length === 4 && /^Korea: RKSS · Gimpo, RKSI · Incheon, RKPK · Gimhae, RKPC · Jeju$/.test(lists.groups[0]) && /^China: ZBAA · Beijing Capital, ZBAD · Daxing, ZSPD · Pudong/.test(lists.groups[2]) && /^Russia: UHWW · Vladivostok$/.test(lists.groups[3]), lists.groups.join(' | '));
+  // (v0.6.4: Japan's northern four after Fukuoka, and North Korea a fifth group between China and Russia.)
+  check('the lists: Korea, Japan, China, North Korea, Russia, by short name', lists.groups.length === 5 && /^Korea: RKSS · Gimpo, RKSI · Incheon, RKPK · Gimhae, RKPC · Jeju$/.test(lists.groups[0]) && /RJFF · Fukuoka, RJSN · Niigata, RJSS · Sendai, RJSA · Aomori, RJCC · New Chitose$/.test(lists.groups[1]) && /^China: ZBAA · Beijing Capital, ZBAD · Daxing, ZSPD · Pudong/.test(lists.groups[2]) && /^North Korea: ZKPY · Pyongyang, ZKWS · Wonsan$/.test(lists.groups[3]) && /^Russia: UHWW · Vladivostok$/.test(lists.groups[4]), lists.groups.join(' | '));
   check('Haneda\'s four runways', lists.arr.split(' ').length === 8, lists.arr);
   check('Gimpo–Haneda about 637 nm', Math.abs(parseInt(lists.dist, 10) - 637) < 8, lists.dist);
   check('the time row in KST at Gimpo', / KST, /.test(lists.note), lists.note);

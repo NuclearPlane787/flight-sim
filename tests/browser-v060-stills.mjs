@@ -75,7 +75,7 @@ SHOTS['world-3000-shanghai-night'] = { q: look(31.235, 121.5, 3000, 285, -12), m
 SHOTS['world-10000-osaka'] = { q: look(34.69, 135.5, 10000, 30, -20), ms: DAY };
 SHOTS['world-10000-fukuoka'] = { q: look(33.59, 130.4, 10000, 160, -20), ms: DAY };
 SHOTS['world-10000-busan'] = { q: look(35.16, 129.06, 10000, 30, -20), ms: DAY };
-const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04', ZBAA: '36R', ZBAD: '35L', UHWW: '25L', ZYTX: '24', ZYTL: '28' };   // (ZSYN: v0.6.1; ZBAA, ZBAD: v0.6.3)
+const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04', ZBAA: '36R', ZBAD: '35L', UHWW: '25L', ZYTX: '24', ZYTL: '28', RJCC: '19R', RJSA: '24', ZKPY: '17', ZKWS: '15R', RJSS: '27', RJSN: '28' };   // (the last six: v0.6.4)   // (ZSYN: v0.6.1; ZBAA, ZBAD: v0.6.3)
 for (const [icao, end] of Object.entries(FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: NIGHT };
@@ -161,6 +161,43 @@ for (const [k, [la, lo, ft, h, pitch]] of Object.entries(LANDMARK063)) {
 }
 GROUPS['cities-v063'] = Object.keys(CITY063).flatMap((k) => ['3000', 'fl350'].flatMap((a) => ['day', 'night'].map((t) => `cities-${k}-${a}-${t}`)));
 GROUPS['landmarks-v063'] = Object.keys(LANDMARK063).flatMap((k) => ['day', 'night'].map((t) => `landmark-${k}-${t}`));
+
+// v0.6.4 (--region --cities): the four new centres from 3,000 ft and FL350, and each new landmark from close
+// enough to judge (v0.6.3's were too far): the camera k x its height back along the heading, at 0.55 of its
+// height above the landmark's ground, looking level at its middle; with the 55° lens it fills about 40 % of
+// the frame's height at k = 2.4 (at least a fifth up to k of about 5).
+function near(lat, lon, H, hdg, k = 2.4) {
+  const [tx, ty] = toMap(lat, lon), D = k * H, A = 0.55 * H;
+  const x = tx - D * Math.sin(hdg * DEG), y = ty - D * Math.cos(hdg * DEG);
+  const pitch = Math.atan2(0.5 * H - A, D) / DEG;
+  return `x=${x.toFixed(1)}&y=${y.toFixed(1)}&agl=${(A / FT).toFixed(0)}&hdg=${hdg}&pitch=${pitch.toFixed(2)}&aglAt=${tx.toFixed(1)},${ty.toFixed(1)}`;
+}
+const CITY064 = { pyongyang: [39.022, 125.750, 60], sapporo: [43.062, 141.350, 340], sendai: [38.262, 140.875, 300], niigata: [37.917, 139.052, 30] };
+for (const [k, [la, lo, h]] of Object.entries(CITY064)) {
+  for (const [alt, pitch] of [[3000, -12], [35000, -38]]) {
+    for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`cities-${k}-${alt === 3000 ? '3000' : 'fl350'}-${tod}`] = { q: look(la, lo, alt, h, pitch), ms };
+  }
+}
+// [lat, lon, height m, heading to look along]: the hotel from the south-south-west (two wings' slopes and the
+// third's edge), the Juche Tower from over the Taedong to its west, the TV tower from down Odori Park to its
+// west, the Daikannon from the south-east (the way it faces [EST]).
+const LANDMARK064 = {
+  ryugyong: [39.036518, 125.730868, 330, 20], juche: [39.017636, 125.763590, 170, 90],
+  sapporotv: [43.061113, 141.356448, 147.2, 90], daikannon: [38.300502, 140.823634, 100, 315],
+};
+// (The lead's, 2026-11-21: the Sapporo TV Tower's level view down Odori Park came out behind the centre's blocks, so
+// one more from above: three heights back and 1.3 heights up, looking down at its middle.)
+{
+  const [la, lo, H, h] = [43.061113, 141.356448, 147.2, 250];
+  const [tx, ty] = toMap(la, lo), D = 3 * H, A = 1.3 * H;
+  const x = tx - D * Math.sin(h * DEG), y = ty - D * Math.cos(h * DEG), pitch = Math.atan2(0.5 * H - A, D) / DEG;
+  for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`landmark-sapporotv-high-${tod}`] = { q: `x=${x.toFixed(1)}&y=${y.toFixed(1)}&agl=${(A / FT).toFixed(0)}&hdg=${h}&pitch=${pitch.toFixed(2)}&aglAt=${tx.toFixed(1)},${ty.toFixed(1)}`, ms };
+}
+for (const [k, [la, lo, H, h]] of Object.entries(LANDMARK064)) {
+  for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`landmark-${k}-${tod}`] = { q: near(la, lo, H, h), ms };
+}
+GROUPS['cities-v064'] = Object.keys(CITY064).flatMap((k) => ['3000', 'fl350'].flatMap((a) => ['day', 'night'].map((t) => `cities-${k}-${a}-${t}`)));
+GROUPS['landmarks-v064'] = Object.keys(LANDMARK064).flatMap((k) => ['day', 'night'].map((t) => `landmark-${k}-${t}`));
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {

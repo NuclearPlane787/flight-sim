@@ -98,6 +98,16 @@ export const LANDMARKS = [
     source: 'Wikipedia "Tianjin Radio and Television Tower": 415.2 m, the pod about two-thirds up; OSM height=415, shaft 30 m; pod rings [EST]' },
   { id: 'lntower', city: 'shenyang', country: 'CN', lat: 41.780386, lon: 123.427954, heightM: 305.5, footprintM: 24,
     source: 'Wikipedia "Liaoning Broadcast and TV Tower": 305.5 m, the disk with decks and restaurant (no heights given) [EST the disk at 180-204 m]; OSM base 38 m (OSM height from levels, 160 m, wrong)' },
+  // v0.6.4: Pyongyang, Sapporo, Sendai (checked 2026-11-21). Pyongyang's are 'KP': behind the
+  // region's flag, as everything outside South Korea.
+  { id: 'ryugyong', city: 'pyongyang', country: 'KP', lat: 39.036518, lon: 125.730868, heightM: 330, footprintM: 112, brg: 77, floors: 105,
+    source: 'Wikipedia "Ryugyong Hotel": 330 m (roof 330.02 m), 105 floors; three wings each 100 m long and 18 m wide, sloping at 75 degrees, stepped once; a truncated cone 40 m wide on top. OSM: the pinnacle\'s centre (here), the wings at bearings 77/197/317, their slopes 235 m in 70 m (drawn so), the tips to about 105 m; the step\'s height, the rings and the podium [EST]' },
+  { id: 'juche', city: 'pyongyang', country: 'KP', lat: 39.017636, lon: 125.763590, heightM: 170, footprintM: 42, brg: 13,
+    source: 'Wikipedia "Juche Tower": 170 m, a four-sided tapering 150 m spire of white stone and a 20 m torch, on the east bank of the Taedong; OSM: the parts\' centre (here), the plan a square with recessed corners 18.5 m across, the terrace 59 m square at bearing 13; the flame\'s shape and the platform [EST]' },
+  { id: 'sapporotv', city: 'sapporo', country: 'JP', lat: 43.061113, lon: 141.356448, heightM: 147.2, footprintM: 24, brg: -10,
+    source: 'Wikipedia "Sapporo TV Tower": 147.2 m to the antenna, observation deck at 90.38 m, in Odori Park; OSM height=147.2, footprint 34 x 33 m at bearing -10 (its centroid here); the taper, the deck\'s size and the base building [EST]' },
+  { id: 'daikannon', city: 'sendai', country: 'JP', lat: 38.300502, lon: 140.823634, heightM: 100, footprintM: 21, brg: 135,
+    source: 'Wikipedia "Sendai Daikannon": the statue 92 m, 100 m with its pedestal, at 38 18 02 N, 140 49 25 E; OSM: the statue\'s point (here; height=100, colour=white), the pedestal hall an octagon about 39 m across; the figure\'s proportions and the way it faces (south-east) [EST]' },
 ];
 // The cities' boxes (lat S, W, N, E) the tests check the list against.
 export const CITY_BOXES = {
@@ -106,6 +116,7 @@ export const CITY_BOXES = {
   osaka: [34.60, 135.40, 34.75, 135.60], fukuoka: [33.54, 130.30, 33.65, 130.45],
   beijing: [39.80, 116.20, 40.05, 116.60], tianjin: [39.00, 117.10, 39.20, 117.35], shenyang: [41.70, 123.30, 41.90, 123.55],
   vladivostok: [43.00, 131.80, 43.20, 132.00],
+  pyongyang: [38.95, 125.65, 39.12, 125.85], sapporo: [42.98, 141.25, 43.15, 141.45], sendai: [38.20, 140.78, 38.34, 140.98],
 };
 
 export const PYLON_R = 45;     // m: a bridge pylon's circle (Russky's footings are 80 m apart)
