@@ -68,6 +68,9 @@ const COUNTRY = {
   // v0.7.0: Europe's nine (drawn only with REGION_ID 'europe', by VERT_EU below): 3 pale stone and plaster under
   // grey slate and zinc, 4 cream and ochre plaster under terracotta, 5 brick under dark tile.
   london: 3, paris: 3, frankfurt: 3, madrid: 4, barcelona: 4, rome: 4, munich: 4, zurich: 4, amsterdam: 5,
+  // v0.7.1: nine more. Toulouse's brick and tile, Milan and Lisbon the south's look; Berlin, Vienna and Brussels pale
+  // plaster and stone under grey roofs; Dublin's, Copenhagen's and Manchester's brick.
+  toulouse: 4, milan: 4, lisbon: 4, berlin: 3, vienna: 3, brussels: 3, dublin: 5, copenhagen: 5, manchester: 5,
 };
 // Every centre stands since v0.7.0 (v0.6.0's flags allowed only Seoul, Songdo and Busan with the region off).
 export function centreAllowed(id) { return true; }

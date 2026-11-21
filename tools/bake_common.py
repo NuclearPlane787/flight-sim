@@ -26,7 +26,8 @@ DATA = os.path.join(GAME, 'data')
 # else) is East Asia, exactly as before.
 REGION = 'europe' if os.environ.get('FS_REGION', '').strip().lower() == 'europe' else 'eastasia'
 EUROPE = REGION == 'europe'
-CACHE = '/tmp/flight-sim/v070/work/cache' if EUROPE else '/tmp/flight-sim/bake'   # intermediate results (resumable pieces)
+EU_BATCH = os.environ.get('FS_EUROPE_BATCH', 'B').strip().upper() if EUROPE else None   # v0.7.1: the Europe batch baked
+CACHE = ('/tmp/flight-sim/v070/work/cache' if EU_BATCH == 'A' else '/tmp/flight-sim/v071/work/cache') if EUROPE else '/tmp/flight-sim/bake'   # intermediate results (resumable pieces)
 EXTRA_DEM90 = os.path.join(CACHE, 'dem90extra')  # N32 and N39 GLO-90 tiles, fetched by the bake
 SHOTS = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'Claude outputs', 'flight-sim'))  # GameDump/Claude outputs/flight-sim
 

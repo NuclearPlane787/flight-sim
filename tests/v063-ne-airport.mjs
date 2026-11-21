@@ -92,7 +92,8 @@ const withPending = async (fn) => { setPending(true); try { return await fn(); }
 //     the largest of the stand's, the end's and the airport-wide m; 1 m if none is given),
 //   identTolDeg (5 if absent: how far the magnetic heading may be from the ident's; v0.6.4, New Chitose's 01/19 read 002/182 M),
 //   knownTaxiIn: { 'ident@frac': reason } (a landing with no exit ahead in OSM; logged, must stay so),
-//   farHolds: { ident: { m, reason } } (v0.6.4: an end whose nearest hold in OSM's taxiways is over 600 m from it),
+//   farHolds: { ident: { m, reason, stands } } (v0.6.4: an end whose nearest hold in OSM's taxiways is over 600 m from it;
+//     v0.7.1: stands, a list of refs, limits it to those stands' routes),
 //   crossingProfile: true (v0.6.4: two runways cross: the shorter's ground checked against runwayCrossings()'s profile),
 //   fieldSurface: 'runways' (v0.6.4: the field flattened to its runways' profiles, not a plane: FIELD_RUNWAYS),
 //   lowFinals: { ident: reason } (ends whose 3° final is known to pass under 60 m over the ground; logged, not hidden),
@@ -313,7 +314,10 @@ export function airportSuite(cfg) {
       worst = Math.max(worst, dEnd);
       longest = Math.max(longest, r.lengthM);
       // (cfg.farHolds, v0.6.4: { ident: { m, reason } }: an end reached only from an intersection's hold; logged)
-      const far = cfg.farHolds?.[end.ident];
+      // (v0.7.1: farHolds[ident].stands, if given, limits the allowance to those stands' routes: Toulouse's 32R from
+      // the factory's side.)
+      const far0 = cfg.farHolds?.[end.ident];
+      const far = far0 && (!far0.stands || far0.stands.includes(st.ref)) ? far0 : null;
       if (far && dEnd >= 600) console.log(`  ${at}: the hold ${dEnd.toFixed(0)} m from the end (allowed: ${far.reason})`);
       assert.ok(dEnd < (far?.m ?? 600), `${at}: the hold ${dEnd.toFixed(0)} m from the end`);
       const along = alongRunwayM(g, r.points);

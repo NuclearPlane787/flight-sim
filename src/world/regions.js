@@ -152,6 +152,9 @@ export const AIRPORT_INDEX = {
   EGLL: ['Heathrow', 'europe'], LFPG: ['Charles de Gaulle', 'europe'], EDDF: ['Frankfurt', 'europe'], LEMD: ['Madrid', 'europe'],
   LSZH: ['Zurich', 'europe'], EGKK: ['Gatwick', 'europe'], LFPO: ['Orly', 'europe'], EHAM: ['Schiphol', 'europe'],
   EDDM: ['Munich', 'europe'], LEBL: ['Barcelona', 'europe'], LIRF: ['Fiumicino', 'europe'],
+  LFBO: ['Toulouse', 'europe'], EDDB: ['Berlin', 'europe'], LIMC: ['Malpensa', 'europe'], LOWW: ['Vienna', 'europe'],
+  EBBR: ['Brussels', 'europe'], EIDW: ['Dublin', 'europe'], LPPT: ['Lisbon', 'europe'], EKCH: ['Copenhagen', 'europe'],
+  EGCC: ['Manchester', 'europe'],
 };
 export const airportShortName = (icao) => (AIRPORT_INDEX[icao] ? AIRPORT_INDEX[icao][0] : icao || '');
 export const airportRegion = (icao) => (AIRPORT_INDEX[icao] ? AIRPORT_INDEX[icao][1] : null);

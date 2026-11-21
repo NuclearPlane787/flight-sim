@@ -51,6 +51,7 @@ const check = (name, ok, detail = '') => { results.push({ name, ok }); console.l
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--enable-precise-memory-info', '--js-flags=--expose-gc'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  globalThis.__page = page;   // (for the exception's report below)
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -63,7 +64,27 @@ try {
   console.log('renderer:', gl, '(headless)');
   // The frame-time probe: every frame's interval, with the sim's time scale then.
   await page.evaluate(() => {
-    const p = window.__probe = { on: false, dts: [], last: 0, worst: 0, worstAt: null, long: [], prev: null };
+    const p = window.__probe = { on: false, dts: [], last: 0, worst: 0, worstAt: null, long: [], prev: null, marks: [], tasks: [] };
+    // v0.7.1: why the autopilot went off, if it did (the reason and the state then), for a failed leg's report.
+    p.apOff = [];
+    { const ap = window.__fs.ap, off = ap.disconnectAp.bind(ap);
+      ap.disconnectAp = (reason) => { if (ap.ap) { const s = window.__fs.sim.state; p.apOff.push({ reason, t: +s.t.toFixed(1), iasKt: Math.round(s.ias * 1.943844), altFt: Math.round(s.pos.z * 3.28084), vls: s.vls ? Math.round(s.vls * 1.943844) : null, flaps: window.__fs.sim.controls ? window.__fs.sim.controls.flaps : null }); } return off(reason); }; }
+    // v0.7.1 (E2E_MARKS=1, the page's ?marks): what ran in a long frame. The world's parts and the renderer are timed from
+    // outside (calls over 1.5 ms kept, the last 400), with the browser's own long tasks; a long frame lists those inside it.
+    if (/[?&]marks/.test(location.search)) {
+      p.marksOn = true;
+      const fs = window.__fs, w = fs.world;
+      const wrap = (obj, fn, name) => {
+        if (!obj || typeof obj[fn] !== 'function') return;
+        const g = obj[fn].bind(obj);
+        obj[fn] = (...a) => { const t = performance.now(); const r = g(...a); const ms = performance.now() - t; if (ms > 1.5) { p.marks.push({ name, t, ms: +ms.toFixed(1) }); if (p.marks.length > 400) p.marks.shift(); } return r; };
+      };
+      for (const k of Object.keys(w)) if (w[k] && typeof w[k] === 'object' && typeof w[k].update === 'function') wrap(w[k], 'update', k + '.update');
+      wrap(w, 'update', 'world.update (all)'); wrap(fs.renderer, 'render', 'renderer.render'); wrap(fs.renderer, 'compile', 'renderer.compile');
+      if (w.uniforms && w.uniforms.__clip) { wrap(w.uniforms.__clip, 'update', 'clip.update'); wrap(w.uniforms.__clip, 'flush', 'clip.flush'); }
+      if (fs.sim) wrap(fs.sim, 'step', 'sim.step');
+      try { new PerformanceObserver((l) => { for (const e of l.getEntries()) { p.tasks.push({ t: e.startTime, ms: +e.duration.toFixed(1), name: e.name }); if (p.tasks.length > 100) p.tasks.shift(); } }).observe({ entryTypes: ['longtask'] }); } catch (e) { /* none */ }
+    }
     // v0.6.1: what the world held on each frame (cheap counts), so a long frame can say what had just changed.
     const snap = () => {
       const fs = window.__fs, w = fs.world, ri = fs.renderer && fs.renderer.info, s = fs.sim.state;
@@ -78,7 +99,11 @@ try {
         const d = t - p.last; p.dts.push(d);
         let now = null;
         try { now = snap(); } catch (e) { now = { err: String(e) }; }
-        if (d > 25 && p.long.length < 12) p.long.push({ ms: +d.toFixed(1), now, before: p.prev });
+        if (d > 25 && p.long.length < 12) {
+          const L = { ms: +d.toFixed(1), now, before: p.prev }, t0 = p.last - 2;
+          if (p.marksOn) { L.marks = p.marks.filter((m) => m.t >= t0).map((m) => `${m.name} ${m.ms}`); L.tasks = p.tasks.filter((m) => m.t + m.ms >= t0).map((m) => `${m.name} ${m.ms} @${(m.t - p.last).toFixed(0)}`); L.heapMB = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : -1; }
+          p.long.push(L);
+        }
         p.prev = now;
         if (d > p.worst) { p.worst = d; const s = window.__fs.sim.state; p.worstAt = { t: s.t, x: s.pos.x, y: s.pos.y }; }
       }
@@ -171,7 +196,17 @@ try {
     await waitFor((s) => s.dist < (opt.whole ? cruiseTo : Math.min(cruiseTo, route.nm * NM * 0.45)) || s.dist < (opt.whole ? 40 : 70) * NM, 14 * 60000, 'the cruise', async (s) => {
       if (!fast && s.z * FT > 10500) { fast = true; await page.evaluate(() => window.__fs.ap.setSpd(270)); }
       if (Date.now() - lastSteer > 4000) { lastSteer = Date.now(); await steer(); }
-      if (!shotCruise && s.z * FT > opt.fl * 100 - 500) { shotCruise = true; await shot(`${li + 1}c-cruise`); }
+      // v0.7.1: the picture is taken with the probe off. Headless Chrome's capture holds the page for a frame or two
+      // (33 to 50 ms), and that was the whole of v0.7.0's "slow frame at 16x": one long frame just above the cruise
+      // level less 500 ft, on both legs, every time (19,565 ft for --fl 200 south-east of Gatwick; 34,521 ft near Dijon).
+      // E2E_SHOT_IN_PROBE=1 takes it with the probe on, as before, to show the frame again.
+      if (!shotCruise && s.z * FT > opt.fl * 100 - 500) {
+        shotCruise = true;
+        const keep = !!process.env.E2E_SHOT_IN_PROBE;
+        if (!keep) await page.evaluate(() => { window.__probe.on = false; });
+        await shot(`${li + 1}c-cruise`);
+        if (!keep) await page.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => { const p = window.__probe; p.last = 0; p.prev = null; p.on = true; res(); }))));
+      }
       if (s.ts !== opt.rate && s.ap) await page.evaluate((r) => window.__fs.setTimeScale(r), opt.rate);
     });
     const pr = await page.evaluate(() => { const p = window.__probe; p.on = false; const d = p.dts.slice().sort((a, b) => a - b); return { n: d.length, worst: p.worst, worstAt: p.worstAt, p99: d[Math.floor(d.length * 0.99)] || 0, p50: d[d.length >> 1] || 0, over25: d.filter((v) => v > 25).length, over34: d.filter((v) => v > 34).length, long: p.long }; });
@@ -179,7 +214,7 @@ try {
     const m1 = await mem();
     console.log(`cruise: ${((Date.now() - tCruise) / 1000).toFixed(0)} s real, now ${(c.dist / NM).toFixed(0)} nm out at ${(c.z * FT).toFixed(0)} ft, M ${c.mach.toFixed(2)}, fuel ${c.fuel.toFixed(0)} kg, achieved ${c.ach}x`);
     console.log(`frames at ${opt.rate}x: ${pr.n}, median ${pr.p50.toFixed(1)} ms, p99 ${pr.p99.toFixed(1)} ms, worst ${pr.worst.toFixed(1)} ms (${pr.over25} over 25 ms, ${pr.over34} over 34 ms)${pr.worstAt ? ` at x ${(pr.worstAt.x / 1000).toFixed(0)} km y ${(pr.worstAt.y / 1000).toFixed(0)} km` : ''}`);
-    for (const L of pr.long || []) console.log(`  long frame ${L.ms} ms: now ${JSON.stringify(L.now)} | the frame before ${JSON.stringify(L.before)}`);
+    for (const L of pr.long || []) console.log(`  long frame ${L.ms} ms: now ${JSON.stringify(L.now)} | the frame before ${JSON.stringify(L.before)}${L.marks ? ` | in it: ${L.marks.join(', ') || 'nothing over 1.5 ms'} | long tasks: ${L.tasks.join(', ') || 'none'} | heap ${L.heapMB} MB` : ''}`);
     check(`${name}: no hitch while tiles load (worst frame at most 25 ms)`, pr.worst <= 25, `worst ${pr.worst.toFixed(1)} ms`);
     check(`${name}: the sim never read a missing tile`, m1.misses === 0, `misses ${m1.misses}, ${m1.tiles} tiles resident, ${m1.loads} loaded, ${m1.evictions} released`);
     check(`${name}: reached the cruise level`, shotCruise || opt.whole && c.z * FT > opt.fl * 100 - 3000, `${(c.z * FT).toFixed(0)} ft`);
@@ -316,6 +351,7 @@ try {
   check('no console errors', errors.length === 0, errors.slice(0, 5).join(' || '));
 } catch (e) {
   console.log('FAIL exception', e.message);
+  try { const off = await globalThis.__page.evaluate(() => window.__probe && window.__probe.apOff); if (off && off.length) console.log('  autopilot off:', JSON.stringify(off)); } catch (e2) { /* the page is gone */ }
   results.push({ name: 'exception', ok: false });
 } finally {
   await browser.close();

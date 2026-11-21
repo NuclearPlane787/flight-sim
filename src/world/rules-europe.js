@@ -29,15 +29,15 @@ export const EUROPE_RULES = Object.freeze({
   NL: rule('NL', 'Europe/Amsterdam', 'CET', 'CEST', 3000, 40, 'the Netherlands ENR 1.7: 3,000 ft for IFR flights'),
   IT: rule('IT', 'Europe/Rome', 'CET', 'CEST', 6000, 70, 'Italy: each airport sets its own (AD 2.17); 6,000 ft at Rome [EST elsewhere]; San Marino and the Vatican on these rules'),
   // The rest of the region: the zone and a default rule each, [EST] until Update 7's sub-updates read their AIPs.
-  IE: rule('IE', 'Europe/Dublin', 'GMT', 'IST', 5000, 60, '[EST]'),
-  PT: rule('PT', 'Europe/Lisbon', 'WET', 'WEST', 4000, 50, '[EST]'),
-  BE: rule('BE', 'Europe/Brussels', 'CET', 'CEST', 4500, 60, '[EST]'),
+  IE: rule('IE', 'Europe/Dublin', 'GMT', 'IST', 5000, 60, 'Ireland ENR 1.7 2.1.3 (AIRAC 29 OCT 2026): 5,000 ft at every Irish ATC aerodrome; EIDW AD 2.17 the same'),
+  PT: rule('PT', 'Europe/Lisbon', 'WET', 'WEST', 4000, 50, '[EST] Portugal\'s eAIP was under maintenance on 2026-11-21 (HTTP 503): 4,000 ft at Lisbon from a public airport database, not the AIP'),
+  BE: rule('BE', 'Europe/Brussels', 'CET', 'CEST', 4500, 60, '[EST] Belgium\'s eAIP refused the script on 2026-11-21 (HTTP 403): 4,500 ft from general knowledge of the published figure'),
   LU: rule('LU', 'Europe/Luxembourg', 'CET', 'CEST', 4500, 60, '[EST]'),
-  AT: rule('AT', 'Europe/Vienna', 'CET', 'CEST', 10000, 110, '[EST]'),
+  AT: rule('AT', 'Europe/Vienna', 'CET', 'CEST', 10000, 110, 'Austria ENR 1.7 2.1.4 (AMDT 358): "Transition altitude within FIR Wien is established at 10000 FT AMSL" (Innsbruck excepted); LOWW AD 2.17 the same'),
   LI: rule('LI', 'Europe/Vaduz', 'CET', 'CEST', 7000, 80, '[EST] Switzerland\'s'),
   MC: rule('MC', 'Europe/Monaco', 'CET', 'CEST', 5000, 60, '[EST] France\'s'),
   AD: rule('AD', 'Europe/Andorra', 'CET', 'CEST', 6000, 70, '[EST] Spain\'s'),
-  DK: rule('DK', 'Europe/Copenhagen', 'CET', 'CEST', 5000, 60, '[EST]'),
+  DK: rule('DK', 'Europe/Copenhagen', 'CET', 'CEST', 3000, 40, 'Denmark ENR 1.7 1.2: "The transition altitude for København FIR is 3000 FT MSL, except for Copenhagen Area, where the transition altitude is 5000 FT MSL."'),
   SE: rule('SE', 'Europe/Stockholm', 'CET', 'CEST', 5000, 60, '[EST]'),
   NO: rule('NO', 'Europe/Oslo', 'CET', 'CEST', 7000, 80, '[EST]'),
   PL: rule('PL', 'Europe/Warsaw', 'CET', 'CEST', 6500, 80, '[EST]'),
@@ -73,6 +73,11 @@ export const EUROPE_AIRPORT_TRANSITIONS = Object.freeze({
   LEBL: { at: [41.2971, 2.0785], taFt: 6000, tlFl: 70, note: 'Spain AIP LEBL AD 2.17: 6,000 ft' },
   LIRF: { at: [41.8003, 12.2389], taFt: 6000, tlFl: 70, note: 'Italy AIP LIRF AD 2.17: 6,000 ft [EST]' },
   LSZH: { at: [47.4647, 8.5492], taFt: 7000, tlFl: 80, note: 'Switzerland AIP LSZH AD 2.17: 7,000 ft' },
+  // v0.7.1
+  LFBO: { at: [43.6291, 1.3638], taFt: 5000, tlFl: 60, note: 'France AIP LFBO AD 2.20.2 (AIRAC 29 OCT 2026): "The common transition altitude is 5000 ft for TOULOUSE BLAGNAC, TOULOUSE FRANCAZAL, ..."' },
+  EKCH: { at: [55.6180, 12.6560], taFt: 5000, tlFl: 60, note: 'Denmark AIP EKCH AD 2.17 (AIRAC AMDT 03/26): 5,000 ft MSL (the Copenhagen Area)' },
+  EGCC: { at: [53.3537, -2.2750], taFt: 5000, tlFl: 60, note: 'UK AIP EGCC AD 2.17 (AIRAC 29 OCT 2026): 5,000 ft' },
+  LIMC: { at: [45.6306, 8.7281], taFt: 6000, tlFl: 70, note: 'Italy: Malpensa 6,000 ft [EST] (ENAV\'s eAIP asks for a login; from a public pilot briefing)' },
 });
 
 // ICAO prefixes to zones, where no position is at hand (a saved plan's airport): clock.js's zoneOfIcao().
@@ -89,4 +94,6 @@ export const EUROPE_COUNTRY_LABEL = { GB: 'United Kingdom', FR: 'France', DE: 'G
   IE: 'Ireland', PT: 'Portugal', BE: 'Belgium', LU: 'Luxembourg', AT: 'Austria', DK: 'Denmark', SE: 'Sweden', NO: 'Norway', PL: 'Poland', CZ: 'Czechia', GI: 'Gibraltar', other: 'Elsewhere' };
 export const EUROPE_COUNTRY_ORDER = ['GB', 'FR', 'DE', 'ES', 'CH', 'NL', 'IT', 'IE', 'PT', 'BE', 'LU', 'AT', 'DK', 'SE', 'NO', 'PL', 'CZ', 'GI', 'other'];
 // The build order (briefs/V0-7-0.md's map): Heathrow to Fiumicino in v0.7.0.
-export const EUROPE_AIRPORT_ORDER = ['EGLL', 'EGKK', 'LFPG', 'LFPO', 'EDDF', 'EDDM', 'LEMD', 'LEBL', 'LSZH', 'EHAM', 'LIRF'];
+// v0.7.1: Toulouse to Manchester (airports 12 to 20), each after its country's earlier ones; the new countries after Italy.
+export const EUROPE_AIRPORT_ORDER = ['EGLL', 'EGKK', 'EGCC', 'LFPG', 'LFPO', 'LFBO', 'EDDF', 'EDDM', 'EDDB', 'LEMD', 'LEBL', 'LSZH', 'EHAM', 'LIRF', 'LIMC',
+  'EIDW', 'LPPT', 'EBBR', 'LOWW', 'EKCH'];

@@ -105,6 +105,16 @@ EU_SOURCES = {
     'oberbayern': 'osm/oberbayern-261121.osm.pbf',
     'cataluna': 'osm/cataluna-261121.osm.pbf',
     'centro': 'osm/centro-261121.osm.pbf',
+    # v0.7.1
+    'midi-pyrenees': 'osm/midi-pyrenees-261121.osm.pbf',
+    'brandenburg': 'osm/brandenburg-261121.osm.pbf',
+    'nord-ovest': 'osm/nord-ovest-261121.osm.pbf',
+    'austria': 'osm/austria-261121.osm.pbf',
+    'belgium': 'osm/belgium-261121.osm.pbf',
+    'ireland': 'osm/ireland-and-northern-ireland-261121.osm.pbf',
+    'portugal': 'osm/portugal-261121.osm.pbf',
+    'denmark': 'osm/denmark-261121.osm.pbf',
+    'greater-manchester': 'osm/greater-manchester-261121.osm.pbf',
 }
 EU_CENTRES = {
     # the City, Westminster and the South Bank, east to Canary Wharf (one box: the river's bend between is thin)
@@ -125,6 +135,25 @@ EU_CENTRES = {
     'barcelona': ('Barcelona', 'cataluna', (2.140, 41.373, 2.195, 41.408), (41.392, 2.168, 5.0)),
     # inside the Aurelian walls, west to St Peter's
     'rome': ('Rome', 'centro', (12.448, 41.874, 12.522, 41.915), (41.897, 12.482, 5.0)),
+    # v0.7.1 (briefs/V0-7-1.md part 5): nine tight cores, each held to EU_CORE_VERTS (about 150,000 triangles)
+    # the old town round the Capitole
+    'toulouse': ('Toulouse', 'midi-pyrenees', (1.430, 43.590, 1.458, 43.614), (43.603, 1.444, 3.0)),
+    # the Brandenburg Gate and the Reichstag along Unter den Linden to Alexanderplatz, with Potsdamer Platz
+    'berlin': ('Berlin', 'brandenburg', (13.368, 52.505, 13.418, 52.526), (52.517, 13.393, 4.0)),
+    # round the Duomo to the Castello, north to Porta Nuova's towers
+    'milan': ('Milan', 'nord-ovest', (9.175, 45.458, 9.200, 45.487), (45.470, 9.188, 3.0)),
+    # inside the Ring: the Innere Stadt with the Stephansdom
+    'vienna': ('Vienna', 'austria', (16.355, 48.199, 16.386, 48.218), (48.208, 16.370, 3.0)),
+    # the Pentagon's core, the Grand-Place to the Palais de Justice
+    'brussels': ('Brussels', 'belgium', (4.338, 50.834, 4.372, 50.856), (50.845, 4.355, 3.0)),
+    # both quays from Heuston to the Docklands, O'Connell Street to St Stephen's Green
+    'dublin': ('Dublin', 'ireland', (-6.295, 53.335, -6.230, 53.355), (53.345, -6.260, 4.0)),
+    # the Baixa, Alfama and the Chiado up to the Marques de Pombal
+    'lisbon': ('Lisbon', 'portugal', (-9.153, 38.705, -9.123, 38.728), (38.714, -9.138, 3.0)),
+    # the Indre By with Christianshavn
+    'copenhagen': ('Copenhagen', 'denmark', (12.562, 55.668, 12.600, 55.690), (55.679, 12.580, 3.0)),
+    # the city centre: the town hall and Deansgate's towers
+    'manchester': ('Manchester', 'greater-manchester', (-2.258, 53.470, -2.228, 53.488), (53.479, -2.245, 3.0)),
 }
 EU_MAX_COUNT = 40000
 EU_MAX_VERTS = 271578
@@ -133,7 +162,13 @@ EU_MIN_THR = 9.0
 # Untagged footprints of 100-5,000 m2 stand at least this many storeys (the usual height of each old town's blocks;
 # most of Madrid's and Rome's centres carry no building:levels). Still flagged estimated (the plainer facade).
 EU_EST_FLOORS = {'london': 4, 'paris': 5, 'frankfurt': 4, 'madrid': 5, 'zurich': 4, 'amsterdam': 4, 'munich': 4,
-                 'barcelona': 5, 'rome': 4}
+                 'barcelona': 5, 'rome': 4,
+                 'toulouse': 4, 'berlin': 5, 'milan': 5, 'vienna': 5, 'brussels': 4, 'dublin': 4, 'lisbon': 4,
+                 'copenhagen': 5, 'manchester': 4}
+# v0.7.1: the new nine's own vertex budget (Zurich's size: 45,747 vertices built to 122,830 triangles, so about
+# 55,000 vertices is about 150,000 triangles). Last night's nine keep EU_MAX_VERTS.
+EU_CORE_VERTS = {c: 55000 for c in ('toulouse', 'berlin', 'milan', 'vienna', 'brussels', 'dublin', 'lisbon',
+                                    'copenhagen', 'manchester')}
 if EUROPE:
     SOURCES, CENTRES = EU_SOURCES, EU_CENTRES
 
@@ -424,7 +459,7 @@ def bake_centre(cid):
         while True:
             kept = [f for f in feats if f['H'] >= thr or f['area'] >= KEEP_AREA]
             nv = sum(f['nv'] for f in kept)
-            if (len(kept) <= EU_MAX_COUNT and nv <= EU_MAX_VERTS) or thr >= EU_MAX_THR:
+            if (len(kept) <= EU_MAX_COUNT and nv <= EU_CORE_VERTS.get(cid, EU_MAX_VERTS)) or thr >= EU_MAX_THR:
                 break
             thr += 1.0
     else:

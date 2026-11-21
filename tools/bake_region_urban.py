@@ -48,9 +48,11 @@ STAGING = '/tmp/flight-sim/v063/bake'
 MANIFEST, DIRS = bc.MANIFEST, None
 if bc.EUROPE:
     EXTENT = (-1377000, -1330000, 1422000, 1425000)
-    STAGING = '/tmp/flight-sim/v070/bake'
+    STAGING = '/tmp/flight-sim/v070/bake' if bc.EU_BATCH == 'A' else '/tmp/flight-sim/v071/bake'
     MANIFEST = os.path.join(STAGING, 'manifest.json')
     DIRS = {'terrain/r0/': os.path.join(STAGING, 'l0'), 'terrain/r1/': os.path.join(STAGING, 'l1')}
+    if bc.EU_BATCH != 'A':   # v0.7.1: every batch's sealed tiles, merged (bake_europe_manifest.py --merge)
+        DIRS = {'terrain/r0/': '/tmp/flight-sim/v071/work/merged/l0', 'terrain/r1/': '/tmp/flight-sim/v071/work/merged/l1'}
 
 
 def tile_dir(d):

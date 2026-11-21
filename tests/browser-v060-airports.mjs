@@ -235,11 +235,13 @@ try {
       const nx = s.pos.x + Math.sin(s.hdg) * geo.NOSE_X, ny = s.pos.y + Math.cos(s.hdg) * geo.NOSE_X;
       const across = (x, y) => Math.abs(-(x - ax.tx) * ax.uy + (y - ax.ty) * ax.ux);
       const h = window.__taxi.P[window.__taxi.P.length - 1];
-      return { noseFromCL: Math.round(across(nx, ny)), half: R.runway.widthM / 2, noseToHoldM: +Math.hypot(nx - h[0], ny - h[1]).toFixed(1), holdFromCL: Math.round(across(h[0], h[1])), holdRef: fs.gate.route?.hold?.ref ?? null, toThresholdM: Math.round(Math.hypot(s.pos.x - R.end.x, s.pos.y - R.end.y)), simMin: +(s.t / 60).toFixed(1) };
+      return { noseFromCL: Math.round(across(nx, ny)), half: R.runway.widthM / 2, noseToHoldM: +Math.hypot(nx - h[0], ny - h[1]).toFixed(1), holdFromCL: Math.round(across(h[0], h[1])), noseBeforeEndM: Math.round(-((nx - ax.px) * ax.ux + (ny - ax.py) * ax.uy)), holdRef: fs.gate.route?.hold?.ref ?? null, toThresholdM: Math.round(Math.hypot(s.pos.x - R.end.x, s.pos.y - R.end.y)), simMin: +(s.t / 60).toFixed(1) };
     }, [DEP]);
     check('taxied the route to the hold without crashing', last.done && !last.crashed, JSON.stringify(last));
     check('taxi on pavement, clear of buildings', txChk.maxOffM < 6 && !txChk.buildings.length, JSON.stringify(txChk));
-    check(`stopped at the hold short of ${DEP}`, hold.noseToHoldM < 8 && hold.noseFromCL > hold.half, JSON.stringify(hold));
+    // (v0.7.1: or stopped before the pavement's end on the runway's own axis, where a taxiway or a starter strip joins
+    // the runway from its end: Manchester's 23L. noseBeforeEndM is how far the nose is short of the pavement's end.)
+    check(`stopped at the hold short of ${DEP}`, hold.noseToHoldM < 8 && (hold.noseFromCL > hold.half || hold.noseBeforeEndM > 5), JSON.stringify(hold));
     await look(2.6, 0.5, 110);
     await shot('hold', 1500);
 

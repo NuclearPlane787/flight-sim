@@ -34,6 +34,17 @@ CROPS = {   # name: (lat0, lat1, lon0, lon1)
     'barcelona': (41.1, 41.6, 1.7, 2.6),
     'rome': (41.55, 42.1, 11.9, 12.75),
 }
+PFX = 'v070'
+if bc.EU_BATCH != 'A':   # v0.7.1, batch B: the merged view (rt.WORK/merged: every batch's sealed tiles) and B's crops
+    PFX = 'v071'
+    CROPS = {
+        'dublin': (53.15, 53.6, -6.5, -5.9),
+        'lisbon': (38.55, 39.0, -9.5, -8.85),
+        'oresund': (55.35, 56.1, 12.2, 13.2),
+        'berlin': (52.25, 52.65, 12.9, 13.9),
+        'vienna': (47.95, 48.4, 16.0, 16.8),
+        'toulouse-pyrenees': (42.6, 43.8, 0.4, 2.2),
+    }
 
 
 def read(d, name):
@@ -121,10 +132,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--l1', action='store_true')
     a = ap.parse_args()
-    d = os.path.join(rt.STAGE, 'l0')
+    d = os.path.join(rt.STAGE, 'l0') if PFX == 'v070' else os.path.join(rt.WORK, 'merged', 'l0')
     tiles = rt.EXTRA_TILES
     if a.l1:
-        d1 = os.path.join(rt.STAGE, 'l1')
+        d1 = os.path.join(rt.STAGE, 'l1') if PFX == 'v070' else os.path.join(rt.WORK, 'merged', 'l1')
         names = [f[:-9] for f in os.listdir(d1) if f.endswith('.h.i16.gz')]
         tl = [tuple(int(v) for v in n.split('_')) for n in names]
         ti0, ti1 = min(t[0] for t in tl), max(t[0] for t in tl)
@@ -133,8 +144,8 @@ def main():
         nx, ny = (ti1 - ti0 + 1) * T // step, (tj1 - tj0 + 1) * T // step
         H, W, C, have = mosaic(d1, tl, ti0 * T, tj0 * T, nx, ny, step)
         hi, wi, ci = render(H, W, C, have, 1000.0 * step)
-        bc.write_png(os.path.join(bc.SHOTS, 'v070-bake-l1-heights.png'), hi)
-        bc.write_png(os.path.join(bc.SHOTS, 'v070-bake-l1-cover.png'), ci)
+        bc.write_png(os.path.join(bc.SHOTS, f'{PFX}-bake-l1-heights.png'), hi)
+        bc.write_png(os.path.join(bc.SHOTS, f'{PFX}-bake-l1-cover.png'), ci)
         print('l1', nx, ny)
         return
     ti0, ti1 = min(t[0] for t in tiles), max(t[0] for t in tiles)
@@ -144,7 +155,7 @@ def main():
     H, W, C, have = mosaic(d, tiles, ti0 * T, tj0 * T, nx, ny, step)
     hi, wi, ci = render(H, W, C, have, 250.0 * step)
     for nm, im in (('heights', hi), ('water', wi), ('cover', ci)):
-        bc.write_png(os.path.join(bc.SHOTS, f'v070-bake-{nm}.png'), im)
+        bc.write_png(os.path.join(bc.SHOTS, f'{PFX}-bake-{nm}.png'), im)
     print(f'overall {nx} x {ny} px, 1 km a pixel, tiles {ti0}..{ti1} x {tj0}..{tj1}')
     for nm, (la0, la1, lo0, lo1) in CROPS.items():
         lat = np.array([la0, la0, la1, la1, (la0 + la1) / 2, (la0 + la1) / 2])
@@ -158,7 +169,7 @@ def main():
         for suf, im in (('h', hi), ('w', wi), ('c', ci)):
             if up > 1:
                 im = np.repeat(np.repeat(im, up, 0), up, 1)
-            bc.write_png(os.path.join(bc.SHOTS, f'v070-bake-crop-{nm}-{suf}.png'), im)
+            bc.write_png(os.path.join(bc.SHOTS, f'{PFX}-bake-crop-{nm}-{suf}.png'), im)
         land = have & (W[..., 0] > 128)
         print(f'crop {nm}: {i1 - i0} x {j1 - j0} cells; land {int(land.sum())}, land below 0 m {int((land & (H < 0)).sum())}, '
               f'min {H[land].min() if land.any() else 0:.1f} max {H[land].max() if land.any() else 0:.1f}')

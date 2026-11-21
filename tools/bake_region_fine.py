@@ -276,11 +276,23 @@ def bake_tile(wc, ti, tj, wcbox):
     touches = tile_touches_wc(ti, tj, wcbox)
     hist = np.zeros(NC, np.int64)
     sel = eu_selected(ti, tj) if bc.EUROPE else None
+    have = {}
+    if bc.EUROPE and bc.EU_BATCH != 'A':
+        # v0.7.1: an earlier batch's sub-files of this tile are kept as they are (never re-baked); only the
+        # selected ones it lacks are baked (an old tile near a new airport gains sub-files)
+        p = state_path(ti, tj)
+        if os.path.exists(p) and not p.startswith(STATE + os.sep):
+            with open(p) as f:
+                have = json.load(f)['subs']
+        st['subs'].update(have)
+        st['kept'] = len(have)
     for b in range(PER):
         for a in range(PER):
             n = name(ti, tj, a, b)
             if sel is not None and (a, b) not in sel:
                 continue                 # Europe: beyond 100 km, absent (the 250 m cover draws)
+            if n in have:
+                continue                 # v0.7.1: an earlier batch's, kept
             if not touches:
                 st['subs'][n] = {'uniform': 0}
                 hist[0] += SUBT * SUBT
@@ -324,9 +336,12 @@ def cmd_bake(args):
     t_start = time.time()
     nd = ns = 0
     for ti, tj in todo:
-        if os.path.exists(state_path(ti, tj)):
+        if os.path.exists(state_path(ti, tj)) and not (bc.EUROPE and bc.EU_BATCH != 'A'):
             ns += 1
             continue
+        if bc.EUROPE and bc.EU_BATCH != 'A' and os.path.exists(os.path.join(STATE, f'{ti}_{tj}.json')):
+            ns += 1
+            continue                     # v0.7.1: this batch's own state: done
         miss = brw.wc_missing(ti, tj, listed, set(wc.files))
         if miss:
             print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'{a}/{b}' for a, b in miss))

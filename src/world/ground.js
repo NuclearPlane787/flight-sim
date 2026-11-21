@@ -246,3 +246,130 @@ vec3 fieldMosaic(vec2 fp, float paddy, vec2 m, float lod, float slope, float hgt
   return mix(avg, col * mix(vec3(1.0), tintM, 0.6) * 0.85, fade);
 }
 `;
+
+// ---------------------------------------------------------------------------------------------------------------
+// v0.7.1: Europe's fields by country (briefs/V0-7-1.md, part 6). East Asia's text above is not touched: on a page in
+// Europe terrain.js passes GROUND_GLSL through euGroundGlsl(), which splices Europe's own lines into fieldMosaic()
+// at exact anchors (each must occur once, else it throws). Four kinds of farm country, a whole district one kind:
+//   0  open fields   (northern France, Germany, the centre: the default): big plots of 5 to 12 ha with no hedges,
+//                    winter crops coming up green, ploughed soil, pale stubble;
+//   1  hedged fields (Britain and Ireland; Normandy, Brittany and the west of France down to the Loire; Spain's
+//                    coast north of the Cantabrian crest, Galicia and the north of Portugal): small pastures of 1 to 2 ha, each inside a dark hedge
+//                    with trees in it;
+//   2  dry fields    (Spain, Portugal, Italy and the Mediterranean's side of France): pale fallow and stubble, ochre
+//                    and red-brown soil, and districts of olive groves (rows of dark crowns on pale soil); terraces
+//                    on the slopes, as East Asia's;
+//   3  polders       (anywhere north of the dry country where the district's ground is under 0.8 m: the Dutch
+//                    polders, the Fens, the German and Danish marsh coasts, the Po's delta): wet pasture in strips
+//                    about 45 m wide and 600 m long between straight ditches, parallel over a whole polder.
+// Where a district is: its site's latitude and longitude, from the map's own conic (the distance to the cone's apex
+// gives the latitude, the angle round it the longitude), each wobbled by a slow noise so no zone ends on a ruled line;
+// across a zone's edge the districts are mixed by their hash. Far off, where the fields average out, the ground takes
+// each zone's own average colour (Andalusia pale, Ireland green). No paddies in Europe: paddy is 0 there.
+import { toMap, LON0 } from './frame.js';
+
+const g1 = (v) => { const s = String(+v.toPrecision(9)); return /[.e]/.test(s) ? s : s + '.0'; };
+const v3 = (c) => `vec3(${c.map((v) => g1(v)).join(', ')})`;
+// The palettes: [share's upper bound, colour]. The far average is 0.66 of each palette's mean, as East Asia's is.
+const EU_PALETTE = {
+  open: [[0.34, [0.13, 0.17, 0.06]], [0.66, [0.20, 0.14, 0.08]], [0.86, [0.26, 0.22, 0.11]], [1, [0.12, 0.15, 0.06]]],
+  hedge: [[0.62, [0.098, 0.142, 0.052]], [0.80, [0.085, 0.122, 0.047]], [0.92, [0.18, 0.125, 0.07]], [1, [0.23, 0.20, 0.10]]],
+  dry: [[0.36, [0.30, 0.26, 0.15]], [0.60, [0.27, 0.20, 0.12]], [0.78, [0.22, 0.14, 0.085]], [0.90, [0.20, 0.19, 0.10]], [1, [0.13, 0.16, 0.07]]],
+  polder: [[0.80, [0.09, 0.15, 0.05]], [0.93, [0.12, 0.17, 0.06]], [1, [0.17, 0.13, 0.07]]],
+};
+export function euFieldAverage(kind) {
+  const p = EU_PALETTE[kind], a = [0, 0, 0];
+  let lo = 0;
+  for (const [hi, c] of p) { for (let k = 0; k < 3; k++) a[k] += (hi - lo) * c[k]; lo = hi; }
+  return a.map((v) => v * 0.66);
+}
+const pick = (p, t) => p.map(([hi, c], k) => (k < p.length - 1 ? `${t} < ${g1(hi)} ? ${v3(c)} : ` : v3(c))).join('');
+
+// The conic's constants for the shader, from the frame itself: the apex's y, and a straight fit of latitude against
+// the distance to the apex between 41 and 51 N (good to a few hundredths of a degree over 36 to 59 N).
+export function euConic() {
+  const [, y1] = toMap(46, LON0), [x2, y2] = toMap(46, LON0 + 10);
+  const rho0 = (x2 * x2 + y2 * y2 - y1 * y1) / (2 * (y2 - y1));
+  const n = Math.atan2(x2, rho0 - y2) / (10 * Math.PI / 180);
+  const rho = (lat) => rho0 - toMap(lat, LON0)[1];
+  return { rho0, lonK: 180 / Math.PI / n, rhoA: rho(46), degPerM: 10 / (rho(41) - rho(51)) };
+}
+
+export function euGroundGlsl(src) {
+  const K = euConic();
+  const splice = (text, anchor, add, where) => {
+    const n = text.split(anchor).length - 1;
+    if (n !== 1) throw new Error(`euGroundGlsl: the anchor occurs ${n} times: ${anchor.slice(0, 60)}`);
+    return text.replace(anchor, where === 'before' ? add + anchor : where === 'instead' ? add : anchor + add);
+  };
+  const HELPERS = `
+// v0.7.1, Europe: how hedged and how dry the farm country is at map position mp (0..1 each).
+void euZone(vec2 mp, out float hedge, out float dry) {
+  vec2 a = vec2(mp.x, ${g1(K.rho0)} - mp.y);
+  float lat = 46.0 + (${g1(K.rhoA)} - length(a)) * ${g1(K.degPerM)} + (vnoise(mp * 0.00002 + 3.0) - 0.5) * 0.5;
+  float lon = ${g1(LON0)} + atan(a.x, a.y) * ${g1(K.lonK)} + (vnoise(mp * 0.00002 + 11.0) - 0.5) * 0.5;
+  float gb = smoothstep(49.85, 50.15, lat) * (1.0 - smoothstep(1.35, 1.65, lon));
+  float nw = smoothstep(46.5, 47.0, lat) * (1.0 - smoothstep(49.9, 50.2, lat)) * (1.0 - smoothstep(0.6, 1.1, lon));
+  float at1 = smoothstep(42.8, 43.1, lat) * (1.0 - smoothstep(43.7, 44.0, lat)) * (1.0 - smoothstep(-1.9, -1.4, lon));   // north of the Cantabrian crest (the review: from 42.1 N it took in Leon, Burgos and La Rioja, which are dry)
+  float at2 = smoothstep(40.2, 40.7, lat) * (1.0 - smoothstep(43.7, 44.0, lat)) * (1.0 - smoothstep(-7.6, -7.0, lon));
+  float atl = max(at1, at2);
+  hedge = max(gb, max(nw, atl));
+  float s1 = 1.0 - smoothstep(43.0, 43.6, lat);
+  float s2 = (1.0 - smoothstep(44.0, 44.6, lat)) * smoothstep(2.5, 3.1, lon);
+  dry = max(s1, s2) * (1.0 - atl);
+}
+// A plot's ground by its kind (0 open, 1 hedged, 2 dry, 3 polder) and its place t in the kind's mix.
+vec3 euField(int kind, float t, out float green) {
+  vec3 c = vec3(0.0);
+  green = 0.0;
+  if (kind == 1) { c = ${pick(EU_PALETTE.hedge, 't')}; green = step(t, 0.80); }
+  else if (kind == 2) { c = ${pick(EU_PALETTE.dry, 't')}; green = step(0.90, t); }
+  else if (kind == 3) { c = ${pick(EU_PALETTE.polder, 't')}; green = step(t, 0.93); }
+  else { c = ${pick(EU_PALETTE.open, 't')}; green = step(t, 0.34); }
+  return c;
+}
+`;
+  let s = src;
+  s = splice(s, 'vec3 fieldMosaic(vec2 fp, float paddy, vec2 m, float lod, float slope, float hgt, out float treeLine) {\n  treeLine = 0.0;\n',
+    HELPERS + 'vec3 fieldMosaic(vec2 fp, float paddy, vec2 m, float lod, float slope, float hgt, out float treeLine) {\n  treeLine = 0.0;\n'
+    + '  paddy = 0.0;                                              // Europe: no paddies\n'
+    + '  float euH = 0.0, euD = 0.0;\n  euZone(m, euH, euD);\n'
+    + '  float euP = (1.0 - euD) * (1.0 - smoothstep(0.4, 1.2, hgt));\n', 'instead');
+  s = splice(s, '  vec3 avg = mix(vec3(0.115, 0.104, 0.054), vec3(0.150, 0.122, 0.060), paddy) * tintM;\n',
+    `  avg = mix(mix(mix(${v3(euFieldAverage('open'))}, ${v3(euFieldAverage('hedge'))}, euH), ${v3(euFieldAverage('dry'))}, euD), ${v3(euFieldAverage('polder'))}, euP) * tintM;\n`);
+  s = splice(s, '  float dh = ihash(did, 43u), dk = ihash(did, 44u), dg = ihash(did, 45u);\n',
+    '  // Europe: the district\'s kind, from its site\'s place and its ground\'s height, so a whole district is one kind.\n'
+    + '  float euSH = 0.0, euSD = 0.0;\n  euZone(m - dq, euSH, euSD);\n'
+    + '  float euGH = cellH((did * 32 + ivec2(floor((0.5 + (ihash2(did, 41u) - 0.5) * 0.72) * 32.0))) >> 3);\n'
+    + '  int eu = 0;\n'
+    + '  if (ihash(did, 48u) < euSD) eu = 2;\n'
+    + '  else if (euGH < 0.8 && euGH != 0.0) eu = 3;\n'
+    + '  else if (ihash(did, 49u) < euSH) eu = 1;\n'
+    + '  float euHg = 0.0, euOl = 0.0;\n');
+  s = splice(s, '  float ca = cos(ang), sa = sin(ang);\n  vec2 q = vec2(ca * dq.x - sa * dq.y, sa * dq.x + ca * dq.y);\n',
+    '  if (eu == 3) ang = floor(ihash(did >> 3, 47u) * 4.0) * 0.7854 + 0.2;   // a polder\'s strips all one way, over about 8 km\n', 'before');
+  s = splice(s, '  vec2 size = (paddy > 0.5 ? vec2(26.0, 72.0) : vec2(44.0, 80.0)) * (0.75 + 0.6 * dk);\n',
+    '  size = (eu == 1 ? vec2(100.0, 150.0) : eu == 2 ? vec2(90.0, 170.0) : eu == 3 ? vec2(45.0, 600.0) : vec2(190.0, 380.0)) * (0.75 + 0.6 * dk);\n');
+  s = splice(s, '  float terr = step(0.07, slope);\n', '  if (eu != 2) terr = 0.0;                                  // terraces only in the dry country\n');
+  s = splice(s, '  col *= 0.86 + 0.28 * hv;                                   // each field its own shade\n',
+    '  col = euField(eu, h + (dg - 0.5) * 0.35, green);\n'
+    + '  if (eu == 2 && dg > 0.55 && h < 0.70) { col = vec3(0.27, 0.22, 0.13); green = 0.0; euOl = 1.0; }   // an olive grove\'s soil\n', 'before');
+  s = splice(s, '  if (dg > 0.78 && hv > 0.62 && paddy <= 0.5) {\n', '  if (dg > 0.78 && hv > 0.62 && paddy <= 0.5 && eu == 2 && dk > 0.7 && euOl < 0.5) {\n', 'instead');
+  s = splice(s, '  // A terrace\'s bank: grass and shade along the plot\'s downhill side.\n',
+    '  // Europe: a hedge round a hedged field; a ditch along each side of a polder\'s strip; an olive grove\'s crowns.\n'
+    + '  if (eu == 1) {\n'
+    + '    euHg = (1.0 - smoothstep(2.0, 2.0 + aa, fEdge)) * (1.0 - smoothstep(8.0, 22.0, lod));\n'
+    + '    col = mix(col, vec3(0.040, 0.062, 0.030), euHg * 0.9);\n'
+    + '  } else if (eu == 3) {\n'
+    + '    float euDx = min(xs - left, right - xs) * xw;\n'
+    + '    col = mix(col, vec3(0.040, 0.058, 0.066), (1.0 - smoothstep(0.9, 0.9 + aa, euDx)) * (1.0 - smoothstep(6.0, 18.0, lod)) * 0.85);\n'
+    + '  }\n'
+    + '  if (euOl > 0.5) {\n'
+    + '    float euOd = length((fract(q / 9.0) - 0.5) * 9.0);\n'
+    + '    float euOt = mix(1.0 - smoothstep(2.4, 2.4 + aa, euOd), 0.22, smoothstep(2.0, 7.0, lod));\n'
+    + '    col = mix(col, vec3(0.055, 0.080, 0.042), euOt * 0.9 * smoothstep(1.0, 4.0, fEdge));\n'
+    + '  }\n', 'before');
+  s = splice(s, '  return mix(avg, col * mix(vec3(1.0), tintM, 0.6) * 0.85, fade);\n',
+    '  if (eu == 1) treeLine = max(treeLine, euHg * 0.7 * step(0.55, hv));   // trees in about half the hedges\n', 'before');
+  return s;
+}

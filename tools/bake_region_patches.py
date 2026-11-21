@@ -194,7 +194,7 @@ if bc.EUROPE:
     NEW_AIRPORTS += ['LSZH', 'EGKK', 'LFPO']
     PATCHES.update({
         'zurich': (8.33, 47.33, 8.77, 47.59),
-        'gatwick': (-0.42, 51.075, -0.005, 51.225),
+        'gatwick': (-0.42, 51.075, 0.04, 51.225),      # v0.7.1: east to 0.04 E, with GLO-30's N51 E000 on disk
         'orly': (2.11, 48.62, 2.62, 48.84),
     })
     COAST += ['LSZH', 'EGKK', 'LFPO']
@@ -224,12 +224,59 @@ if bc.EUROPE:
 if bc.EUROPE:
     NEW_AIRPORTS += ['EDDM', 'LIRF']
     PATCHES.update({
-        'munich': (11.55, 48.27, 11.96, 48.44),
+        'munich': (11.55, 48.27, 12.02, 48.44),        # v0.7.1: east to 12.02 E, with GLO-30's N48 E012 on disk
         'fiumicino': (12.07, 41.66, 12.44, 41.98),
     })
     COAST += ['EDDM', 'LIRF']
     FIELD_RUNWAYS = FIELD_RUNWAYS | {'EDDM', 'LIRF'}
     FIELD_PAVEMENT = FIELD_PAVEMENT | {'EDDM', 'LIRF'}
+# v0.7.1, Toulouse, Berlin and Malpensa, pending (airports subagent 1; staged with FS_PATCH_OUT=/tmp/flight-sim/v071/
+# airports/patches): Toulouse ~27 x 29 km (14/32's finals ~15 km out each way, 143 deg true; GLO-30 N43 E001 alone),
+# Berlin ~33 x 15 km (07/25's finals ~15 km out each way, 068 deg true; GLO-30 N52 E013 alone), Malpensa ~23 x 36 km
+# (17/35's finals ~15 km out, 169 deg true; GLO-30 N45 E008 alone). Each flattened to its runways' own profiles between
+# the pavement's ends (Malpensa's 17L and 35L displaced). All inland: no coast patch.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LFBO', 'EDDB', 'LIMC']
+    PATCHES.update({
+        'toulouse': (1.20, 43.50, 1.53, 43.76),
+        'berlin': (13.26, 52.30, 13.74, 52.43),
+        'malpensa': (8.58, 45.47, 8.88, 45.79),
+    })
+    COAST += ['LFBO', 'EDDB', 'LIMC']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LFBO', 'EDDB', 'LIMC'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LFBO', 'EDDB', 'LIMC'}
+# v0.7.1, Lisbon, Copenhagen and Manchester, pending (airports subagent 3; staged with FS_PATCH_OUT=/tmp/flight-sim/v071/
+# airports/patches3): Lisbon ~24 x 33 km (02/20's finals ~15 km out each way, 020 deg true, 02's over the city; GLO-30
+# N38 W010 and N38 W009: the grid's south-east corner reaches 8.96 W), Copenhagen ~33 x 27 km (04/22's and 12/30's finals;
+# the Oresund, Saltholm and Peberholm; GLO-30 N55 E012 alone), Manchester ~31 x 23 km (05/23's finals ~15 km out each
+# way, 051 deg true; GLO-30 N53 W003 alone). Each flattened to its runways' own profiles between the pavement's ends
+# (displaced thresholds at all three). Coast: bake_region_patches.py coast LPPT EKCH EGCC says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LPPT', 'EKCH', 'EGCC']
+    PATCHES.update({
+        'lisbon': (-9.28, 38.63, -8.99, 38.93),   # east past 9 W so dem_tiles() reads N38 W009 too
+        'copenhagen': (12.40, 55.50, 12.92, 55.74),
+        'manchester': (-2.50, 53.25, -2.04, 53.46),
+    })
+    COAST += ['LPPT', 'EKCH', 'EGCC']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LPPT', 'EKCH', 'EGCC'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LPPT', 'EKCH', 'EGCC'}
+# v0.7.1, Vienna, Brussels and Dublin, pending (airports subagent 2; staged with FS_PATCH_OUT=/tmp/flight-sim/v071/
+# airports/patches2): Vienna ~35 x 34 km (11/29's finals ~15 km out each way, 116 deg true; 16/34's, 164 deg, 34's to
+# 47.95 N: GLO-30 N48 E016 and N47 E016), Brussels ~35 x 31 km (07/25's finals ~15 km out each way; 01's from 50.75 N,
+# 19's to 51.04 N: GLO-30 N50 E004 and N51 E004), Dublin ~36 x 30 km (10/28's finals ~15 km out each way, 28L's and 28R's
+# over Dublin Bay east of 6 W: GLO-30 N53 W007 and N53 W006). Each flattened to its runways' own profiles between the
+# pavement's ends (Brussels's and Dublin's displaced thresholds). Coast: bake_region_patches.py coast EIDW says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LOWW', 'EBBR', 'EIDW']
+    PATCHES.update({
+        'vienna': (16.33, 47.95, 16.80, 48.26),
+        'brussels': (4.24, 50.75, 4.74, 51.04),
+        'dublin': (-6.52, 53.29, -5.98, 53.56),
+    })
+    COAST += ['LOWW', 'EBBR', 'EIDW']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LOWW', 'EBBR', 'EIDW'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LOWW', 'EBBR', 'EIDW'}
 
 
 def field_plane(icao, x0, y0, cell, nx, ny):

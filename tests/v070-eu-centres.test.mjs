@@ -16,6 +16,9 @@ if (inRegion('europe', import.meta.url)) {
   const idxUrl = new URL('centres.json', DATA);
   const INDEX = existsSync(idxUrl) ? JSON.parse(readFileSync(idxUrl, 'utf8')) : { centres: [] };
   const have = INDEX.centres.length > 0;
+  // v0.7.1 added nine more after these (tests/v071-eu-centres.test.mjs has theirs): the checks below are v0.7.0's nine's,
+  // which must still be the index's first nine, in their order.
+  const NINE = INDEX.centres.slice(0, 9);
 
   // Each city's place (lat, lon: what the box is round) and the brief's budget (Tokyo's: 39,911 buildings,
   // 271,578 vertices, 979 KB; all nine under about 6 MB).
@@ -28,9 +31,9 @@ if (inRegion('europe', import.meta.url)) {
   const MAX_COUNT = 40000, MAX_VERTS = 271578 * 1.02, MAX_BYTES = 1000000, MAX_TOTAL = 6000000;
 
   test("Europe's centres: the nine, each round its city, inside the budget", { skip: !have && 'data/europe/centres/centres.json is empty until the bake is installed' }, () => {
-    assert.deepEqual(INDEX.centres.map((c) => c.id).sort(), Object.keys(PLACES).sort());
+    assert.deepEqual(NINE.map((c) => c.id).sort(), Object.keys(PLACES).sort());
     let total = 0;
-    for (const c of INDEX.centres) {
+    for (const c of NINE) {
       const [x, y] = toMap(...PLACES[c.id]);
       const [x0, y0, x1, y1] = c.box;
       assert.ok(x0 <= x && x <= x1 && y0 <= y && y <= y1, `${c.id}: the city's place (${x.toFixed(0)}, ${y.toFixed(0)}) outside its box ${c.box}`);
@@ -50,7 +53,7 @@ if (inRegion('europe', import.meta.url)) {
   });
 
   test("Europe's centres parse to the index, and the tower clusters stand over 150 m", { skip: !have && 'no centres installed yet' }, () => {
-    for (const c of INDEX.centres) {
+    for (const c of NINE) {
       const p = parseCentre(gunzipSync(readFileSync(new URL(c.file, DATA))));
       assert.equal(p.count, c.count, c.id);
       assert.equal(p.vertexCount, c.vertices, c.id);
@@ -68,7 +71,7 @@ if (inRegion('europe', import.meta.url)) {
   });
 
   test("Europe's centres build in the worker's builder, each under 800,000 triangles", { skip: !have && 'no centres installed yet' }, () => {
-    for (const c of INDEX.centres) {
+    for (const c of NINE) {
       const p = parseCentre(gunzipSync(readFileSync(new URL(c.file, DATA))));
       const r = buildCentre(p, c, { exclude: [], runways: [] });
       const tris = r.tall.tris + r.low.tris;

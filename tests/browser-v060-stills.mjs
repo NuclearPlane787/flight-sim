@@ -211,7 +211,8 @@ GROUPS['landmarks-v064'] = Object.keys(LANDMARK064).flatMap((k) => ['day', 'nigh
 // Pyrenees and Rome's coast.
 const EU_DAY = Date.UTC(2026, 10, 19, 12, 0), EU_NIGHT = Date.UTC(2026, 10, 19, 21, 0);   // 12:00 and 21:00 UTC: early afternoon and night across Europe
 // Each of Europe's airports from 1,000 ft on its final (with ?pending=1 until it is listed).
-const EU_FINALS = { EGLL: '27R', LFPG: '26L', EDDF: '25C', LEMD: '32L', LSZH: '14', EGKK: '26L', LFPO: '25', EHAM: '18R', EDDM: '26R', LEBL: '24R', LIRF: '16R' };
+const EU_FINALS = { EGLL: '27R', LFPG: '26L', EDDF: '25C', LEMD: '32L', LSZH: '14', EGKK: '26L', LFPO: '25', EHAM: '18R', EDDM: '26R', LEBL: '24R', LIRF: '16R',
+  LFBO: '14R', EDDB: '24L', LIMC: '35R', LOWW: '29', EBBR: '25L', EIDW: '28L', LPPT: '02', EKCH: '22L', EGCC: '23R' };   // v0.7.1: Toulouse to Manchester
 for (const [icao, end] of Object.entries(EU_FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_NIGHT };
@@ -230,6 +231,27 @@ SHOTS['eu-10000-thames'] = { q: look(51.48, 0.3, 10000, 270, -20), ms: EU_DAY };
 SHOTS['eu-10000-barcelona'] = { q: look(41.38, 2.17, 10000, 320, -20), ms: EU_DAY };
 SHOTS['eu-10000-rome'] = { q: look(41.85, 12.35, 10000, 60, -20), ms: EU_DAY };
 SHOTS['eu-fl350-edge-vienna'] = { q: 'lat=48.0&lon=14.0&alt=35000&hdg=90&pitch=-9', ms: EU_DAY };        // beyond batch A, the 1 km level to the east edge
+// v0.7.1: Europe's fields by country (ground.js's euGroundGlsl()): each kind from 1,500 ft, and two from 400 ft.
+SHOTS['eu-fields-weald'] = { q: look(51.05, -0.50, 1500, 270, -14), ms: EU_DAY };                         // hedged fields, England
+SHOTS['eu-fields-weald-low'] = { q: look(51.05, -0.50, 400, 270, -10), ms: EU_DAY };
+SHOTS['eu-fields-meath'] = { q: look(53.50, -6.55, 1500, 300, -14), ms: EU_DAY };                         // hedged fields, Ireland
+SHOTS['eu-fields-normandy'] = { q: look(49.00, -0.30, 1500, 250, -14), ms: EU_DAY };                      // the bocage (beyond the 31 m cover)
+SHOTS['eu-fields-beauce'] = { q: look(48.35, 1.75, 1500, 200, -14), ms: EU_DAY };                         // big open fields, south-west of Paris
+SHOTS['eu-fields-beauce-low'] = { q: look(48.35, 1.75, 400, 200, -10), ms: EU_DAY };
+SHOTS['eu-fields-brandenburg'] = { q: look(52.25, 13.25, 1500, 250, -14), ms: EU_DAY };                   // open fields and pines, by Berlin
+SHOTS['eu-fields-mancha'] = { q: look(40.15, -3.45, 1500, 180, -14), ms: EU_DAY };                        // dry fields and olives, south of Madrid
+SHOTS['eu-fields-alentejo'] = { q: look(38.75, -8.75, 1500, 90, -14), ms: EU_DAY };                       // dry fields and olives, east of Lisbon
+SHOTS['eu-fields-alentejo-low'] = { q: look(38.75, -8.75, 400, 90, -10), ms: EU_DAY };
+SHOTS['eu-fields-polder-low'] = { q: look(52.33, 4.70, 400, 300, -10), ms: EU_DAY };                      // the polders' strips and ditches
+SHOTS['eu-fields-leon'] = { q: 'lat=42.55&lon=-5.55&alt=6000&hdg=180&pitch=-14', ms: EU_DAY };   // (6,000 ft above the sea, about 3,200 ft above the plateau: look()'s height above the ground reads 0 beyond the 250 m data)                         // the northern Meseta: dry (the review's finding: it was hedged)
+SHOTS['eu-fields-fl350-spain'] = { q: 'lat=41.6&lon=-3.4&alt=35000&hdg=200&pitch=-12', ms: EU_DAY };      // the meseta's far colour
+SHOTS['eu-fields-fl350-ireland'] = { q: 'lat=53.4&lon=-5.6&alt=35000&hdg=270&pitch=-12', ms: EU_DAY };    // Ireland's far colour
+// v0.7.1: Airbus's halls at Toulouse (the airport's own buildings), and where Brussels's 01/19 meets 07L/25R's east end.
+SHOTS['eu-toulouse-airbus-north'] = { q: look(43.645, 1.385, 1200, 300, -14), ms: EU_DAY };                // the Lagardère plant
+SHOTS['eu-toulouse-airbus-west'] = { q: look(43.625, 1.378, 1200, 250, -14), ms: EU_DAY };                 // Saint-Martin-du-Touch and the Clément Ader halls
+SHOTS['eu-ebbr-19-low'] = { q: 'app=EBBR:19&ft=300&pitch=-8', ms: EU_DAY };
+SHOTS['eu-ebbr-25R-low'] = { q: 'app=EBBR:25R&ft=300&pitch=-8', ms: EU_DAY };
+GROUPS['eu-fields'] = Object.keys(SHOTS).filter((k) => k.startsWith('eu-fields-')).concat(['eu-1000-polders', 'eu-3000-polders', 'eu-3000-nofine-dijon']);
 // A hole in the 31 m cover inside the 250 m data (it is baked only within 100 km of an airport): Dijon has none, and
 // Reims lies on its edge, 108 km from Charles de Gaulle. The ground there draws from the 250 m cover.
 SHOTS['eu-3000-nofine-dijon'] = { q: look(47.32, 5.04, 3000, 20, -14), ms: EU_DAY };
@@ -246,6 +268,14 @@ for (const [k, [la, lo, h]] of Object.entries(EU_CENTRES)) {
   SHOTS[`eu-centre-${k}-fl350-day`] = { q: look(la, lo, 35000, h, -38), ms: EU_DAY };
   SHOTS[`eu-centre-${k}-fl350-night`] = { q: look(la, lo, 35000, h, -38), ms: EU_NIGHT };
 }
+// v0.7.1: nine more centres, each from 3,000 ft by day, and Berlin, Vienna and Lisbon by night.
+const EU_CENTRES_071 = { toulouse: [43.598, 1.455, 320], berlin: [52.505, 13.39, 30], milan: [45.455, 9.195, 330], vienna: [48.198, 16.385, 320], brussels: [50.838, 4.365, 330],
+  dublin: [53.338, -6.24, 300], lisbon: [38.70, -9.125, 330], copenhagen: [55.668, 12.60, 320], manchester: [53.470, -2.225, 300] };
+for (const [k, [la, lo, h]] of Object.entries(EU_CENTRES_071)) {
+  SHOTS[`eu-centre-${k}-3000-day`] = { q: look(la, lo, 3000, h, -12), ms: EU_DAY };
+  SHOTS[`eu-centre-${k}-3000-night`] = { q: look(la, lo, 3000, h, -12), ms: EU_NIGHT };
+}
+GROUPS['europe-centres-071'] = Object.keys(EU_CENTRES_071).map((k) => `eu-centre-${k}-3000-day`).concat(['berlin', 'vienna', 'lisbon'].map((k) => `eu-centre-${k}-3000-night`));
 GROUPS['europe-centres'] = Object.keys(EU_CENTRES).map((k) => `eu-centre-${k}-3000-day`).concat(['london', 'paris', 'barcelona'].map((k) => `eu-centre-${k}-3000-night`));
 GROUPS['europe-centres-all'] = Object.keys(SHOTS).filter((n) => n.startsWith('eu-centre-'));
 // Part 6: Europe's landmarks close (a ground point, the model's height and the heading to look along, as its
@@ -259,6 +289,17 @@ const EU_LANDMARKS = { shard: [51.49958, -0.09440, 309.6, 45], westminster: [51.
 for (const [k, [la, lo, H, h]] of Object.entries(EU_LANDMARKS)) {
   for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q: near(la, lo, H, h), ms };
 }
+// v0.7.1: fifteen more (the landmarks' subagent's camera points), by day and by night, and each from above by day.
+const EU_LANDMARKS_071 = { fernsehturm: [52.51150, 13.40386, 368, 20], brandenburg: [52.51630, 13.38657, 26, 270], stephansdom: [48.20343, 16.37023, 136.7, 20], donauturm: [48.23320, 16.41083, 252, 0],
+  riesenrad: [48.21935, 16.38894, 64.75, 120], duomo: [45.46070, 9.18550, 108.5, 50], ponte25: [38.68613, -9.19378, 190, 77], cristorei: [38.67321, -9.17134, 110, 0], vascodagama: [38.78731, -9.06857, 150, 213],
+  oresund: [55.56610, 12.81744, 204, 20], torso: [55.60826, 12.97284, 190, 20], poolbeg: [53.33400, -6.18982, 207.8, 0], palaisjustice: [50.83160, 4.34875, 116, 20], lovell: [53.23110, -2.30840, 89, 0],
+  rocket: [43.58314, 1.49843, 53, 315] };
+for (const [k, [la, lo, H, h]] of Object.entries(EU_LANDMARKS_071)) {
+  for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q: near(la, lo, H, h), ms };
+  SHOTS[`eu-landmark-${k}-above-day`] = { q: look(la, lo, 1300, h, -28), ms: EU_DAY };
+}
+SHOTS['eu-landmark-brandenburg-close-day'] = { q: look(52.5163, 13.3822, 450, 270, -14), ms: EU_DAY };   // from over Unter den Linden, 300 m east of the gate (the level view sits on a roof)
+GROUPS['europe-landmarks-071'] = Object.keys(EU_LANDMARKS_071).flatMap((k) => [`eu-landmark-${k}-day`, `eu-landmark-${k}-above-day`]).concat(['fernsehturm', 'ponte25', 'oresund', 'riesenrad', 'poolbeg'].map((k) => `eu-landmark-${k}-night`));
 // The low landmarks from above (in a level view the centre's blocks hide them, as the Sapporo TV Tower was hidden): the
 // camera 1,300 ft over the landmark's ground, looking down at it along its heading.
 for (const k of ['arc', 'colosseum', 'westminster', 'towerbridge', 'notredame', 'stpauls', 'grossmunster', 'primetower', 'sacrecoeur', 'frauenkirche']) {

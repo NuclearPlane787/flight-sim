@@ -2009,3 +2009,399 @@ export function colosseum(brg = -18) {
 export const EUROPE_MODELS = { shard, westminster, eye, stpauls, towerbridge, eiffel, arc, sacrecoeur, notredame, grandearche,
   commerzbank, messeturm, europaturm, cepsa, pwc, cristal, emperador, caleido, kio, grossmunster, primetower,
   olympiaturm, frauenkirche, sagrada, glories, collserola, stpeters, colosseum };
+
+// ================================================================== v0.7.1: Europe's next landmarks (briefs/V0-7-1.md part 5)
+// The same rules: our own massing from public figures, no logos, lettering or names. Added to EUROPE_MODELS below.
+
+const MARBLE = [0.70, 0.67, 0.62], SANDSTONE = [0.66, 0.60, 0.47];
+
+// ------------------------------------------------------------------ Berlin
+
+// The Fernsehturm: 368 m with the antenna. A tapering concrete shaft, the sphere (about 32 m across [EST],
+// the visitor platform at 203 m and the restaurant at 207 m in it), the shaft on above it and the antenna
+// in red and white bands.
+export function fernsehturm() {
+  const b = new Builder(0.21);
+  const C = 212, R = 16;
+  const pod = [];
+  for (let i = 0; i <= 10; i++) { const a = Math.PI * (1 - i / 10); pod.push([C + R * Math.cos(a), Math.max(R * Math.sin(a), 4.6)]); }
+  tvTower(b, { H: 368, r0: 16, r1: 4.8, podY0: C - R, pod, shaftTop: 252, shaftR: 4.2, mastR: 2.2, bands: 9,
+    foot: [[0, 22], [6, 21], [10, 16]] });
+  return b.result();
+}
+
+// The Brandenburg Gate: 26 m to the quadriga's top, about 65 m wide with its wings. Six pairs of columns (two
+// rows, local x across the gate's depth; the gate's width along local n), five passages, the entablature and
+// the stepped attic, the quadriga as one simple block; lower wings at either side.
+export function brandenburg(brg = 0) {
+  const b = new Builder(0.24).frame(0, 0, brg);
+  const stone = PLAIN(SANDSTONE, 0.05, { glow: flood(1.0) });
+  b.set(stone);
+  box(b, 0, 0, 0, 1.2, 6.5, 21);                         // the plinth
+  const cols = [-17.5, -10.5, -3.5, 3.5, 10.5, 17.5];
+  for (const n of cols) for (const x of [-4.2, 4.2]) cyl(b, x, n, 1.2, 14.5, 0.95, 0.85, 8);
+  for (const s of [-1, 1]) box(b, 0, s * 19.5, 1.2, 14.5, 4.6, 1.2);   // the end walls
+  box(b, 0, 0, 14.5, 19.0, 5.6, 21);                     // the entablature
+  box(b, 0, 0, 19.0, 21.0, 4.8, 13);                     // the attic's step
+  // the quadriga: four horses and the chariot as one block, the figure over it
+  b.set(PLAIN([0.22, 0.36, 0.30], 0.35, { glow: flood(0.7) }));
+  box(b, 0, 0, 21.0, 23.6, 2.6, 3.4);
+  cyl(b, 0.8, 0, 23.6, 26, 0.6, 0.3, 6);
+  // the wings: lower colonnaded buildings stepping back to the full width
+  b.set(stone);
+  for (const s of [-1, 1]) {
+    box(b, -4, s * 27, 0, 10.5, 6.5, 5.75);
+    b.set(PLAIN(SLATE, 0.15)); gable(b, -4, s * 27, 10.5, 12.5, 6.5, 5.75, true); b.set(stone);
+  }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Vienna
+
+// St Stephen's Cathedral: the south tower 136.7 m, the church 107 m long (local x, east) and 70 m wide with
+// its towers. The hall-church's walls, the long steep tiled roof (its ridge [EST] at 62 m), the narrower
+// choir, the unfinished north tower (68 m [EST]) and the two west towers (65 m [EST]).
+export function stephansdom(brg = 0) {
+  const b = new Builder(0.31).frame(0, 0, brg);
+  const stone = GLASS([0.60, 0.56, 0.46], 8.0, 5.0, 0.0, 0.1, { glow: flood(0.9) });
+  b.set(stone);
+  box(b, -16, 0, 0, 25, 33, 19);                        // the nave
+  box(b, 32, 0, 0, 23, 15, 15);                         // the choir
+  b.set(PLAIN([0.52, 0.36, 0.20], 0.15, { glow: flood(0.4) }));     // the tiled roof
+  gable(b, -16, 0, 25, 62, 33, 19, true);
+  b.loft([at(shift([[15, -15], [15, 15], [-15, 15], [-15, -15]], 32, 0), 23), at(shift([[13, -0.3], [13, 0.3], [-15, 0.3], [-15, -0.3]], 32, 0), 56)]);
+  b.set(stone);
+  profile(b, 40, 0, [[0, 13], [23, 13]], 8, false);      // the apse
+  // the south tower: square, then stepping in, then the spire
+  const TX = -6, TN = -26;
+  box(b, TX, TN, 0, 50, 7.5, 7.5);
+  b.loft([at(shift(chamferRect(7.5, 7.5, 1.5), TX, TN), 50), at(shift(chamferRect(5.5, 5.5, 1.6), TX, TN), 80), at(shift(chamferRect(3.6, 3.6, 1.2), TX, TN), 105)], { capTop: false });
+  spire(b, TX, TN, 105, 136.7, 3.6, 8);
+  // the north tower, unfinished, with its cap
+  box(b, TX, 26, 0, 61, 7.5, 7.5);
+  b.set(PLAIN(COPPER, 0.3)); profile(b, TX, 26, [[61, 6.5], [64, 5.5], [66, 2.5], [68, 0.3]], 8); b.set(stone);
+  // the west front's two towers
+  for (const s of [-1, 1]) { box(b, -51, s * 11, 0, 50, 2.8, 2.8); spire(b, -51, s * 11, 50, 65, 2.8, 8); }
+  return b.result();
+}
+
+// The Donauturm: 252 m to the antenna, the viewing platform at 150 m and the two revolving restaurants at
+// 161 m and 169 m. A slender shaft, the pod, the steel mast; the base's pavilion [EST].
+export function donauturm() {
+  const b = new Builder(0.34);
+  tvTower(b, { H: 252, r0: 5.5, r1: 4.2, podY0: 146, pod: [[146, 4.2], [150, 9], [153, 13.5], [158, 15.5], [172, 15.5], [175, 12], [178, 5]],
+    shaftTop: 186, shaftR: 3.2, mastR: 1.6, bands: 6, foot: [[0, 15], [5, 14], [7, 6], [12, 5.5]] });
+  return b.result();
+}
+
+// The Riesenrad (the Prater's giant wheel): 64.75 m. The wheel about 61 m across [EST] in the local n-y plane,
+// two rims tied by spokes, carried on two lattice trestles, and 15 cabins.
+export function riesenrad(brg = 0) {
+  const b = new Builder(0.36).frame(0, 0, brg);
+  const R = 30.2, HUB = 64.75 - R - 0.3, K = 30;
+  const P = (x, r, t) => [x, HUB + r * Math.sin(t), r * Math.cos(t)];
+  b.set(PLAIN([0.36, 0.33, 0.28], 0.25, { glow: [0.30, 0.22, 0.10] }));
+  for (const x of [-3, 3]) for (let i = 0; i < K; i++) {
+    const t0 = (i / K) * TAU, t1 = ((i + 1) / K) * TAU;
+    b.member(P(x, R, t0), P(x, R, t1), 0.55, 3);
+    if (i % 2 === 0) b.member([x * 0.6, HUB, 0], P(x, R, t0), 0.12, 3);
+  }
+  b.member([-5, HUB, 0], [5, HUB, 0], 1.2, 6);
+  // the trestles: two legs a side, out to the ground
+  for (const x of [-6, 6]) for (const s of [-1, 1]) b.member([x * 1.4, 0, s * 14], [x, HUB, 0], 0.7, 4);
+  b.set(PLAIN([0.55, 0.10, 0.07], 0.25, { glow: [0.35, 0.20, 0.10] }));
+  for (let i = 0; i < 15; i++) {
+    const t = ((i + 0.25) / 15) * TAU, y = HUB + (R - 1.5) * Math.sin(t), n = (R - 1.5) * Math.cos(t);
+    box(b, 0, n, y - 3.6, y - 0.6, 1.4, 2.6, 0, { capBottom: true });
+  }
+  b.light([0, 64.75, 0], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Milan
+
+// The Duomo: 108.5 m to the Madonnina, 158.6 m long (local x, east to the apse) and 92 m across the
+// transepts. Five aisles as a broad block under the raised nave, the facade's gable, the transepts, the
+// rounded apse, rows of pinnacles along the roofs (a few for the forest), the crossing's octagon and its
+// spire with the gilded statue on top. White marble, floodlit at night.
+export function duomo(brg = 0) {
+  const b = new Builder(0.41).frame(0, 0, brg);
+  const marble = GLASS(MARBLE, 9.0, 4.5, 0.0, 0.1, { glow: flood(1.0) });
+  const XC = 26;                                        // the crossing
+  b.set(marble);
+  box(b, -22, 0, 0, 30, 57, 29);                        // the aisles
+  box(b, -22, 0, 30, 45, 57, 11);                       // the raised nave
+  box(b, XC, 0, 0, 40, 15, 46);                         // the transepts
+  box(b, 54, 0, 0, 40, 13, 20);                         // the choir
+  profile(b, 59, 0, [[0, 20], [40, 20]], 10, false);    // the apse
+  b.loft([at([[0.5, -29], [0.5, 29], [-0.5, 29], [-0.5, -29]].map(([x, n]) => [x - 79.3, n]), 0),
+    at([[0.5, -29], [0.5, 29], [-0.5, 29], [-0.5, -29]].map(([x, n]) => [x - 79.3, n]), 36),
+    at([[0.5, -6], [0.5, 6], [-0.5, 6], [-0.5, -6]].map(([x, n]) => [x - 79.3, n]), 56)]);     // the facade's gable
+  b.set(PLAIN([0.66, 0.64, 0.60], 0.1, { glow: flood(0.6) }));
+  gable(b, -22, 0, 45, 50, 57, 11, true);
+  // the pinnacles: rows along the aisles' and the nave's edges, and the transepts' ends
+  for (let k = 0; k < 9; k++) {
+    const x = -76 + k * 13.5;
+    for (const n of [-28, 28]) spire(b, x, n, 30, 42, 1.0, 4);
+    for (const n of [-11, 11]) spire(b, x, n, 45, 55, 0.9, 4);
+  }
+  for (const n of [-45, 45]) for (const x of [XC - 13, XC, XC + 13]) spire(b, x, n, 40, 52, 1.0, 4);
+  for (const n of [-28, 28, -14, 14]) spire(b, -79, n, 36, 50, 1.1, 4);
+  // the crossing's octagon, its spire and the statue
+  b.set(marble);
+  cyl(b, XC, 0, 40, 66, 10, 9, 8);
+  b.loft([at(shift(circle(9, 8), XC, 0), 66), at(shift(circle(5, 8), XC, 0), 82), at(shift(circle(1.6, 8), XC, 0), 104)]);
+  b.set(PLAIN([0.80, 0.62, 0.28], 0.8, { glow: flood(1.4) }));
+  cyl(b, XC, 0, 104, 108.5, 0.9, 0.3, 6);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Lisbon
+
+// The 25 de Abril Bridge: a suspension bridge, the main span 1,013 m (local n along the bridge, the base at
+// the river, y 0), the towers 190 m, the side spans to the anchorages [EST: 483 m], the deck (a truss for the
+// road over the railway) about 70 m clear [EST]. Painted red; the hangers a handful of thin lines.
+export function ponte25(brg = 167, geo = {}) {
+  void geo;
+  const b = new Builder(0.43).frame(0, 0, brg);
+  const S = 506.45, A = 989.85, END = 1000, H = 190, DECK = 70, D = 8, HW = 12.5, TX = 14;
+  const red = PLAIN([0.56, 0.11, 0.06], 0.3, { glow: [0.22, 0.07, 0.04] });
+  b.set(red);
+  box(b, 0, 0, DECK, DECK + D, HW, END, 0, { capBottom: true });
+  // the towers: two legs each, three cross beams, on their piers
+  for (const n of [-S, S]) {
+    b.set(PLAIN(CONCRETE, 0.1)); box(b, 0, n, 0, 12, TX + 8, 10); b.set(red);
+    for (const sx of [-1, 1]) b.loft([at(shift(chamferRect(4, 5, 1), sx * TX, n), 12), at(shift(chamferRect(3, 4, 0.8), sx * TX, n), H)]);
+    for (const y of [60, 130, H - 6]) box(b, 0, n, y, y + 5, TX - 2, 2.5, 0, { capBottom: true });
+    for (const sx of [-1, 1]) b.light([sx * TX, H, n], 1);
+    for (const sx of [-1, 1]) b.light([sx * (TX + 3.5), 130, n], 0);
+  }
+  // the main cables and hangers
+  const top = H - 2, low = DECK + D + 3;
+  const cy = (n) => {
+    const a = Math.abs(n);
+    if (a <= S) return low + (top - low) * (a / S) ** 2;
+    const t = (a - S) / (A - S);
+    return lerp(top, DECK + D, t) - 10 * Math.sin(Math.PI * t);
+  };
+  b.set(PLAIN([0.50, 0.10, 0.06], 0.35));
+  const ns = [];
+  for (let k = 0; k <= 16; k++) ns.push(lerp(-S, S, k / 16));
+  for (let k = 1; k <= 6; k++) { ns.push(S + (A - S) * k / 6); ns.push(-S - (A - S) * k / 6); }
+  ns.sort((p, q) => p - q);
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i + 1 < ns.length; i++) b.member([sx * TX, cy(ns[i]), ns[i]], [sx * TX, cy(ns[i + 1]), ns[i + 1]], 0.7, 3);
+    for (const n of ns) if (Math.abs(Math.abs(n) - S) > 1 && Math.abs(n) < A - 1 && cy(n) - DECK - D > 2) b.member([sx * TX, cy(n), n], [sx * TX, DECK + D, n], 0.25, 3);
+  }
+  // the anchorages, down to the ground
+  b.set(PLAIN(CONCRETE, 0.1));
+  for (const s of [-1, 1]) box(b, 0, s * (A - 2), 0, DECK + D + 2, 18, 12);
+  for (const n of [-S / 2, S / 2]) b.light([0, cy(n) + 1, n], 0);
+  return b.result();
+}
+
+// Christ the King (Almada): 110 m with its pedestal, on the south bank's clifftop. The pedestal 82 m: a
+// trapezoidal frame of four arches facing the compass points with a flat platform; the figure 28 m with
+// its arms out towards the city (local north). Floodlit at night.
+export function cristorei(brg = 0) {
+  const b = new Builder(0.45).frame(0, 0, brg);
+  const stone = PLAIN([0.70, 0.68, 0.63], 0.05, { glow: flood(1.1) });
+  b.set(stone);
+  // the four legs, leaning in from the base's corners to the platform
+  for (const [sx, sn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    b.loft([at(shift([[3.5, -3.5], [3.5, 3.5], [-3.5, 3.5], [-3.5, -3.5]], sx * 15, sn * 15), 0), at(shift([[2.8, -2.8], [2.8, 2.8], [-2.8, 2.8], [-2.8, -2.8]], sx * 7.5, sn * 7.5), 66)], { capTop: false });
+  }
+  box(b, 0, 0, 0, 14, 9, 9);                             // the chapel
+  box(b, 0, 0, 66, 79.3, 10.5, 10.5);                    // the arches' heads and the terrace
+  box(b, 0, 0, 79.3, 82, 4.5, 4.5);                      // the figure's plinth
+  // the figure: the robe tapering up, the arms out, the head
+  b.loft([at(superellipse(3.6, 2.6, 2.4, 12), 82), at(superellipse(2.6, 2.0, 2.4, 12), 100), at(superellipse(2.4, 1.6, 2.4, 12), 104)]);
+  box(b, 0, 0.3, 101, 104, 13.5, 1.3);
+  cyl(b, 0, 0.4, 104, 108.6, 1.3, 1.1, 8);
+  domeAt(b, 0, 0.4, 108.6, 1.1, 1.4, 8, 2);
+  b.light([0, 110, 0.4], 0);
+  return b.result();
+}
+
+// The Vasco da Gama Bridge: about 12.2 km over the Tagus estuary (the north viaduct 488 m, the Expo viaduct
+// 672 m, the cable-stayed main bridge 829 m, its main span 420 m, its pylons 150 m, 45 m clear at high tide,
+// then the central viaduct 6,351 m at 14 to 30 m and the south viaduct 3,825 m). Built on East Asia's cable-
+// stayed helper: the deck coming down from the main span to the ground at each end; the viaduct's piers drawn
+// every 312 m (every fourth of the real 78 m sections), the stays a few per pylon.
+export function vascodagama(brg = 123, geo = {}) {
+  const b = new Builder(0.47).frame(0, 0, brg);
+  const g = { s: 210, n0: -1574.5, n1: 10590.5, h0: 3, h1: 3, ...geo };
+  const H = 150, LEG = 17;
+  cableStayed(b, {
+    ...g, clear: 45, half: 15, back: 190, piers: 312,
+    pylon: (bb, n) => {
+      bb.set(PLAIN([0.64, 0.64, 0.62], 0.12, { glow: [0.18, 0.18, 0.20] }));
+      for (const sx of [-1, 1]) bb.loft([at(shift(chamferRect(3.2, 4.5, 1), sx * LEG, n), 0), at(shift(chamferRect(2.2, 3.2, 0.8), sx * LEG, n), H)]);
+      bb.member([-LEG, 40, n], [LEG, 40, n], 2.4, 4);
+      bb.member([-LEG, H - 8, n], [LEG, H - 8, n], 1.8, 4);
+      for (const sx of [-1, 1]) bb.light([sx * LEG, H, n], 1);
+      for (const sx of [-1, 1]) bb.light([sx * (LEG + 3), 100, n], 0);
+    },
+    anchors: () => { const out = []; for (let k = 0; k < 6; k++) { const y = lerp(80, H - 12, k / 5); out.push([-LEG, y], [LEG, y]); } return out; },
+  });
+  return b.result();
+}
+
+// ------------------------------------------------------------------ the Øresund and Malmö
+
+// The Øresund Bridge: 7,845 m from Peberholm to Lernacken, the cable-stayed main span 490 m between two pairs
+// of free-standing pylons 204 m tall, 57 m clear, the approaches' girder on piers every 140 m. On East Asia's
+// cable-stayed helper (the deck down to the ground at each end); the stays in two harp-like planes, a few each.
+export function oresund(brg = 103, geo = {}) {
+  const b = new Builder(0.49).frame(0, 0, brg);
+  const g = { s: 245, n0: -3560, n1: 4285, h0: 3, h1: 3, ...geo };
+  const H = 204, PX = 16;
+  cableStayed(b, {
+    ...g, clear: 57, half: 12, back: 300, piers: 140,
+    pylon: (bb, n) => {
+      bb.set(PLAIN([0.62, 0.62, 0.60], 0.12, { glow: [0.18, 0.18, 0.21] }));
+      for (const sx of [-1, 1]) bb.loft([at(shift(chamferRect(3.5, 4.5, 1), sx * PX, n), 0), at(shift(chamferRect(2.4, 3.2, 0.8), sx * PX, n), H)]);
+      bb.member([-PX, 50, n], [PX, 50, n], 2.5, 4);         // the beam under the deck
+      for (const sx of [-1, 1]) bb.light([sx * PX, H, n], 1);
+      for (const sx of [-1, 1]) bb.light([sx * (PX + 3.5), 130, n], 0);
+    },
+    anchors: () => { const out = []; for (let k = 0; k < 7; k++) { const y = lerp(95, H - 8, k / 6); out.push([-PX, y], [PX, y]); } return out; },
+  });
+  return b.result();
+}
+
+// The Turning Torso (Malmö): 190 m, 54 floors in nine segments of five floors (pentagonal plans round a core),
+// each turned against the one below, the top one 90 degrees from the bottom; the core shows between them. The
+// plan's size [EST]: about 25 m across.
+export function torso(brg = 0) {
+  const b = new Builder(0.51).frame(0, 0, brg);
+  const H = 190, SEG = 19.6, STEP = (H - 2.4 - SEG) / 8;
+  const pent = (a) => rotRing([[12.5, -9.5], [12.5, 6], [3.5, 12.5], [-9, 12.5], [-9, -9.5]].map(([x, n]) => [x - 1.5, n - 0.5]), a);
+  b.set(PLAIN([0.58, 0.58, 0.58], 0.15));
+  cyl(b, 0, 0, 0, H - 2.4, 5.3, 5.3, 12);
+  b.set(GLASS([0.62, 0.63, 0.64], 3.6, 2.4, 0.55, 0.3, { glow: [0.12, 0.12, 0.13] }));
+  for (let i = 0; i < 9; i++) {
+    const y0 = i * STEP, a = (i / 8) * (Math.PI / 2);
+    b.loft([at(pent(a), y0), at(pent(a), y0 + SEG)], { capBottom: i > 0 });
+  }
+  b.set(PLAIN([0.70, 0.70, 0.70], 0.3));
+  cyl(b, 0, 0, H - 2.4, H, 3, 2, 8);
+  b.light([0, H, 0], 1);
+  for (let i = 3; i < 9; i += 3) { const ring = pent((i / 8) * (Math.PI / 2)); ringLights(b, [ring[0], ring[3]], i * STEP + SEG, 0); }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Dublin
+
+// The Poolbeg chimneys: two, 207.48 m and 207.8 m, banded red and white, about 75 m apart [EST] along
+// local x; their taper [EST]. Aviation lights at the tops and part way up.
+export function poolbeg(brg = 0) {
+  const b = new Builder(0.53).frame(0, 0, brg);
+  const red = PLAIN([0.58, 0.10, 0.06], 0.15), white = PLAIN([0.66, 0.66, 0.64], 0.15);
+  for (const [x, H] of [[-37.5, 207.48], [37.5, 207.8]]) {
+    const BANDS = 8;
+    for (let k = 0; k < BANDS; k++) {
+      const y0 = (k / BANDS) * H, y1 = ((k + 1) / BANDS) * H;
+      b.set(k % 2 ? white : red);
+      cyl(b, x, 0, y0, y1, lerp(9, 4.6, k / BANDS), lerp(9, 4.6, (k + 1) / BANDS), 16, { capTop: k === BANDS - 1 });
+    }
+    b.light([x, H, 0], 1);
+    for (const y of [H * 0.66, H * 0.33]) ringLights(b, circle(lerp(9, 4.6, y / H) + 0.3, 3).map(([px, pn]) => [px + x, pn]), y, 0);
+  }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Brussels
+
+// The Palace of Justice: 116 m (the article; about 104 m to the dome's own top), the block 160 x 150 m. The
+// massive base, the raised central block with its porticoes, the drum and the dome, the lantern and crown.
+export function palaisjustice(brg = 0) {
+  const b = new Builder(0.55).frame(0, 0, brg);
+  const stone = GLASS([0.58, 0.55, 0.49], 9.0, 6.0, 0.0, 0.1, { glow: flood(0.8) });
+  b.set(stone);
+  box(b, 0, 0, 0, 34, 80, 75);
+  for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) box(b, dx * 66, dn * 61, 34, 42, 14, 14);   // the corner pavilions
+  box(b, 0, 0, 34, 58, 34, 34);                         // the central block
+  box(b, 0, -40, 34, 52, 16, 6);                        // the main portico
+  b.set(PLAIN(SLATE, 0.2)); gable(b, 0, -40, 52, 57, 16, 6, true); b.set(stone);
+  cyl(b, 0, 0, 58, 72, 22, 22, 20);                     // the colonnaded drum
+  cyl(b, 0, 0, 72, 80, 18, 18, 20);
+  b.set(PLAIN([0.34, 0.36, 0.33], 0.4, { glow: flood(0.7) }));
+  profile(b, 0, 0, [[80, 18], [88, 16.8], [95, 13], [100, 8], [104, 3.5]], 20);
+  b.set(stone);
+  cyl(b, 0, 0, 104, 110, 3.2, 2.8, 8);
+  b.set(PLAIN([0.70, 0.58, 0.30], 0.7, { glow: flood(1.2) }));
+  cyl(b, 0, 0, 110, 116, 2.4, 0.3, 8);
+  b.light([0, 116, 0], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Jodrell Bank
+
+// The Lovell Telescope: the bowl 76.2 m across, the elevation axis 50.5 m up, 89.0 m at most above the ground,
+// the wheel girders' radius 38.5 m. Two towers on the turntable's rails carry the bowl between them on its
+// axis (local x); the bowl tilted 20 degrees above the horizon, facing local north [EST: its pose]; the
+// bowl's depth [EST: f/D about 0.3], the feed mast to the focus.
+export function lovell(brg = 180) {
+  const b = new Builder(0.57).frame(0, 0, brg);
+  const AX = 50.5, R = 38.1, EL = 20 * DEG, DEPTH = 15.8, WA = -7.8, TW = 43;
+  const ce = Math.cos(EL), se = Math.sin(EL);
+  // dish coordinates (u across, v up the dish, w along the boresight; w 0 the rim's plane) -> local
+  const Q = (u, v, w) => { const ww = w - WA; return [u, AX + v * ce + ww * se, -v * se + ww * ce]; };
+  const steel = PLAIN([0.66, 0.67, 0.66], 0.35, { glow: [0.10, 0.10, 0.11] });
+  b.set(steel);
+  // the bowl: rings of the paraboloid w = DEPTH ((r/R)^2 - 1), the inside facing the sky
+  const K = 20, RINGS = [0.08, 0.35, 0.6, 0.82, 1];
+  const ringAt = (s) => Array.from({ length: K }, (_, i) => { const t = (i / K) * TAU, r = s * R; return Q(r * Math.cos(t), r * Math.sin(t), DEPTH * (s * s - 1)); });
+  const rings = RINGS.map(ringAt);
+  const back = Q(0, 0, -DEPTH - 30);
+  for (let j = 0; j + 1 < rings.length; j++) for (let i = 0; i < K; i++) {
+    const i1 = (i + 1) % K, A0 = b.T(rings[j][i]), A1 = b.T(rings[j][i1]), B1 = b.T(rings[j + 1][i1]), B0 = b.T(rings[j + 1][i]);
+    const ins = b.T(back);
+    b.tri(A0, A1, B1, ins); b.tri(A0, B1, B0, ins);
+  }
+  // the back of the bowl: the same surface seen from behind (a second skin a metre under)
+  b.set(PLAIN([0.48, 0.49, 0.48], 0.2));
+  const ringsB = RINGS.map((s) => Array.from({ length: K }, (_, i) => { const t = (i / K) * TAU, r = s * R; return Q(r * Math.cos(t), r * Math.sin(t), DEPTH * (s * s - 1) - 1); }));
+  const front = Q(0, 0, 40);
+  for (let j = 0; j + 1 < ringsB.length; j++) for (let i = 0; i < K; i++) {
+    const i1 = (i + 1) % K, A0 = b.T(ringsB[j][i]), A1 = b.T(ringsB[j][i1]), B1 = b.T(ringsB[j + 1][i1]), B0 = b.T(ringsB[j + 1][i]);
+    b.tri(A0, A1, B1, b.T(front)); b.tri(A0, B1, B0, b.T(front));
+  }
+  b.set(steel);
+  // the rim, the elevation axis's trunnions, and the feed mast to the focus
+  for (let i = 0; i < K; i++) b.member(rings[4][i], rings[4][(i + 1) % K], 0.45, 3);
+  b.member([-TW, AX, 0], [-R - 1, AX, Q(0, 0, WA)[2]], 1.4, 6);
+  b.member([TW, AX, 0], [R + 1, AX, Q(0, 0, WA)[2]], 1.4, 6);
+  b.member(Q(0, 0, -DEPTH), Q(0, 0, 7.1), 0.6, 4);
+  // the towers: two tapering lattice frames a side, on the turntable's bogies
+  for (const sx of [-1, 1]) {
+    for (const sn of [-1, 1]) b.member([sx * TW, 0, sn * 24], [sx * TW, AX + 2, 0], 1.2, 4);
+    b.member([sx * TW, 0, -24], [sx * TW, 0, 24], 1.5, 4);
+    b.member([sx * TW, 20, -15], [sx * TW, 20, 15], 0.8, 4);
+    b.member([sx * TW, 0, -24], [sx * TW, 20, 15], 0.6, 4);
+    b.member([sx * TW, 0, 24], [sx * TW, 20, -15], 0.6, 4);
+  }
+  // the track's two cross girders between the towers' feet
+  for (const sn of [-1, 1]) b.member([-TW, 1, sn * 24], [TW, 1, sn * 24], 1.0, 4);
+  b.light(Q(0, R + 0.5, 0), 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Toulouse
+
+// The rocket at the Cité de l'espace: a full-size launcher on its pad, about 53 m [the article: 55 m]. A plain
+// white core (5.4 m across) with its fairing, two boosters (3 m across, 31 m [EST]) at its sides; no markings.
+export function rocket(brg = 0) {
+  const b = new Builder(0.59).frame(0, 0, brg);
+  b.set(PLAIN([0.46, 0.46, 0.45], 0.1));
+  box(b, 0, 0, 0, 2.5, 9, 6);                            // the pad
+  b.set(PLAIN([0.74, 0.74, 0.72], 0.3, { glow: [0.30, 0.30, 0.32] }));
+  profile(b, 0, 0, [[2.5, 2.7], [33, 2.7], [34, 2.6], [40, 2.6], [41, 2.7], [46, 2.7], [49.5, 2.2], [51.8, 1.2], [53, 0.2]], 16);
+  for (const sx of [-1, 1]) profile(b, sx * 4.6, 0, [[1.5, 1.6], [2.5, 1.5], [29, 1.5], [31.5, 0.8], [33, 0.2]], 12);
+  b.light([0, 53, 0], 0);
+  return b.result();
+}
+
+Object.assign(EUROPE_MODELS, { fernsehturm, brandenburg, stephansdom, donauturm, riesenrad, duomo, ponte25, cristorei, vascodagama,
+  oresund, torso, poolbeg, palaisjustice, lovell, rocket });

@@ -11,7 +11,8 @@ import * as THREE from '../../vendor/three.module.js';
 import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { dataUrl } from './regions.js';   // v0.7.0: the fine cover from the page's region's folder
 import { FINE_GLSL, createFineCover, setFineOrigin } from './finecover.js';
-import { GROUND_GLSL } from './ground.js';
+import { GROUND_GLSL, euGroundGlsl } from './ground.js';
+import { REGION } from './regions.js';   // v0.7.1: Europe's fields (ground.js's euGroundGlsl())
 
 export const GRID = 128;          // quads per ring side
 export const LEVELS = 13;         // steps 2 m .. 8192 m; the outer ring reaches ~520 km
@@ -105,7 +106,7 @@ export function createTerrain(scene, uniforms, chunks) {
       ${chunks.ATMOS_GLSL}
       ${chunks.WATER_GLSL}
       ${chunks.FIELDS_GLSL}
-      ${GROUND ? FINE_GLSL + GROUND_GLSL : ''}
+      ${GROUND ? FINE_GLSL + (REGION.id === 'europe' ? euGroundGlsl(GROUND_GLSL) : GROUND_GLSL) : ''}
       ${chunks.AIRCRAFT_LIGHTS_GLSL || 'vec3 aircraftLights(vec3 p, vec3 n) { return vec3(0.0); }'}
       varying vec2 vMap;
       varying vec3 vRel;
@@ -192,7 +193,7 @@ export function createTerrain(scene, uniforms, chunks) {
         canopy *= 0.75 + 0.5 * mix(0.5, tex3 * 0.6 + tex2 * 0.4, near + detailFade * 0.5);
         // Fields and paddies (paddies on flat, low valley floors).
         float paddy = (1.0 - smoothstep(0.015, 0.04, slope)) * (1.0 - smoothstep(120.0, 350.0, vRawH));
-        ${GROUND ? 'float treeLine;\n        vec3 fields = fieldMosaic(gfp, paddy, m, glod, slope, vRawH, treeLine);' : 'vec3 fields = fieldColor(m, paddy, detailFade);'}
+        ${GROUND ? 'float treeLine;\n        vec3 fields = fieldMosaic(gfp, paddy, m, glod, slope, vRawH, treeLine);' : 'vec3 fields = fieldColor(m, paddy, detailFade);'}${REGION.id === 'europe' ? '\n        // v0.7.1, Europe: the dry country\'s grass is straw, not green (ground.js\'s euZone(); East Asia\'s text has none of this).\n        float euGz = 0.0, euDz = 0.0;\n        euZone(m, euGz, euDz);\n        grass = mix(grass, vec3(0.150, 0.132, 0.075) * (0.80 + 0.4 * tex1), euDz * 0.8);' : ''}
         // Built-up ground: concrete and asphalt with a street grid.
         vec3 city = mix(vec3(0.085, 0.085, 0.083), vec3(0.14, 0.135, 0.125), tex2);
         city = mix(city, canopy * 1.2, 0.35 * smoothstep(0.45, 0.75, vnoise(m * 0.02 + 9.0)));   // parks and street trees
@@ -209,7 +210,7 @@ export function createTerrain(scene, uniforms, chunks) {
         float rough = fineW * smoothstep(0.45, 0.65, fHi.x + wob * 0.3);
         if (rough > 0.0) {
           float clump = smoothstep(0.50, 0.68, vnoise(m * 0.028 + 3.0)) * 0.55 + smoothstep(0.62, 0.74, vnoise(m * 0.11 + 11.0)) * 0.35;
-          vec3 sward = mix(vec3(0.105, 0.105, 0.052), vec3(0.085, 0.10, 0.045), vnoise(m * 0.006 + 1.0));
+          vec3 sward = mix(vec3(0.105, 0.105, 0.052), vec3(0.085, 0.10, 0.045), vnoise(m * 0.006 + 1.0));${REGION.id === 'europe' ? '\n          sward = mix(sward, vec3(0.165, 0.145, 0.082), euDz * 0.8);' : ''}
           alb = mix(alb, mix(sward, canopy * 1.25, clump), rough * 0.85);
         }
         alb = mix(alb, canopy * 0.9, treeLine * farm);                       // the tree lines between districts

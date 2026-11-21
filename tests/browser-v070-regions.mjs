@@ -21,7 +21,7 @@ const ROOT = process.env.E2E_ROOT || 'http://127.0.0.1:8014/';
 const BASE = process.env.E2E_BASE || ROOT + 'base/';
 const PEND = process.env.E2E_PENDING === '1' ? '&pending=1' : '';
 const GAME = ROOT + 'games/flight-sim/';
-const shot = (n) => path.join(OUT, `v070-${n}.png`);
+const shot = (n) => path.join(OUT, `${process.env.E2E_PREFIX || 'v070'}-${n}.png`);   // (v0.7.1: E2E_PREFIX names a later version's pictures; v0.7.1's own run overwrote v0.7.0's and copied them to v071-*)
 const results = [];
 const check = (name, ok, detail = '') => { results.push(!!ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 
@@ -51,7 +51,7 @@ try {
       const p = f.sim.state.pos;
       return { ok: r.ok, id: r.id, pos: [p.x, p.y, p.z], t: f.sim.state.t, version: document.querySelector('[data-version]').textContent, hasRegion: 'region' in (f.scenarios.entry(r.id) || {}) };
     });
-    check('a scenario saved by the pushed build', oldSave.ok && /v0\.6\.4/.test(oldSave.version), `${oldSave.version}; at ${oldSave.pos.map((v) => v.toFixed(1)).join(', ')}`);
+    check('a scenario saved by the pushed build', oldSave.ok && /v0\.6\.4|v0\.7\.0/.test(oldSave.version), `${oldSave.version}; at ${oldSave.pos.map((v) => v.toFixed(1)).join(', ')}`);
     await page.close();
 
     const now = await ctx.newPage(); watch(now);

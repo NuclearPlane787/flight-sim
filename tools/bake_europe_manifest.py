@@ -39,6 +39,9 @@ try:
 finally:
     os.makedirs = _makedirs
 
+INSTALLED = os.path.join(bc.DATA, 'europe')            # data/europe (read only)
+R0, R1 = os.path.join(INSTALLED, 'terrain', 'r0'), os.path.join(INSTALLED, 'terrain', 'r1')
+MERGED = os.path.join(rt.WORK, 'merged')
 REGION_FILES = ['coast-region.json', 'urban-region.json', 'country.json', 'country.u8.gz', 'magvar.json', 'magvar.i16.gz']
 
 
@@ -53,9 +56,13 @@ def build():
     tjs = [int(s.split('_')[1]) for s in covered0]
     ext0 = dict(i0=min(tis) * 512, j0=min(tjs) * 512, i1=(max(tis) + 1) * 512, j1=(max(tjs) + 1) * 512)
     tiles0 = [t for t in files_in(os.path.join(st, 'l0')) if t in set(covered0)]
+    if bc.EU_BATCH != 'A':   # v0.7.1: a later batch's staging holds only its new and changed tiles
+        tiles0 = sorted(set(tiles0) | set(t for t in files_in(R0) if t in set(covered0)))
     i0, j0, i1, j1 = brl.extent()
     covered1 = [f'{a}_{b}' for a, b in brl.all_tiles()]
     tiles1 = sorted(files_in(os.path.join(st, 'l1')))
+    if bc.EU_BATCH != 'A':
+        tiles1 = sorted(set(tiles1) | set(files_in(R1)))
     lev0 = dict(id='l0', cell=250, tile=512, border=2, dir='terrain/r0/', extent=ext0, tiles=tiles0, covered=covered0)
     lev1 = dict(id='l1', cell=1000, tile=512, border=2, dir='terrain/r1/', extent=dict(i0=i0, j0=j0, i1=i1, j1=j1),
                 tiles=tiles1, covered=sorted(covered1))
@@ -103,13 +110,75 @@ def install(dest):
     print(f'install tree {dest}: {n} files, {total / 1e6:.2f} MB; biggest {big[1]} {big[0] / 1e6:.2f} MB; sha256 list {out}')
 
 
+def merge():
+    """v0.7.1: rt.WORK/merged/{l0,l1}: copies (never links) of every tile file, this batch's staged one where
+    it has one, else data/europe's: the whole region as it will be after the install, for the checks."""
+    for lv, inst in (('l0', R0), ('l1', R1)):
+        d = os.path.join(MERGED, lv)
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        os.makedirs(d)
+        n = m = 0
+        for fn in sorted(os.listdir(inst)):
+            if fn.endswith('.gz'):
+                shutil.copy2(os.path.join(inst, fn), os.path.join(d, fn)); n += 1
+        s = os.path.join(rt.STAGE, lv)
+        for fn in sorted(os.listdir(s)) if os.path.isdir(s) else []:
+            if fn.endswith('.gz'):
+                shutil.copy2(os.path.join(s, fn), os.path.join(d, fn)); m += 1
+        print(f'merged {lv}: {n} installed files, {m} staged over them')
+
+
+def install_delta(dest):
+    """v0.7.1: DIR holds only what is new or changed against data/europe, plus the whole manifest.json and
+    terrain/fine/fine.json; writes DIR/../europe.sha256 and DIR/../changed-old.txt."""
+    st = rt.STAGE
+    if os.path.isdir(dest):
+        shutil.rmtree(dest)
+    pairs = []   # (staged source, path relative to data/europe)
+    for sub, src in (('terrain/r0', 'l0'), ('terrain/r1', 'l1'), ('terrain/fine', 'fine')):
+        s = os.path.join(st, src)
+        for fn in sorted(os.listdir(s)) if os.path.isdir(s) else []:
+            if fn.endswith('.gz') or fn == 'fine.json':
+                pairs.append((os.path.join(s, fn), f'{sub}/{fn}'))
+    pairs.append((os.path.join(st, 'manifest.json'), 'manifest.json'))
+    for fn in REGION_FILES:
+        if os.path.exists(os.path.join(st, fn)):
+            pairs.append((os.path.join(st, fn), fn))
+    sha = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
+    lines, changed, total, big = [], [], 0, (0, '')
+    for src, rel in pairs:
+        old = os.path.join(INSTALLED, rel)
+        always = rel in ('manifest.json', 'terrain/fine/fine.json')
+        if os.path.exists(old) and sha(old) == sha(src) and not always:
+            continue
+        if os.path.exists(old):
+            changed.append(rel)
+        p = os.path.join(dest, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        shutil.copy2(src, p)
+        sz = os.path.getsize(p); total += sz; big = max(big, (sz, rel))
+        lines.append(f'{sha(p)}  {rel}')
+    out = os.path.join(os.path.dirname(dest.rstrip('/')), 'europe.sha256')
+    with open(out, 'w') as f:
+        f.write('\n'.join(sorted(lines, key=lambda s: s[66:])) + '\n')
+    with open(os.path.join(os.path.dirname(dest.rstrip('/')), 'changed-old.txt'), 'w') as f:
+        f.write('\n'.join(changed) + '\n')
+    print(f'install tree {dest}: {len(lines)} files ({len(lines) - len(changed)} new, {len(changed)} replace installed), '
+          f'{total / 1e6:.2f} MB; biggest {big[1]} {big[0] / 1e6:.2f} MB; sha256 list {out}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--install', nargs='?', const='/tmp/flight-sim/v070/install/europe', default=None)
+    ap.add_argument('--merge', action='store_true', help='v0.7.1: only lay out rt.WORK/merged (see merge())')
     a = ap.parse_args()
+    if a.merge:
+        merge()
+        return
     build()
     if a.install:
-        install(a.install)
+        install(a.install) if bc.EU_BATCH == 'A' else install_delta(a.install)
 
 
 if __name__ == '__main__':

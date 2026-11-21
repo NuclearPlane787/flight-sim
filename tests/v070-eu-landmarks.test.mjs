@@ -12,7 +12,9 @@ const ORDER = ['shard', 'westminster', 'eye', 'stpauls', 'towerbridge', 'eiffel'
 // 96 m is checked on the model; Madrid's towers lie in the brief's 181 to 250 m.
 const BRIEF = { shard: 310, eye: 135, stpauls: 111, towerbridge: 65, eiffel: 330, arc: 50, grandearche: 110, commerzbank: 259,
   messeturm: 257, europaturm: 337, kio: 114, primetower: 126, olympiaturm: 291, stpeters: 137, colosseum: 48 };
-const COUNTRY = { london: 'GB', paris: 'FR', frankfurt: 'DE', madrid: 'ES', zurich: 'CH', munich: 'DE', barcelona: 'ES', rome: 'IT' };
+const COUNTRY = { london: 'GB', paris: 'FR', frankfurt: 'DE', madrid: 'ES', zurich: 'CH', munich: 'DE', barcelona: 'ES', rome: 'IT',
+  // v0.7.1's cities
+  berlin: 'DE', vienna: 'AT', milan: 'IT', lisbon: 'PT', oresund: 'DK', malmo: 'SE', dublin: 'IE', brussels: 'BE', manchester: 'GB', toulouse: 'FR' };
 const TRI_BUDGET = 6000, TOTAL_BUDGET = 60000;
 
 if (inRegion('europe', import.meta.url)) {
@@ -24,7 +26,7 @@ if (inRegion('europe', import.meta.url)) {
   const local = (L, x, z) => { const c = Math.cos(L.brg * Math.PI / 180), s = Math.sin(L.brg * Math.PI / 180), N = -z; return [x * c - N * s, x * s + N * c]; };
 
   test("Europe's list: the brief's order, region europe, a country, a source, a model each; East Asia's thirty kept apart", () => {
-    assert.deepEqual(EUROPE_LANDMARKS.map((l) => l.id), ORDER);
+    assert.deepEqual(EUROPE_LANDMARKS.map((l) => l.id).slice(0, ORDER.length), ORDER);     // v0.7.1's follow (tests/v071-eu-landmarks.test.mjs)
     assert.equal(REGION_LANDMARKS, EUROPE_LANDMARKS);
     assert.equal(LANDMARKS.length, 30);
     for (const L of LANDMARKS) assert.equal(landmarkOn(L), false, `${L.id} is East Asia's`);

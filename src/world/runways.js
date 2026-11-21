@@ -290,6 +290,11 @@ export const ONE_WAY = {
   // From general knowledge of its published use: 18R/36L (the Polderbaan) is landed on southward and taken off from
   // northward only; 18L/36R (the Aalsmeerbaan) is taken off from southward and landed on northward only.
   EHAM: { '18R': 'landing', '36L': 'takeoff', '18L': 'takeoff', '36R': 'landing' },
+  // v0.7.1, Brussels: the game's own limit, not the AIP's (Belgium's eAIP wasn't read: [EST]). 01/19's north end crosses
+  // 07L/25R's east end, and runwayCrossings() shapes one crossing a runway (07R/25L's), so a lip of 0.2 to 0.3 m is left
+  // where a take-off from 19 would begin (a test take-off there ended in an engine strike on the spot). 19 is landed on
+  // only until the game shapes a second crossing; 01 is used both ways.
+  EBBR: { 19: 'landing' },
 };
 export const runwayUse = (icao, ident) => ONE_WAY[icao]?.[String(ident).toUpperCase()] || null;
 export const canTakeOff = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'landing' && u !== 'closed'; };

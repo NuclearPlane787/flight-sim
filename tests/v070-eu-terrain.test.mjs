@@ -25,7 +25,7 @@ if (inRegion('europe', import.meta.url)) {
   const FT = 0.3048;
   const at = (la, lo) => toMap(la, lo);
 
-  test("Europe's manifest: its lattice from the frame's origin, the sea at 0, low land, batch A's 93 tiles", { skip: !have }, () => {
+  test("Europe's manifest: its lattice from the frame's origin, the sea at 0, low land, the 170 tiles of batches A and B", { skip: !have }, () => {
     const m = manifest(), t = m.tilesRegion;
     assert.equal(m.lowLand, true); assert.equal(REGION.lowLand, true);          // the bake and the game agree on what a stored 0 means
     assert.equal(t.x0, 0); assert.equal(t.y0, 0);
@@ -33,15 +33,16 @@ if (inRegion('europe', import.meta.url)) {
     assert.equal(t.sea.h, 0);
     const [l0, l1] = t.levels;
     assert.equal(l0.cell, 250); assert.equal(l0.tile, 512); assert.equal(l0.border, 2);
-    assert.equal(l0.covered.length, 93);
+    assert.equal(l0.covered.length, 170);                                        // batch A's 93 and, since v0.7.1, batch B's 77
     for (const n of ['-7_-7', '-3_3', '0_0', '6_-3', '0_4']) assert.ok(l0.covered.includes(n), n);     // west and south of 47 N 4 E are negative
+    for (const n of ['-6_6', '-10_-7', '5_5', '8_1', '4_8', '-2_-3', '6_1', '-3_-7']) assert.ok(l0.covered.includes(n), n);   // batch B: Dublin, Lisbon, Berlin, Vienna, Copenhagen, Toulouse, and the rule's two
     assert.equal(l1.cell, 1000);
     assert.equal(l1.covered.length, 36);                                         // 6 x 6 tiles of 512 km round the outline
     const spec = terrainSpec(m);
     assert.equal(spec.region, true);
     // The map's rectangle is the outline's; the 250 m data's is its covered tiles'.
     assert.deepEqual(mapExtent(), { x0: -1377000, y0: -1306000, x1: 1259000, y1: 1425000 });
-    assert.deepEqual(fineExtent(), { x0: -7 * 128000, y0: -7 * 128000, x1: 7 * 128000, y1: 6 * 128000 });
+    assert.deepEqual(fineExtent(), { x0: -10 * 128000, y0: -8 * 128000, x1: 9 * 128000, y1: 10 * 128000 });   // v0.7.1, with batch B: tiles -10..8 by -8..9 (batch A: -7..6 by -7..5)
     assert.ok(fineOutline().length > 40);
   });
 
@@ -59,7 +60,13 @@ if (inRegion('europe', import.meta.url)) {
     // Set by the airport (AD 2.17) within 60 km of it; the country's beyond.
     assert.deepEqual(ta(R(51.4706, -0.4619)), [6000, 7000]);                     // Heathrow
     assert.deepEqual(ta(R(51.1481, -0.1903)), [6000, 7000]);                     // Gatwick
-    assert.deepEqual(ta(R(53.35, -2.27)), [3000, 4000]);                         // Manchester: the United Kingdom's own, until its AIP page is read (v0.7.1)
+    assert.deepEqual(ta(R(53.35, -2.27)), [5000, 6000]);                         // Manchester: its own since v0.7.1 (UK AIP EGCC AD 2.17, read 2026-11-21); the UK's 3,000 ft was the stand-in
+    assert.deepEqual(ta(R(54.5, -2.9)), [3000, 4000]);                           // the Lake District, 130 km from Manchester: the United Kingdom's own
+    assert.deepEqual(ta(R(55.62, 12.65)), [5000, 6000]);                         // Copenhagen (EKCH AD 2.17: the Copenhagen Area)
+    assert.deepEqual(ta(R(56.2, 9.5)), [3000, 4000]);                            // Jutland: Denmark's (ENR 1.7)
+    assert.deepEqual(ta(R(48.11, 16.57)), [10000, 11000]);                       // Vienna: Austria's (ENR 1.7)
+    assert.deepEqual(ta(R(53.42, -6.27)), [5000, 6000]);                         // Dublin: Ireland's (ENR 1.7)
+    assert.deepEqual(ta(R(43.63, 1.36)), [5000, 6000]);                          // Toulouse (LFBO AD 2.20.2)
     assert.deepEqual(ta(R(40.4722, -3.5609)), [13000, 14000]);                   // Madrid
     assert.deepEqual(ta(R(37.42, -5.9)), [6000, 7000]);                          // Seville: Spain's
     assert.deepEqual(ta(R(41.2971, 2.0785)), [6000, 7000]);                      // Barcelona

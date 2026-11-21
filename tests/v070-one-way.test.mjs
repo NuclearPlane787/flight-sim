@@ -17,7 +17,9 @@ test('the table: what each listed end is for, and every other end both ways', ()
   }
   assert.equal(runwayUseNote('EDDF', '18'), 'take-off only'); assert.equal(runwayUseNote('EDDF', '25R'), 'landing only'); assert.equal(runwayUseNote('EGKK', '08L'), 'standby');
   // No East Asian airport is in it, and a circling-only end is a different thing.
-  assert.deepEqual(Object.keys(ONE_WAY).sort(), ['EDDF', 'EGKK', 'EHAM', 'LEBL', 'LEMD', 'LFPO']);
+  assert.deepEqual(Object.keys(ONE_WAY).sort(), ['EBBR', 'EDDF', 'EGKK', 'EHAM', 'LEBL', 'LEMD', 'LFPO']);
+  // v0.7.1, Brussels's 19: landed on only (the game's own limit: its start lies on a crossing the game doesn't shape); 01 both ways.
+  assert.equal(canTakeOff('EBBR', '19'), false); assert.equal(canLand('EBBR', '19'), true); assert.equal(runwayUse('EBBR', '01'), null); assert.equal(runwayUseNote('EBBR', '19'), 'landing only');
   assert.equal(canLand('LEBL', '20'), false); assert.equal(canTakeOff('LEBL', '20'), true); assert.equal(runwayUse('LEBL', '02'), null);   // Barcelona's 20: not available for landing (AD 2.12)
   assert.equal(canTakeOff('EHAM', '18R'), false); assert.equal(canLand('EHAM', '36L'), false); assert.equal(canLand('EHAM', '18L'), false); assert.equal(canTakeOff('EHAM', '36R'), false);   // Schiphol's two one-way runways [EST]
   assert.equal(runwayUse('LFPO', '02'), 'standby'); assert.equal(runwayUse('LFPO', '20'), 'standby'); assert.equal(runwayUse('LFPO', '25'), null);   // Orly's 02/20: exceptional use (AD 2.21)

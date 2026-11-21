@@ -100,6 +100,31 @@ def main():
                ne10_not_brief=sorted(t_ne - brief, key=key), brief_not_ne10=sorted(brief - t_ne, key=key),
                osm_not_brief=sorted(t_osm - brief, key=key), brief_not_osm=sorted(brief - t_osm, key=key),
                osm_not_ne10=sorted(t_osm - t_ne, key=key), ne10_not_osm=sorted(t_ne - t_osm, key=key))
+    if bc.EU_BATCH != 'A':
+        # v0.7.1, batch B: the rule over all twenty airports (NE 1:10 m united with OSM), less batch A; each
+        # tile checked against the outline (its lat/lon bounding rectangle in map metres, and the polygon).
+        from shapely.geometry import Polygon, box as sbox
+        la, lo = bc.outline_latlon()
+        ox, oy = bc.to_map(la, lo)
+        outline = Polygon(list(zip(ox, oy)))
+        t = np.linspace(0, 1, 101)
+        rla = np.concatenate([np.full(101, 35.0), 35 + 24 * t, np.full(101, 59.0), 35 + 24 * t])
+        rlo = np.concatenate([-11 + 30.5 * t, np.full(101, 19.5), -11 + 30.5 * t, np.full(101, -11.0)])
+        rx, ry = bc.to_map(rla, rlo)
+        rect = (rx.min(), ry.min(), rx.max(), ry.max())
+        union = t_ne | t_osm
+        b, outside_rect, outside_outline = [], [], []
+        for s in sorted(union - set(rt.EU_BATCH_A), key=key):
+            ti, tj = key(s)
+            g = sbox(ti * SPAN, tj * SPAN, (ti + 1) * SPAN, (tj + 1) * SPAN)
+            if not g.intersects(sbox(*rect)):
+                outside_rect.append(s)
+            elif not g.intersects(outline):
+                outside_outline.append(s)
+            else:
+                b.append(s)
+        res.update(union=len(union), batch_b=b, batch_b_n=len(b), outside_rect=outside_rect,
+                   outside_outline=outside_outline, a_not_union=sorted(set(rt.EU_BATCH_A) - union, key=key))
     print(json.dumps(res, indent=1))
     with open(os.path.join(rt.WORK, 'tilelist-check.json'), 'w') as f:
         json.dump(res, f, indent=1)

@@ -211,7 +211,74 @@ export const EUROPE_CITY_BOXES = {
   madrid: [40.38, -3.75, 40.50, -3.65], zurich: [47.33, 8.48, 47.42, 8.58], munich: [48.10, 11.50, 48.20, 11.62],
   barcelona: [41.35, 2.08, 41.45, 2.23], rome: [41.85, 12.42, 41.94, 12.52],
 };
+// v0.7.1 (briefs/V0-7-1.md part 5): the next cities' landmarks, appended in the brief's order. Figures read on
+// 2026-11-21 from each Wikipedia article (its infobox, text and coordinates); [EST] marks what is estimated. The
+// three long bridges are `kind: 'bridge'` as East Asia's: based at the sea (y 0), their `pylons` and `ends` here
+// worked out from a centre, a true bearing and the article's lengths [EST: the bearing and the centre], their
+// parts the pylons' circles only.
+EUROPE_LANDMARKS.push(
+  // Berlin
+  EU({ id: 'fernsehturm', city: 'berlin', country: 'DE', lat: 52.52083, lon: 13.40944, heightM: 368, footprintM: 23, brg: 0,
+    source: 'Wikipedia "Fernsehturm Berlin" (read 2026-11-21, with its coordinates): 368.03 m with the antenna, the visitor platform about 203 m, the restaurant 207 m; the sphere 32 m across and its centre at 212 m [EST], the shaft\'s taper and the foot [EST]' }),
+  EU({ id: 'brandenburg', city: 'berlin', country: 'DE', lat: 52.5163, lon: 13.3777, heightM: 26, footprintM: 34, brg: 0,
+    source: 'Wikipedia "Brandenburg Gate" (read 2026-11-21, with its coordinates): 26 m, twelve Doric columns six to each side, five passageways, the quadriga on top; 65.5 m wide and 11 m deep [from memory], the wings\' and attic\'s sizes [EST]' }),
+  // Vienna
+  EU({ id: 'stephansdom', city: 'vienna', country: 'AT', lat: 48.2085, lon: 16.373, heightM: 136.7, footprintM: 62, brg: 0,
+    source: 'Wikipedia "St. Stephen\'s Cathedral, Vienna" (read 2026-11-21, with its coordinates): 136.7 m (the south tower), 107 m long, 70 m wide; the roof\'s ridge (62 m), the north tower (68 m) and the west towers (65 m) [EST], the axis [EST]' }),
+  EU({ id: 'donauturm', city: 'vienna', country: 'AT', lat: 48.24, lon: 16.41083, heightM: 252, footprintM: 16, brg: 0,
+    source: 'Wikipedia "Donauturm" (read 2026-11-21, with its coordinates): 252 m, the viewing platform at 150 m, the revolving restaurants at 161.2 m and 169.4 m; the pod\'s rings and the shaft [EST]' }),
+  EU({ id: 'riesenrad', city: 'vienna', country: 'AT', lat: 48.21665, lon: 16.39595, heightM: 64.75, footprintM: 32, brg: 30,
+    source: 'Wikipedia "Wiener Riesenrad" (read 2026-11-21, with its coordinates): 64.75 m, 15 gondolas since its rebuilding; the wheel about 61 m across [from memory], its plane\'s bearing and the trestles [EST]' }),
+  // Milan
+  EU({ id: 'duomo', city: 'milan', country: 'IT', lat: 45.46417, lon: 9.19139, heightM: 108.5, footprintM: 92, brg: 0,
+    source: 'Wikipedia "Milan Cathedral" (read 2026-11-21, with its coordinates): 108 m (infobox), the Madonnina\'s spire at 108.5 m (text), 158.6 m long, 92 m wide; the aisles\', nave\'s and octagon\'s heights, the pinnacles\' count and the axis [EST]' }),
+  // Lisbon
+  EU({ id: 'ponte25', city: 'lisbon', country: 'PT', kind: 'bridge', lat: 38.68917, lon: -9.17694, heightM: 190, footprintM: 1000,
+    pylons: [[38.693608, -9.178253], [38.684732, -9.175627]], ends: [[38.697933, -9.179532], [38.680407, -9.174348]],
+    source: 'Wikipedia "25 de Abril Bridge" (read 2026-11-21, with its coordinates): main span 1,012.9 m (1,013 m in the text), width 24.5 m, the infobox\'s height 180 m (190 m the brief\'s and the towers\' commonly quoted figure, used) [EST]; the side spans 483 m and the deck 70 m clear [from memory]; the axis\'s true bearing 167 degrees [EST]; the model 2,000 m between its anchorages' }),
+  EU({ id: 'cristorei', city: 'lisbon', country: 'PT', lat: 38.67861, lon: -9.17134, heightM: 110, footprintM: 27, brg: 0,
+    source: 'Wikipedia "Christ the King (Almada)" (read 2026-11-21, with its coordinates): 110 m with its base, the pedestal 82 m of four arches facing the compass points, the figure 28 m, the terrace 79.3 m, on a clifftop 133 m above the river; the legs\' and the figure\'s proportions [EST]' }),
+  EU({ id: 'vascodagama', city: 'lisbon', country: 'PT', kind: 'bridge', lat: 38.776, lon: -9.078, heightM: 150, footprintM: 10615,
+    pylons: [[38.777029, -9.080032], [38.774971, -9.075968]], ends: [[38.783712, -9.093233], [38.724127, -8.975541]],
+    source: 'Wikipedia "Vasco da Gama Bridge" (read 2026-11-21: 17.2 km with the access roads, coordinates 38.762 N 9.043 W): the north viaduct 488 m, the Expo viaduct 672 m, the main bridge 829 m (span 420 m, side spans 203 m, pillars 150 m, 45 m clear), the central viaduct 6,351 m at 14 to 30 m, the south viaduct 3,825 m; the main span\'s place (38.776 N 9.078 W) and the axis\'s true bearing 123 degrees, straight [EST]' }),
+  // the Øresund and Malmö
+  EU({ id: 'oresund', city: 'oresund', country: 'DK', kind: 'bridge', lat: 55.578757, lon: 12.825678, heightM: 204, footprintM: 4470,
+    pylons: [[55.579512, 12.822046], [55.578002, 12.829309]], ends: [[55.589714, 12.772899], [55.565055, 12.891507]],
+    source: 'Wikipedia "Øresund Bridge" (read 2026-11-21, with its coordinates): 7,845 m, main span 490 m (the cable-stayed part 1,092 m), pylons 204 m, 57 m clear, width 23.5 m, the approaches\' piers every 140 m; the ends where the game\'s 250 m terrain has Peberholm\'s eastern tip and the Swedish shore at Lernacken (8.0 km apart there; the article\'s coordinates, 55.5706 N 12.8494 E, about 1.1 km east of the line\'s middle), the main span 3,560 m from the west end [from memory: the west approach 3,014 m] [EST]' }),
+  EU({ id: 'torso', city: 'malmo', country: 'SE', lat: 55.61333, lon: 12.97611, heightM: 190, footprintM: 18, brg: 0, floors: 54,
+    source: 'Wikipedia "Turning Torso" (read 2026-11-21): 190 m roof, top floor 178.79 m, 54 floors, nine segments of five-storey pentagons, the top one turned 90 degrees; the coordinates [from memory, the article gives none in its infobox], the plan\'s size [EST]' }),
+  // Dublin
+  EU({ id: 'poolbeg', city: 'dublin', country: 'IE', lat: 53.339605, lon: -6.189821, heightM: 207.8, footprintM: 47, brg: 0,
+    parts: [[-37.5, 0, 12], [37.5, 0, 12]],
+    source: 'Wikipedia "Poolbeg Generating Station" (read 2026-11-21, with its coordinates, the station\'s): chimney 1 207.48 m, chimney 2 207.8 m; their places (75 m apart east to west), taper and bands\' count [EST]' }),
+  // Brussels
+  EU({ id: 'palaisjustice', city: 'brussels', country: 'BE', lat: 50.83667, lon: 4.35167, heightM: 116, footprintM: 110, brg: 0,
+    source: 'Wikipedia "Palace of Justice, Brussels" (read 2026-11-21, with its coordinates): 116 m (the infobox; the brief\'s 104 m taken as the dome\'s own top), 160 x 150 m; the blocks\', drum\'s and dome\'s sizes and the axis [EST]' }),
+  // Jodrell Bank, south of Manchester
+  EU({ id: 'lovell', city: 'manchester', country: 'GB', lat: 53.2365, lon: -2.3084, heightM: 89, footprintM: 50, brg: 180,
+    source: 'Wikipedia "Lovell Telescope" (read 2026-11-21, with its coordinates): the bowl 76.2 m, the elevation axis 50.5 m, 89.0 m at most above the ground, the wheel girders\' radius 38.5 m; the bowl\'s depth, the towers\' spacing and the pose (20 degrees up, facing south) [EST]' }),
+  // Toulouse
+  EU({ id: 'rocket', city: 'toulouse', country: 'FR', lat: 43.58696, lon: 1.49316, heightM: 53, footprintM: 11, brg: 0,
+    source: 'Wikipedia "Cité de l\'espace" (read 2026-11-21, with its coordinates, the park\'s): a full-scale launcher mock-up, 55 m in the article (53 m the brief\'s and the launcher\'s own [EST], used); the boosters\' and the fairing\'s sizes [EST], its place in the park [EST]' }),
+);
+Object.assign(EUROPE_CITY_BOXES, {
+  berlin: [52.40, 13.25, 52.60, 13.55], vienna: [48.15, 16.30, 48.28, 16.48], milan: [45.40, 9.10, 45.52, 9.28],
+  lisbon: [38.60, -9.25, 38.82, -8.90], oresund: [55.50, 12.70, 55.65, 12.95], malmo: [55.55, 12.95, 55.65, 13.05],
+  dublin: [53.28, -6.40, 53.42, -6.10], brussels: [50.78, 4.28, 50.90, 4.45], manchester: [53.20, -2.40, 53.50, -2.15],
+  toulouse: [43.55, 1.35, 43.68, 1.52],
+});
 for (const L of EUROPE_LANDMARKS) { const [x, y] = toMap(L.lat, L.lon); L.x = x; L.y = y; }
+// v0.7.1: Europe's bridges' axes, parts and decks, as East Asia's above.
+for (const L of EUROPE_LANDMARKS) {
+  if (L.kind !== 'bridge') continue;
+  const P = L.pylons.map(([la, lo]) => toMap(la, lo));
+  const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
+  L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
+  L.parts = P.map(([px, py]) => [px - L.x, py - L.y, PYLON_R]);
+  L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
+  const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
+  L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
+}
 // The page's region's list: what the runtime builds and the real centres leave out (East Asia's: LANDMARKS itself).
 export const REGION_LANDMARKS = REGION_ID === 'europe' ? EUROPE_LANDMARKS : LANDMARKS;
 
@@ -227,7 +294,7 @@ export function landmarkFootprints() {
 
 // endH: a bridge's ground at its two ends (m; heightAt there when built), else 30 m.
 export function buildModel(L, endH = null) {
-  if (L.region === 'europe') return EUROPE_MODELS[L.id](L.brg);
+  if (L.region === 'europe') return L.kind === 'bridge' ? EUROPE_MODELS[L.id](L.brg, { ...L.geo, ...(endH ? { h0: endH[0], h1: endH[1] } : {}) }) : EUROPE_MODELS[L.id](L.brg);
   const f = MODELS[L.id];
   if (L.id === 'parc1') return f(L.brg, L.parts[1].slice(0, 2));
   if (L.id === 'lct') return f(undefined, L.brg);

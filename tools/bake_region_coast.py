@@ -110,7 +110,7 @@ LEVELS = [  # tol (fine, margin), cell, min area (fine, margin) m2
     dict(tol=(6000, 6000), cell=None, area=(1e8, 1e8)),   # uncut: one cell, the whole extent
 ]
 WHOLE = 4096000                 # level 3's one cell (>= the extent's width and height)
-WORK = '/tmp/flight-sim/v070/work/map-work' if bc.EUROPE else '/tmp/flight-sim/v060/map-work'
+WORK = os.path.join(rt.WORK, 'map-work') if bc.EUROPE else '/tmp/flight-sim/v060/map-work'
 BLOCKS = os.path.join(WORK, 'blocks')
 LANDPOLY = '/tmp/flight-sim/v060/landpoly/land-polygons-split-4326/land_polygons'
 LPINDEX = '/tmp/flight-sim/v060/landpoly/bbox_index.npy'

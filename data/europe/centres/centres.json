@@ -254,6 +254,258 @@
    "maxHeightM": 134.0,
    "minKeepHeightM": 9.0,
    "bytes": 342038
+  },
+  {
+   "id": "toulouse",
+   "name": "Toulouse",
+   "file": "toulouse.bin.gz",
+   "origin": [
+    -204861,
+    -371254
+   ],
+   "box": [
+    -205983,
+    -372577,
+    -203739,
+    -369931
+   ],
+   "latlon": [
+    43.58968,
+    1.42948,
+    43.61432,
+    1.45853
+   ],
+   "cols": 5,
+   "rows": 6,
+   "count": 4998,
+   "vertices": 38630,
+   "maxHeightM": 67.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 122436
+  },
+  {
+   "id": "berlin",
+   "name": "Berlin",
+   "file": "berlin.bin.gz",
+   "origin": [
+    634119,
+    647220
+   ],
+   "box": [
+    632439,
+    646064,
+    635799,
+    648376
+   ],
+   "latlon": [
+    52.50335,
+    13.36633,
+    52.52765,
+    13.41969
+   ],
+   "cols": 7,
+   "rows": 5,
+   "count": 2918,
+   "vertices": 24051,
+   "maxHeightM": 264.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 80349
+  },
+  {
+   "id": "milan",
+   "name": "Milan",
+   "file": "milan.bin.gz",
+   "origin": [
+    401973,
+    -155106
+   ],
+   "box": [
+    401006,
+    -156701,
+    402940,
+    -153511
+   ],
+   "latlon": [
+    45.45749,
+    9.17371,
+    45.48752,
+    9.2013
+   ],
+   "cols": 4,
+   "rows": 7,
+   "count": 3713,
+   "vertices": 30364,
+   "maxHeightM": 197.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 98275
+  },
+  {
+   "id": "vienna",
+   "name": "Vienna",
+   "file": "vienna.bin.gz",
+   "origin": [
+    908152,
+    204705
+   ],
+   "box": [
+    907023,
+    203670,
+    909281,
+    205740
+   ],
+   "latlon": [
+    48.19763,
+    16.35317,
+    48.21937,
+    16.38782
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 2645,
+   "vertices": 26925,
+   "maxHeightM": 138.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 87313
+  },
+  {
+   "id": "brussels",
+   "name": "Brussels",
+   "file": "brussels.bin.gz",
+   "origin": [
+    24857,
+    424410
+   ],
+   "box": [
+    23667,
+    423193,
+    26047,
+    425627
+   ],
+   "latlon": [
+    50.83395,
+    4.33793,
+    50.85605,
+    4.37208
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 4318,
+   "vertices": 31751,
+   "maxHeightM": 145.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 103376
+  },
+  {
+   "id": "dublin",
+   "name": "Dublin",
+   "file": "dublin.bin.gz",
+   "origin": [
+    -680534,
+    745855
+   ],
+   "box": [
+    -682677,
+    744753,
+    -678391,
+    746957
+   ],
+   "latlon": [
+    53.33266,
+    -6.29661,
+    53.35733,
+    -6.2284
+   ],
+   "cols": 9,
+   "rows": 5,
+   "count": 4915,
+   "vertices": 33054,
+   "maxHeightM": 83.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 108252
+  },
+  {
+   "id": "lisbon",
+   "name": "Lisbon",
+   "file": "lisbon.bin.gz",
+   "origin": [
+    -1138054,
+    -819934
+   ],
+   "box": [
+    -1139341,
+    -821194,
+    -1136767,
+    -818674
+   ],
+   "latlon": [
+    38.70339,
+    -9.15499,
+    38.72961,
+    -9.12102
+   ],
+   "cols": 6,
+   "rows": 6,
+   "count": 6335,
+   "vertices": 35993,
+   "maxHeightM": 60.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 113122
+  },
+  {
+   "id": "copenhagen",
+   "name": "Copenhagen",
+   "file": "copenhagen.bin.gz",
+   "origin": [
+    541224,
+    991131
+   ],
+   "box": [
+    540030,
+    989908,
+    542418,
+    992354
+   ],
+   "latlon": [
+    55.66697,
+    12.56012,
+    55.69103,
+    12.60189
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 2609,
+   "vertices": 22697,
+   "maxHeightM": 105.6,
+   "minKeepHeightM": 9.0,
+   "bytes": 73970
+  },
+  {
+   "id": "manchester",
+   "name": "Manchester",
+   "file": "manchester.bin.gz",
+   "origin": [
+    -413550,
+    732746
+   ],
+   "box": [
+    -414542,
+    731749,
+    -412558,
+    733743
+   ],
+   "latlon": [
+    53.46935,
+    -2.25911,
+    53.48865,
+    -2.2269
+   ],
+   "cols": 4,
+   "rows": 4,
+   "count": 1980,
+   "vertices": 12686,
+   "maxHeightM": 200.5,
+   "minKeepHeightM": 9.0,
+   "bytes": 42695
   }
  ]
 }
