@@ -1,6 +1,11 @@
 # Flight Sim
 
-Airliners over East Asia (the A321neo, the Boeing 787-9 and the 777-300ER), flown between twenty-three airports in Korea, Japan, China, North Korea and Russia (Incheon, Gimpo, Jeju and Gimhae; Tokyo Haneda and Narita, Osaka Kansai, Fukuoka, Niigata, Sendai, Aomori and Sapporo New Chitose; Beijing Capital and Daxing, Shanghai Pudong and Hongqiao, Yancheng, Qingdao, Dalian and Shenyang; Pyongyang and Wonsan; Vladivostok), over real coastline, elevation and land cover with procedural fine detail. It has:
+Airliners (the A321neo, the Boeing 787-9 and the 777-300ER) in two regions, over real coastline, elevation and land cover with procedural fine detail:
+
+- **East Asia:** twenty-three airports in Korea, Japan, China, North Korea and Russia (Incheon, Gimpo, Jeju and Gimhae; Tokyo Haneda and Narita, Osaka Kansai, Fukuoka, Niigata, Sendai, Aomori and Sapporo New Chitose; Beijing Capital and Daxing, Shanghai Pudong and Hongqiao, Yancheng, Qingdao, Dalian and Shenyang; Pyongyang and Wonsan; Vladivostok);
+- **Europe** (v0.7.0): eleven airports in the United Kingdom, France, Germany, Spain, Switzerland, the Netherlands and Italy (London Heathrow and Gatwick, Paris Charles de Gaulle and Orly, Frankfurt, Madrid, Zurich, Amsterdam Schiphol, Munich, Barcelona, Rome Fiumicino).
+
+Flights stay inside a region. It has:
 
 - realistic physics with each maker's fly-by-wire: Airbus's protections on the A321neo, Boeing's speed-stable law and manual trim on the 787 and 777 (or, with Boeing auto-trim on in Settings, a path that holds itself as the A321's does);
 - a holds-only autopilot with up to 16× time compression;
@@ -11,7 +16,56 @@ Airliners over East Asia (the A321neo, the Boeing 787-9 and the 777-300ER), flow
 
 `Updates.md` lists what each version added; the game shows its version in the Esc menu.
 
-## The region (v0.6.0)
+## The regions (v0.7.0)
+
+- **Choosing one:** New scenario asks for the region first (East Asia or Europe), then the airports. The game loads one region at a time: picking the other one reloads the page into it and opens its setup. The last region used is remembered; East Asia is the default. Load scenario lists the saves grouped by region, and loading one from the other region reloads into it and starts it there. Saves made before v0.7.0 are East Asia's. The home page's ticket and the logbook name either region's airports. The warehouse's Fly it uses the last region.
+- **Each region is its own world,** in its own map frame: East Asia in Korea's (a Lambert conformal conic at 36° N 127.5° E), Europe in one at 47° N 4° E with its standard parallels at 39° and 54° N.
+- **Europe's shape:** its edge is a polygon, not a rectangle: 35° to 59° N and 11° W to 19.5° E, cut diagonally in the south-east so that Algeria and Tunisia are out and Sicily is in, and in the south-west so that Morocco's coast along the Strait is in. The north takes in all of mainland Scotland, Denmark and Gothenburg; the east gives Vienna room and puts Budapest at the edge. The path map draws the edge, and the predicted path ends at it.
+- **Europe's ground:** 250 m terrain over the 93 tiles of 128 km with land within 200 km of one of the airports (`data/europe/terrain/`), 30 m land cover within 100 km of each, 30 m terrain at every airport, and 1 km land over the rest of the region, so no edge shows from cruise. The Netherlands' polders lie below sea level as they do (Schiphol's field at about −3 to −4 m), with the IJsselmeer and Markermeer as inland water.
+
+### Europe's airports
+
+| ICAO | Airport | Runways (published lengths) | Stands | Its values from |
+|---|---|---|---|---|
+| EGLL | London Heathrow | 09L/27R 3,901 m, 09R/27L 3,658 m | 288 | its AIP (the UK's NATS eAIP) |
+| LFPG | Paris Charles de Gaulle | 08L/26R 4,142 m, 09R/27L 4,200 m, 08R/26L and 09L/27R 2,700 m | 446 | its AIP (France's SIA eAIP) |
+| EDDF | Frankfurt | 07C/25C and 07R/25L 4,000 m, 07L/25R 2,800 m (landings only), 18 4,000 m (take-offs only, southward) | 366 | its AIP (Germany's DFS AIP) |
+| LEMD | Madrid Barajas | 18R/36L 4,179 m, 14R/32L 3,988 m, 18L/36R and 14L/32R 3,500 m (landings on the 32s and 18s, take-offs from the 14s and 36s) | 381 | its AIP (Spain's ENAIRE AIP) |
+| LSZH | Zurich | 16/34 3,700 m, 14/32 3,300 m, 10/28 2,500 m | 218 | **estimates** (OpenStreetMap, OurAirports) |
+| EGKK | London Gatwick | 08R/26L 3,317 m; 08L/26R 2,561 m, a standby | 189 | its AIP (NATS) |
+| LFPO | Paris Orly | 06/24 3,650 m, 07/25 3,320 m; 02/20 2,400 m, a standby | 155 | its AIP (SIA) |
+| EHAM | Amsterdam Schiphol | 18R/36L 3,800 m, 09/27 3,453 m, 06/24 3,442 m, 18L/36R 3,400 m, 18C/36C 3,300 m, 04/22 2,004 m | 293 | **estimates** (OpenStreetMap, OurAirports) |
+| EDDM | Munich | 08L/26R and 08R/26L 4,000 m | 209 | its AIP (DFS) |
+| LEBL | Barcelona | 06L/24R 3,352 m, 06R/24L 2,660 m, 02/20 2,528 m (no landings on 20) | 209 | its AIP (ENAIRE) |
+| LIRF | Rome Fiumicino | 16L/34R 3,902 m, 16R/34L 3,901 m, 07/25 3,300 m | 144 | **estimates** (OpenStreetMap, OurAirports) |
+
+- **Munich's aprons** are OpenStreetMap's, which maps them in strips along the terminals, plus the ground under each stand's pushback, paved by the bake (`APRON_PUSH` in `tools/bake_region_airports.py`).
+- Each has its runways, lights, PAPIs and ILS, named taxiways and signs, aprons, numbered stands (code E for the widebodies), terminals and parked traffic, gate starts, pushbacks, taxi routes out and in.
+- **One-way and standby runways** (from each AIP): the setup offers an end only for what it is used for and says so; a standby runway's ends come last and are never the default; the map's Change route doesn't offer a take-off-only end as an arrival (it says TAKE-OFF ONLY instead of drawing a final), and Skip to final refuses one with a line saying why. Schiphol's (18R and 36R landings only, 18L and 36L take-offs only) are estimates.
+- **The three estimates:** Switzerland's, the Netherlands' and Italy's eAIPs couldn't be read by a script (a login, or a challenge for automated readers), so Zurich's, Schiphol's and Fiumicino's lights, ILS categories, threshold elevations and transition altitudes are estimates. Their runways are OpenStreetMap's, checked against OurAirports.
+- A baked length is the published one times the map's scale there (−0.85 % at 47° N, −0.30 % at Madrid, −0.50 % at Heathrow).
+
+### Europe's rules
+
+- **Hectopascals and feet everywhere.** Shift+B sets the local QNH.
+- **The transition altitude is the airport's own near it** (within 60 km) and the country's elsewhere: Heathrow and Gatwick 6,000 ft (the UK's 3,000 ft elsewhere), Charles de Gaulle and Orly 5,000 ft (the Paris TMA's), Frankfurt and Munich 5,000 ft, Madrid 13,000 ft, Barcelona 6,000 ft, Zurich 7,000 ft, Schiphol 3,000 ft and Fiumicino 6,000 ft (the last three estimates). Near Zurich it holds across the German border, where the clock is still Germany's.
+- **Local time with summer time,** from the browser's own time-zone data: GMT and BST in the United Kingdom, GMT and IST in Ireland, WET and WEST in Portugal, CET and CEST in the rest (Gibraltar too). The clocks change on the last Sundays of March and October, and the labels follow the date. Morocco is on its own zone.
+- **The magnetic variation** is the World Magnetic Model's (2025) everywhere in Europe.
+- **The METAR line** in ICAO's standard form: `EGLL 00000KT CAVOK 15/07 Q1013 NOSIG`.
+- **The setup** groups the airports by country (United Kingdom, France, Germany, Spain, Switzerland, the Netherlands, Italy). The first flight it offers is Heathrow 27R to Charles de Gaulle 26L.
+
+### Europe's cities
+
+- **The towns** in five styles of their own, by country: Britain and Ireland (terraces of two-storey houses in parallel streets, semis, red and stock brick under slate, no towers); France (limestone under zinc grey, terracotta in the south); the centre (Germany, Austria, Switzerland: render under red-brown tile); the south (Spain, Portugal, Italy: cream and ochre under terracotta); the Low Countries and Denmark (brick under dark or red tile). Dense blocks are perimeter blocks of five to seven storeys round courtyards, with a tower only now and then; a church with a spire in some blocks.
+- **The villages** in the same five groups: farmhouses and barns, houses of one to three storeys, and a church with a tower in most villages.
+- **Nine centres of real buildings** from OpenStreetMap: London (Westminster, the South Bank, the City to Canary Wharf), Paris (La Défense to the Marais), Frankfurt, Madrid (Sol to the four towers), Zurich, Amsterdam's canal ring, Munich (the Altstadt to the Olympiapark), Barcelona (the Eixample and the old town) and Rome (inside the walls, and St Peter's). Pale stone under slate and zinc in London, Paris and Frankfurt; plaster under terracotta in Madrid, Barcelona, Rome, Munich and Zurich; brick under dark tile in Amsterdam; glass on towers of 75 m and up.
+- **Twenty-eight landmarks** as our own models, with no names or logos: in London the Shard, the Palace of Westminster with the Elizabeth Tower, the London Eye, St Paul's and Tower Bridge; in Paris the Eiffel Tower, the Arc de Triomphe, Sacré-Cœur, Notre-Dame and the Grande Arche; in Frankfurt the Commerzbank Tower, the Messeturm and the Europaturm; in Madrid the four towers and Caleido, and the Puerta de Europa's two leaning towers; in Zurich the Grossmünster and the Prime Tower; in Munich the Olympiaturm and the Frauenkirche; in Barcelona the Sagrada Família, Torre Glòries and the Collserola tower; in Rome St Peter's and the Colosseum.
+- **No greenhouses** in Europe's countryside: a built-up speck among fields is a village there.
+- **The path map** names Europe's cities in English (London, Paris, Madrid, Barcelona, Berlin, Rome, Milan and more as you zoom in).
+
+v0.7.0 also retired v0.6.0's three switches (`EAST_ASIA_ON`, `CITIES_ON`, `GROUND_ON`) with Korea's own tiles and national files: East Asia is always the region now, and draws pixel for pixel what v0.6.4 drew.
+
+## The region (v0.6.0): East Asia
 
 Korea's map grew into one region, in Korea's own map frame.
 
@@ -41,7 +95,7 @@ Korea's map grew into one region, in Korea's own map frame.
 - **The fuel estimate** in the setup follows what the aircraft burn in the sim over these longer routes (about 5.1 t for an A321neo from Gimpo to Haneda, with the reserve).
 - **The countryside** near the aircraft follows 30 m land cover (ESA WorldCover 2021): fields as districts of uneven plots with tracks and tree lines between them (terraces along the contour on slopes), woods and woodlots where they really are with trees out to the middle distance, ponds and canals, greenhouses on the plains (v0.6.1: as rows of low plastic tunnels near the aircraft), bare ground as graded earth with damp and dry patches (v0.6.1), paddies that run along their valleys (v0.6.1), and houses and sheds in the countryside, each country's own (Korea's coloured steel roofs, Japan's dark tiles, the Yangtze delta's tall village houses). Towns' ground is lots, gardens and lanes; inside an airport's fence the ground is the airfield's grass, not fields (v0.6.1). South Korea's 250 m cover was re-aggregated from the same source so near and far agree.
 
-Three switches in `src/world/region.js` hold each part: `EAST_ASIA_ON` (the region; `?eastasia=0` on the URL gives v0.5.8's Korea), `CITIES_ON` (the cities, `?cities=0`) and `GROUND_ON` (the countryside's new ground; `?ground=0`). `?eastasia=0&cities=0` is v0.5.8's Korea, pixel for pixel.
+Three switches in `src/world/region.js` hold each part: `EAST_ASIA_ON` (the region; `?eastasia=0` on the URL gives v0.5.8's Korea), `CITIES_ON` (the cities, `?cities=0`) and `GROUND_ON` (the countryside's new ground; `?ground=0`). `?eastasia=0&cities=0` is v0.5.8's Korea, pixel for pixel. (Until v0.6.4: v0.7.0 retired the three switches and Korea's own files, so these parameters do nothing now.)
 
 ## Running it
 
@@ -59,7 +113,7 @@ The game opens on the main menu, over a still rendered from the game: Continue (
 
 **Scenarios** are save slots holding the whole state: the aircraft's position, speed and attitude, the autopilot and FCU, fuel, the gate flow (a pushback under way and the taxi route), the landing score's approach track, the camera and the clock. A loaded scenario is exactly where it was and flies on. They autosave every 60 s in flight, on pause, when the tab hides or closes, and on Exit to menu, and the Esc menu has Save. A crash never overwrites the last good save. Load scenario lists them newest first, with rename, duplicate and delete: a copy is the same moment, aircraft and load, so you can fly on from one point again and again (the Esc menu's Save a copy makes one of the present moment, and you fly on in the original). v0.1.x's last flight becomes "Scenario 1", with its logbook.
 
-New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time at the departure, or a date and time picked in its local time: KST, JST or China's CST). New flight in the Esc menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the Esc menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
+New scenario opens the flight setup with a name: the origin, destination, runways, load and fuel, the start (lined up on the runway, on a 15 nm final, or at a gate), and the time (Now, the real time at the departure, or a date and time picked in its local time: KST, JST or China's CST in East Asia; GMT or BST, CET or CEST and so on in Europe). New flight in the Esc menu replaces the scenario's flight, starting from the stand when parked after arriving. During a flight, the L window's Weight tab (or Weight and fuel in the Esc menu) changes the passengers, cargo and fuel, in the air or on the ground, with the setup's checks; Restart the flight goes back to the setup's load.
 
 **Night:** the time of day runs with the sim, shown in local time where you are (time compression speeds it up), and the sun, the Moon (with its phase), the 8,400 brightest real stars (with fainter ones past them, washed out by a bright Moon) and the Milky Way are where they really are. On every clear night (v0.4.3) an aurora hangs low in the northern sky: green curtains with red tops and drifting rays, far off, behind any cloud; since v0.4.4 its folds open and close in slow waves and its shapes change as they go. The light runs through golden hour and twilight to a moonlit or starlit night, with the cities lit (streetlights, commercial cores, apartment windows), the runways, approach lights, PAPIs, taxiways and aprons lit, and the A321's own lights set by phase as pilots use them. The Sky window (L) sets the time and date, the clock's speed and jumps to sunrise, noon, sunset, midnight or now.
 
@@ -145,6 +199,16 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 - Triangles: v0.6.0 drew 1.3 to 1.9 M near cities; v0.6.1 draws the houses, trees and greenhouse tunnels only where one stands and the cities, the centres' low buildings and parked aircraft only in view, so the same views are 0.5 to 1.0 M (Tokyo at 3,000 ft 1.03 M; low over Narita's woods up to 1.3 M) at 60 fps with two thirds of the frame to spare on the M5 (`tests/browser-v060-headroom.mjs`). `?cull=0` draws everything in or out of view, for comparison.
 - Gimhae's runways 18L and 18R have no straight-in approach: the 3° final passes through the hills north of the field, and the real approach circles to land from the approach to 36. Since v0.6.2 the game offers no final start, Skip to final or 15 nm final line to them (the setup and the map say why); land on 36L or 36R, or fly the circle by hand.
 - Some airport details are estimates. v0.6.1 read Korea's AIP for Gimhae (its ILS categories, approach lights, PAPIs and 18R's threshold, displaced 600 m, are the published ones now) and open nav data for Pudong's and Qingdao's ILS categories; China's AIP wasn't readable, so the Chinese airports' PAPI sides, Pudong's and Hongqiao's approach lights at their CAT I ends, Hongqiao's thresholds and nearly everything at Yancheng (above) stay estimates, as do the holds made where OpenStreetMap maps none. After landing on Jeju's 31 (from halfway along) or 13 (from three quarters), the taxi-in route runs back along the runway: the map has no other way off.
+- **Europe (v0.7.0):**
+  - Zurich, Schiphol and Fiumicino are estimates (above). Gatwick's and Munich's 30 m terrain stops short (at Greenwich and at 12° E), so about 11 km of their eastern finals is on the 250 m terrain.
+  - The countryside's fields are still East Asia's mosaic: no hedges in Britain and Normandy, no olives in the south, and the Dutch polders' fields don't look Dutch.
+  - The aurora hangs over Europe on every clear night, as it does over East Asia (v0.4.3).
+  - Some buildings stand in narrow rivers (the Main at Frankfurt, the Thames by Tower Bridge), and the real centres' courtyards are roofed over.
+  - The home page's ticket cuts long names short ("Heathrow to Charles d…").
+  - Paris, Madrid and Frankfurt draw over a million triangles with their centres in view, and Frankfurt at a stand (60 fps on the M5 all the same).
+  - Lakes such as the IJsselmeer lie a few metres too low (inland water sits 2 m under its banks), and open-pit mines show at their real depth.
+  - On the way from Heathrow to Charles de Gaulle at 16×, one frame of 33 ms comes at the same place each time, about 35 km south-east of Gatwick (not found yet).
+  - The low landmarks (the Arc de Triomphe, the Colosseum, Tower Bridge, Notre-Dame, St Paul's) are hidden by their centres' blocks from a level view; Tower Bridge is a plain model with a flat deck.
 
 ## Types
 
@@ -233,12 +297,18 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `src/ui/menu.js`, `src/ui/menu.css`, `src/ui/home-scene.js`, `src/ui/home-card.js`, `src/ui/home.css`, `src/ui/line-art.js` | the main menu, Load scenario, Settings and Controls pages; v0.5.7: the home page's scene (the moving path and plane, the floating boarding pass and suitcase, the landmarks' skyline tape, three backgrounds), the saved flight's card text, and the white line art (`SKYLINE`, `ICONS`). `assets/menu/`'s old stills (rendered by `tests/render-stills.mjs`) are no longer shown. v0.5.8: the travel prints (`PRINT_SLOTS`, `printSpots()`: `assets/menu/b777-landing-day.jpg`, `b787-cruise-night.jpg`, `a321-pushback-sunset.jpg`, rendered by `tests/cloud/v058-photos.cjs`), the stars and the aurora (static gradients and stripe masks, animated by transform and opacity), the ground band on the ground line (`groundLineUp()`) |
 | `tools/bake_region_urban.py`, `data/urban-region.json`, `src/ui/common.js` (`buildUrban()`, `pickPlaces()`), `src/ui/map.js` | v0.6.3: the path map's city areas (the land cover's built-up share, smoothed into shapes) and names (Natural Earth's places, by population and zoom); `?mapcities=0` leaves them out |
 | `tools/bake_region_tiles.py` | v0.6.3: the 250 m data's tile list (v0.6.0's 180 and the 26 added), shared by the bake's steps |
-| `src/world/region.js` | v0.6.0: the three switches; v0.6.3: `fineOutline()` (the 250 m data's real outline) and Russia's rules; (`EAST_ASIA_ON`, `CITIES_ON`, `GROUND_ON`), which terrain and airports the manifest gives, the map's extent, the local rules by place (`countryAt()`, `rulesAt()`), and the terrain loader that keeps the tiles round the flight resident and holds the sim's steps for a tile that isn't in |
+| `src/world/regions.js` | v0.7.0: the region registry (each region's frame, tiles' lattice, data folder, outline, its first flight and lists), which region a page is in (`?region=`, `FS_REGION` in node, the last used), `EUROPE_ON`, the reload into another region (`switchRegion()`, `takeCarry()`), and every region's airports by ICAO (`AIRPORT_INDEX`) |
+| `src/world/outline.js` | v0.7.0: the region's outline in map metres (East Asia's rectangle, Europe's polygon), its bounding rectangle, `insideRegion()` |
+| `src/world/rules-europe.js` | v0.7.0: Europe's countries' zones, units and transition altitudes, the airports that set their own, the ICAO prefixes and the setup's groups |
+| `data/europe/` | v0.7.0: Europe's baked world, with the same layout as East Asia's in `data/` (manifest, terrain, airports and patches, centres, coast, urban areas, country raster, WMM grid) |
+| `src/world/region.js` | v0.7.0: the worker's query with the region, the map's extent from the outline, the rules by region with the airports' own transition altitudes. v0.6.0: the three switches (retired in v0.7.0); v0.6.3: `fineOutline()` (the 250 m data's real outline) and Russia's rules; (`EAST_ASIA_ON`, `CITIES_ON`, `GROUND_ON`), which terrain and airports the manifest gives, the map's extent, the local rules by place (`countryAt()`, `rulesAt()`), and the terrain loader that keeps the tiles round the flight resident and holds the sim's steps for a tile that isn't in |
 | `src/world/tilestore.js`, `clipwindow.js` | v0.6.0: the terrain in 128 km tiles (the 250 m level and the 1 km level beyond it), sampled as the one national grid was; the GPU's window of 4096² cells that follows the camera, filled a tile's block at a time |
 | `src/world/geo-rules.js` | v0.6.0: WMM2025's magnetic variation, the country raster and South Korea's mask (`data/magvar.*`, `country.*`, `krmask.*`) |
 | `src/world/airport-set.js`, `airport-worker.js` | v0.6.0: airports built within 200 km of the camera and released beyond 400 km, in slices of a few milliseconds, part of it in a worker |
-| `src/world/landmarks.js`, `landmark-models.js`, `centres.js`, `centres-worker.js` | v0.6.0: the landmarks' own models (nineteen; twenty-six since v0.6.3, two of them bridges; thirty since v0.6.4); the city centres' real buildings (`data/centres/`), built in a worker, with the mask that keeps the procedural blocks out from under them |
-| `src/world/finecover.js`, `ground.js`, `rural.js`, `greenhouses.js` | v0.6.0, behind `GROUND_ON`: the 31 m land cover's window round the camera, the field mosaic and the canopy, the countryside's houses and sheds; v0.6.1: the greenhouses' tunnels, and the CPU's lists of the cells that can hold a house, a tree or a tunnel (`candidateCells()`, `treeCells()` in `detail.js`, `greenhouseSlots()`), so only those are drawn |
+| `src/world/landmarks.js`, `landmark-models.js`, `centres.js`, `centres-worker.js` | v0.6.0: the landmarks' own models (nineteen; twenty-six since v0.6.3, two of them bridges; thirty since v0.6.4); the city centres' real buildings (`data/centres/`), built in a worker, with the mask that keeps the procedural blocks out from under them. v0.7.0: Europe's twenty-eight (`EUROPE_LANDMARKS`, `EUROPE_MODELS`; `REGION_LANDMARKS` is the page's region's list) and Europe's centres' looks (`VERT_EU`, `data/europe/centres/`) |
+| `src/world/cities.js` | the cities' blocks by country; v0.7.0: Europe's five mixes (`euVert()`, spliced into the shader only in Europe) |
+| `src/world/finecover.js`, `ground.js`, `rural.js`, `greenhouses.js` | v0.6.0, behind `GROUND_ON`: the 31 m land cover's window round the camera, the field mosaic and the canopy, the countryside's houses and sheds; v0.6.1: the greenhouses' tunnels, and the CPU's lists of the cells that can hold a house, a tree or a tunnel (`candidateCells()`, `treeCells()` in `detail.js`, `greenhouseSlots()`), so only those are drawn. v0.7.0: Europe's villages (`euRuralVert()` in `rural.js`), no greenhouse country there (`glassPatch()`), and the tiles' lattice from the region |
+| `src/world/runways.js` | the runways' data helpers; v0.6.2: `CIRCLING_ONLY`; v0.7.0: one-way and standby runways (`ONE_WAY`, `runwayUse()`, `canTakeOff()`, `canLand()`) |
 | `src/clock.js`, `src/astro.js` | the clock (local time by place since v0.6.0); the sun, the Moon and its phase, sidereal time and the stars (Meeus's low-precision formulas) |
 | `src/ui/sky-window.js` | the Sky window |
 | `src/ui/load-window.js` | the Weight window, the Sky window's second tab (v0.3.2) |
@@ -252,6 +322,9 @@ On the Boeings an MCP takes its place, with the same typing and scrolling: A/T, 
 | `data/` | baked terrain, water and land-cover grids, coastline, airports |
 | `tools/bake_*.py` | the bake scripts (read `reference/raw/`, write `data/`) |
 | `tools/cpu-guard.py` | the CPU guard every heavy dev command runs through |
+| `tools/install-region.py` | v0.7.0: installs a region's staged bake into its data folder, each file checked against its SHA-256 before and after, only the terrain's keys merged into the manifest |
+| `tools/check-airport.sh`, `tools/check-step.sh`, `tools/promote-airport.py` | v0.7.0: one pending airport through its check (gate, pushback, taxi, take-off and landing by day and by night, taxi-in, the frame rate at a stand, the finals' stills), each step through the guard and a watch for a script that hangs at the close; then its promotion from the manifest's pending lists |
+| `tests/region-run.mjs`, `tests/v070-*.test.mjs`, `tests/browser-v070-regions.mjs` | v0.7.0: a test file of one region inside the one suite (`inRegion()` runs it again in a child process opened in that region); Europe's frame, terrain, rules, runways, airports, centres, landmarks and mixes; the regions in Chrome (a v0.6.4 save, saves across regions, the picker, the Load list, Europe's map) |
 | `tests/*.test.mjs` | unit tests: `node --test games/flight-sim/tests/*.test.mjs` |
 | `tests/browser-*.mjs` | Chrome checks with Playwright. `browser-e2e.mjs` is the Gimpo-to-Jeju flight: take-off, AP, time compression, a jump, skip to final, a landing, the score and the taxi-in route. `browser-gate.mjs` is a gate start, pushback and taxi to the holding point. Also: `browser-cpu.mjs` (nothing runs while paused or hidden), `browser-boot.mjs` (setup, keys, the hub player), `browser-rewind.mjs`, `browser-shots.mjs` (screenshots with fps, triangles and draw calls) and `audio-render.mjs` (the synth rendered offline and measured) |
 | `tests/e2e-controller.js` | the test-only take-off and landing controller the end-to-end flight uses |
@@ -270,6 +343,8 @@ v0.6.0's browser checks (`tests/browser-v060-*.mjs`, all headless with `--mute-a
 
 v0.6.1: every browser script in `tests/` is headless by default now, muted, on the GPU (`--use-angle=metal`); `--headed` on the command line (or `FS_HEADLESS=0`) opens a window. The v0.6.0 scripts take `E2E_EXTRA` (more for the page's query: `&pending=1` shows an airport still in the manifest's `airportsPending`, `&cull=0` draws what is out of view too, `&greenhouses=0` leaves the tunnels out) and `E2E_PREFIX` (the pictures' prefix); `browser-v060-stills.mjs` takes `--prefix`, `--pending`, `--nocull` and `--q`.
 
+v0.7.0: the unit suite covers both regions in one run (1,392 tests); `FS_REGION=europe node --test tests/v070-*.test.mjs` runs Europe's files directly (add `FS_PENDING=1` for airports still pending). The browser scripts take `FS_REGION=europe` with `E2E_EXTRA='&region=europe'` (`tools/check-airport.sh` sets both). `browser-v060-stills.mjs --total N` steps on to exactly N frames at the capture, so its pictures repeat run to run; use it for every before-and-after comparison (without it, the frames counted while it waits for files follow how fast they came, and the sea's sparkle and the lights' twinkle move).
+
 ## Storage
 
 All in localStorage, under `gamedump:flight-sim:`:
@@ -277,7 +352,8 @@ All in localStorage, under `gamedump:flight-sim:`:
 - `scenarios`: the scenario index (id, name, created, savedAt, a summary); `scenario:<id>`: each scenario's whole state (a few KB, up to about 70 KB with a long approach track);
 - `logbook`: every flight, tagged with its scenario's id and name (v0.1.x's untagged flights count as Scenario 1's);
 - `settings` (volume, callouts, the readout, the setup's last plan) and `lastflight` (the last flight's plan);
-- `designs` (v0.5.0): the warehouse's designs, one list (v0.5.2: each a list of parts; v0.5.0's open as they were).
+- `designs` (v0.5.0): the warehouse's designs, one list (v0.5.2: each a list of parts; v0.5.0's open as they were);
+- `region` (v0.7.0): the last region used. Each scenario carries its region in its entry and its state (East Asia's are written as before, with no field). Switching region carries the scenario to start in sessionStorage, under `gamedump:flight-sim:region-carry`.
 
 ## Data credits
 
@@ -291,6 +367,16 @@ All in localStorage, under `gamedump:flight-sim:`:
   - The World Magnetic Model WMM2025 (NOAA NCEI and the British Geological Survey, public domain): the magnetic variation outside South Korea (`data/magvar.*`).
   - Natural Earth's countries and urban areas (public domain): the country by position (`data/country.*`) and the far margin's towns.
 - v0.6.3: Natural Earth's populated places (public domain): the names on the path map (`data/urban-region.json`, whose city areas are the game's own land cover, from ESA WorldCover as above). AIP Russia (the Federal Air Transport Agency's, public): Vladivostok's published values. v0.6.4: AIP Japan for New Chitose, Sendai, Niigata and Aomori; Geofabrik's extracts for North Korea, Hokkaido, Tohoku and Chubu. Geofabrik's extracts of OpenStreetMap for China and Russia's far east: the new airports and centres, © OpenStreetMap contributors, ODbL.
+- v0.7.0, Europe (`data/europe/`; see `briefs/V0-7-0.md`), from the same kinds of sources as East Asia's:
+  - Copernicus DEM GLO-90 and GLO-30 (as above): the elevation, and the 30 m terrain at the airports.
+  - ESA WorldCover 10 m 2021 v200, under CC BY 4.0 ("© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium"): the land cover, inland water and the 30 m land cover.
+  - OpenStreetMap, © OpenStreetMap contributors, under the ODbL, from Geofabrik's extracts (Greater London, Surrey, West Sussex, Île-de-France, Hessen, Oberbayern, Switzerland, Noord-Holland, Madrid, Catalonia and Italy's Centro) and OpenStreetMap's land polygons (osmdata.openstreetmap.de): the eleven airports, the nine centres' buildings and the coastline (`data/europe/coast-region.json`).
+  - Natural Earth (public domain): the land, the countries (`data/europe/country.*`), the urban areas beyond the 250 m data and the populated places' names on the path map.
+  - The World Magnetic Model WMM2025 (NOAA NCEI and the British Geological Survey, public domain): the magnetic variation (`data/europe/magvar.*`).
+  - OurAirports (public domain): the runways' cross-check, and Zurich's, Schiphol's and Fiumicino's runways.
+  - Each country's AIP, as read on 2026-11-21 (public; the pages themselves aren't in the repository): the UK's NATS eAIP for Heathrow and Gatwick, France's SIA eAIP for Charles de Gaulle and Orly, Germany's DFS AIP for Frankfurt and Munich, Spain's ENAIRE AIP for Madrid and Barcelona.
+  - The landmarks' heights and positions from public figures (Wikipedia's articles for most of them; each entry's `source` in `src/world/landmarks.js` says which).
+- `data/` is 322 MB with Europe (Europe's 123 MB of it), each file under GitHub's 100 MB (the biggest, East Asia's coast file, is 3.8 MB; Europe's biggest, its coast file, 3.2 MB).
 
 The baked files in `data/` keep those licences: the OpenStreetMap-derived ones (coast, water, land cover, airports) are under the ODbL, and the elevation is under the Copernicus DEM licence.
 - The A321neo's numbers come from Airbus (the A321 Aircraft Characteristics document and the A321neo page) and EASA (TCDS EASA.A.064). Sources and pages are in `src/sim/a321neo.js`.

@@ -9,7 +9,7 @@ import { createWorldUniforms, nearest, MAX_PATCHES, MAX_RUNWAYS } from '../src/w
 import { tiledTerrain, manifest, DATA } from './tile-terrain.mjs';
 
 const m = manifest();
-const HAVE = !!(m.tiles && existsSync(new URL(m.tiles.levels[0].dir, DATA)));
+const HAVE = !!(m.tilesRegion && existsSync(new URL(m.tilesRegion.levels[0].dir, DATA)));
 
 test('nearest: the n nearest, in the list\'s own order; all of a short list', () => {
   const list = [10, 50, 20, 40, 30].map((v, i) => ({ v, i }));
@@ -18,22 +18,6 @@ test('nearest: the n nearest, in the list\'s own order; all of a short list', ()
   assert.deepEqual(nearest(list, 3, { x: 45 }, d).map((e) => e.i), [1, 3, 4]);
   assert.deepEqual(nearest(list, 5, { x: 45 }, d), list);
   assert.deepEqual(nearest(list, 9, null, d), list);
-});
-
-test('Korea: every patch and runway on the GPU, in order, from anywhere; PEAK unchanged', { skip: !HAVE }, async () => {
-  const { hf } = await tiledTerrain({ layers: ['h', 'w', 'c'], coasts: true });
-  const u = createWorldUniforms(hf);
-  const L = hf.layers;
-  assert.ok(L.patches.length <= MAX_PATCHES && L.coastPatches.length <= MAX_PATCHES && hf.runwayRects.length <= MAX_RUNWAYS);
-  const before = JSON.stringify([u.uPatchRect.value, u.uPatchDim.value, u.uCoastRect.value, u.uCoastDim.value, u.uRwyA.value, u.uRwyB.value, u.uRwyC.value]);
-  for (const [x, y] of [[-69000, 179000], [-150000, -280000], [390000, -390000], [0, 0]]) {
-    assert.equal(u.__near.update({ x, y }), false);
-    const s = u.__near.selection;
-    assert.deepEqual(s.patches, L.patches); assert.deepEqual(s.coast, L.coastPatches); assert.deepEqual(s.runways, hf.runwayRects);
-  }
-  assert.equal(JSON.stringify([u.uPatchRect.value, u.uPatchDim.value, u.uCoastRect.value, u.uCoastDim.value, u.uRwyA.value, u.uRwyB.value, u.uRwyC.value]), before);
-  assert.equal(u.uRwyCount.value, hf.runwayRects.length);
-  assert.ok(u.__peak.m > 1900 && u.__peak.m < 2000, `Korea's highest ground ${u.__peak.m} m`);
 });
 
 // The region (the evening sitting): more patches than the cap, so the atlases are fixed slots and

@@ -5,7 +5,8 @@
 //   const geo = await loadGeoRules('data/');          // fetches the four files
 //   const geo = createGeoRules({ magvar, country });  // or from data already in hand
 //   geo.wmmVar(x, y)    -> degrees, east positive (WMM2025 at epoch 2026.0, sea level), bilinear
-//   geo.countryAt(x, y) -> 'KR' | 'KP' | 'JP' | 'CN' | 'other' (the sea takes its nearest land's)
+//   geo.countryAt(x, y) -> 'KR' | 'KP' | 'JP' | 'CN' | 'RU' | 'other' in East Asia, an ISO code from the raster's own
+//                          table in Europe (the sea takes its nearest land's)
 //   geo.seaAt(x, y)     -> true where the cell is sea
 //   geo.krBlend(x, y)   -> 0 inside south-korea.poly (exactly), rising to 1 about 50 km outside it
 //   geo.magVarAt(x, y, plane) -> the game's variation: `plane` (frame.js's plane, passed in) where
@@ -20,8 +21,20 @@
 // grid the nearest edge cell answers. This does not replace frame.js's magVar(): South Korea
 // keeps its plane exactly (briefs/V0-6-0.md, "Magnetic variation"), and the blend lives there.
 
+import { REGION } from './regions.js';
+
 export const COUNTRY_NAMES = ['sea', 'KR', 'KP', 'JP', 'CN', 'other', 'RU'];   // (RU: v0.6.3, code 6; the raster's low three bits)
 const SEA_BIT = 8;
+// v0.7.0: East Asia's raster is as above (three bits, six countries). A region with more countries has its own
+// raster with the table in its header: `codes` (the country for each code; 0 is the sea with no country),
+// `codeMask` (the bits that hold the code) and `seaBit`. Europe's: a byte a cell, 127 and 128.
+function countryTable(h) {
+  if (!h || !h.codeMask) return { names: COUNTRY_NAMES, mask: 7, sea: SEA_BIT };
+  const names = [];
+  if (Array.isArray(h.codes)) h.codes.forEach((n, i) => { names[i] = n; });
+  else for (const k of Object.keys(h.codes || {})) names[Number(k)] = h.codes[k];
+  return { names, mask: h.codeMask, sea: h.seaBit ?? 0 };
+}
 
 function grid(part, Typed) {
   const h = part.header;
@@ -37,6 +50,7 @@ export function createGeoRules({ magvar, country, krmask = null }) {
   const C = grid(country, Uint8Array);
   const K = krmask ? grid(krmask, Uint8Array) : null;
   const mMaxX = M.nx - 1, mMaxY = M.ny - 1;
+  const CT = countryTable(country.header), cNames = CT.names, cMask = CT.mask, cSea = CT.sea;
   const kUnit = K ? krmask.header.unitM : 0, kBand = K ? krmask.header.bandM : 1;
   const kX1 = K ? K.x0 + K.nx * K.cell : 0, kY1 = K ? K.y0 + K.ny * K.cell : 0;
 
@@ -91,8 +105,9 @@ export function createGeoRules({ magvar, country, krmask = null }) {
 
   return {
     wmmVar,
-    countryAt: (x, y) => COUNTRY_NAMES[cellOf(x, y) & 7] || 'other',
-    seaAt: (x, y) => (cellOf(x, y) & SEA_BIT) !== 0,
+    countryAt: (x, y) => cNames[cellOf(x, y) & cMask] || 'other',
+    seaAt: (x, y) => (cellOf(x, y) & cSea) !== 0,
+    countries: cNames.filter((n) => n && n !== 'sea'),
     krBlend,
     magVarAt,
     hasKrMask: K !== null,
@@ -110,14 +125,17 @@ async function gunzip(url) {
 
 // src: a base URL ending in '/' (where magvar.json, country.json, krmask.json and their grids
 // live), or the data itself ({ magvar, country, krmask } as createGeoRules takes it).
-export async function loadGeoRules(src) {
+// v0.7.0: `krmask` false for a region with no such mask (Europe: WMM2025 everywhere); the default is the
+// page's region's (regions.js).
+export async function loadGeoRules(src, { krmask = REGION.krMask } = {}) {
   if (src && typeof src === 'object' && src.magvar) return createGeoRules(src);
-  const base = String(src || 'data/');
-  const [mh, ch, kh] = await Promise.all(['magvar.json', 'country.json', 'krmask.json'].map(async (f) => {
+  const base = String(src || REGION.data);
+  const [mh, ch, kh] = await Promise.all(['magvar.json', 'country.json', krmask ? 'krmask.json' : null].map(async (f) => {
+    if (!f) return null;
     const res = await fetch(base + f);
     if (!res.ok) throw new Error(`geo-rules: ${base + f}: HTTP ${res.status}`);
     return res.json();
   }));
-  const [mv, cv, kv] = await Promise.all([gunzip(base + mh.file), gunzip(base + ch.file), gunzip(base + kh.file)]);
-  return createGeoRules({ magvar: { header: mh, values: mv }, country: { header: ch, values: cv }, krmask: { header: kh, values: kv } });
+  const [mv, cv, kv] = await Promise.all([gunzip(base + mh.file), gunzip(base + ch.file), kh ? gunzip(base + kh.file) : null]);
+  return createGeoRules({ magvar: { header: mh, values: mv }, country: { header: ch, values: cv }, krmask: kh ? { header: kh, values: kv } : null });
 }

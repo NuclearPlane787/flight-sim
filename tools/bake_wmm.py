@@ -29,7 +29,7 @@ import zipfile
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bake_common import DATA, RAW, to_geo, to_map, mag_var, write_gz  # noqa: E402
+from bake_common import DATA, EUROPE, RAW, to_geo, to_map, mag_var, write_gz  # noqa: E402
 
 COF_ZIP = os.path.join(RAW, 'wmm', 'WMM2025COF.zip')
 TESTS = os.path.join(RAW, 'wmm', 'WMM2025_TEST_VALUES.txt')
@@ -39,6 +39,14 @@ NMAX = 12
 # The grid: the margin box's extent in the map frame, rounded out to 10 km.
 GRID = dict(x0=-1600000.0, y0=-1340000.0, cell=10000.0, nx=371, ny=263)
 SCALE = 0.001   # degrees per unit
+OUT = DATA
+COVERS = '24-46 N, 112-148 E (the margin box) and more'
+FRAME = 'src/world/frame.js map metres'
+if EUROPE:   # v0.7.0: Europe's outline's bounding rectangle in its frame, rounded out to 10 km; staged
+    GRID = dict(x0=-1380000.0, y0=-1330000.0, cell=10000.0, nx=281, ny=276)
+    OUT = '/tmp/flight-sim/v070/bake'
+    COVERS = '35-59 N, 11 W-19.5 E (Europe\'s outline\'s bounding rectangle) and more'
+    FRAME = 'Europe\'s map frame (LCC 47 N 4 E, 39/54) metres'
 
 
 def read_cof():
@@ -145,26 +153,32 @@ def main():
     D = declination(lat, lon, 0.0, EPOCH)
     assert np.abs(D).max() < 32, 'declination outside int16 range at this scale'
     q = np.round(D / SCALE).astype('<i2')
-    write_gz(os.path.join(DATA, 'magvar.i16.gz'), q)
+    os.makedirs(OUT, exist_ok=True)
+    write_gz(os.path.join(OUT, 'magvar.i16.gz'), q)
     header = dict(
         model='WMM2025 (NOAA NCEI, public domain)', epoch=EPOCH, altitudeM=0,
         unit='degrees, east positive', scale=SCALE, type='int16le', rowOrder='south first',
         sampling='cell-centred: value (i, j) is at x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell',
-        file='magvar.i16.gz', frame='src/world/frame.js map metres',
-        covers='24-46 N, 112-148 E (the margin box) and more', testMaxErrDeg=round(worst, 4),
+        file='magvar.i16.gz', frame=FRAME,
+        covers=COVERS, testMaxErrDeg=round(worst, 4),
         **gr)
-    with open(os.path.join(DATA, 'magvar.json'), 'w') as f:
+    with open(os.path.join(OUT, 'magvar.json'), 'w') as f:
         json.dump(header, f, indent=2)
     print(f'grid {gr["nx"]} x {gr["ny"]} at {gr["cell"]/1000:.0f} km: {D.min():.2f} .. {D.max():.2f} deg')
     for name in ('magvar.i16.gz', 'magvar.json'):
-        print(f'  data/{name}: {os.path.getsize(os.path.join(DATA, name))} bytes')
+        print(f'  {OUT}/{name}: {os.path.getsize(os.path.join(OUT, name))} bytes')
 
     print('\nAirports (WMM2025 at 2026.0, altitude 0) vs the AIPs and frame.js\'s plane')
-    for icao, la, lo, aip in (('RJTT', 35.5523, 139.7798, '8 W (AIP)'),
+    pts = (('RJTT', 35.5523, 139.7798, '8 W (AIP)'),
                               ('RJAA', 35.7647, 140.3864, '8 W (AIP)'),
                               ('ZSPD', 31.1434, 121.8052, "5 47' W = -5.78 (AIP, 2017)"),
                               ('RKSS', 37.5583, 126.7906, '(Korea: the plane rules)'),
-                              ('RKPC', 33.5113, 126.4930, '(Korea: the plane rules)')):
+                              ('RKPC', 33.5113, 126.4930, '(Korea: the plane rules)'))
+    if EUROPE:
+        pts = (('EGLL', 51.4706, -0.4619, ''), ('LFPG', 49.0097, 2.5479, ''), ('EDDF', 50.0333, 8.5706, ''),
+               ('LEMD', 40.4722, -3.5609, ''), ('LSZH', 47.4647, 8.5492, ''), ('EHAM', 52.3086, 4.7639, ''),
+               ('EDDM', 48.3538, 11.7861, ''), ('LEBL', 41.2971, 2.0785, ''), ('LIRF', 41.8003, 12.2389, ''))
+    for icao, la, lo, aip in pts:
         d = float(declination(la, lo, 0.0, EPOCH))
         x, y = to_map(la, lo)
         # the grid's bilinear value at the same point, as geo-rules.js reads it
@@ -174,7 +188,7 @@ def main():
         gb = (gq[j, i] * (1 - u) * (1 - v) + gq[j, i + 1] * u * (1 - v)
               + gq[j + 1, i] * (1 - u) * v + gq[j + 1, i + 1] * u * v)
         print(f'  {icao}: WMM {d:+.2f} (grid {gb:+.3f})  '
-              f'plane {mag_var(la, lo):+.2f}   AIP {aip}')
+              + ('' if EUROPE else f'plane {mag_var(la, lo):+.2f}   AIP {aip}'))
 
 
 if __name__ == '__main__':

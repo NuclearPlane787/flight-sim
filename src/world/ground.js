@@ -1,4 +1,4 @@
-// The new ground (v0.6.0 Part 7, behind GROUND_ON): the farmland as a mosaic of irregular
+// The new ground (v0.6.0 Part 7): the farmland as a mosaic of irregular
 // fields instead of a grid of rectangles, laid out in irregular districts with tracks, ditches
 // and tree lines between them. GLSL for the terrain's fragment shader; needs NOISE_GLSL and
 // finecover.js's FINE_GLSL (for the exact position).
@@ -8,6 +8,8 @@
 // x is 1,100 km, where a float steps by 0.125 m and patterns made from it go blocky (briefs/V0-6-0.md,
 // "Precision far from the origin"). A lattice's cell index is integer arithmetic on the pixel
 // index; the position inside the cell comes from small numbers.
+
+import { seaFloor, LATTICE_BACK_GLSL } from './glsl.js';   // v0.7.0: the ground's floor and the lattice's origin, by region
 
 export const GROUND_GLSL = /* glsl */ `
 // A lattice of k fine pixels (k x 31.25 m): the cell of fine position fp, and the position
@@ -22,9 +24,9 @@ vec2 ihash2(ivec2 c, uint s) { return vec2(ihash(c, s), ihash(c, s + 101u)); }
 // The 250 m height of a cell (m, the sea as 0), by its index on the tiles' lattice (v0.6.1: one fetch,
 // for the shape of the ground round a point; the clip window's texel as glsl.js's bilinWin() takes it).
 float cellH(ivec2 p) {
-  p -= ivec2(floor((uNat.xy + 400000.0) / uNat.z + 0.5));    // from the lattice's origin to the window's (exact: whole cells)
+  p -= ivec2(floor((uNat.xy ${LATTICE_BACK_GLSL}) / uNat.z + 0.5));    // from the lattice's origin to the window's (exact: whole cells)
   p = clamp(p, ivec2(uNatExt.xy), ivec2(uNatExt.zw));
-  return max(float(texelFetch(uHeight, p & ivec2(uNatMask), 0).r) * H_SCALE, 0.0);
+  return ${seaFloor('float(texelFetch(uHeight, p & ivec2(uNatMask), 0).r) * H_SCALE')};
 }
 
 // The woods' canopy from above: a crown in each cell of a 10.4 m lattice (a third of a fine

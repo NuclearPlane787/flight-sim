@@ -1,0 +1,259 @@
+{
+ "version": 1,
+ "credit": "\u00a9 OpenStreetMap contributors (ODbL)",
+ "cell": 500.0,
+ "centres": [
+  {
+   "id": "london",
+   "name": "London",
+   "file": "london.bin.gz",
+   "origin": [
+    -281073,
+    504759
+   ],
+   "box": [
+    -285558,
+    502990,
+    -276588,
+    506528
+   ],
+   "latlon": [
+    51.48794,
+    -0.13617,
+    51.52404,
+    -0.00387
+   ],
+   "cols": 18,
+   "rows": 8,
+   "count": 18483,
+   "vertices": 124097,
+   "maxHeightM": 310.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 404886
+  },
+  {
+   "id": "paris",
+   "name": "Paris",
+   "file": "paris.bin.gz",
+   "origin": [
+    -124197,
+    207882
+   ],
+   "box": [
+    -129182,
+    205234,
+    -119212,
+    210530
+   ],
+   "latlon": [
+    48.848,
+    2.22421,
+    48.89795,
+    2.36274
+   ],
+   "cols": 20,
+   "rows": 11,
+   "count": 21579,
+   "vertices": 189863,
+   "maxHeightM": 300.0,
+   "minKeepHeightM": 17.0,
+   "bytes": 612109
+  },
+  {
+   "id": "frankfurt",
+   "name": "Frankfurt",
+   "file": "frankfurt.bin.gz",
+   "origin": [
+    331419,
+    353209
+   ],
+   "box": [
+    329469,
+    351830,
+    333369,
+    354588
+   ],
+   "latlon": [
+    50.09899,
+    8.63896,
+    50.126,
+    8.69606
+   ],
+   "cols": 8,
+   "rows": 6,
+   "count": 8365,
+   "vertices": 54289,
+   "maxHeightM": 259.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 175700
+  },
+  {
+   "id": "madrid",
+   "name": "Madrid",
+   "file": "madrid.bin.gz",
+   "origin": [
+    -650424,
+    -691738
+   ],
+   "box": [
+    -652192,
+    -695980,
+    -648656,
+    -687496
+   ],
+   "latlon": [
+    40.40382,
+    -3.72671,
+    40.48319,
+    -3.67532
+   ],
+   "cols": 8,
+   "rows": 17,
+   "count": 22766,
+   "vertices": 182063,
+   "maxHeightM": 249.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 569730
+  },
+  {
+   "id": "zurich",
+   "name": "Zurich",
+   "file": "zurich.bin.gz",
+   "origin": [
+    339320,
+    51271
+   ],
+   "box": [
+    337675,
+    49675,
+    340965,
+    52867
+   ],
+   "latlon": [
+    47.36118,
+    8.51085,
+    47.39181,
+    8.55717
+   ],
+   "cols": 7,
+   "rows": 7,
+   "count": 7168,
+   "vertices": 45747,
+   "maxHeightM": 126.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 150237
+  },
+  {
+   "id": "amsterdam",
+   "name": "Amsterdam",
+   "file": "amsterdam.bin.gz",
+   "origin": [
+    60746,
+    593625
+   ],
+   "box": [
+    59185,
+    592128,
+    62307,
+    595122
+   ],
+   "latlon": [
+    52.35684,
+    4.87176,
+    52.38416,
+    4.91825
+   ],
+   "cols": 7,
+   "rows": 6,
+   "count": 17401,
+   "vertices": 97461,
+   "maxHeightM": 83.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 308677
+  },
+  {
+   "id": "munich",
+   "name": "Munich",
+   "file": "munich.bin.gz",
+   "origin": [
+    557865,
+    153952
+   ],
+   "box": [
+    556139,
+    151208,
+    559591,
+    156696
+   ],
+   "latlon": [
+    48.12673,
+    11.54466,
+    48.17927,
+    11.59836
+   ],
+   "cols": 7,
+   "rows": 11,
+   "count": 11623,
+   "vertices": 70805,
+   "maxHeightM": 291.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 227648
+  },
+  {
+   "id": "barcelona",
+   "name": "Barcelona",
+   "file": "barcelona.bin.gz",
+   "origin": [
+    -152568,
+    -617010
+   ],
+   "box": [
+    -154857,
+    -618944,
+    -150279,
+    -615076
+   ],
+   "latlon": [
+    41.37253,
+    2.13946,
+    41.40846,
+    2.19551
+   ],
+   "cols": 10,
+   "rows": 8,
+   "count": 29476,
+   "vertices": 207322,
+   "maxHeightM": 170.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 636504
+  },
+  {
+   "id": "rome",
+   "name": "Rome",
+   "file": "rome.bin.gz",
+   "origin": [
+    699139,
+    -525380
+   ],
+   "box": [
+    696102,
+    -527632,
+    702176,
+    -523128
+   ],
+   "latlon": [
+    41.87128,
+    12.4455,
+    41.91771,
+    12.52451
+   ],
+   "cols": 13,
+   "rows": 10,
+   "count": 12665,
+   "vertices": 104229,
+   "maxHeightM": 134.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 342038
+  }
+ ]
+}

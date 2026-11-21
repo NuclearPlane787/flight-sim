@@ -7,7 +7,12 @@
 // or skimming the terrain, and the last sample left carries terrain: true and the impact.
 
 import { createSim } from './sim.js';
-import { mapExtent } from '../world/region.js';   // v0.6.0: Korea's square, or the region's behind EAST_ASIA_ON
+import { mapExtent } from '../world/region.js';   // v0.6.0: the region's rectangle
+import { insideRegion, outlineIsRect } from '../world/outline.js';   // v0.7.0: and its outline
+import { REGION } from '../world/regions.js';
+
+const POLY = !outlineIsRect();
+const LOW_LAND = !!REGION.lowLand;
 
 const SEA = { h: 0, kind: 'water' };
 const seaGround = () => SEA;
@@ -20,7 +25,8 @@ export const TERRAIN_CLEAR_S = 15;    // and so do those in the last 15 s before
 // anything at 0 m), else 'ground'. One reused object, as in main.js.
 export function terrainGround(hf) {
   const g = { h: 0, kind: 'water' };
-  return (x, y) => { const h = hf.heightAt(x, y); g.h = h; g.kind = h > 0 ? 'ground' : 'water'; return g; };
+  // v0.7.0: where land lies below sea level (Europe: regions.js's lowLand) the sea is stored as exactly 0 and land never is.
+  return (x, y) => { const h = hf.heightAt(x, y); g.h = h; g.kind = (LOW_LAND ? h !== 0 : h > 0) ? 'ground' : 'water'; return g; };
 }
 
 // Sets up a run. Call run.advance(n) until it returns true; run.samples holds the result
@@ -81,7 +87,8 @@ export function createPredictionRun(snap, opts = {}, hf = null) {
         if (hf && (S.crashed || S.onGround || S.scraping) && ground(S.pos.x, S.pos.y).kind === 'ground') why = 'terrain';
         else if (S.crashed || S.scraping || (S.onGround && ground(S.pos.x, S.pos.y).kind === 'water')) why = 'crash';
         else if (S.fuelKg <= 0) why = 'fuel';
-        else if (S.pos.x < EXT.x0 || S.pos.x > EXT.x1 || S.pos.y < EXT.y0 || S.pos.y > EXT.y1) why = 'map';
+        // v0.7.0: or past the region's outline where it isn't its rectangle (Europe's cut corners).
+        else if (S.pos.x < EXT.x0 || S.pos.x > EXT.x1 || S.pos.y < EXT.y0 || S.pos.y > EXT.y1 || (POLY && !insideRegion(S.pos.x, S.pos.y))) why = 'map';
         else if (S.t >= tEnd - 1e-9) why = 'time';
         if (why) {
           if (k % stepsPerSample !== 0) samples.push({ t: S.t, x: S.pos.x, y: S.pos.y, z: S.pos.z, snap: sim.snapshot() });

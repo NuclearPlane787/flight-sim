@@ -170,34 +170,7 @@ try {
   check('the region on: no console errors', errors.length === 0, errors.slice(0, 5).join(' | '));
   await page.close();
 
-  // ======== the region off: v0.5.8 ========
-  const off = await ctx.newPage();
-  const err2 = [];
-  off.on('pageerror', (e) => err2.push(String(e)));
-  off.on('console', (m) => { if (m.type() === 'error') err2.push(m.text()); });
-  await off.goto(`${ROOT}games/flight-sim/?eastasia=0`);
-  await off.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('gamedump:flight-sim:')) localStorage.removeItem(k); });
-  await off.reload();
-  await off.waitForFunction(() => window.__fs && window.__fs.inMenu, null, { timeout: 120000 });
-  await off.evaluate(() => { window.__fs.newScenario(); });
-  await off.waitForSelector('.fsui-setup:not([hidden])');
-  const o = await off.evaluate(() => ({
-    n: window.__fs.airports.length,
-    groups: document.querySelectorAll('[data-f="origin"] optgroup').length,
-    opts: [...document.querySelectorAll('[data-f="origin"] option')].map((x) => x.textContent),
-    fuel: document.querySelector('[data-f="fuelKg"]').value,
-    note: document.querySelector('[data-o="timeNote"]').textContent,
-    lbl: document.querySelector('[data-o="timeRow"] .fsui-note').textContent,
-    nowTitle: document.querySelector('[data-seg="time"] [data-v="now"]').title,
-    find: !!document.querySelector('.fsui-stand-find'),
-    weights: document.querySelector('[data-o="weights"]').innerText,
-  }));
-  console.log('flag off:', JSON.stringify(o, null, 1));
-  check('flag off: three airports, full names, no groups', o.n === 3 && o.groups === 0 && o.opts.join('|') === 'RKSS · Seoul Gimpo International Airport|RKPC · Jeju International Airport|RKSI · Incheon International Airport', o.opts.join(' | '));
-  check('flag off: Gimpo–Jeju\'s 4,000 kg, KST', o.fuel === '4000' && / KST, /.test(o.note) && o.lbl === 'KST' && o.nowTitle === 'The real time in Korea' && !o.find, `${o.fuel} ${o.note}`);
-  await off.locator('.fsui-dlg').screenshot({ path: shot('v060-setup-flag-off.png') });
-  check('the region off: no console errors', err2.length === 0, err2.slice(0, 5).join(' | '));
-  await off.close();
+  // (v0.7.0: the region-off half, v0.5.8's setup with ?eastasia=0, went with v0.6.0's flag.)
 
   // ======== the extra: the Oriental Pearl Tower in the home page's skyline (not behind the flag) ========
   const la = await ctx.newPage({ deviceScaleFactor: 2 });

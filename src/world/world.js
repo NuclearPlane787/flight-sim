@@ -7,7 +7,7 @@
 // scene frame is X = map x, Y = altitude MSL, Z = −map y (frame.js toScene). Nothing in
 // here runs between frames: no timers, no workers.
 //
-// v0.6.0, the region (EAST_ASIA_ON): the airports' meshes, lights, signs and traffic are built
+// v0.6.0, the region: the airports' meshes, lights, signs and traffic are built
 // near the camera and released far away (airport-set.js: within 200 km, beyond 400 km, one part
 // a frame, at once within 100 km). world.runways, .aprons, .traffic and .taxiLights are then
 // facades over the airports built now, with the same interface; a player stand set for an
@@ -30,13 +30,13 @@ import { createAprons, apronsInSteps } from './apron.js';
 import { createTraffic, trafficInSteps } from './traffic.js';
 import { createClouds } from './clouds.js';
 import { createPrecip } from './precip.js';
-import { EAST_ASIA_ON, GROUND_ON, CITIES_ON } from './region.js';
 import { createRural } from './rural.js';
 import { createGreenhouses } from './greenhouses.js';
 import { clusterAirports, createAirportSet, MORE } from './airport-set.js';
 import { placeParked, blockedByPlayer } from './traffic-layout.js';
+import { regionQuery } from './region.js';
 
-export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfield = null, airports = null, streamAirports = EAST_ASIA_ON } = {}) {
+export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfield = null, airports = null } = {}) {
   const hf = heightfield || await loadHeightfield(baseUrl);
   // airports: the loadAirports() object, or just its list of airport JSONs.
   let ap = airports || await loadAirports(baseUrl, { heightfield: hf });
@@ -56,33 +56,23 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
   // M2: aprons, taxiways, stands and terminals; parked aircraft and ground vehicles. Each is
   // optional, so a failure there leaves the M1 world working.
   const optional = (name, make) => { try { return make(); } catch (e) { console.warn(`world: ${name} off:`, e); return null; } };
-  // v0.6.0 Part 7 (behind GROUND_ON): the countryside's buildings (rural.js). Nothing without the flag.
-  const rural = GROUND_ON ? optional('rural', () => createRural(scene, uniforms, chunks, { fine: terrain.fine })) : null;
+  // v0.6.0 Part 7: the countryside's buildings (rural.js).
+  const rural = optional('rural', () => createRural(scene, uniforms, chunks, { fine: terrain.fine }));
   // v0.6.1: greenhouses as low tunnels on the greenhouse ground, near the camera (greenhouses.js; ?greenhouses=0 leaves them out).
-  const GH_ON = GROUND_ON && !(typeof location !== 'undefined' && /[?&]greenhouses=0\b/.test(location.search || ''));
+  const GH_ON = !(typeof location !== 'undefined' && /[?&]greenhouses=0\b/.test(location.search || ''));
   if (rural && rural.setGlass) rural.setGlass(GH_ON);
   const greenhouses = GH_ON ? optional('greenhouses', () => createGreenhouses(scene, uniforms, chunks, { fine: terrain.fine })) : null;
-  // v0.6.0 Part 6 (behind CITIES_ON): the landmarks' own models (landmarks.js) and the dense
-  // centres from real buildings (centres.js), whose mask keeps the procedural blocks out from
-  // under them. Neither module is loaded without the flag.
+  // v0.6.0 Part 6: the landmarks' own models (landmarks.js) and the dense centres from real
+  // buildings (centres.js), whose mask keeps the procedural blocks out from under them.
   let landmarks = null, centres = null;
-  if (CITIES_ON) {
+  {
     const [lmMod, ceMod] = await Promise.all([import('./landmarks.js').catch(() => null), import('./centres.js').catch(() => null)]);
     if (lmMod?.createLandmarks) landmarks = optional('landmarks', () => lmMod.createLandmarks(scene, uniforms, chunks, { heightfield: hf, renderer }));
     if (ceMod?.createCentres) centres = optional('centres', () => ceMod.createCentres(scene, uniforms, chunks, { heightfield: hf, renderer, baseUrl }));
     if (centres && cities.setMask) cities.setMask(centres.maskAt, centres.maskVersion);
   }
   let runways, aprons, traffic, cityLights, taxiLights, airportSet = null, streamView = null;
-  if (!streamAirports) {
-    // v0.5.8: every airport, built once, kept.
-    runways = createRunways(scene, uniforms, chunks, ap.airports, renderer, hf);
-    aprons = optional('aprons', () => createAprons(scene, uniforms, chunks, ap.airports, hf));
-    traffic = optional('traffic', () => createTraffic(scene, uniforms, chunks, ap.airports, hf));
-    // v0.2.0, night: the city lights and the taxiway lights (optional too).
-    const [clMod, tlMod] = await Promise.all([import('./citylights.js').catch(() => null), import('./taxilights.js').catch(() => null)]);
-    cityLights = clMod?.createCityLights ? optional('city lights', () => clMod.createCityLights(scene, uniforms, chunks, { heightfield: hf, airports: ap.airports })) : null;
-    taxiLights = tlMod?.createTaxiLights ? optional('taxi lights', () => tlMod.createTaxiLights(scene, uniforms, chunks, ap.airports, hf)) : null;
-  } else {
+  {
     // v0.6.0: the airports near the camera (one group per kind, in v0.5.8's scene order).
     const box = (name) => { const g = new THREE.Group(); g.name = name; scene.add(g); return g; };
     const boxes = { runways: box('runways'), aprons: box('aprons'), traffic: box('traffic') };
@@ -122,7 +112,7 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       // behind the camera or beside its view (the cities' tiles, the centres' rows, parked aircraft).
       projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       viewFrustum.setFromProjectionMatrix(projView);
-      const frustum = CULL && EAST_ASIA_ON ? viewFrustum : null;   // (with the region off the draws are v0.5.8's: nothing culled)
+      const frustum = CULL ? viewFrustum : null;
       // v0.6.0: the camera's own ground, only once its tile is in (a frame drawn behind the menu,
       // or the first after a jump, would read open sea and count a miss that isn't the sim's);
       // until then the last ground it knew. With Korea's tiles all resident this is heightAt().
@@ -335,7 +325,7 @@ function createAirportPrep() {
   function start() {
     if (worker || failed) return worker;
     try {
-      worker = new Worker(new URL('./airport-worker.js', import.meta.url), { type: 'module' });
+      worker = new Worker(new URL('./airport-worker.js' + regionQuery(), import.meta.url), { type: 'module' });   // v0.7.0: in the page's region (it reaches frame.js)
       worker.onmessage = (e) => {
         const icao = byId.get(e.data.id);
         byId.delete(e.data.id);

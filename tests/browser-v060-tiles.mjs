@@ -1,4 +1,6 @@
 // v0.6.0 Part 1: the game over Korea's own tiles with the region off (?eastasia=0: v0.5.8's Korea), headless on the M5 (Shane: no windows until 01:30).
+// v0.7.0: Korea's own tiles and the flags are gone (?eastasia=0&cities=0&ground=0 is ignored): this now flies the region's game, and
+// what it checks about Korea's own tiles no longer applies. Kept for its history; not part of any check list.
 // Boots a test flight at Gimpo, checks the sim runs (the loader never holds a step over Korea),
 // no console errors, the WebGL renderer, the prediction over the terrain, and the frame numbers.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/browser-v060-tiles.mjs [rootUrl]

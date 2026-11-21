@@ -100,22 +100,3 @@ test('onRunway and groundKind', () => {
   assert.equal(ap.findRunwayEnd('RKPC', '07').ident, '07');
   assert.equal(ap.findRunwayEnd('XXXX', '07'), null);
 });
-
-test('heightAt on the real national grid is fast (< ~1 µs)', { skip: !existsSync(new URL('terrain/height.i16.gz', DATA)) }, () => {
-  const m = JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8'));
-  const n = m.national;
-  const h = new Int16Array(gunzipSync(readFileSync(new URL(n.height, DATA))).buffer.slice(0));
-  const hf = createHeightfield({ heightScale: m.heightScale, national: { ...n, height: h, water: null, cover: null }, patches: [], coastPatches: [] },
-    { airports: fallbackAirports() });
-  let s = 0;
-  const N = 200000, t0 = performance.now();
-  for (let k = 0; k < N; k++) s += hf.heightAt(-150000 + (k % 1000) * 37, -200000 + k * 0.9);
-  const us = (performance.now() - t0) * 1000 / N;
-  assert.ok(us < 1.5, `${us.toFixed(3)} µs per call`);
-  // Hallasan: the highest point near Jeju is about 1,947 m.
-  const g = fallbackAirports().find((a) => a.icao === 'RKPC').origin;
-  let max = 0;
-  for (let dy = -30000; dy <= 0; dy += 250) for (let dx = -15000; dx <= 15000; dx += 250) max = Math.max(max, hf.heightAt(g[0] + dx, g[1] + dy));
-  assert.ok(max > 1800 && max < 2000, `Hallasan ${max}`);
-  console.log(`heightAt ${us.toFixed(3)} µs, Hallasan ${max.toFixed(0)} m`);
-});

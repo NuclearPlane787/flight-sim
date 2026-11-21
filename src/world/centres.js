@@ -1,4 +1,4 @@
-// The dense centres from real buildings (briefs/V0-6-0.md Part 6 step 2, behind CITIES_ON): OpenStreetMap's
+// The dense centres from real buildings (briefs/V0-6-0.md Part 6 step 2): OpenStreetMap's
 // footprints (ODbL) in nine city centres, extruded to their heights, with our own facades.
 //
 //   const centres = createCentres(scene, uniforms, chunks, { heightfield, renderer, baseUrl });
@@ -8,7 +8,7 @@
 //   centres.dispose()
 //
 // Loading: centres.json once; a centre's buildings when the camera comes within LOAD_M of its box
-// (Seoul, Songdo and Busan with CITIES_ON; the six others also need EAST_ASIA_ON), fetched, parsed
+// (every centre since v0.7.0; v0.6.0's flags held all but Korea's three back), fetched, parsed
 // and built in a Worker (centres-worker.js; Tokyo's build is about 100 ms of CPU), then handed to the
 // GPU over the next frames, one mesh a frame (each at most a few MB), drawn only once all are in;
 // released beyond RELEASE_M. One centre builds at a time, the nearest first.
@@ -28,8 +28,9 @@
 // (landmarks.js, loaded if it's there) are left out by the builder.
 
 import * as THREE from '../../vendor/three.module.js';
-import { CITIES_ON, EAST_ASIA_ON } from './region.js';
+import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { toMap } from './frame.js';
+import { REGION_ID } from './regions.js';
 import { CITY_MAX_AGL } from './cities.js';
 import { CELL_M, AVIATION_M, loadAndBuild } from './centres-worker.js';
 
@@ -56,20 +57,20 @@ const CUT_GLSL = (() => {
   return s + '  return 1e5;\n}\n';
 })();
 
-// The look by country (0 Korea, 1 Japan, 2 China); Korea's three stand with CITIES_ON alone.
+// The look by country (0 Korea, 1 Japan, 2 China).
 // v0.6.3: Beijing, Tianjin, Shenyang and Dalian China's; Vladivostok Korea's (its Soviet-era slab
-// blocks are nearest Korea's apartment slabs, as cities.js maps RU), behind EAST_ASIA_ON as the rest.
-// v0.6.4: Pyongyang Korea's look (cities.js maps KP to Korea's mix), Sapporo, Sendai and Niigata
-// Japan's; all four behind EAST_ASIA_ON (Pyongyang is not in KOREA's set: the flags off are v0.5.8's Korea).
+// blocks are nearest Korea's apartment slabs, as cities.js maps RU).
+// v0.6.4: Pyongyang Korea's look (cities.js maps KP to Korea's mix), Sapporo, Sendai and Niigata Japan's.
 const COUNTRY = {
   seoul: 0, songdo: 0, busan: 0, tokyo: 1, yokohama: 1, osaka: 1, fukuoka: 1, shanghai: 2, qingdao: 2,
   beijing: 2, tianjin: 2, shenyang: 2, dalian: 2, vladivostok: 0,
   pyongyang: 0, sapporo: 1, sendai: 1, niigata: 1,
+  // v0.7.0: Europe's nine (drawn only with REGION_ID 'europe', by VERT_EU below): 3 pale stone and plaster under
+  // grey slate and zinc, 4 cream and ochre plaster under terracotta, 5 brick under dark tile.
+  london: 3, paris: 3, frankfurt: 3, madrid: 4, barcelona: 4, rome: 4, munich: 4, zurich: 4, amsterdam: 5,
 };
-const KOREA = new Set(['seoul', 'songdo', 'busan']);
-export function centreAllowed(id, cities = CITIES_ON, region = EAST_ASIA_ON) {
-  return !!cities && (KOREA.has(id) || !!region);
-}
+// Every centre stands since v0.7.0 (v0.6.0's flags allowed only Seoul, Songdo and Busan with the region off).
+export function centreAllowed(id) { return true; }
 
 // Distance (m) from (x, y) to a box [x0, y0, x1, y1] (0 inside).
 export function boxDistance(b, x, y) {
@@ -151,7 +152,7 @@ void main() {
   // The builder left out every record within a runway's flattening zone (and its blend), so the
   // flattening never applies here: the raw height is terrainHeight() without its runway loop.
   float pw;
-  float ground = max(rawHeight(m, pw), 0.0);
+  float ground = ${seaFloor('rawHeight(m, pw)')};
   vec2 nn = texture(uNormal, natUv(m)).rg * (255.0 / 127.0) - (128.0 / 127.0);
   float sl = min(length(nn), 0.95);
   float sink = 1.0 + rad * min(sl / sqrt(1.0 - sl * sl), 0.7);
@@ -203,6 +204,54 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
   #include <logdepthbuf_vertex>
 }`;
+
+// v0.7.0: Europe's look. VERT with its class and colour block (from "int ctry" to the roof's colour) swapped for
+// Europe's; everything else (the ground, the tiers' cut and grow, the attributes, the varyings) is VERT's own text,
+// and the fragment shader is FRAG unchanged. East Asia's program is VERT exactly as before (REGION_ID is fixed for a
+// page, so only one of the two is ever compiled).
+const EU_LOOK = /* glsl */ `
+  // The class (FRAG's): 0 a glass tower, 1 a mid-rise of stone or panels, 3 the old town's blocks (punched windows,
+  // 3.2 m floors), 4 a hall or a station. No apartment slabs (2) in Europe's centres.
+  int eu = int(uCountry + 0.5) - 3;   // 0 slate and zinc, 1 terracotta, 2 brick
+  float cls;
+  if (top < 30.0 && rad > 45.0) cls = 4.0;
+  else if (top < 40.0) cls = 3.0;
+  else if (est < 0.5 && (top >= 75.0 || (top >= 50.0 && seed > 0.5))) cls = 0.0;
+  else cls = 1.0;
+  vG = vec4(seed, cls, dh, est);
+  vec3 t;
+  if (cls == 0.0) t = mix(vec3(0.27, 0.28, 0.29), vec3(0.38, 0.38, 0.37), s1);                 // mullions: aluminium, pale stone
+  else if (cls == 1.0) t = s1 < 0.5 ? mix(vec3(0.36, 0.35, 0.32), vec3(0.42, 0.40, 0.36), s2)   // stone
+                       : mix(vec3(0.28, 0.29, 0.30), vec3(0.34, 0.35, 0.36), s2);              // post-war concrete
+  else if (eu == 0) t = s1 < 0.55 ? mix(vec3(0.40, 0.38, 0.33), vec3(0.45, 0.42, 0.36), s2)     // limestone (Paris, London's stucco)
+                      : s1 < 0.8 ? mix(vec3(0.38, 0.37, 0.35), vec3(0.43, 0.42, 0.40), s2)      // pale render
+                      : mix(vec3(0.27, 0.18, 0.13), vec3(0.33, 0.23, 0.17), s2);               // London stock brick
+  else if (eu == 1) t = s1 < 0.4 ? mix(vec3(0.42, 0.38, 0.30), vec3(0.46, 0.41, 0.32), s2)      // cream plaster
+                      : s1 < 0.7 ? mix(vec3(0.42, 0.32, 0.21), vec3(0.47, 0.36, 0.24), s2)      // ochre
+                      : s1 < 0.85 ? mix(vec3(0.40, 0.26, 0.18), vec3(0.44, 0.30, 0.21), s2)     // Roman red
+                      : mix(vec3(0.38, 0.38, 0.36), vec3(0.43, 0.43, 0.41), s2);               // white render
+  else t = s1 < 0.7 ? mix(vec3(0.22, 0.12, 0.08), vec3(0.30, 0.17, 0.11), s2)                  // Dutch brick
+         : mix(vec3(0.36, 0.35, 0.33), vec3(0.42, 0.41, 0.38), s2);                            // white-painted gables
+  if (cls == 4.0) t *= 0.8;                                                                    // halls: darker
+  if (est > 0.5) t = mix(t, vec3(0.36, 0.34, 0.31), 0.5);                                      // estimated: plainer
+  vTint = t;
+  float rr = s3;
+  vRoofCol = cls == 0.0 ? vec3(0.13, 0.135, 0.14) * (0.85 + 0.3 * s2)
+           : cls == 4.0 ? vec3(0.20, 0.20, 0.195) * (0.8 + 0.4 * s1)                            // a hall's flat roof
+           : eu == 0 ? (rr < 0.55 ? vec3(0.15, 0.16, 0.18) * (0.85 + 0.3 * s1)                   // slate
+                      : rr < 0.85 ? vec3(0.24, 0.25, 0.26) * (0.9 + 0.2 * s1)                    // zinc
+                      : vec3(0.19, 0.19, 0.185))                                                 // flat, concrete
+           : eu == 1 ? (rr < 0.75 ? mix(vec3(0.27, 0.12, 0.07), vec3(0.33, 0.17, 0.10), s1)      // terracotta
+                      : vec3(0.24, 0.23, 0.21))                                                  // flat terrace
+           : (rr < 0.7 ? vec3(0.12, 0.11, 0.11) * (0.85 + 0.3 * s1) : vec3(0.24, 0.13, 0.09));   // dark tile, red tile
+`;
+const VERT_EU = (() => {
+  const a = VERT.indexOf('  int ctry = int(uCountry + 0.5);');
+  const b = VERT.indexOf('  gl_Position = projectionMatrix');
+  if (a < 0 || b < a) throw new Error('centres: VERT_EU anchors missing');
+  return VERT.slice(0, a) + EU_LOOK.slice(1) + VERT.slice(b);
+})();
+const VERT_FOR_REGION = REGION_ID === 'europe' ? VERT_EU : VERT;
 
 const FRAG = /* glsl */ `
 varying vec3 vRel, vN, vTint, vRoofCol;
@@ -323,7 +372,7 @@ void main() {
   float wet = uHasWater > 0.5 ? (texture(uWater, natUv(uOrigin + c)).r * 255.0 - 128.0) * 20.0 : 1.0;
   if (wet < -40.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec3(0.0); return; }
   float pw;
-  float ground = max(rawHeight(uOrigin + c, pw), 0.0);
+  float ground = ${seaFloor('rawHeight(uOrigin + c, pw)')};
   vec2 lp = uAnchor + aL.xy;
   vec3 wp = vec3(lp.x, ground + aL.z, -lp.y);
   vec3 rel = wp - uCamPos;
@@ -365,11 +414,6 @@ void main() {
 export function createCentres(scene, uniforms, chunks, { heightfield = null, renderer = null, baseUrl = 'data/' } = {}) {
   const stats = { drawCalls: 0, triangles: 0, buildings: 0, loaded: 0, ready: '' };
   let maskVer = 0;
-  const NOOP = {
-    stats, group: null, centres: new Map(),
-    update() { return stats; }, maskAt: () => false, maskVersion: () => 0, dispose() {}, log: [],
-  };
-  if (!CITIES_ON) return NOOP;
 
   const group = new THREE.Group();
   group.name = 'centres';
@@ -386,7 +430,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
     j && index.centres.forEach((info, k) => centres.set(info.id, { info, k, state: 'idle', res: null, parts: null, stage: 0 }));
   });
   let exclude = null;
-  const landmarksP = import('./landmarks.js').catch(() => null).then((m) => { exclude = landmarkExclusions(m && m.LANDMARKS); });
+  const landmarksP = import('./landmarks.js').catch(() => null).then((m) => { exclude = landmarkExclusions(m && m.REGION_LANDMARKS); });
 
   // The worker (one, made on the first build; idle between messages).
   let worker = null, workerFailed = false, jobSeq = 0, inFlight = null;
@@ -427,7 +471,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
 
   // Materials: one per tier per centre (the same program), and its own uniforms.
   const shared = uniforms;
-  const vs = `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.HEIGHT_GLSL}\n${VERT}`;
+  const vs = `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.HEIGHT_GLSL}\n${VERT_FOR_REGION}`;
   const fs = `${chunks.UNIFORMS_GLSL}\n${chunks.ATMOS_GLSL}\n${chunks.NOISE_GLSL}\n${FRAG}`;
   const lvs = `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.HEIGHT_GLSL}\n${chunks.ATMOS_GLSL}\n${LIGHT_VERT}`;
   function makeMats(c) {
@@ -559,7 +603,6 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
   };
   function update({ camMap, origin, agl = 0, frustum = null }) {
     stats.drawCalls = 0; stats.triangles = 0; stats.buildings = 0; stats.staging = '';
-    if (!CITIES_ON) { for (const c of centres.values()) if (c.state !== 'idle') release(c); return stats; }
     if (!index) return stats;
     const cx = camMap.x, cy = camMap.y;
     // Load and release by distance; one build at a time, the nearest first.

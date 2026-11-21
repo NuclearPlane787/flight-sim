@@ -18,7 +18,7 @@
 // plan.design the design itself, whole and normalized (src/sim/designs.js); the limits, the fuel rule and the
 // stands are its type entry's (designDef(design)). defaults.design picks it again: as given with lockType (a
 // scenario keeps its copy), else the stored design with that id if it's still there (else its base).
-// v0.6.0 (with the region on, region.js's EAST_ASIA_ON; off, every line here draws as v0.5.8): the region's airports (eleven; twelve since v0.6.1)
+// v0.6.0: the region's airports (eleven; twelve since v0.6.1)
 // grouped by country, Korea first (airportGroups()), named by their short names; the small map fitted to the region,
 // its labels kept apart (Pudong and Hongqiao, Haneda and Narita); a filter on a long stand list; the fuel rule by the
 // cruise level a trip that long flies at (fuelEstimate()); the start's time in the departure's own zone (KST, JST, CST).
@@ -27,11 +27,11 @@
 
 import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints } from './common.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
-import { fmtKst, fmtKstDate, zoneAt, zoneLabel, fmtZone, fmtZoneDate, zoneFieldValues, zoneFromFields } from '../clock.js';
-import { eastAsiaOn } from '../world/region.js';
-import { circleFrom } from '../world/runways.js';
+import { zoneAt, zoneLabel, fmtZone, fmtZoneDate, zoneFieldValues, zoneFromFields } from '../clock.js';
+import { circleFrom, canTakeOff, canLand, runwayUse, runwayUseNote } from '../world/runways.js';
 import { shortPlace } from './home-card.js';
-import { kstFieldValues, kstFromFields } from './sky-window.js';
+import { REGION_ID, defaultPlan, planInRegion } from '../world/regions.js';
+import { EUROPE_COUNTRY_OF, EUROPE_COUNTRY_LABEL, EUROPE_COUNTRY_ORDER, EUROPE_AIRPORT_ORDER } from '../world/rules-europe.js';
 import { esc } from './score-panel.js';
 import { standList } from '../ground/gate-flow.js';
 import { TYPE_LIST, typeById, DEFAULT_TYPE } from '../sim/types.js';
@@ -73,7 +73,7 @@ export function regionTrip(distNm, type) {
 }
 export function fuelEstimate(distNm, type) {
   const r = (type && typeof type === 'object' ? type : typeById(type)).fuel;
-  const rt = eastAsiaOn() ? regionTrip(distNm, type) : null;
+  const rt = regionTrip(distNm, type);
   const trip = rt ?? r.climbKg + r.perNm * distNm;
   const total = trip * 1.05 + r.holdKg + r.taxiKg;
   return { trip: Math.round(trip), total: Math.ceil(total / 100) * 100 };
@@ -91,15 +91,17 @@ export function fitLoad({ pax, cargoKg }, type) {
 // ---- v0.6.0: the region's airports in the lists ----
 // The country by the ICAO code's region letters (stable, whatever the country raster says at a shore), Korea first,
 // then Japan and China; within one, the order below (the capital's airports first), then any other by its code.
-const COUNTRY_OF = [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN'], ['U', 'RU']];   // (U: Russia, v0.6.3)
-export const COUNTRY_LABEL = { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', RU: 'Russia', other: 'Elsewhere' };
-const COUNTRY_ORDER = ['KR', 'JP', 'CN', 'KP', 'RU', 'other'];
-export const AIRPORT_ORDER = ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'RJSN', 'RJSS', 'RJSA', 'RJCC', 'ZKPY', 'ZKWS', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok; v0.6.4: Niigata, Sendai, Aomori and New Chitose after Fukuoka, south to north, and North Korea's Pyongyang and Wonsan)
+// v0.7.0: each region has its own lists (Europe's are rules-europe.js's); East Asia's are the ones below, as they were.
+const EU = REGION_ID === 'europe';
+const COUNTRY_OF = EU ? EUROPE_COUNTRY_OF : [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN'], ['U', 'RU']];   // (U: Russia, v0.6.3)
+export const COUNTRY_LABEL = EU ? EUROPE_COUNTRY_LABEL : { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', RU: 'Russia', other: 'Elsewhere' };
+const COUNTRY_ORDER = EU ? EUROPE_COUNTRY_ORDER : ['KR', 'JP', 'CN', 'KP', 'RU', 'other'];
+export const AIRPORT_ORDER = EU ? EUROPE_AIRPORT_ORDER : ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'RJSN', 'RJSS', 'RJSA', 'RJCC', 'ZKPY', 'ZKWS', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok; v0.6.4: Niigata, Sendai, Aomori and New Chitose after Fukuoka, south to north, and North Korea's Pyongyang and Wonsan)
 export const airportCountry = (ap) => (COUNTRY_OF.find(([p]) => String(ap?.icao || '').startsWith(p)) || [null, 'other'])[1];
 // The airport's short name: its data's shortName, else its name made short ("Seoul Gimpo International Airport" → "Gimpo").
 export const airportShort = (ap) => ap?.shortName || shortPlace(ap?.name) || ap?.icao || '';
-// The list's text for an airport: v0.5.8's "RKSS · Seoul Gimpo International Airport", or with the region on "RJTT · Haneda".
-export const airportOption = (ap) => (eastAsiaOn() ? `${ap.icao} · ${airportShort(ap)}` : `${ap.icao} · ${ap.name || ''}`);
+// The list's text for an airport: "RJTT · Haneda".
+export const airportOption = (ap) => `${ap.icao} · ${airportShort(ap)}`;
 // [{ country, label, airports }] in the lists' order.
 export function airportGroups(aps) {
   const rank = (a) => { const i = AIRPORT_ORDER.indexOf(a.icao); return i < 0 ? 999 : i; };
@@ -189,7 +191,7 @@ export function designCardHtml(def, pictureSrc = '', locked = false) {
 const choiceKey = (t) => (t?.design ? `design:${t.design.id}` : `type:${t?.id}`);
 
 const STAND_FILTER_MIN = 60;   // v0.6.0: a stand list longer than this gets its filter (region on)
-const BASE = { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway', pax: 190, cargoKg: 1500, fuelKg: 0, waypoints: [] };
+const BASE = { ...defaultPlan(), pax: 190, cargoKg: 1500, fuelKg: 0, waypoints: [] };   // (v0.7.0: the region's first flight; East Asia's is Gimpo 14R to Jeju 07, as it was)
 
 function loadStored() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; }
@@ -273,12 +275,11 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
   // The start time: 'now' or 'set' (from the date and time fields, read as KST).
   let timeMode = 'now';
   const tf = (n) => el.querySelector(`[data-t="${n}"]`);
-  // v0.6.0: with the region on, the start's time is the departure's local time, in its own zone (clock.js's zoneAt()
+  // v0.6.0: the start's time is the departure's local time, in its own zone (clock.js's zoneAt()
   // at the origin airport: KST, JST or CST): Now shows the real time there, and Set's fields are read in that zone.
-  // Off, KST as v0.5.8 (the same functions, so the same strings).
   const depZone = () => { const a = list().find((x) => x.icao === plan?.origin); return a?.origin ? zoneAt(a.origin[0], a.origin[1]) : zoneAt(NaN, NaN); };
-  const fieldValues = (ms) => (eastAsiaOn() ? zoneFieldValues(ms, depZone()) : kstFieldValues(ms));
-  const fromFields = (d, t) => (eastAsiaOn() ? zoneFromFields(d, t, depZone()) : kstFromFields(d, t));
+  const fieldValues = (ms) => zoneFieldValues(ms, depZone());
+  const fromFields = (d, t) => zoneFromFields(d, t, depZone());
   function setTimeMode(mode, ms) {
     timeMode = mode === 'set' ? 'set' : 'now';
     if (Number.isFinite(ms) || (timeMode === 'set' && !tf('date').value)) {
@@ -289,11 +290,10 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     o('timeRow').hidden = timeMode !== 'set';
     showZone();
   }
-  // The time row's note and labels for the departure's zone (only the note with the region off, as v0.5.8 wrote it).
+  // The time row's note and labels for the departure's zone.
   function showZone() {
     const now = Date.now();
-    if (!eastAsiaOn()) { o('timeNote').textContent = timeMode === 'now' ? `${fmtKst(now)} KST, ${fmtKstDate(now)}` : ''; return; }
-    const z = depZone(), zn = zoneLabel(z);
+    const z = depZone(), zn = zoneLabel(z, now);   // (v0.7.0: the name in force now: BST or GMT, CEST or CET)
     o('timeNote').textContent = timeMode === 'now' ? `${fmtZone(now, z)} ${zn}, ${fmtZoneDate(now, z)}` : '';
     const lbl = o('timeRow').querySelector('.fsui-note');
     if (lbl) { lbl.textContent = zn; lbl.title = `The departure's local time (${z.timeZone})`; }
@@ -332,7 +332,14 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     return sel.value;
   };
   // v0.6.2: an end with no straight-in approach (runways.js CIRCLING_ONLY: Gimhae's 18L and 18R) says so
-  const ends = (icao) => (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends.map((e) => [e.ident, `RWY ${e.ident}  (${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling ? ', circling only' : ''})`]));
+  // v0.7.0: an end used one way (runways.js ONE_WAY) is offered only for what it is used for (`what`: 'dep' or 'arr'),
+  // says so, and a standby runway's ends come last, so they are never the default.
+  const ends = (icao, what) => {
+    const out = (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends
+      .filter((e) => (what === 'dep' ? canTakeOff(icao, e.ident) : what === 'arr' ? canLand(icao, e.ident) : true))
+      .map((e) => [e.ident, `RWY ${e.ident}  (${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling ? ', circling only' : ''}${runwayUseNote(icao, e.ident) ? ', ' + runwayUseNote(icao, e.ident) : ''})`]));
+    return out.filter(([i]) => runwayUse(icao, i) !== 'standby').concat(out.filter(([i]) => runwayUse(icao, i) === 'standby'));
+  };
   const endObj = (icao, ident) => {
     for (const r of list().find((a) => a.icao === icao)?.runways || []) for (const e of r.ends) if (e.ident === ident) return e;
     return null;
@@ -378,16 +385,14 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
 
   const weatherNote = () => PRESETS.find((p) => p.id === plan.weather)?.note || '';
   function fill() {
-    const aps = list().map((a) => [a.icao, `${a.icao} · ${a.name || ''}`]);
-    const region = eastAsiaOn();
-    plan.origin = region ? optAirports(f('origin'), plan.origin) : opt(f('origin'), aps, plan.origin);
-    plan.depRunway = opt(f('depRunway'), ends(plan.origin), plan.depRunway);
-    plan.dest = region ? optAirports(f('dest'), plan.dest) : opt(f('dest'), aps, plan.dest);
-    plan.arrRunway = opt(f('arrRunway'), ends(plan.dest), plan.arrRunway);
+    plan.origin = optAirports(f('origin'), plan.origin);
+    plan.depRunway = opt(f('depRunway'), ends(plan.origin, 'dep'), plan.depRunway);
+    plan.dest = optAirports(f('dest'), plan.dest);
+    plan.arrRunway = opt(f('arrRunway'), ends(plan.dest, 'arr'), plan.arrRunway);
     const st = stands(plan.origin);
     plan.stand = st.length ? opt(f('stand'), st, plan.stand) : '';
     if (!st.length) f('stand').innerHTML = '';
-    if (region) { filterStands(st); showZone(); }
+    filterStands(st); showZone();
     f('pax').value = f('paxR').value = plan.pax;
     f('cargoKg').value = plan.cargoKg;
     f('fuelKg').value = plan.fuelKg;
@@ -549,44 +554,15 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
   const miniState = { k: 1, cx: 0, cy: 0, pts: [] };
   function drawMini() {
     const dpr = Math.min(window.devicePixelRatio || 1, 3), W = 300, H = 300;
-    // (v0.6.0: with the region on the height is checked too: a new canvas is 300 × 150, so at a pixel ratio of 1 the
-    // width already matched and the map drew stretched to twice its height. Off, as v0.5.8.)
-    if (mini.width !== W * dpr || (eastAsiaOn() && mini.height !== H * dpr)) { mini.width = W * dpr; mini.height = H * dpr; }
+    // (v0.6.0: the height is checked too: a new canvas is 300 × 150, so at a pixel ratio of 1 the
+    // width already matched and the map drew stretched to twice its height.)
+    if (mini.width !== W * dpr || mini.height !== H * dpr) { mini.width = W * dpr; mini.height = H * dpr; }
     const ctx = mini.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#06101c'; ctx.fillRect(0, 0, W, H);
     const aps = list();
     if (!aps.length) return;
-    if (eastAsiaOn()) { drawMiniRegion(ctx, W, H, aps); return; }
-    miniState.labels = null;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const a of aps) { const [x, y] = a.origin; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-    const span = Math.max(x1 - x0, y1 - y0) * 1.35 || 100000;
-    const k = W / span, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    Object.assign(miniState, { k, cx, cy });
-    const X = (x) => W / 2 + (x - cx) * k, Y = (y) => H / 2 - (y - cy) * k;
-    if (coastL) {
-      ctx.beginPath();
-      traceRings(ctx, coastL.land, coastL.lod(1 / k), { x0: cx - span, x1: cx + span, y0: cy - span, y1: cy + span }, (x, y, p) => { p[0] = X(x); p[1] = Y(y); return p; }, 2 / k);
-      ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd'); ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
-    }
-    const a = endObj(plan.origin, plan.depRunway), b = endObj(plan.dest, plan.arrRunway);
-    if (a && b) {
-      ctx.strokeStyle = C.magenta; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); for (const [x, y] of plan.waypoints || []) ctx.lineTo(X(x), Y(y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke();
-    }
-    miniState.pts = [];
-    for (const ap of aps) {
-      const [x, y] = ap.origin, sx = X(x), sy = Y(y);
-      miniState.pts.push([ap.icao, sx, sy]);
-      const col = ap.icao === plan.origin ? C.green : ap.icao === plan.dest ? C.magenta : C.white;
-      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.font = font(13, true); ctx.textBaseline = 'middle';
-      const near = aps.some((b) => b !== ap && b.origin[0] > x && Math.hypot(b.origin[0] - x, b.origin[1] - y) * k < 60);
-      const right = sx < W - 80 && !near;
-      ctx.textAlign = right ? 'left' : 'right';
-      ctx.fillText(ap.icao, sx + (right ? 10 : -10), sy);
-    }
+    drawMiniRegion(ctx, W, H, aps);
   }
   // v0.6.0: the region's small map. The airports' box fitted both ways (the region is wide), dots a little smaller, and
   // each label put where it hits no other label or dot (placeLabels()); a click on a label picks its airport too, so the
@@ -690,7 +666,9 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     const last = { ...(loadStored().lastPlan || {}) };
     delete last.weather;   // a new scenario starts clear; only the given defaults carry a weather
     if ((last.type || DEFAULT_TYPE) !== type.id || (last.design?.id ?? null) !== (type.design?.id ?? null)) { delete last.pax; delete last.cargoKg; delete last.fuelKg; delete last.stand; }
-    plan = { ...BASE, ...type.defaults, ...last, ...(defaults || {}), type: type.id };
+    // v0.7.0: a last plan or a default from another region (its airports aren't here) gives way to this region's first flight.
+    const here = (p) => (planInRegion(p) ? p : { ...p, ...defaultPlan(), stand: undefined, waypoints: [] });
+    plan = { ...BASE, ...type.defaults, ...here(last), ...here(defaults || {}), type: type.id };
     delete plan.name; delete plan.design;   // the design is `type` (its entry), and goes back out on Fly
     if (!opts.lockType) fitDesignLoad(type);
     const t = defaults?.time;

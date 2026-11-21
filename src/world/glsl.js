@@ -6,6 +6,7 @@
 // shaders, so everything sits on the same ground.
 
 import * as THREE from '../../vendor/three.module.js';
+import { REGION } from './regions.js';
 import { PATCH_BLEND, FLAT_MARGIN_U, FLAT_MARGIN_V, FLAT_BLEND, PAVE_BLEND_M } from './heightfield.js';
 import { RUNWAY_SHOULDER_M } from './runways.js';
 import { EARTH_RADIUS } from './frame.js';
@@ -21,6 +22,14 @@ export const MAX_RUNWAYS = 12;
 export const CLIP_WINDOW = true;
 
 const f = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
+// v0.7.0: where the ground stops. East Asia's is never below the sea (max(h, 0.0): its sea is stored under 0).
+// A region with land below sea level (regions.js's lowLand: Europe) stores the sea as exactly 0, so the stored
+// height is the ground, with no clamp. Every shader that puts something on the ground takes it from here, so
+// East Asia's shaders read as they did.
+export const LOW_LAND = !!REGION.lowLand;
+export const seaFloor = (expr) => (LOW_LAND ? `(${expr})` : `max(${expr}, 0.0)`);
+// The tiles' lattice origin as GLSL takes it from the clip window's (ground.js's cellH()): "+ 400000.0" in East Asia.
+export const LATTICE_BACK_GLSL = (() => { const { x0, y0 } = REGION.lattice; return x0 === y0 ? `+ ${f(-x0)}` : `- vec2(${f(x0)}, ${f(y0)})`; })();
 
 // ------------------------------------------------------------------ textures
 
@@ -79,7 +88,7 @@ export function createWorldUniforms(hf) {
   const cw = CLIP_WINDOW && !L.national && L.tiles && has.height ? createClipWindow(L.tiles, { heightScale: scale, lean: true }) : null;
   const nat = cw
     ? { x0: cw.win.x0 + cw.win.bi * cw.win.cell, y0: cw.win.y0 + cw.win.bj * cw.win.cell, cell: cw.win.cell, nx: cw.nx, ny: cw.ny, height: cw.h, normal: cw.n, water: cw.w, cover: cw.c }
-    : L.national || (L.tiles ? L.tiles.assemble() : null) || { x0: -400000, y0: -400000, cell: 250, nx: 3200, ny: 3200 };
+    : L.national || (L.tiles ? L.tiles.assemble() : null) || { x0: REGION.lattice.x0, y0: REGION.lattice.y0, cell: 250, nx: 3200, ny: 3200 };
   const rep = !!cw && !cw.fit;
 
   // A lean window (the region) keeps no CPU copy of its heights, normals and water: those
@@ -613,7 +622,7 @@ float rawHeight(vec2 m, out float pw) {
     vec2 fxy = (m - uNat.xy) / uNat.z - 0.5;
     h = ${CLIP_WINDOW ? 'bilinWin(fxy, uNatExt.xy, uNatExt.zw)' : 'bilinI(uHeight, fxy, vec2(0.0), uNatSize - 1.0)'} * H_SCALE;
   } else {
-    h = -20.0;
+    h = ${LOW_LAND ? '0.0' : '-20.0'};
   }
   for (int k = 0; k < ${MAX_PATCHES}; k++) {
     if (k >= uPatchCount) break;
@@ -668,7 +677,7 @@ float flattenRunways(vec2 m, float h, out float zone) {
 float terrainHeight(vec2 m) {
   float pw, zone;
   float h = flattenRunways(m, rawHeight(m, pw), zone);
-  return max(h, 0.0);
+  return ${seaFloor('h')};
 }
 
 vec2 natUv(vec2 m) { return (m - uNat.xy) / uNatSizeM; }

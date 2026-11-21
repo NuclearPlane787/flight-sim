@@ -1,13 +1,20 @@
-// The map frame: one Lambert conformal conic projection (WGS84) for all of Korea.
-// Map coordinates are metres: x east, y north, origin at 36°N 127.5°E.
-// Altitudes are metres above mean sea level. No DOM here: it runs in workers and node too.
+// The map frame: one Lambert conformal conic projection (WGS84) for the region the page is in.
+// Map coordinates are metres: x east, y north, from the region's origin (East Asia's, Korea's since
+// v0.1.0: 36°N 127.5°E; Europe's: 47°N 4°E). Altitudes are metres above mean sea level. No DOM here:
+// it runs in workers and node too.
+//
+// v0.7.0: the constants come once, at import, from the region the page was opened in (regions.js:
+// the page's ?region=, the worker's own URL, FS_REGION in node). One region a page, so every importer
+// keeps reading the same names. East Asia's numbers are the same doubles as before.
+
+import { REGION } from './regions.js';
 
 const DEG = Math.PI / 180;
 const A = 6378137;
 const F = 1 / 298.257223563;
 const E = Math.sqrt(2 * F - F * F);
 
-export const LAT0 = 36, LON0 = 127.5, LAT1 = 33, LAT2 = 38;
+export const LAT0 = REGION.frame.lat0, LON0 = REGION.frame.lon0, LAT1 = REGION.frame.lat1, LAT2 = REGION.frame.lat2;
 export const EARTH_RADIUS = 6371008.8; // mean radius, for curvature and great circles
 
 const m = (phi) => Math.cos(phi) / Math.sqrt(1 - E * E * Math.sin(phi) ** 2);
@@ -43,7 +50,8 @@ export function toGeo(x, y) {
   return [phi / DEG, theta / N / DEG + LON0];
 }
 
-// Scale factor at a latitude (map metres per ground metre). Within 0.1% over Korea.
+// Scale factor at a latitude (map metres per ground metre). Within 0.1% over Korea; up to 1.7 % at
+// Europe's northern edge (a check of a baked length against a published one divides by it).
 export function scaleFactor(latDeg) {
   const phi = latDeg * DEG;
   return (A * FF * N * Math.pow(t(phi), N)) / (A * m(phi));
@@ -62,16 +70,17 @@ export function convergenceAt(x, y) {
   return Math.atan2(x, RHO0 - y);
 }
 
-// Magnetic declination (degrees, east positive) for 2026, a plane fitted to WMM2025
-// at Seoul (-9.1), Busan (-8.0), Jeju (-7.6) and Gangneung (-8.9). Good to ~0.3°.
+// Magnetic declination (degrees, east positive) for 2026. East Asia's plane is fitted to WMM2025
+// at Seoul (-9.1), Busan (-8.0), Jeju (-7.6) and Gangneung (-8.9), good to ~0.3° over South Korea;
+// each region has its own (regions.js: Europe's only holds until the WMM grid is in).
 //
-// v0.6.0 (briefs/V0-6-0.md, "Magnetic variation"): the region's model, once installed, takes over
-// outside South Korea: setMagModel(fn) with fn(x, y, plane) -> degrees, which region.js
-// installs from geo-rules.js (magVarAt: the plane exactly inside south-korea.poly, WMM2025
-// beyond a 50 km band, blended across it; and the plane everywhere while EAST_ASIA_ON is off).
-// With no model (v0.5.8, and the flag off) magVar is the plane alone, the same doubles.
+// The region's model, once installed, takes over: setMagModel(fn) with fn(x, y, plane) -> degrees,
+// which region.js installs from geo-rules.js (magVarAt: in East Asia the plane exactly inside
+// south-korea.poly, WMM2025 beyond a 50 km band, blended across it; WMM2025 everywhere in a region
+// with no such mask). With no model magVar is the plane alone.
 // fn must be a function of position only: the page, the prediction worker and node all
 // install the same one.
+const magPlane = REGION.magPlane;
 let magModel = null;
 let lastLat = NaN, lastLon = NaN, lastVar = 0;      // a last-point cache for magVar(lat, lon)
 export function setMagModel(fn) {
@@ -80,7 +89,7 @@ export function setMagModel(fn) {
 }
 export const magModelInstalled = () => magModel !== null;
 export function magVar(latDeg, lonDeg) {
-  const plane = -8.46 - 0.378 * (latDeg - 36) + 0.082 * (lonDeg - 127.5);
+  const plane = magPlane(latDeg, lonDeg);
   if (magModel === null) return plane;
   if (latDeg === lastLat && lonDeg === lastLon) return lastVar;
   const xy = toMap(latDeg, lonDeg);
@@ -90,7 +99,7 @@ export function magVar(latDeg, lonDeg) {
 }
 // The heading conversions have the map point already: no toMap() (the same plane expression).
 function magVarXY(latDeg, lonDeg, x, y) {
-  const plane = -8.46 - 0.378 * (latDeg - 36) + 0.082 * (lonDeg - 127.5);
+  const plane = magPlane(latDeg, lonDeg);
   return magModel === null ? plane : magModel(x, y, plane);
 }
 
@@ -121,5 +130,6 @@ export function toScene(x, y, z, origin, out = [0, 0, 0]) {
   return out;
 }
 
-// The extent of the baked national data (matches data/manifest.json).
+// Korea's 800 km square, the extent of v0.1.0's national data. Nothing draws by it since v0.7.0 retired
+// Korea's own files (region.js's mapExtent() is the map's); kept for the old dev pages that import it.
 export const MAP_EXTENT = { x0: -400000, y0: -400000, x1: 400000, y1: 400000 };

@@ -12,7 +12,10 @@
 // flat sea-level world, so nothing breaks while the bake is still running.
 
 import { runwayRects, rectElev, RUNWAY_SHOULDER_M } from './runways.js';
-import { terrainSpec, GROUND_ON } from './region.js';
+import { REGION } from './regions.js';
+import { terrainSpec } from './region.js';
+
+const LOW_LAND = !!REGION.lowLand;   // v0.7.0: land below sea level (Europe); see heightAt()
 
 export const PATCH_BLEND = 600;      // m: patches fade in over this band inside their edge
 export const FLAT_MARGIN_U = 90;     // m beyond each runway end that's flattened
@@ -64,30 +67,20 @@ function baseHref(baseUrl) {
 export async function loadHeightfield(baseUrl, opts = {}) {
   const base = baseHref(baseUrl);
   const manifest = (await fetchJson(resolve('manifest.json', base))) || {};
-  // v0.6.0: the terrain in tiles. Every tile in the extent is loaded before this resolves
-  // (Korea's 35, the data the national grid held), until the loader loads by distance.
-  // The region (behind EAST_ASIA_ON) is too big for that: its tiles come as they are needed
-  // (region.js's loader), with the ones round every airport in before this resolves, and kept
-  // (the airports' ground is built from them, and a flight starts on them).
-  if (manifest.tiles && opts.tiles !== false) {
-    const region = terrainSpec(manifest, opts.region).region;
+  // v0.6.0: the terrain in the region's tiles. They come as they are needed (region.js's
+  // loader), with the ones round every airport in before this resolves, and kept (the airports'
+  // ground is built from them, and a flight starts on them).
+  if (manifest.tilesRegion && opts.tiles !== false) {
     // (48 tiles resident at least: v0.6.1's cap, raised below to the airports' pinned ones plus FREE_TILES; with
     // twenty-three airports 75 tiles, about 155 MB at most.)
-    return createTiledHeightfield(manifest, base, region ? { airportTiles: true, maxTiles: 48, ...opts } : { all: true, ...opts });
+    return createTiledHeightfield(manifest, base, { airportTiles: true, maxTiles: 48, ...opts });
   }
+  // (A manifest without the region's tiles, or opts.tiles false: no ground grid, the patches alone.
+  // v0.5.8's national grid, which this read, is gone since v0.7.0.)
   const scale = manifest.heightScale || 0.25;
-  const nat = manifest.national || null;
   const layers = { heightScale: scale, national: null, patches: [], coastPatches: [], manifest };
 
   const jobs = [];
-  if (nat) {
-    const g = { x0: nat.x0, y0: nat.y0, cell: nat.cell, nx: nat.nx, ny: nat.ny, height: null, water: null, cover: null };
-    layers.national = g;
-    const n = g.nx * g.ny;
-    if (nat.height) jobs.push(fetchGz(resolve(nat.height, base)).then((b) => { if (b && b.byteLength === n * 2) g.height = new Int16Array(b); }));
-    if (nat.water) jobs.push(fetchGz(resolve(nat.water, base)).then((b) => { if (b && b.byteLength === n * 2) g.water = new Uint8Array(b); }));
-    if (nat.cover) jobs.push(fetchGz(resolve(nat.cover, base)).then((b) => { if (b && b.byteLength === n * 4) g.cover = new Uint8Array(b); }));
-  }
   for (const p of manifest.patches || []) {
     const g = { id: p.id, x0: p.x0, y0: p.y0, cell: p.cell, nx: p.nx, ny: p.ny, height: null };
     jobs.push(fetchGz(resolve(p.height, base)).then((b) => {
@@ -126,9 +119,9 @@ export async function loadTiledHeightfield(baseUrl, opts = {}) {
 // The same, from a manifest already read (node's tests read it from disk).
 export async function createTiledHeightfield(manifest, base, opts = {}) {
   const { createTileStore } = await import('./tilestore.js');
-  // v0.6.0: Korea's tiles and patches, or the region's behind EAST_ASIA_ON (region.js); opts.region overrides.
-  const spec = terrainSpec(manifest, opts.region);
-  const store = createTileStore(spec.tiles, { base, layers: opts.layers, readGz: opts.readGz, onTile: opts.onTile, maxTiles: opts.maxTiles, cover2: opts.cover2 ?? GROUND_ON });
+  // The region's tiles and patches (region.js's terrainSpec()).
+  const spec = terrainSpec(manifest);
+  const store = createTileStore(spec.tiles, { base, layers: opts.layers, readGz: opts.readGz, onTile: opts.onTile, maxTiles: opts.maxTiles });
   const read = opts.readGz || null;
   const getGz = (rel) => (read ? read(rel) : fetchGz(resolve(rel, base)));
   const getJson = opts.readJson || ((rel) => fetchJson(resolve(rel, base)));
@@ -262,7 +255,9 @@ export function createHeightfield(layers, opts = {}) {
       if (w > W) W = w;
     }
     if (den > 0) h += ((onPav ? pav : num / den) - h) * W;
-    return h > 0 ? h : 0;
+    // East Asia's ground is never below the sea (its sea is stored under 0). v0.7.0: where land lies below sea level
+    // (regions.js's lowLand: Europe's polders) the stored height is the ground, and the sea is stored as exactly 0.
+    return LOW_LAND || h > 0 ? h : 0;
   }
 
   // Signed distance (m, + on land) to the sea coastline; the 10 m patches win where present.
@@ -276,6 +271,8 @@ export function createHeightfield(layers, opts = {}) {
     if (TW) return (TW.water(x, y, 0) - 128) * 20;
     if (natW) return (bilinear(natW, x, y, seaNat) - 128) * 20;
     // No water layer: below 0 is sea (the bake pushes the sea under 0); no data at all is sea.
+    // (v0.7.0, low land: exactly 0 is the sea, anything else land.)
+    if (LOW_LAND) return (nat || TH) && rawHeight(x, y) !== 0 ? 1000 : -1000;
     return (nat || TH) ? rawHeight(x, y) * 20 : -1000;
   }
 

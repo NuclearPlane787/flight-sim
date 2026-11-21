@@ -20,7 +20,6 @@ import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, s
 import { createPushback, pushbackPoses } from './pushback.js';
 import { createTaxiRoute } from '../world/taxiroute.js';
 import * as A321_GEO from '../geometry.js';
-import { eastAsiaOn } from '../world/region.js';
 
 const DEG = Math.PI / 180;
 const KT = 0.514444;
@@ -57,12 +56,11 @@ export function alongRunwayM(graph, points) {
 
 // v0.6.1: who takes the region's taxi-in rule after landing (afterLanding below): the region's airports
 // always, and Korea's three while the region is on (Gimpo 32L found no route from most of the runway,
-// Jeju 31 ran 790 m along the other runway). With the region off Korea's taxi-in is v0.5.8's, the same
-// code path and arithmetic. Only the taxi-in: Korea's graphs stay unmarked (graph.region), so their
-// departure holds, stand lists and routes out are as they were. Decided at each landing, never cached
-// with the graph, so a graph built with the flag one way is right the other way too.
+// Jeju 31 ran 790 m along the other runway). Only the taxi-in: Korea's graphs stay unmarked (graph.region),
+// so their departure holds, stand lists and routes out are as they were. Decided at each landing, never
+// cached with the graph.
 const KOREA_TAXI_IN = new Set(['RKSS', 'RKSI', 'RKPC']);
-export const taxiInRule = (airport, graph) => !!graph?.region || (eastAsiaOn() && KOREA_TAXI_IN.has(airport?.icao));
+export const taxiInRule = (airport, graph) => !!graph?.region || KOREA_TAXI_IN.has(airport?.icao);
 
 // v0.6.1, the taxi-in rule: the route from where it has really left the landing runway. A rapid exit's
 // first legs are still on the runway's pavement, turning off at a shallow angle; those (on the pavement and

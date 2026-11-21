@@ -94,7 +94,7 @@ export function createNd(cv, { airports, coast }) {
         ctx.fillStyle = '#16231c'; ctx.fill('evenodd');
         ctx.strokeStyle = '#3e6b4f'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
       }
-      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, cbox, tf, 3 / k);
+      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, cbox, tf, 3 / k, true);
       ctx.fillStyle = '#0d1a2a'; ctx.fill('evenodd');
     }
     // Range rings: half range dashed.

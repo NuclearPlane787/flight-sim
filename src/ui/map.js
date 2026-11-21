@@ -10,8 +10,8 @@
 // v0.6.3: `urban` is data/urban-region.json (the city areas and names; the region's map only).
 
 import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, buildUrban, pickPlaces, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg, headingForTrack } from './common.js';
-import { MAP_EXTENT } from '../world/frame.js';
-import { EAST_ASIA_ON, mapExtent, fineExtent, fineOutline } from '../world/region.js';
+import { mapExtent, fineExtent, fineOutline } from '../world/region.js';
+import { regionOutline, outlineIsRect } from '../world/outline.js';
 import { fuelEstimate } from './setup.js';
 import { circleFrom } from '../world/runways.js';
 
@@ -87,9 +87,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
     // Dev hook: a point on an airport's label (its ICAO code), in page px.
     _devLabel(icao) {
       const a = airportList(airports).find((x) => x.icao === icao), r = canvas.getBoundingClientRect();
-      if (EAST_ASIA_ON) { const B = a && labelLayout().get(a); return B ? [r.left + B.x0 + 12, r.top + B.y0 + 7] : null; }
-      const L = a && labelOf(a);
-      return L ? [r.left + L.x + (L.left ? -12 : 12), r.top + L.y] : null;
+      const B = a && labelLayout().get(a); return B ? [r.left + B.x0 + 12, r.top + B.y0 + 7] : null;
     },
   };
 
@@ -115,8 +113,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
   function fit() {
     const pts = routePts();
     if (!pts.length) {
-      if (EAST_ASIA_ON) { const E = mapExtent(); cx = (E.x0 + E.x1) / 2; cy = (E.y0 + E.y1) / 2; k = Math.min((W - 40) / (E.x1 - E.x0), (H - 120) / (E.y1 - E.y0)); return; }
-      cx = 0; cy = 0; k = Math.min(W, H) / 800000; return;
+      const E = mapExtent(); cx = (E.x0 + E.x1) / 2; cy = (E.y0 + E.y1) / 2; k = Math.min((W - 40) / (E.x1 - E.x0), (H - 120) / (E.y1 - E.y0)); return;
     }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of pts.concat(ahead().map((s) => [s.x, s.y]))) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
@@ -170,7 +167,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
           // clip to the whole region's coast would double the draw's cost.)
           const clip = 1 / k < 600;
           if (clip) { ctx.save(); ctx.clip('evenodd'); }
-          ctx.beginPath(); traceRings(ctx, urbanL.rings, urbanL.lod(1 / k), box, tf, 4 / k);
+          ctx.beginPath(); traceRings(ctx, urbanL.rings, urbanL.lod(1 / k), box, tf, 4 / k, true);
           ctx.fillStyle = URBAN_FILL; ctx.fill('evenodd');
           if (clip) ctx.restore();
         }
@@ -181,11 +178,11 @@ export function createMap(root, { airports, coast, urban } = {}) {
         ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd');
         ctx.strokeStyle = '#46775a'; ctx.lineWidth = 1; ctx.stroke();
       }
-      ctx.beginPath(); traceRings(ctx, coastL.water, lod, box, tf, 2 / k);
+      ctx.beginPath(); traceRings(ctx, coastL.water, lod, box, tf, 2 / k, true);
       ctx.fillStyle = '#0b2236'; ctx.fill('evenodd');
     }
     // The edge of the world data.
-    if (EAST_ASIA_ON) {
+    {
       // v0.6.0: the region's rectangle, and inside it, fainter, the 250 m data's.
       const E = mapExtent(), F = fineExtent();
       ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.setLineDash([3, 7]);
@@ -194,10 +191,9 @@ export function createMap(root, { airports, coast, urban } = {}) {
       if (edges) { ctx.beginPath(); for (const [ax, ay, bx, by] of edges) { ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by)); } ctx.stroke(); }
       else ctx.strokeRect(X(F.x0), Y(F.y1), (F.x1 - F.x0) * k, (F.y1 - F.y0) * k);
       ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
-      ctx.strokeRect(X(E.x0), Y(E.y1), (E.x1 - E.x0) * k, (E.y1 - E.y0) * k);
-    } else {
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
-      ctx.strokeRect(X(MAP_EXTENT.x0), Y(MAP_EXTENT.y1), (MAP_EXTENT.x1 - MAP_EXTENT.x0) * k, (MAP_EXTENT.y1 - MAP_EXTENT.y0) * k);
+      // v0.7.0: the region's outline where it isn't a rectangle (Europe's: its corners cut, a diagonal in the south-east).
+      if (outlineIsRect()) ctx.strokeRect(X(E.x0), Y(E.y1), (E.x1 - E.x0) * k, (E.y1 - E.y0) * k);
+      else { const P = regionOutline(); ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath(); ctx.stroke(); }
     }
     ctx.setLineDash([]);
 
@@ -212,7 +208,10 @@ export function createMap(root, { airports, coast, urban } = {}) {
       // 15 nm final fix on the extended centreline.
       const h = (view.dest.hdgGridDeg || 0) * DEG, [tx, ty] = pts[pts.length - 1];
       const fx = tx - Math.sin(h) * 15 * NM, fy = ty - Math.cos(h) * 15 * NM;
-      if (view.dest.circling) {   // v0.6.2: no straight-in final to it (Gimhae 18L, 18R), so no 15 nm final drawn
+      if (view.dest.use === 'takeoff' || view.dest.use === 'closed') {   // v0.7.0: nothing lands on it, so no final drawn
+        ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText(view.dest.use === 'takeoff' ? 'TAKE-OFF ONLY' : 'NOT IN USE', X(tx) + 10, Y(ty) + 14);
+      } else if (view.dest.circling) {   // v0.6.2: no straight-in final to it (Gimhae 18L, 18R), so no 15 nm final drawn
         ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
         ctx.fillText('CIRCLING ONLY', X(tx) + 10, Y(ty) + 14);
       } else {
@@ -273,42 +272,8 @@ export function createMap(root, { airports, coast, urban } = {}) {
     drawInfo();
   }
 
-  function drawAirports() {
-    if (EAST_ASIA_ON) { drawAirportsRegion(); return; }
-    for (const apt of airportList(airports)) {
-      const rws = apt.runways || [];
-      ctx.lineCap = 'butt';
-      for (const rw of rws) {
-        const [a, b] = rw.ends;
-        ctx.strokeStyle = '#d8d8d8'; ctx.lineWidth = Math.max(2.5, (rw.widthM || 45) * k);
-        ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke();
-        if (k > 0.004) { // close in: runway end idents
-          ctx.fillStyle = C.white; ctx.font = font(11); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          for (const [e, o] of [[a, b], [b, a]]) {
-            const L = Math.hypot(o.x - e.x, o.y - e.y) || 1, d = 14 / k;
-            ctx.fillText(e.ident, X(e.x - (o.x - e.x) / L * d), Y(e.y - (o.y - e.y) / L * d));
-          }
-        }
-      }
-      const isDest = view?.dest && rws.some((r) => r.ends.includes(view.dest));
-      const L = labelOf(apt);
-      ctx.font = font(13, true); ctx.textAlign = L.left ? 'right' : 'left'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = isDest ? C.magenta : C.cyan;
-      ctx.fillText(apt.icao, L.x, L.y);
-      ctx.font = font(11); ctx.fillStyle = 'rgba(255,255,255,0.65)';
-      ctx.fillText(apt.name || '', L.x, L.y + 14);
-    }
-  }
-  // Where an airport's label goes (screen px): to the right, or to the left when a neighbour
-  // lies close to the east (Incheon by Gimpo).
-  function labelOf(apt) {
-    const rws = apt.runways || [];
-    const [ox, oy] = apt.origin || [rws[0]?.ends[0].x || 0, rws[0]?.ends[0].y || 0];
-    const left = airportList(airports).some((b) => b !== apt && b.origin && b.origin[0] > ox && Math.hypot(b.origin[0] - ox, b.origin[1] - oy) * k < 260);
-    const off = Math.max(12, 2200 * k);
-    return { x: X(ox) + (left ? -off : off), y: Y(oy) - off, left };
-  }
-  // ---- v0.6.0: eleven airports across 2,250 km (EAST_ASIA_ON); twelve since v0.6.1 ----
+  function drawAirports() { drawAirportsRegion(); }
+  // ---- v0.6.0: eleven airports across 2,250 km; twelve since v0.6.1 ----
   // Each airport's label (its ICAO code over its short name) goes in the first of four places
   // round it (up right, up left, down right, down left) that overlaps no label placed before it
   // and no other airport; if none is free, the code alone; if that isn't free either, no label
@@ -419,17 +384,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
   // The airport whose label is under the pointer. Labels come first, ahead of the lines over
   // them: they're what you aim at to pick an airport.
   function hitLabel(sx, sy) {
-    if (EAST_ASIA_ON) {
-      for (const [apt, B] of labelLayout()) if (sx >= B.x0 - 2 && sx <= B.x1 + 2 && sy >= B.y0 - 2 && sy <= B.y1 + 2) return apt;
-      return null;
-    }
-    for (const apt of airportList(airports)) {
-      const L = labelOf(apt);
-      ctx.font = font(13, true);
-      const w = Math.max(ctx.measureText(apt.icao).width, (ctx.font = font(11), ctx.measureText(apt.name || '').width));
-      const x0 = L.left ? L.x - w : L.x, x1 = L.left ? L.x : L.x + w;
-      if (sx >= x0 - 4 && sx <= x1 + 4 && sy >= L.y - 10 && sy <= L.y + 22) return apt;
-    }
+    for (const [apt, B] of labelLayout()) if (sx >= B.x0 - 2 && sx <= B.x1 + 2 && sy >= B.y0 - 2 && sy <= B.y1 + 2) return apt;
     return null;
   }
   // The airport one of whose runways is under the pointer (after the paths, which go first).
@@ -490,15 +445,13 @@ export function createMap(root, { airports, coast, urban } = {}) {
   const fmtMin = (m) => `${Math.floor(m / 60)}:${String(Math.floor(m % 60)).padStart(2, '0')}`;
 
   // ---- interaction ----
-  // Zoomed out to 4 km a pixel (v0.5.8), or with the region on, far enough to see all of it.
+  // Zoomed out to 4 km a pixel (v0.5.8), or far enough to see all of the region.
   function kMin() {
-    if (!EAST_ASIA_ON) return 1 / 4000;
     const E = mapExtent();
     return Math.min(1 / 4000, 0.8 * Math.min(W / (E.x1 - E.x0), H / (E.y1 - E.y0)));
   }
-  // With the region on, the view's centre stays over the region (a long swipe can't lose it).
+  // The view's centre stays over the region (a long swipe can't lose it).
   function keepInRegion() {
-    if (!EAST_ASIA_ON) return;
     const E = mapExtent();
     cx = clamp(cx, E.x0, E.x1); cy = clamp(cy, E.y0, E.y1);
   }
@@ -699,23 +652,27 @@ export function createMap(root, { airports, coast, urban } = {}) {
   let tipAirport = false;     // the tip is showing an airport's hint
   const destAirport = () => airportList(airports).find((a) => a.runways?.some((r) => r.ends.includes(view?.dest))) || null;
   const shortName = (a) => (a.name || '').replace(/ International Airport$| Airport$/, '').replace(/^Seoul /, '');
-  // v0.6.0: the airports' own short names (Haneda, Pudong) with the region on.
-  const nameOf = (a) => (EAST_ASIA_ON && a.shortName) || shortName(a);
+  // v0.6.0: the airports' own short names (Haneda, Pudong).
+  const nameOf = (a) => a.shortName || shortName(a);
   const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   // The runway end you'd fly straight in to from here: the one whose landing direction is
   // nearest the bearing from the aircraft to its threshold.
   function straightIn(apt) {
     const st = view?.state;
-    let best = null, bd = Infinity;
+    // v0.7.0: a standby runway (runways.js ONE_WAY: Gatwick's 08L/26R, Orly's 02/20) is never the one picked for
+    // you; it is only if the airport has nothing else to land on (none does).
+    let best = null, bd = Infinity, spare = null, sd = Infinity;
     for (const r of apt.runways || []) {
       for (const [e, o] of [[r.ends[0], r.ends[1]], [r.ends[1], r.ends[0]]]) {
         if (e.circling) continue;   // v0.6.2: not one you'd fly straight in to (Gimhae 18L, 18R)
+        if (e.use === 'takeoff' || e.use === 'closed') continue;   // v0.7.0: nothing lands on it (runways.js ONE_WAY: Frankfurt's 18)
         const [tx, ty] = thresholdOf(e), land = Math.atan2(o.x - e.x, o.y - e.y);
         const d = st ? Math.abs(wrapPi(land - Math.atan2(tx - st.pos.x, ty - st.pos.y))) : 0;
+        if (e.use === 'standby') { if (d < sd) { sd = d; spare = e.ident; } continue; }
         if (d < bd) { bd = d; best = e.ident; }
       }
     }
-    return best;
+    return best ?? spare;
   }
   function openRoute(icao) {
     const list = airportList(airports), cur = destAirport();
@@ -732,7 +689,9 @@ export function createMap(root, { airports, coast, urban } = {}) {
     const list = airportList(airports), apt = list.find((a) => a.icao === pick.icao);
     routeEl.querySelector('[data-r="apt"]').innerHTML = list.map((a) =>
       `<button data-icao="${a.icao}" class="${a.icao === pick.icao ? 'on' : ''}" tabindex="-1">${a.icao}<small>${nameOf(a)}</small></button>`).join('');
-    const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r })));
+    // v0.7.0: only the ends that are landed on (runways.js ONE_WAY: not Frankfurt's 18, Madrid's 14s and 36s, Barcelona's 20), a standby runway's last.
+    const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r }))).filter(({ e }) => e.use !== 'takeoff' && e.use !== 'closed')
+      .sort((p, q) => (p.e.use === 'standby') - (q.e.use === 'standby'));
     routeEl.querySelector('[data-r="rwy"]').innerHTML = ends.map(({ e, r }) =>
       `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}" tabindex="-1">${e.ident}</button>`).join('');
     const sel = ends.find((x) => x.e.ident === pick.ident);

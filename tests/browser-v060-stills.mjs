@@ -26,6 +26,12 @@ const DEG = Math.PI / 180, FT = 0.3048;
 const KST = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h - 9, mi, 0);
 const DAY = KST(2026, 11, 19, 13, 0), NIGHT = KST(2026, 11, 19, 22, 0);
 const STEPS = 120;          // hand-stepped frames before the capture
+// v0.7.0: --total N. The waits below (the centres, the fine cover, the tiles, the clip window) step a frame every
+// 4 ms until what they wait for has loaded, so how many frames have passed at the capture depended on how fast the
+// files came: the shaders' clock (the sea's sparkle, the lights' twinkle) differed between two runs of the same build
+// wherever something had to load (found on 2026-11-21: five East Asian views didn't repeat in v0.6.4 itself). With
+// --total the script steps on, after the waits, until exactly N frames have passed at the capture, whatever the
+// waits took; a wait that took more than N says so. Without it the script is as it was.
 const FPS_MS = 3000;
 
 // A view looking at a ground point: the camera stands back along the heading so the point is in the middle of
@@ -199,11 +205,90 @@ for (const [k, [la, lo, H, h]] of Object.entries(LANDMARK064)) {
 GROUPS['cities-v064'] = Object.keys(CITY064).flatMap((k) => ['3000', 'fl350'].flatMap((a) => ['day', 'night'].map((t) => `cities-${k}-${a}-${t}`)));
 GROUPS['landmarks-v064'] = Object.keys(LANDMARK064).flatMap((k) => ['day', 'night'].map((t) => `landmark-${k}-${t}`));
 
+// v0.7.0: Europe (run with FS_REGION=europe in the environment, so toMap() here is Europe's, and --q '&region=europe'
+// so the page is; East Asia's shots above mean nothing in that frame). Part 3's "a flight over it": FL350 from London
+// towards Madrid, 3,000 ft over London and over the Alps near Zurich; then the polders (land below the sea), Paris, the
+// Pyrenees and Rome's coast.
+const EU_DAY = Date.UTC(2026, 10, 19, 12, 0), EU_NIGHT = Date.UTC(2026, 10, 19, 21, 0);   // 12:00 and 21:00 UTC: early afternoon and night across Europe
+// Each of Europe's airports from 1,000 ft on its final (with ?pending=1 until it is listed).
+const EU_FINALS = { EGLL: '27R', LFPG: '26L', EDDF: '25C', LEMD: '32L', LSZH: '14', EGKK: '26L', LFPO: '25', EHAM: '18R', EDDM: '26R', LEBL: '24R', LIRF: '16R' };
+for (const [icao, end] of Object.entries(EU_FINALS)) {
+  SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_DAY };
+  SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_NIGHT };
+}
+SHOTS['eu-fl350-london-south'] = { q: 'lat=51.6&lon=-0.2&alt=35000&hdg=195&pitch=-9', ms: EU_DAY };      // London below, the Channel and France ahead
+SHOTS['eu-fl350-biscay-madrid'] = { q: 'lat=44.2&lon=-2.6&alt=35000&hdg=190&pitch=-9', ms: EU_DAY };     // the Bay of Biscay's coast, the Cantabrian range, the meseta
+SHOTS['eu-fl350-alps'] = { q: 'lat=47.9&lon=8.5&alt=35000&hdg=170&pitch=-10', ms: EU_DAY };              // Zurich, the lakes, the Alps and the Po plain beyond
+SHOTS['eu-fl350-paris'] = { q: look(48.86, 2.35, 35000, 0, -38), ms: EU_DAY };
+SHOTS['eu-3000-london'] = { q: look(51.507, -0.10, 3000, 80, -12), ms: EU_DAY };
+SHOTS['eu-3000-london-night'] = { q: look(51.507, -0.10, 3000, 80, -12), ms: EU_NIGHT };
+SHOTS['eu-3000-alps-zurich'] = { q: look(47.02, 8.65, 3000, 170, -6), ms: EU_DAY };                      // south of Zurich's lake, the Alps ahead
+SHOTS['eu-3000-paris'] = { q: look(48.86, 2.33, 3000, 60, -12), ms: EU_DAY };
+SHOTS['eu-3000-polders'] = { q: look(52.31, 4.76, 3000, 20, -14), ms: EU_DAY };                          // Haarlemmermeer: land below the sea
+SHOTS['eu-1000-polders'] = { q: look(52.33, 4.70, 1000, 300, -10), ms: EU_DAY };                         // towards the dunes and the North Sea
+SHOTS['eu-10000-thames'] = { q: look(51.48, 0.3, 10000, 270, -20), ms: EU_DAY };                         // up the estuary to London
+SHOTS['eu-10000-barcelona'] = { q: look(41.38, 2.17, 10000, 320, -20), ms: EU_DAY };
+SHOTS['eu-10000-rome'] = { q: look(41.85, 12.35, 10000, 60, -20), ms: EU_DAY };
+SHOTS['eu-fl350-edge-vienna'] = { q: 'lat=48.0&lon=14.0&alt=35000&hdg=90&pitch=-9', ms: EU_DAY };        // beyond batch A, the 1 km level to the east edge
+// A hole in the 31 m cover inside the 250 m data (it is baked only within 100 km of an airport): Dijon has none, and
+// Reims lies on its edge, 108 km from Charles de Gaulle. The ground there draws from the 250 m cover.
+SHOTS['eu-3000-nofine-dijon'] = { q: look(47.32, 5.04, 3000, 20, -14), ms: EU_DAY };
+SHOTS['eu-1000-nofine-dijon'] = { q: look(47.36, 5.10, 1000, 60, -10), ms: EU_DAY };
+SHOTS['eu-3000-fine-edge-reims'] = { q: look(49.20, 3.85, 3000, 250, -12), ms: EU_DAY };
+SHOTS['eu-10000-fine-edge-reims'] = { q: look(49.20, 3.85, 10000, 250, -20), ms: EU_DAY };
+GROUPS['europe-nofine'] = ['eu-3000-nofine-dijon', 'eu-1000-nofine-dijon', 'eu-3000-fine-edge-reims', 'eu-10000-fine-edge-reims'];
+// Part 6: Europe's nine real centres from 3,000 ft (and London, Paris and Barcelona by night and from FL350).
+const EU_CENTRES = { london: [51.507, -0.10, 80], paris: [48.868, 2.31, 70], frankfurt: [50.111, 8.672, 20], madrid: [40.45, -3.69, 10], zurich: [47.372, 8.54, 330],
+  amsterdam: [52.372, 4.893, 20], munich: [48.14, 11.572, 340], barcelona: [41.39, 2.165, 315], rome: [41.90, 12.48, 300] };
+for (const [k, [la, lo, h]] of Object.entries(EU_CENTRES)) {
+  SHOTS[`eu-centre-${k}-3000-day`] = { q: look(la, lo, 3000, h, -12), ms: EU_DAY };
+  SHOTS[`eu-centre-${k}-3000-night`] = { q: look(la, lo, 3000, h, -12), ms: EU_NIGHT };
+  SHOTS[`eu-centre-${k}-fl350-day`] = { q: look(la, lo, 35000, h, -38), ms: EU_DAY };
+  SHOTS[`eu-centre-${k}-fl350-night`] = { q: look(la, lo, 35000, h, -38), ms: EU_NIGHT };
+}
+GROUPS['europe-centres'] = Object.keys(EU_CENTRES).map((k) => `eu-centre-${k}-3000-day`).concat(['london', 'paris', 'barcelona'].map((k) => `eu-centre-${k}-3000-night`));
+GROUPS['europe-centres-all'] = Object.keys(SHOTS).filter((n) => n.startsWith('eu-centre-'));
+// Part 6: Europe's landmarks close (a ground point, the model's height and the heading to look along, as its
+// subagent's notes give them), by day and by night.
+const EU_LANDMARKS = { shard: [51.49958, -0.09440, 309.6, 45], westminster: [51.49874, -0.11786, 98.5, 280], eye: [51.50520, -0.12594, 135, 115], stpauls: [51.50958, -0.10077, 111, 20],
+  towerbridge: [51.50560, -0.08252, 65, 90], eiffel: [48.86355, 2.28668, 330, 136], arc: [48.86974, 2.29203, 49.54, 26], sacrecoeur: [48.88222, 2.34306, 84, 0], notredame: [48.84884, 2.34767, 96, 20],
+  grandearche: [48.89067, 2.24216, 110, 296], commerzbank: [50.10577, 8.67126, 258.7, 20], messeturm: [50.10646, 8.65278, 256.5, 0], europaturm: [50.12770, 8.65472, 337.5, 0],
+  cepsa: [40.47556, -3.69511, 248.3, 90], cristal: [40.47806, -3.69457, 249, 90], caleido: [40.47450, -3.69400, 181, 90], kio: [40.46190, -3.68778, 114, 0],
+  grossmunster: [47.37014, 8.53736, 64, 90], primetower: [47.38151, 8.51720, 126, 0], olympiaturm: [48.16790, 11.55361, 291, 0], frauenkirche: [48.13861, 11.56716, 98.5, 90],
+  sagrada: [41.40051, 2.17010, 172.5, 45], glories: [41.40029, 2.18543, 144.4, 45], collserola: [41.41264, 2.12028, 288.4, 315], stpeters: [41.90222, 12.45984, 136.6, 270], colosseum: [41.88608, 12.49014, 48, 20] };
+for (const [k, [la, lo, H, h]] of Object.entries(EU_LANDMARKS)) {
+  for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q: near(la, lo, H, h), ms };
+}
+// The low landmarks from above (in a level view the centre's blocks hide them, as the Sapporo TV Tower was hidden): the
+// camera 1,300 ft over the landmark's ground, looking down at it along its heading.
+for (const k of ['arc', 'colosseum', 'westminster', 'towerbridge', 'notredame', 'stpauls', 'grossmunster', 'primetower', 'sacrecoeur', 'frauenkirche']) {
+  const [la, lo, , h] = EU_LANDMARKS[k];
+  SHOTS[`eu-landmark-${k}-above-day`] = { q: look(la, lo, 1300, h, -28), ms: EU_DAY };
+  SHOTS[`eu-landmark-${k}-above-night`] = { q: look(la, lo, 1300, h, -28), ms: EU_NIGHT };
+}
+SHOTS['eu-fl350-alps-night'] = { q: SHOTS['eu-fl350-alps'].q, ms: EU_NIGHT };
+SHOTS['eu-3000-alps-zurich-night'] = { q: SHOTS['eu-3000-alps-zurich'].q, ms: EU_NIGHT };
+// Schiphol's patch at its deepest (GLO-30's -19.5 m over about 0.6 km2 at 52.3126 N 4.9448 E, 11 km east of the field,
+// where a stadium stands: radar noise at a big building, not ground). Looked at before Schiphol was listed.
+SHOTS['eu-eham-deep'] = { q: look(52.3126, 4.9448, 1500, 0, -28), ms: EU_DAY };
+SHOTS['eu-eham-deep-low'] = { q: look(52.3126, 4.9448, 500, 90, -12), ms: EU_DAY };
+// A town by night, for the church without lit floors (cities.js's fourth splice).
+SHOTS['eu-3000-nofine-dijon-night'] = { q: SHOTS['eu-3000-nofine-dijon'].q, ms: EU_NIGHT };
+SHOTS['eu-1000-nofine-dijon-night'] = { q: SHOTS['eu-1000-nofine-dijon'].q, ms: EU_NIGHT };
+// The definition of done's pictures still to take in the morning: the low landmarks from above; London and Paris from
+// FL350 by day and night; the Alps by night from FL350 and from 3,000 ft.
+GROUPS['europe-morning'] = ['arc', 'colosseum', 'westminster', 'towerbridge', 'notredame', 'stpauls', 'grossmunster', 'primetower', 'sacrecoeur', 'frauenkirche'].map((k) => `eu-landmark-${k}-above-day`)
+  .concat(['westminster', 'colosseum', 'towerbridge'].map((k) => `eu-landmark-${k}-above-night`),
+    ['eu-centre-london-fl350-day', 'eu-centre-london-fl350-night', 'eu-centre-paris-fl350-day', 'eu-centre-paris-fl350-night', 'eu-fl350-alps-night', 'eu-3000-alps-zurich-night']);
+GROUPS['europe-landmarks'] = Object.keys(EU_LANDMARKS).map((k) => `eu-landmark-${k}-day`).concat(['shard', 'westminster', 'eye', 'eiffel', 'europaturm', 'cristal', 'sagrada', 'stpeters'].map((k) => `eu-landmark-${k}-night`));
+GROUPS['europe-flight'] = ['eu-fl350-london-south', 'eu-fl350-biscay-madrid', 'eu-3000-london', 'eu-3000-alps-zurich'];
+GROUPS.europe = Object.keys(SHOTS).filter((n) => n.startsWith('eu-') && !n.includes('fine') && !n.includes('centre') && !n.includes('landmark'));
+
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {
   const native = window.requestAnimationFrame.bind(window);
   let queued = null, fakeNow = null, offset = 0, real = false;
-  const st = window.__raf = { frames: 0, stamps: [] };
+  const st = window.__raf = { frames: 0, stamps: [], count: 0 };   // count: frames stepped by hand (v0.7.0, for --total)
   window.requestAnimationFrame = (cb) => {
     if (real) return native((ts) => { st.frames++; st.stamps.push(ts); cb(ts + offset); });
     queued = cb; return 1;
@@ -214,6 +299,7 @@ const INIT = () => {
       const cb = queued; if (!cb) throw new Error('no frame queued');
       queued = null;
       fakeNow = fakeNow === null ? performance.now() + 1e6 : fakeNow + 1000 / 60;
+      st.count++;
       cb(fakeNow);
     }
   };
@@ -231,7 +317,8 @@ function args() {
     else if (a[i] === '--base') o.base = a[++i];
     else if (a[i] === '--tag') o.tag = a[++i];
     else if (a[i] === '--q') o.q = a[++i];             // v0.6.1: more for the page's query ("&trees=1")
-    else if (a[i] === '--prefix') o.prefix = a[++i];   // v0.6.1: the pictures' prefix (v060 by default; v061 for v0.6.1's)
+    else if (a[i] === '--prefix') o.prefix = a[++i];
+    else if (a[i] === '--total') o.total = Number(a[++i]);   // v0.7.0: see TOTAL below   // v0.6.1: the pictures' prefix (v060 by default; v061 for v0.6.1's)
     else o.names.push(a[i]);
   }
   if (!o.base || !o.tag) { console.error('usage: node browser-v060-stills.mjs --base <game folder url> --tag <tag> [names|part1|part6|part7]'); process.exit(2); }
@@ -250,6 +337,8 @@ const HEADED = process.argv.includes('--headed');
 const REGION = process.argv.includes('--region');
 // Part 6's and Part 7's own flags (?cities=1, ?ground=1), with or without the region.
 // Always explicit, whatever the shipped defaults: without --region, --cities or --ground the page is v0.5.8's Korea.
+// (v0.7.0: v0.6.0's flags are gone, so ?eastasia=, ?cities= and ?ground= are ignored: every still is the region's
+// game, with or without --region, --cities and --ground, which are kept as harmless no-ops.)
 const EXTRA = `&cities=${process.argv.includes('--cities') ? 1 : 0}&ground=${process.argv.includes('--ground') ? 1 : 0}${process.argv.includes('--pending') ? '&pending=1' : ''}${process.argv.includes('--nocull') ? '&cull=0' : ''}`;   // (--pending, v0.6.1: an airport still in the manifest's airportsPending)
 const browser = await chromium.launch(HEADED
   ? { channel: 'chrome', headless: false, args: ['--mute-audio', '--window-size=1440,960', '--enable-precise-memory-info', '--js-flags=--expose-gc'] }
@@ -281,7 +370,7 @@ try {
     }
     log('world ready');
     const aglAt = /aglAt=([-\d.]+),([-\d.]+)/.exec(shot.q);
-    const r = await page.evaluate(async ({ ms, aglAt, steps, region }) => {
+    const r = await page.evaluate(async ({ ms, aglAt, steps, region, total }) => {
       const d = window.__dev, w = d.world, cam = d.cam;
       let tilesMs = 0;
       // Part 6's real centres, when they are on: every centre in range built (none loading, building or staging).
@@ -316,15 +405,18 @@ try {
       const [lat, lon] = toGeo(cam.x, cam.y);
       w.sky.setTime(ms, lat, lon);
       if (Number.isFinite(w.sky.state.exposure)) d.renderer.toneMappingExposure = w.sky.state.exposure;
+      const pre = window.__raf.count, pad = total ? total - 1 - steps - pre : 0;
+      for (let i = 0; i < pad; i += 10) { window.__raf.step(Math.min(10, pad - i)); await new Promise((res) => setTimeout(res, 0)); }
       for (let i = 0; i < steps; i += 10) { window.__raf.step(Math.min(10, steps - i)); await new Promise((res) => setTimeout(res, 0)); }
       // The capture: one more frame, then the canvas read in the same task.
       window.__raf.step(1);
+      const stepped = window.__raf.count;
       const url = d.renderer.domElement.toDataURL('image/png');
       const ri = d.renderer.info.render;
       const gl = d.renderer.getContext(), dbg = gl.getExtension('WEBGL_debug_renderer_info');
       const glRenderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-      return { url, glRenderer, lat, lon, cam: { ...cam }, calls: ri.calls, triangles: ri.triangles, stats: { ...w.stats }, sun: w.sky.state.sunAltDeg, night: w.uniforms.uNight.value, exposure: d.renderer.toneMappingExposure, loadMs: d.loadMs, tilesMs, storeTiles: w.heightfield.tiles ? w.heightfield.tiles.resident().length : 0, misses: w.heightfield.tiles ? w.heightfield.tiles.misses : 0 };
-    }, { ms: shot.ms, aglAt: aglAt ? [parseFloat(aglAt[1]), parseFloat(aglAt[2])] : null, steps: STEPS, region: REGION });
+      return { url, glRenderer, lat, lon, pre, stepped, cam: { ...cam }, calls: ri.calls, triangles: ri.triangles, stats: { ...w.stats }, sun: w.sky.state.sunAltDeg, night: w.uniforms.uNight.value, exposure: d.renderer.toneMappingExposure, loadMs: d.loadMs, tilesMs, storeTiles: w.heightfield.tiles ? w.heightfield.tiles.resident().length : 0, misses: w.heightfield.tiles ? w.heightfield.tiles.misses : 0 };
+    }, { ms: shot.ms, aglAt: aglAt ? [parseFloat(aglAt[1]), parseFloat(aglAt[2])] : null, steps: STEPS, region: REGION, total: opt.total || 0 });
     const file = `${OUT}/${opt.prefix || 'v060'}-${opt.tag}-${name}.png`;
     writeFileSync(file, Buffer.from(r.url.split(',')[1], 'base64'));
     log('captured');
@@ -345,6 +437,7 @@ try {
     const swiftshader = /swiftshader/i.test(r.glRenderer);
     const out = { name, file, mode: MODE, swiftshader, fpsValid: !swiftshader, ms: shot.ms, q: shot.q, ...rest, ...perf, secs: (Date.now() - t0) / 1000, errors };
     results.push(out);
+    if (opt.total) console.log(`  ${name}: ${r.pre} frames stepped in the waits, ${r.stepped} at the capture${r.stepped !== opt.total ? ` (NOT the ${opt.total} asked for: the waits took more)` : ''}`);
     console.log(`${name}: ${perf.fps.toFixed(1)} fps (worst ${perf.worstMs.toFixed(1)} ms), ${r.calls} calls, ${(r.triangles / 1000).toFixed(0)}k tris, heap ${perf.heapMB.toFixed(0)} MB, sun ${r.sun.toFixed(1)}°, night ${r.night.toFixed(2)}, ${out.secs.toFixed(0)} s, ${MODE}, ${r.glRenderer}${swiftshader ? ' (SwiftShader: fps not valid)' : ''}` +
       (errors.length ? `\n  ${errors.slice(0, 5).join('\n  ')}` : ''));
     await page.close();

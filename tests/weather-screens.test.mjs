@@ -1,18 +1,16 @@
 // v0.4.0: the cockpit screens' wind, track and altimeter setting, on a recording canvas and a fake DOM.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setEastAsia } from '../src/world/region.js';
-// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
-// flag is set off here whatever the shipped default (the region's own behaviour is checked in
-// tests/v060-*.test.mjs). No assertion below changed.
-setEastAsia(false);
+// v0.7.0: v0.6.0's region flag is gone; the FCU and the MCP now always have the BARO's unit and
+// metric buttons, so the fake DOM has classList.add and insertBefore. No assertion below changed.
 
 const elements = [];
 function makeEl() {
   const e = {
     children: [], dataset: {}, style: {}, title: '', className: '', textContent: '', innerHTML: '', l: {}, q: {},
-    classList: { toggle() {} },
+    classList: { toggle() {}, add() {} },
     appendChild(c) { this.children.push(c); return c; },
+    insertBefore(c, ref) { const i = this.children.indexOf(ref); this.children.splice(i < 0 ? this.children.length : i, 0, c); return c; },
     querySelector(s) { return (this.q[s] ??= makeEl()); },
     addEventListener(t, f) { (this.l[t] ??= []).push(f); },
     contains() { return false; },

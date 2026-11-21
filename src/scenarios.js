@@ -8,10 +8,16 @@
 
 import { TYPES, DEFAULT_TYPE } from './sim/types.js';
 import { afternoonIn, zoneOfIcao, localTimeOn } from './clock.js';
+import { REGION_ID, DEFAULT_REGION, REGION_ORDER, regionOfSave } from './world/regions.js';
 
 export const PREFIX = 'gamedump:flight-sim:';
-export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, type, summary: { route, where, design?, designId?, phase?, … (flightPart) }, legacy? }]
-export const SCEN_PREFIX = PREFIX + 'scenario:';   // + id → { v: 1, id, name, savedAt, state }
+export const INDEX_KEY = PREFIX + 'scenarios';     // [{ id, name, created, savedAt, type, region?, summary: { route, where, design?, designId?, phase?, … (flightPart) }, legacy? }]
+export const SCEN_PREFIX = PREFIX + 'scenario:';   // + id → { v: 1, id, name, savedAt, state, region? }
+// v0.7.0: a scenario carries its region (regions.js: 'east-asia', 'europe'), in its index entry and its record: its
+// state holds map coordinates, which mean nothing in another region's frame. One without a region is East Asia's
+// (every save before v0.7.0), and is never rewritten just to say so. All regions share the one index, so the Load
+// list shows them all; loading one from another region reloads the page into its region first (main.js).
+export const regionOf = regionOfSave;
 export const LASTFLIGHT_KEY = PREFIX + 'lastflight'; // v0.1.x's last plan (read, never changed)
 export const LOGBOOK_KEY = PREFIX + 'logbook';       // the one logbook (read, never changed here)
 
@@ -121,6 +127,15 @@ export class ScenarioStore {
   // Newest savedAt first.
   list() { return this.index().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0)); }
   newest() { return this.list()[0] || null; }
+  // v0.7.0: the list by region, for the Load list: [{ region, entries }], this page's region first, then the
+  // others in the registry's order; a region with no scenario is left out.
+  byRegion(first = REGION_ID) {
+    const all = this.list();
+    const known = [first, ...REGION_ORDER.filter((r) => r !== first)];
+    return [...known, ...[...new Set(all.map(regionOf))].filter((r) => !known.includes(r))]   // (a region this build doesn't know, last)
+      .map((region) => ({ region, entries: all.filter((e) => regionOf(e) === region) }))
+      .filter((g) => g.entries.length);
+  }
   entry(id) { return this.index().find((e) => e.id === id) || null; }
   get(id) { const r = this.read(SCEN_PREFIX + id, null); return r && typeof r === 'object' ? r : null; }
 
@@ -134,7 +149,8 @@ export class ScenarioStore {
 
   // A new scenario with its first state. Duplicate names are allowed (as in
   // Satisfactory). → { ok, id, entry } or { ok: false, error: 'name' | 'quota' }.
-  create(name, state, summary = {}, { now = Date.now(), legacy = false } = {}) {
+  // v0.7.0: `region` is the page's unless given (a copy keeps its original's; the legacy scenario is East Asia's).
+  create(name, state, summary = {}, { now = Date.now(), legacy = false, region = REGION_ID } = {}) {
     const clean = cleanName(name);
     if (clean.length < NAME_MIN) return { ok: false, error: 'name' };
     const idx = this.index();
@@ -142,8 +158,11 @@ export class ScenarioStore {
     while (idx.some((e) => e.id === id)) id = newId(now);
     const entry = { id, name: clean, created: now, savedAt: now, type: typeFrom(summary, state) || DEFAULT_TYPE, summary: { route: summary.route || '', where: summary.where || '', ...designPart(summary), ...flightPart(summary) } };
     if (legacy) entry.legacy = true;
+    // East Asia's entries stay as they were written before v0.7.0 (no field): only another region's says so.
+    const tag = region && region !== DEFAULT_REGION ? { region } : {};
+    Object.assign(entry, tag);
     // The record first, then the index; if the index is refused, take the record back.
-    if (!this.put(SCEN_PREFIX + id, { v: 1, id, name: clean, savedAt: now, state })) return { ok: false, error: 'quota' };
+    if (!this.put(SCEN_PREFIX + id, { v: 1, id, name: clean, savedAt: now, state, ...tag })) return { ok: false, error: 'quota' };
     if (!this.put(INDEX_KEY, [entry, ...idx])) { this.drop(SCEN_PREFIX + id); return { ok: false, error: 'quota' }; }
     return { ok: true, id, entry };
   }
@@ -155,7 +174,7 @@ export class ScenarioStore {
     const i = idx.findIndex((e) => e.id === id);
     if (i < 0) return { ok: false, error: 'missing' };
     const e = idx[i], k = SCEN_PREFIX + id, old = this.raw(k);
-    if (!this.put(k, { v: 1, id, name: e.name, savedAt: now, state })) { this.undo(k, old); return { ok: false, error: 'quota' }; }
+    if (!this.put(k, { v: 1, id, name: e.name, savedAt: now, state, ...(e.region ? { region: e.region } : {}) })) { this.undo(k, old); return { ok: false, error: 'quota' }; }
     idx[i] = { ...e, savedAt: now, type: typeFrom(summary, state) || e.type, summary: summary ? { route: summary.route ?? e.summary?.route ?? '', where: summary.where ?? e.summary?.where ?? '', ...designPart(summary), ...flightPart(summary) } : e.summary };
     if (!this.put(INDEX_KEY, idx)) { this.undo(k, old); return { ok: false, error: 'quota' }; }
     return { ok: true };
@@ -218,7 +237,7 @@ export class ScenarioStore {
     const e = this.entry(id), rec = this.get(id);
     if (!e || !rec || rec.state == null) return { ok: false, error: 'missing' };
     const taken = new Set(this.index().map((x) => x.name));
-    return this.create(name ?? copyName(e.name, taken), rec.state, { ...e.summary, type: e.type }, { now });
+    return this.create(name ?? copyName(e.name, taken), rec.state, { ...e.summary, type: e.type }, { now, region: regionOf(e) });
   }
 
   // Delete a scenario (its logbook entries stay, under the name they carry).
@@ -245,7 +264,7 @@ export class ScenarioStore {
     const state = { v: 1, fresh: true, plan, clock: { ms: afternoonAt(now, plan.origin), running: true, speed: 1 } };
     const where = plan.start === 'gate' ? whereText({ onGround: true, phase: 'parked', icao: plan.origin, stand: plan.stand })
       : plan.start === 'final' ? `On final to ${plan.dest}` : whereText({ onGround: true, icao: plan.origin });
-    const r = this.create('Scenario 1', state, { route: routeText(plan), where }, { now, legacy: true });
+    const r = this.create('Scenario 1', state, { route: routeText(plan), where }, { now, legacy: true, region: DEFAULT_REGION });
     if (!r.ok) { this.put(INDEX_KEY, []); return null; }
     return r.entry;
   }

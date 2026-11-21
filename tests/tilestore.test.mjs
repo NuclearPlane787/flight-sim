@@ -3,7 +3,8 @@
 // the one national grid, everywhere (cell centres, cell corners, tile seams, the extent's edges
 // and beyond); the borders hold the neighbours' cells; a tile that isn't resident is waited
 // for and counted as a miss if sampled; far tiles are released, pinned ones never.
-// Skipped while the national files or the tiles are missing.
+// Skipped while the tiles are missing. (v0.7.0: the national grid and Korea's own tiles went with v0.6.0's flags, and
+// the three tests that compared the tiles with the grid; the rest run over the region's tiles.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -14,7 +15,7 @@ import { maskAirportCover } from '../src/world/airport-mask.js';
 import { tiledTerrain, readGz, manifest, DATA } from './tile-terrain.mjs';
 
 const m = manifest();
-const HAVE = !!(m.national && m.tiles && existsSync(new URL(m.national.height, DATA)));
+const HAVE = !!m.tilesRegion;   // (v0.7.0: the region's tiles; Korea's own and the national grid went)
 const airports = (m.airports || []).map((f) => JSON.parse(readFileSync(new URL(f, DATA), 'utf8')));
 
 function nationalHf({ mask = false } = {}) {
@@ -57,74 +58,10 @@ function samplePoints() {
   return pts;
 }
 
-test('tiles: every sampler bit-exact against the national grid over Korea', { skip: !HAVE }, async () => {
-  const A = nationalHf();
-  const { hf: B } = await tiledTerrain({ layers: ['h', 'w', 'c'], coasts: true });
-  assert.ok(B.info.tiled && B.info.height && B.info.water && B.info.cover);
-  const ca = {}, cb = {};
-  let n = 0;
-  for (const [x, y] of samplePoints()) {
-    assert.equal(B.rawHeight(x, y), A.rawHeight(x, y), `rawHeight ${x} ${y}`);
-    assert.equal(B.heightAt(x, y), A.heightAt(x, y), `heightAt ${x} ${y}`);
-    assert.equal(B.seaDistance(x, y), A.seaDistance(x, y), `seaDistance ${x} ${y}`);
-    assert.equal(B.inlandDistance(x, y), A.inlandDistance(x, y), `inlandDistance ${x} ${y}`);
-    assert.equal(B.waterAt(x, y), A.waterAt(x, y));
-    A.coverAt(x, y, ca); B.coverAt(x, y, cb);
-    assert.equal(cb.forest, ca.forest); assert.equal(cb.farm, ca.farm); assert.equal(cb.urban, ca.urban);
-    n++;
-  }
-  assert.equal(B.tiles.misses, 0, 'no sample read a tile that was not resident');
-  assert.ok(n > 300000);
-});
-
-test('tiles: every cell of the national grid is in its tile, borders included', { skip: !HAVE }, async () => {
-  const n = m.national;
-  const H = new Int16Array((() => { const b = gunzipSync(readFileSync(new URL(n.height, DATA))); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); })());
-  const store = createTileStore(m.tiles, { readGz, layers: ['h'] });
-  await store.loadAll();
-  const { tile: T, border: Bd } = store.lattice, S = T + 2 * Bd;
-  let checked = 0;
-  for (const k of store.resident()) {
-    const g = store.tileGrid(k);
-    const [ti, tj] = k.split('_').map(Number);
-    for (let lj = 0; lj < S; lj++) {
-      const j = Math.min(n.ny - 1, Math.max(0, tj * T + lj - Bd));
-      for (let li = 0; li < S; li++) {
-        const i = Math.min(n.nx - 1, Math.max(0, ti * T + li - Bd));
-        if (g.height[lj * S + li] !== H[j * n.nx + i]) assert.fail(`tile ${k} cell ${li},${lj}`);
-        checked++;
-      }
-    }
-  }
-  // The tiles without a file are open sea in the national grid too.
-  for (let tj = 0; tj < 7; tj++) for (let ti = 0; ti < 7; ti++) {
-    if (m.tiles.levels[0].tiles.includes(`${ti}_${tj}`)) continue;
-    for (let j = tj * T; j < Math.min(n.ny, (tj + 1) * T); j++) for (let i = ti * T; i < Math.min(n.nx, (ti + 1) * T); i++) {
-      if (H[j * n.nx + i] !== m.tiles.sea.h) assert.fail(`sea tile ${ti}_${tj} has land at ${i},${j}`);
-    }
-  }
-  assert.ok(checked > 35 * 516 * 516 - 1);
-});
-
-test('tiles: the airport mask per tile matches the national mask', { skip: !HAVE }, async () => {
-  const A = nationalHf({ mask: true });
-  const { hf: B } = await tiledTerrain({ layers: ['c'], onTile: (g) => maskAirportCover({ layers: { national: g } }, airports) });
-  const ca = {}, cb = {};
-  const r = rng(77);
-  for (const a of airports) {
-    const e = a.runways[0].ends[0];
-    for (let k = 0; k < 30000; k++) {
-      const x = e.x + (r() - 0.5) * 12000, y = e.y + (r() - 0.5) * 12000;
-      A.coverAt(x, y, ca); B.coverAt(x, y, cb);
-      assert.equal(cb.forest, ca.forest); assert.equal(cb.urban, ca.urban); assert.equal(cb.farm, ca.farm);
-    }
-  }
-});
-
 test('tiles: a tile that is not resident is waited for; sampling it counts a miss', { skip: !HAVE }, async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
-  const store = createTileStore(m.tiles, { layers: ['h'], readGz: async (rel) => { await gate; return readGz(rel); } });
+  const store = createTileStore(m.tilesRegion, { layers: ['h'], readGz: async (rel) => { await gate; return readGz(rel); } });
   // Gimpo, in tile 2_4 or so.
   const x = -60000, y = 180000;
   assert.equal(store.isReady(x, y, 1000), false);
@@ -141,26 +78,26 @@ test('tiles: a tile that is not resident is waited for; sampling it counts a mis
   store.height(x, y);
   assert.equal(store.misses, before);
   // Open sea tiles need no file and are ready at once.
-  const s = m.tiles.levels[0];
+  const s = m.tilesRegion.levels[0];
   const seaKey = (() => { for (let tj = 0; tj < 7; tj++) for (let ti = 0; ti < 7; ti++) if (!s.tiles.includes(`${ti}_${tj}`)) return [ti, tj]; return null; })();
   if (seaKey) {
-    const sx = m.tiles.x0 + (seaKey[0] * 512 + 256) * 250, sy = m.tiles.y0 + (seaKey[1] * 512 + 256) * 250;
+    const sx = m.tilesRegion.x0 + (seaKey[0] * 512 + 256) * 250, sy = m.tilesRegion.y0 + (seaKey[1] * 512 + 256) * 250;
     await store.whenReady(sx, sy, 0);
     const mm = store.misses;
-    assert.equal(store.height(sx, sy), m.tiles.sea.h);
+    assert.equal(store.height(sx, sy), m.tilesRegion.sea.h);
     assert.equal(store.misses, mm);
   }
 });
 
 test('tiles: far tiles are released beyond maxTiles, pinned ones never', { skip: !HAVE }, async () => {
-  const store = createTileStore(m.tiles, { layers: ['h'], readGz, maxTiles: 4 });
+  const store = createTileStore(m.tilesRegion, { layers: ['h'], readGz, maxTiles: 4 });
   const gimpo = [-60000, 180000];
   await store.whenReady(gimpo[0], gimpo[1], 0, 'aircraft');
   const pinnedKeys = store.resident();
   // Walk across the land tiles.
-  for (const k of m.tiles.levels[0].tiles) {
+  for (const k of m.tilesRegion.levels[0].tiles) {
     const [ti, tj] = k.split('_').map(Number);
-    await store.whenReady(m.tiles.x0 + (ti * 512 + 256) * 250, m.tiles.y0 + (tj * 512 + 256) * 250, 0);
+    await store.whenReady(m.tilesRegion.x0 + (ti * 512 + 256) * 250, m.tilesRegion.y0 + (tj * 512 + 256) * 250, 0);
   }
   const res = store.resident();
   assert.ok(res.length <= 4, `resident ${res.length}`);
@@ -186,8 +123,7 @@ test('tiles: beyond the 250 m extent the 1 km level is read (the margin), waited
   await store.whenReady(-2000, -2000, 0);
   assert.equal(store.height(-2000, -2000), 40, 'beyond: the 1 km level');
   assert.equal(store.misses, 0);
-  // Over Korea's manifest there's no l1 beyond the l0 extent, so nothing changes there.
-  assert.equal(createTileStore(m.tiles, { layers: ['h'], readGz }).lattice.l1, null);
+  // (v0.7.0: the assertion that Korea's own manifest has no l1 beyond its l0 went with Korea's tiles.)
 });
 
 test('tiles: an unbaked l0 tile inside the extent reads the 1 km level, a baked sea tile reads sea', async () => {
@@ -213,7 +149,7 @@ test('tiles: an unbaked l0 tile inside the extent reads the 1 km level, a baked 
 test('tiles: a tile whose fetch fails is not ready, is retried, and then reads its real heights', async () => {
   const { createTileStore } = await import('../src/world/tilestore.js');
   const { manifest, readGz } = await import('./tile-terrain.mjs');
-  const spec = manifest().tiles;
+  const spec = manifest().tilesRegion;   // (v0.7.0: the region's tiles; Korea's own went)
   let fails = 2, asked = 0;
   const flaky = async (rel) => { if (rel.endsWith('h.i16.gz')) { asked++; if (fails > 0) { fails--; return null; } } return readGz(rel); };
   const A = createTileStore(spec, { layers: ['h', 'w'], readGz: flaky, retryMs: 20 });

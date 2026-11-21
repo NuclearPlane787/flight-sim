@@ -3,7 +3,8 @@
 // fixed): every texel the national grid's height, water and (masked) cover, and normalsRG() over
 // the whole national grid. A smaller toroidal window that has to follow the camera, refilled a
 // tile at a time, holds for every cell of the window the national cell clamped to the extent.
-// Skipped while the national files or the tiles are missing.
+// Skipped while the national files or the tiles are missing. (v0.7.0: they went with v0.6.0's flags, and with them the
+// two tests against the national grid; the window's own arithmetic is still checked below.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -52,48 +53,6 @@ function compare(cw, g, nrm) {
   if (seen.some((v) => v !== 1)) bad += 1e9;   // every texel exactly one cell of the window
   return bad;
 }
-
-test('clip window: the window over Korea is the national textures, cell for cell', { skip: !HAVE }, async () => {
-  const g = national();
-  const nrm = normalsRG(g.height, g.nx, g.ny, g.cell, m.heightScale || 0.25);
-  const st = await store();
-  const cw = createClipWindow(st);
-  assert.ok(cw.fit && CLIP_N >= 3200);
-  // Korea fits: the window is the extent, fixed, global cell 0 at texel 0.
-  assert.deepEqual([cw.win.oi, cw.win.oj, cw.nx, cw.ny], [0, 0, 3200, 3200]);
-  assert.deepEqual(cw.valid(), [0, 0, 3200, 3200]);
-  assert.equal(cw.texel(0, 0), 0);
-  assert.equal(cw.queue.length, 0);
-  assert.equal(compare(cw, g, nrm), 0);
-  // The national texture's texels at their own positions (the extent's part of the window).
-  assert.deepEqual(cw.h, g.height); assert.deepEqual(cw.w, g.water); assert.deepEqual(cw.c, g.cover); assert.deepEqual(cw.n, nrm);
-  // Moving the camera anywhere doesn't move a window that holds the whole extent.
-  for (const [x, y] of [[0, 0], [-390000, -390000], [399000, 399000], [2e6, -2e6]]) assert.equal(cw.moveTo(x, y), false);
-  assert.equal(st.misses, 0);
-});
-
-test('clip window: a window smaller than the extent follows the camera a tile at a time', { skip: !HAVE }, async () => {
-  const g = national();
-  const nrm = normalsRG(g.height, g.nx, g.ny, g.cell, m.heightScale || 0.25);
-  const st = await store();
-  const cw = createClipWindow(st, { N: 1024 });
-  assert.ok(!cw.fit);
-  // A flight from the south-west corner across to the north-east, refilling as it goes.
-  let moves = 0, steps = 0, maxRects = 0;
-  for (let s = 0; s <= 40; s++) {
-    const x = -390000 + s * 19500, y = -390000 + s * 19500;
-    if (cw.moveTo(x, y)) moves++;
-    let r;
-    while ((r = cw.step())) { steps++; maxRects = Math.max(maxRects, r.length); }   // each step is one tile's cells
-    assert.equal(compare(cw, g, nrm), 0, `after step ${s}`);
-  }
-  assert.ok(moves >= 3, `moved ${moves} times`);
-  assert.ok(steps > 0 && maxRects <= 4);
-  // The window keeps the camera inside, at least a tile from its edges.
-  const cx = Math.floor((380000 + 400000) / 250);
-  assert.ok(cx >= cw.win.oi + 512 - 512 && cx < cw.win.oi + 1024);
-  assert.equal(st.misses, 0);
-});
 
 test('clip window: texel rectangles split where the window wraps', () => {
   const fake = { lattice: { x0: 0, y0: 0, cell: 250, tile: 512, border: 2, extent: { i0: 0, j0: 0, i1: 512, j1: 512 } }, spec: { levels: [{ tiles: [] }], sea: { h: -160, w: [0, 255], c: [0, 0, 0, 0] } }, has: { h: true, w: true, c: true }, tileGrid: () => null };

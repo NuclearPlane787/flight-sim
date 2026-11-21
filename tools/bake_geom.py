@@ -21,7 +21,7 @@ from shapely.geometry import LineString, MultiPolygon, Polygon, box
 from shapely.ops import linemerge, unary_union
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bake_common import CACHE, RAW, to_map
+from bake_common import CACHE, EUROPE, RAW, to_map
 
 MAP_BOX = box(-420000, -420000, 420000, 420000)
 
@@ -266,7 +266,8 @@ def compose_height(dem, sea_sd, water_sd, urban, cell, x0, y0, land_fallback=30.
             # smooth the bank level along the water so it doesn't jump cell to cell
             bank_h = ndimage.uniform_filter(np.where(water, bank_h, 0), size=3) / np.maximum(
                 ndimage.uniform_filter(water.astype(np.float32), size=3), 1e-3)
-            h = np.where(water, np.maximum(bank_h, 0.5) - 2.0, h)
+            # v0.7.0, Europe: no 0.5 m floor on the bank (polder water sits 2 m under its banks)
+            h = np.where(water, (bank_h if EUROPE else np.maximum(bank_h, 0.5)) - 2.0, h)
 
     # 3. Airfields: flat at the published elevation, blended over 300 m outside.
     if airports:
@@ -285,5 +286,12 @@ def compose_height(dem, sea_sd, water_sd, urban, cell, x0, y0, land_fallback=30.
             h = h * (1 - w) + elev * w
 
     # 4. Land at least 0.5 m; the sea from -5 m at the shore to -40 m 3 km out.
-    h = np.where(land, np.maximum(h, 0.5), -5.0 - 35.0 * smoothstep(0, 3000, -sea_sd))
+    #    v0.7.0, Europe: land stays below 0 m where the land polygons say land (the Dutch polders,
+    #    Schiphol at about -3 m); East Asia's floor is unchanged.
+    #    Europe's sea is exactly 0 m (the game reads exactly 0 as sea: store land with
+    #    bake_common.height_to_i16_land so no land cell is 0).
+    if EUROPE:
+        h = np.where(land, h, 0.0)
+    else:
+        h = np.where(land, np.maximum(h, 0.5), -5.0 - 35.0 * smoothstep(0, 3000, -sea_sd))
     return h.astype(np.float32)

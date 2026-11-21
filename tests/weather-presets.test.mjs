@@ -5,11 +5,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { calmWeather, normalizeWeather, isDefaultWeather, compileWeather } from '../src/sim/weather.js';
 import { PRESETS, presetWeather, weatherContext, weatherForm, weatherFromForm, weatherCheck, metarOf, finalMicroburst, coverOf, oktaOf } from '../src/sim/weather-presets.js';
-import { setEastAsia } from '../src/world/region.js';
 
-// v0.6.0: these check v0.5.8's presets key for key (the region's presets also carry `trueWind`,
-// which tests/v060-rules-frame.test.mjs checks), so the region is off here. No assertion changed.
-setEastAsia(false);
+// v0.6.0: these checked v0.5.8's presets key for key with the region off. v0.7.0: the flag is gone, and
+// every preset carries the region's `trueWind` tag (tests/v060-rules-frame.test.mjs checks what it does).
 
 const here = new URL('..', import.meta.url).pathname;
 const AIRPORTS = ['RKSS', 'RKPC', 'RKSI'].map((i) => JSON.parse(readFileSync(here + `data/airports/${i}.json`, 'utf8')));
@@ -29,7 +27,7 @@ test('Clear is calmWeather() exactly, with or without a ctx, and an unknown id i
 });
 
 test('each preset is complete, normal, named and not the calm world', () => {
-  const keys = Object.keys(calmWeather()).sort();
+  const keys = Object.keys(calmWeather()).concat('trueWind').sort();   // (v0.7.0: + the region's trueWind)
   for (const id of IDS.slice(1)) {
     const s = presetWeather(id, ctx);
     assert.deepEqual(Object.keys(s).sort(), keys, id);

@@ -5,11 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flightCard, readFlight, parseWhere, parseRoute, shortPlace } from '../src/ui/home-card.js';
 import { ScenarioStore, flightFields, whereText, altText } from '../src/scenarios.js';
-import { setEastAsia } from '../src/world/region.js';
-// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
-// flag is set off here whatever the shipped default (the region's own behaviour is checked in
-// tests/v060-*.test.mjs). No assertion below changed.
-setEastAsia(false);
+// v0.7.0: v0.6.0's region flag is gone, so the From and To stats name the airports (place()), as the
+// region's card did: four stats assertions below changed from the codes to the names.
 
 const NAMES = { RKSS: 'Gimpo', RKPC: 'Jeju', RKSI: 'Incheon' };
 const place = (icao) => NAMES[icao] || null;
@@ -37,7 +34,7 @@ test('in the air: en route, the flight level or feet, and the distance left', ()
 test('on the ground: parked at a stand, pushing back, taxiing, on the runway, landed', () => {
   const parked = card(saved({ onGround: true, phase: 'parked', icao: 'RKSS', stand: '12', origin: 'RKSS', dest: 'RKPC' }));
   assert.equal(parked.title, 'At Gimpo, stand 12');
-  assert.deepEqual(parked.stats, [{ value: 'RKSS', label: 'From' }, { value: 'RKPC', label: 'To' }]);
+  assert.deepEqual(parked.stats, [{ value: 'Gimpo', label: 'From' }, { value: 'Jeju', label: 'To' }]);   // (v0.7.0: named; v0.5.8's codes)
   assert.equal(card(saved({ onGround: true, phase: 'parked', icao: 'RKSS', origin: 'RKSS', dest: 'RKPC' })).title, 'At Gimpo');
   assert.equal(card(saved({ onGround: true, phase: 'pushback', icao: 'RKSS', origin: 'RKSS', dest: 'RKPC' })).title, 'Pushing back at Gimpo');
   assert.equal(card(saved({ onGround: true, phase: 'taxi', icao: 'RKSS', origin: 'RKSS', dest: 'RKPC' })).title, 'Taxiing at Gimpo');
@@ -55,7 +52,7 @@ test('not flown yet: the route as the title, Start flight', () => {
   const c = card({ route: 'RKSS–RKPC', where: 'Not flown yet' });
   assert.equal(c.kicker, 'Not flown yet');
   assert.equal(c.title, 'Gimpo to Jeju');
-  assert.deepEqual(c.stats, [{ value: 'RKSS', label: 'From' }, { value: 'RKPC', label: 'To' }]);
+  assert.deepEqual(c.stats, [{ value: 'Gimpo', label: 'From' }, { value: 'Jeju', label: 'To' }]);   // (v0.7.0: named)
   assert.equal(c.action, 'Start flight');
   assert.equal(card({ route: 'RKSI 33L → RKPC 07', phase: 'fresh' }).title, 'Incheon to Jeju');
   assert.equal(card({ where: 'Not flown yet' }).title, 'A new flight');
@@ -75,7 +72,7 @@ test('older saves (no fields): read from the where and route texts', () => {
   assert.equal(low.title, 'En route to Gimpo');
   assert.deepEqual(low.stats, [{ value: '4,500 ft', label: 'Altitude' }, { value: '30 nm', label: 'Remaining' }]);
   // No distance (no destination known when it was saved): the altitude and where it's going.
-  assert.deepEqual(card({ route: 'RKSS–RKPC', where: 'FL350' }).stats, [{ value: 'FL350', label: 'Flight level' }, { value: 'RKPC', label: 'To' }]);
+  assert.deepEqual(card({ route: 'RKSS–RKPC', where: 'FL350' }).stats, [{ value: 'FL350', label: 'Flight level' }, { value: 'Jeju', label: 'To' }]);   // (v0.7.0: named)
   assert.equal(card({ route: 'RKSS 14R → RKPC 07', where: 'Parked at RKPC stand 12' }).title, 'At Jeju, stand 12');
   assert.equal(card({ route: 'RKSS 14R → RKPC 07', where: 'Parked at RKSS' }).title, 'At Gimpo');
   assert.equal(card({ route: 'RKSS 14R → RKPC 07', where: 'Pushing back at RKSS' }).title, 'Pushing back at Gimpo');
@@ -84,7 +81,7 @@ test('older saves (no fields): read from the where and route texts', () => {
   assert.equal(card({ route: 'RKSS 14R → RKPC 07', where: 'On final to RKPC' }).title, 'On final to Jeju');   // Scenario 1, from v0.1.4
   // Text it doesn't know is shown as it is.
   assert.equal(card({ route: 'RKSS 14R → RKPC 07', where: 'On final' }).title, 'On final');
-  assert.deepEqual(card({ route: 'RKSS 14R → RKPC 07', where: 'On final' }).stats, [{ value: 'RKSS', label: 'From' }, { value: 'RKPC', label: 'To' }]);
+  assert.deepEqual(card({ route: 'RKSS 14R → RKPC 07', where: 'On final' }).stats, [{ value: 'Gimpo', label: 'From' }, { value: 'Jeju', label: 'To' }]);   // (v0.7.0: named)
   // Nothing at all.
   const bare = card(undefined);
   assert.equal(bare.title, 'Saved flight');

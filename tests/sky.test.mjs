@@ -2,14 +2,11 @@
 // twilight, the night that never goes black, and setTime on a real date.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lightingAt, luminance, createSky, bvColor, SUN_ELEVATION_DEG } from '../src/world/sky.js';
+import { lightingAt, luminance, createSky, bvColor, SUN_ELEVATION_DEG, skyNorthDeg } from '../src/world/sky.js';
 import * as THREE from '../vendor/three.module.js';
 import { kstMs } from '../src/clock.js';
-import { setEastAsia } from '../src/world/region.js';
-// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
-// flag is set off here whatever the shipped default (the region's own behaviour is checked in
-// tests/v060-*.test.mjs). No assertion below changed.
-setEastAsia(false);
+// v0.7.0: v0.6.0's region flag is gone, so the sky is the region's (its north the grid's, turned by
+// the convergence at the camera: skyNorthDeg()); the stars' check below takes that turn.
 
 const near = (a, b, eps = 1e-9) => a.every((x, i) => Math.abs(x - b[i]) < eps);
 
@@ -104,7 +101,7 @@ test('the stars are where they are: Betelgeuse and Dubhe through the sky\'s matr
       Math.cos(dec * Math.PI / 180) * Math.sin(ra * Math.PI / 180), Math.sin(dec * Math.PI / 180)).applyMatrix3(M);
     const p = precessFromJ2000(ra, dec, ms);
     const h = equatorialToHorizontal(p.raDeg, p.decDeg, ms, lat, lon);
-    const want = azElToScene(h.azDeg, h.altDeg);
+    const want = azElToScene(h.azDeg - skyNorthDeg(lon), h.altDeg);   // (v0.7.0: the grid's north, as the region draws it)
     assert.ok(v.angleTo(want) < 1e-6, `${ra},${dec}: off by ${v.angleTo(want)}`);
     console.log(`RA ${ra} Dec ${dec}: az ${h.azDeg.toFixed(1)}°, alt ${h.altDeg.toFixed(1)}°`);
   }

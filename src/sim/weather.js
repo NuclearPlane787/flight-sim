@@ -9,16 +9,15 @@
 // are degrees magnetic, "from", as the tower gives them; they're converted once, at the settings' reference
 // point (refX, refY: the arrival airport), so the wind is one vector everywhere.
 //
-// v0.6.0 (briefs/V0-6-0.md, "The wind, true everywhere"): with EAST_ASIA_ON, the wind keeps its true
+// v0.6.0 (briefs/V0-6-0.md, "The wind, true everywhere"): the wind keeps its true
 // direction as set at the arrival (its magnetic direction there plus the variation there) and is
 // turned into grid coordinates at each point by the local convergence: the mean wind (surface,
 // aloft, the shear) and the gusts' direction turn by windTurnAt(C, x, y), exactly 0 at
 // (refX, refY), so the arrival's wind is v0.5.8's to the bit. A function of position, no state.
-// With the flag off the one vector of v0.5.8 holds everywhere. (The turbulence's frozen waves
+// Settings without the `trueWind` tag (v0.5.8's) keep one vector everywhere. (The turbulence's frozen waves
 // and the microbursts don't turn: they have no direction to keep.)
 
 import { magToGrid, convergenceAt } from '../world/frame.js';
-import { eastAsiaOn } from '../world/region.js';
 
 const KT = 0.514444, FT = 0.3048, DEG = Math.PI / 180;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -330,10 +329,10 @@ function fillWeights(weights, f, sigma, L) {
 }
 
 // The angle (rad, clockwise) by which the wind compiled at (refX, refY) turns on the map at (x, y):
-// convergence there minus convergence here, 0 with the flag off, for v0.5.8's settings (no
+// convergence there minus convergence here, 0 for v0.5.8's settings (no
 // `trueWind` tag) and exactly 0 at the reference.
 export function windTurnAt(C, x, y) {
-  return C.trueWind && eastAsiaOn() ? C.refConv - convergenceAt(x, y) : 0;
+  return C.trueWind ? C.refConv - convergenceAt(x, y) : 0;
 }
 
 // Fills W with the air's velocity at map point (x, y), height z (metres above sea level), agl above the

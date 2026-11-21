@@ -6,14 +6,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createTiledHeightfield, FREE_TILES } from '../src/world/heightfield.js';
 import { createTileStore } from '../src/world/tilestore.js';
-import { terrainSpec, setEastAsia } from '../src/world/region.js';
+import { terrainSpec } from '../src/world/region.js';
+
 import { toMap } from '../src/world/frame.js';
 import { manifest, readGz, readJson, DATA } from './tile-terrain.mjs';
 
 const m = manifest(), HAVE = !!(m && m.tilesRegion);
 
 test('the cache holds the airports\' pinned tiles and FREE_TILES more, for every airport listed', { skip: !HAVE }, async () => {
-  setEastAsia(true);
+  
   const aps = terrainSpec(m, true).airports.map((f) => JSON.parse(readFileSync(new URL(f, DATA), 'utf8')));
   const hf = await createTiledHeightfield(m, DATA.href, { region: true, airportTiles: true, maxTiles: 48, layers: ['h'], airports: aps, readGz, readJson });
   const pinned = hf.tiles.pinnedKeys().length;

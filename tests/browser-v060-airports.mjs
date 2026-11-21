@@ -22,6 +22,9 @@ import { buildTaxiGraph, routeFromStand } from '../src/ground/taxi.js';
 import { standList } from '../src/ground/gate-flow.js';
 import { standHeading } from '../src/world/traffic-layout.js';
 import { typeById } from '../src/sim/types.js';
+import { REGION } from '../src/world/regions.js';
+import { canTakeOff, canLand, runwayUse } from '../src/world/runways.js';
+import { zoneMs, zoneOfIcao } from '../src/clock.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.E2E_OUT || path.resolve(here, '../../../Claude outputs/flight-sim');
@@ -30,8 +33,9 @@ const ICAO = (process.argv[2] || 'ZSPD').toUpperCase();
 const MODE = process.argv[3] === 'night' ? 'night' : 'day';
 const TYPE = process.argv[4] || 'a321neo';
 const WIDE = TYPE !== 'a321neo';
-const UTC_OFFSET_H = ICAO.startsWith('Z') ? 8 : ICAO.startsWith('U') ? 10 : 9;   // (U: Vladivostok, UTC+10, v0.6.3)
-const CLOCK_MS = Date.UTC(2026, 10, 19, (MODE === 'day' ? 13 : 22) - UTC_OFFSET_H, 0, 0);
+// v0.7.0: 13:00 or 22:00 on 19 November 2026 in the airport's own zone (clock.js; UTC+9, +8 and +10 in East Asia as
+// before, the United Kingdom's and Central European time in Europe: run with FS_REGION=europe for a European airport).
+const CLOCK_MS = zoneMs(2026, 11, 19, MODE === 'day' ? 13 : 22, 0, 0, zoneOfIcao(ICAO));
 const FT = 3.28084, KT = 1.943844, NM = 1852;
 // v0.6.1: E2E_EXTRA adds to the page's query ("&pending=1" for an airport still in the manifest's airportsPending),
 // E2E_PREFIX names the pictures (v060 by default).
@@ -42,7 +46,7 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };
 
 // ---- the plan, worked out here with the game's own modules (as main.js boots the airport) ----
-const ap = JSON.parse(readFileSync(path.join(here, `../data/airports/${ICAO}.json`), 'utf8'));
+const ap = JSON.parse(readFileSync(path.join(here, '..', REGION.data, `airports/${ICAO}.json`), 'utf8'));   // v0.7.0: the run's region's folder
 for (const st of ap.stands) if (!(st.leadIn && st.leadIn.length > 1)) { st.hdgGridDeg = ((standHeading(ap, st) * 180) / Math.PI + 360) % 360; st.hdgFixed = true; }
 const typeDef = typeById(TYPE);
 const offered = standList(ap, typeDef);
@@ -54,6 +58,7 @@ if (!STAND || !DEP) {
   let best = null;
   for (const st of offered.filter((s) => s.gate).slice(0, 12)) for (const e of ends) {
     if (DEP && e.ident !== DEP) continue;
+    if (!DEP && !canTakeOff(ICAO, e.ident)) continue;   // v0.7.0: not from an end nothing takes off from (runways.js ONE_WAY: Frankfurt's 25R, Madrid's 32s and 18s)
     if (STAND && st.ref !== STAND) continue;
     const r = routeFromStand(buildTaxiGraph(ap), st, e);
     if (r && (!best || r.lengthM < best.len)) best = { st: st.ref, dep: e.ident, len: r.lengthM };
@@ -61,10 +66,10 @@ if (!STAND || !DEP) {
   STAND ||= best?.st ?? offered[0].ref; DEP ||= best?.dep ?? ends[0].ident;
 }
 // The longest runway with an ILS; the end in the departure's direction if both have one.
-const ilsRw = ap.runways.filter((r) => r.ends.some((e) => e.ils)).sort((p, q) => q.lengthM - p.lengthM)[0];
+const ilsRw = ap.runways.filter((r) => r.ends.some((e) => e.ils && canLand(ICAO, e.ident) && runwayUse(ICAO, e.ident) !== 'standby')).sort((p, q) => q.lengthM - p.lengthM)[0];   // (v0.7.0: an end that is landed on, and not a standby runway)
 const depEnd = ends.find((e) => e.ident === DEP);
 const ARR = process.env.ARR || (() => {
-  const cand = ilsRw.ends.filter((e) => e.ils);
+  const cand = ilsRw.ends.filter((e) => e.ils && canLand(ICAO, e.ident));
   const same = cand.find((e) => Math.abs(((e.hdgGridDeg - depEnd.hdgGridDeg + 540) % 360) - 180) < 45);
   return (same || cand[0]).ident;
 })();

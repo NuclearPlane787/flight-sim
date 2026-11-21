@@ -144,6 +144,92 @@ COAST += ['RJSS', 'RJSN']
 # flattened instead to its runways' own profiles, blended by 1 / (1 + d^2) of the distance d to each runway's centreline
 # (field_runways(); tests/v063-ne-airport.mjs's fieldSurface 'runways' checks the stands against the same surface).
 FIELD_RUNWAYS = {'RJSS', 'RJSN'}
+FIELD_PAVEMENT = set()
+
+# v0.7.0, Europe (FS_REGION=europe, read by bake_common at import: Europe's frame): Heathrow and Charles de Gaulle, pending.
+# Their airports from data/europe/airports, their patches staged in /tmp/flight-sim/v070/airports/patches (FS_PATCH_OUT
+# overrides) and copied into data/europe/terrain by hand. One patch each, taking in the ground under every final to
+# ~15 km out (both fields' runways run east-west): Heathrow ~33 x 21 km (the reservoirs to the west, London to the east;
+# GLO-30 N51 W001), Charles de Gaulle ~37 x 18 km (the Plaine de France; GLO-30 N48 E002 and N49 E002). Both flattened
+# to their runways' own profiles (FIELD_RUNWAYS): Charles de Gaulle's two pairs slope opposite ways (the north pair
+# rising 13-17 ft west to east, the south pair falling 20 ft), so no one plane fits its eight ends; Heathrow's four ends
+# lie on no one plane either (the north runway 0.5 ft down to the east, the south 1.5 ft up). Europe's heights store
+# the sea as exactly 0 and a land cell never as 0 (bake_common.height_to_i16_land). Neither 16 km square touches the
+# sea (bake_region_patches.py coast EGLL LFPG says so).
+if bc.EUROPE:
+    OUT = os.environ.get('FS_PATCH_OUT') or '/tmp/flight-sim/v070/airports/patches'
+    AIRPORT_DIR = os.path.join(bc.DATA, 'europe', 'airports')
+    NEW_AIRPORTS = ['EGLL', 'LFPG']
+    PATCHES = {
+        'heathrow': (-0.70, 51.375, -0.22, 51.565),
+        'charles-de-gaulle': (2.30, 48.93, 2.80, 49.09),
+    }
+    COAST = ['EGLL', 'LFPG']
+    FIELD_PLANE = set()
+    FIELD_RUNWAYS = {'EGLL', 'LFPG'}
+    FIELD_PAVEMENT = {'EGLL', 'LFPG'}   # the profiles between the pavement's ends, as the game draws them (field_runways())
+# v0.7.0, Frankfurt and Madrid, pending (the same staging): Frankfurt ~43 x 21 km (07/25's finals ~15 km out each way along
+# the Main valley; 18 is take-off only, south; GLO-30 N49 E008 and N50 E008), Madrid ~31 x 32 km (18/36's and 14/32's
+# finals ~15 km out; the Sierra de Guadarrama lies beyond, ~50 km north-west; GLO-30 N40 W004). Both flattened to their
+# runways' own profiles (FIELD_RUNWAYS: Frankfurt's 07/25 rise 23-34 ft west to east; Madrid's runways fall ~80 ft from
+# north to south). Both inland: no coast patch (bake_region_patches.py coast EDDF LEMD says so).
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EDDF', 'LEMD']
+    PATCHES.update({
+        'frankfurt': (8.25, 49.93, 8.85, 50.12),
+        'madrid': (-3.75, 40.36, -3.38, 40.65),
+    })
+    COAST += ['EDDF', 'LEMD']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EDDF', 'LEMD'}
+    # Madrid's four landing thresholds are displaced (500 to 928 m): its profiles between the pavement's ends, as the game
+    # draws them (FIELD_PAVEMENT); Frankfurt has no displacement, so its profiles are the same either way.
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LEMD'}
+# v0.7.0, Zurich, Gatwick and Orly, pending (the same staging): Zurich ~33 x 29 km (three runways at 96, 137 and 155 deg
+# true, finals ~12-15 km out each way; GLO-30 N47 E008), Gatwick ~29 x 17 km, west to 0.42 W and east only to 0.005 W:
+# GLO-30's N51 E000 isn't downloaded (a missing tile reads as sea), so 26L's final has the patch for ~11 km and the
+# 250 m tiles beyond (GLO-30 N51 W001); Orly ~38 x 24 km (06/24, 07/25 and 02/20; GLO-30 N48 E002). All three flattened
+# to their runways' own profiles between the pavement's ends (FIELD_RUNWAYS, FIELD_PAVEMENT: displaced thresholds at
+# all three). All inland: no coast patch (bake_region_patches.py coast LSZH EGKK LFPO says so).
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LSZH', 'EGKK', 'LFPO']
+    PATCHES.update({
+        'zurich': (8.33, 47.33, 8.77, 47.59),
+        'gatwick': (-0.42, 51.075, -0.005, 51.225),
+        'orly': (2.11, 48.62, 2.62, 48.84),
+    })
+    COAST += ['LSZH', 'EGKK', 'LFPO']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LSZH', 'EGKK', 'LFPO'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LSZH', 'EGKK', 'LFPO'}
+# v0.7.0, Schiphol and Barcelona, pending (the same staging; airports subagent 4): Schiphol ~37 x 38 km (six runways, the
+# Polderbaan's 18R final ~15 km north; GLO-30 N52 E004 alone, so east only to 4.99 E: a missing tile would read 30 m, not
+# the polders' -2 to -6 m); the field 3 to 4 m below sea level among the polders: Europe's heights keep land below 0 m
+# (compose_height has no floor for Europe, height_to_i16_land stores no land cell as 0), and the flattening to the
+# runways' negative elevations goes through as it is. Barcelona ~28 x 28 km (24R's and 02's finals over the sea, 06L's
+# and 06R's over the Llobregat delta; GLO-30 N41 E001 and N41 E002). Both flattened to their runways' own profiles
+# between the pavement's ends (displaced thresholds at both). Coast: bake_region_patches.py coast EHAM LEBL says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EHAM', 'LEBL']
+    PATCHES.update({
+        'schiphol': (4.45, 52.16, 4.99, 52.50),
+        'barcelona': (1.92, 41.17, 2.26, 41.42),
+    })
+    COAST += ['EHAM', 'LEBL']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EHAM', 'LEBL'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EHAM', 'LEBL'}
+# v0.7.0, Munich and Fiumicino, pending (the same staging; airports subagent 4): Munich ~30 x 19 km, east only to 11.96 E
+# (GLO-30 N48 E011 alone: N48 E012 isn't downloaded, and a missing tile reads 30 m; at 11.995 the grid's north-east
+# corner crossed 12 E), so 26L's and 26R's finals have the patch for ~11 km and the 250 m tiles beyond; Fiumicino ~31 x 36 km (16L/16R's finals over the land to the north,
+# 34L/34R's and 07's over the sea; GLO-30 N41 E012). Both flattened to their runways' own profiles between the
+# pavement's ends. Coast: bake_region_patches.py coast EDDM LIRF says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EDDM', 'LIRF']
+    PATCHES.update({
+        'munich': (11.55, 48.27, 11.96, 48.44),
+        'fiumicino': (12.07, 41.66, 12.44, 41.98),
+    })
+    COAST += ['EDDM', 'LIRF']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EDDM', 'LIRF'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EDDM', 'LIRF'}
 
 
 def field_plane(icao, x0, y0, cell, nx, ny):
@@ -161,8 +247,15 @@ def field_runways(icao, x0, y0, cell, nx, ny):
     """FIELD_RUNWAYS: each runway's straight profile between its ends' elevations, blended by 1 / (1 + d^2) of the
     distance d (m) to its centreline segment, at the grid's cell centres (row by row)."""
     d = json.load(open(os.path.join(AIRPORT_DIR, icao + '.json')))
-    R = [((r['ends'][0]['x'], r['ends'][0]['y'], r['ends'][0]['elevM']), (r['ends'][1]['x'], r['ends'][1]['y'], r['ends'][1]['elevM']))
-         for r in d['runways']]
+    if icao in FIELD_PAVEMENT:
+        # v0.7.0: between the pavement's ends, as the game draws a runway's surface (runways.js runwayRects(): its ends'
+        # elevations at the pavement's ends), so a displaced threshold's runway (Charles de Gaulle's 26R and 27L) has the
+        # ground the game puts under it
+        R = [((*r['ends'][0]['pavementEnd'], r['ends'][0]['elevM']), (*r['ends'][1]['pavementEnd'], r['ends'][1]['elevM']))
+             for r in d['runways']]
+    else:
+        R = [((r['ends'][0]['x'], r['ends'][0]['y'], r['ends'][0]['elevM']), (r['ends'][1]['x'], r['ends'][1]['y'], r['ends'][1]['elevM']))
+             for r in d['runways']]
     X = x0 + (np.arange(nx) + 0.5) * cell
     out = np.zeros((ny, nx), np.float32)
     for j in range(ny):
@@ -188,6 +281,8 @@ def airfields():
     """{icao: (polygon in map metres, elevation m)} from the airport JSONs (boundary is map metres)."""
     out = {}
     for icao in NEW_AIRPORTS:
+        if bc.EUROPE and not os.path.exists(os.path.join(AIRPORT_DIR, icao + '.json')):
+            continue    # (v0.7.0: Europe's airports arrive one by one)
         d = json.load(open(os.path.join(AIRPORT_DIR, icao + '.json')))
         g = Polygon(d['boundary'])
         if not g.is_valid:
@@ -201,7 +296,8 @@ def dem_tiles(lon0, lat0, lon1, lat1):
             for lo in range(int(np.floor(lon0)), int(np.floor(lon1)) + 1)}
     paths = []
     for la, lo in sorted(keys):
-        p = os.path.join(bc.RAW, 'dem30', f'Copernicus_DSM_COG_10_N{la:02d}_00_E{lo:03d}_00_DEM.tif')
+        p = os.path.join(bc.RAW, 'dem30', f'Copernicus_DSM_COG_10_{"N" if la >= 0 else "S"}{abs(la):02d}_00_'
+                         f'{"E" if lo >= 0 else "W"}{abs(lo):03d}_00_DEM.tif')     # (v0.7.0: W west of Greenwich)
         if os.path.exists(p):
             paths.append(p)
         else:
@@ -299,7 +395,7 @@ def cmd_patch(pid, force):
         if bx[0] < x0 + nx * cell and bx[2] > x0 and bx[1] < y0 + ny * cell and bx[3] > y0:
             flat.append(icao)
     os.makedirs(OUT, exist_ok=True)
-    bc.write_gz(path, bc.height_to_i16(h))
+    bc.write_gz(path, bc.height_to_i16_land(h, sea_sd > 0) if bc.EUROPE else bc.height_to_i16(h))
     np.save(os.path.join(OUT, f'patch-{pid}.sea.npy'), (sea_sd > 0))  # for the quick-look
     entry = dict(id=pid, x0=float(x0), y0=float(y0), cell=cell, nx=nx, ny=ny, height=f'terrain/patch-{pid}.i16.gz')
     info = dict(entry=entry, box=PATCHES[pid], flattened=flat, max=float(h.max()), min=float(h.min()),

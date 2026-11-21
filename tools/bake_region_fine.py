@@ -89,6 +89,9 @@ OUT_OLD = os.path.join(rt.STAGE_OLD, 'fine')      # v0.6.0's (read-only)
 WORK = os.path.join(rt.WORK, 'fine')
 STATE = os.path.join(WORK, 'state')
 STATE_OLD = '/tmp/flight-sim/v060/fine-work/state'
+if bc.EUROPE:
+    STATE_OLD = STATE           # v0.7.0: Europe has no v0.6.0 state (never read East Asia's)
+FINE_KM = 100.0                 # v0.7.0, Europe: sub-files with land within 100 km of an airport
 # v0.6.4: earlier batches' sub-tiles and states (read-only), newest first, then v0.6.0's
 OUT_EARLIER = [os.path.join(d, 'fine') for d in rt.STAGES_EARLIER] + [OUT_OLD]
 STATE_EARLIER = [os.path.join(d, 'fine', 'state') for d in rt.WORKS_EARLIER] + [STATE_OLD]
@@ -141,7 +144,8 @@ def wc_files_bbox():
     for n in os.listdir(brw.WCDIR):
         if n.endswith('_Map.tif'):
             t = n.split('_')[5]
-            la, lo = int(t[1:3]), int(t[4:7])
+            la = int(t[1:3]) * (1 if t[0] == 'N' else -1)     # v0.7.0: S and W names
+            lo = int(t[4:7]) * (1 if t[3] == 'E' else -1)
             out.append((la, lo))
     return out
 
@@ -251,13 +255,32 @@ def read_sub(n, index=None):
     return None
 
 
+def eu_selected(ti, tj):
+    """v0.7.0, Europe: the sub-files (a, b) of tile (ti, tj) with land (the staged water layer's sea
+    byte > 128) within FINE_KM of one of the batch's airports' reference points (map metres)."""
+    w = np.load(brw.out_path(ti, tj), mmap_mode='r')[brh.BORDER:brh.BORDER + TILE, brh.BORDER:brh.BORDER + TILE, 0]
+    land = np.asarray(w) > 128
+    xs = X0 + (ti * TILE + np.arange(TILE) + 0.5) * CELL
+    ys = Y0 + (tj * TILE + np.arange(TILE) + 0.5) * CELL
+    near = np.zeros((TILE, TILE), bool)
+    for la, lo in brw.AIRPORTS.values():
+        ax, ay = bc.to_map(la, lo)
+        near |= ((xs[None, :] - ax) ** 2 + (ys[:, None] - ay) ** 2) <= (FINE_KM * 1000.0) ** 2
+    m = land & near
+    q = TILE // PER
+    return {(a, b) for b in range(PER) for a in range(PER) if m[b * q:(b + 1) * q, a * q:(a + 1) * q].any()}
+
+
 def bake_tile(wc, ti, tj, wcbox):
     st = {'tile': f'{ti}_{tj}', 'subs': {}, 'bytes': 0}
     touches = tile_touches_wc(ti, tj, wcbox)
     hist = np.zeros(NC, np.int64)
+    sel = eu_selected(ti, tj) if bc.EUROPE else None
     for b in range(PER):
         for a in range(PER):
             n = name(ti, tj, a, b)
+            if sel is not None and (a, b) not in sel:
+                continue                 # Europe: beyond 100 km, absent (the 250 m cover draws)
             if not touches:
                 st['subs'][n] = {'uniform': 0}
                 hist[0] += SUBT * SUBT
@@ -306,7 +329,7 @@ def cmd_bake(args):
             continue
         miss = brw.wc_missing(ti, tj, listed, set(wc.files))
         if miss:
-            print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'N{a}E{b}' for a, b in miss))
+            print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'{a}/{b}' for a, b in miss))
             continue
         if time.time() - t_start > args.budget * 60:
             print(f'budget of {args.budget} min reached; stopping (resumable)')
@@ -314,7 +337,7 @@ def cmd_bake(args):
         t0 = time.time()
         st = bake_tile(wc, ti, tj, wcbox)
         nu = sum(1 for v in st['subs'].values() if 'uniform' in v)
-        line = (f'{ti}_{tj}\t{time.time() - t0:.1f}s\t{st["bytes"] / 1e6:.2f} MB\tuniform {nu}/16\t'
+        line = (f'{ti}_{tj}\t{time.time() - t0:.1f}s\t{st["bytes"] / 1e6:.2f} MB\tuniform {nu}/{len(st["subs"])}\t'
                 f'hist {st["hist"]}')
         print(line, flush=True)
         with open(LOG, 'a') as f:
@@ -402,7 +425,7 @@ def cmd_quicklook(args):
                 r0 = ((tj - tj0) * PER + b) * n
                 c0 = ((ti - ti0) * PER + a) * n
                 rgb[r0:r0 + n, c0:c0 + n] = np.clip(img + 0.5, 0, 255).astype(np.uint8)
-    p = os.path.join(bc.SHOTS, 'v063-bake-fine-region.png')
+    p = os.path.join(bc.SHOTS, 'v070-bake-fine-region.png' if bc.EUROPE else 'v063-bake-fine-region.png')
     bc.write_png(p, bc.south_up_to_image(rgb))
     print(f'{p}: {Wd} x {H} px, {f * PX:.0f} m a pixel')
 
@@ -426,7 +449,7 @@ def cmd_crops(args):
         P = int(np.floor((float(x) - X0) / PX))
         Q = int(np.floor((float(y) - Y0) / PX))
         c = window(P - half, Q - half, 2 * half, 2 * half, index)
-        p = os.path.join(bc.SHOTS, f'v060-bake-fine-{nm}.png')
+        p = os.path.join(bc.SHOTS, (f'v070-bake-fine-{nm}.png' if bc.EUROPE else f'v060-bake-fine-{nm}.png'))
         bc.write_png(p, bc.south_up_to_image(colourise(c)))
         h = np.bincount(c.ravel(), minlength=256)[:NC] / c.size
         print(f'{p}: P {P - half}, Q {Q - half}; ' + ', '.join(f'{CLASSES[k]} {100 * h[k]:.1f}%' for k in range(NC)))

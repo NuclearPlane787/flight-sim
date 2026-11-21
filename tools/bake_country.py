@@ -36,7 +36,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bake_common import DATA, RAW, SHOTS, to_geo, to_map, write_gz, write_png  # noqa: E402
+from bake_common import DATA, EUROPE, RAW, SHOTS, to_geo, to_map, write_gz, write_png  # noqa: E402
 
 SRC = os.path.join(RAW, 'ne', 'ne_10m_admin_0_countries.geojson')
 GRID = dict(x0=-1600000.0, y0=-1340000.0, cell=2000.0, nx=1855, ny=1315)
@@ -132,11 +132,88 @@ def jump_flood(label):
     return label[sy, sx]
 
 
+# ---------------------------------------------------------------- v0.7.0: Europe (FS_REGION=europe)
+# A byte a cell: low 7 bits the country code (index into EU_CODES; the sea takes its nearest land's),
+# bit 7 (128) set where the cell is sea. Over Europe's outline's bounding rectangle, 2 km cells.
+EU_GRID = dict(x0=-1378000.0, y0=-1330000.0, cell=2000.0, nx=1400, ny=1378)
+EU_CODES = ['sea', 'other', 'GB', 'IE', 'FR', 'ES', 'PT', 'DE', 'IT', 'CH', 'AT', 'NL', 'BE', 'LU', 'DK', 'PL',
+            'CZ', 'SK', 'HU', 'SI', 'HR', 'SE', 'NO', 'BA', 'ME', 'RS', 'AL', 'MA', 'AD', 'MC', 'LI', 'GI']
+EU_ALIAS = {'IM': 'GB', 'JE': 'GB', 'GG': 'GB', 'SM': 'IT', 'VA': 'IT'}
+EU_SMALL = ('AD', 'MC', 'LI', 'GI', 'LU', 'SM', 'VA')    # filled last so a shared cell goes to them
+EU_BOX = (30.0, 64.0, -16.0, 25.0)   # lat0, lat1, lon0, lon1 to take polygons from
+EU_SEA = 128
+
+
+def iso2(props):
+    a = props.get('ISO_A2_EH') or props.get('ISO_A2') or ''
+    return a if a and a != '-99' else ''
+
+
+def main_europe(args):
+    gr = EU_GRID
+    with open(SRC) as f:
+        feats = json.load(f)['features']
+    land = np.zeros((gr['ny'], gr['nx']), np.uint8)
+    lat0, lat1, lon0, lon1 = EU_BOX
+    feats.sort(key=lambda ft: iso2(ft['properties']) in EU_SMALL)
+    used = {}
+    for ft in feats:
+        a2 = iso2(ft['properties'])
+        name = EU_ALIAS.get(a2, a2)
+        code = EU_CODES.index(name) if name in EU_CODES else 1
+        rings = []
+        for r in rings_of(ft['geometry']):
+            if r[:, 1].max() < lat0 or r[:, 1].min() > lat1 or r[:, 0].max() < lon0 or r[:, 0].min() > lon1:
+                continue
+            x, y = to_map(r[:, 1], r[:, 0])
+            rings.append(np.stack([x, y], 1))
+        if not rings:
+            continue
+        mask = fill_rings(rings, gr)
+        if mask.any():
+            land[mask] = code
+            used[ft['properties']['ADM0_A3']] = (EU_CODES[code], int(mask.sum()))
+    print('countries filled (cells):', ' '.join(f'{k}->{v[0]}:{v[1]}' for k, v in used.items()))
+    sea = land == 0
+    owner = jump_flood(land)
+    out = (owner | np.where(sea, EU_SEA, 0)).astype(np.uint8)
+    os.makedirs(args.out, exist_ok=True)
+    write_gz(os.path.join(args.out, 'country.u8.gz'), out)
+    header = dict(
+        source='Natural Earth ne_10m_admin_0_countries (public domain)',
+        codes=EU_CODES, codeMask=127, seaBit=128,
+        encoding=('byte & 127 = country code, an index into codes (the sea takes its nearest land cell\'s); '
+                  'byte & 128 = sea. Isle of Man, Jersey and Guernsey are GB; San Marino and the Vatican IT; '
+                  '"other" is land of a country not named (Algeria, Tunisia, ...).'),
+        type='uint8', rowOrder='south first',
+        sampling='cell-centred: value (i, j) is at x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell',
+        file='country.u8.gz', frame='Europe\'s map frame (LCC 47 N 4 E, 39/54) metres',
+        covers='Europe\'s outline\'s bounding rectangle (35-59 N, 11 W-19.5 E) and a little more', **gr)
+    with open(os.path.join(args.out, 'country.json'), 'w') as f:
+        json.dump(header, f, indent=2)
+    for nm in ('country.u8.gz', 'country.json'):
+        print(f'  {args.out}/{nm}: {os.path.getsize(os.path.join(args.out, nm))} bytes')
+    o = out & 127
+    for k in range(1, len(EU_CODES)):
+        print(f'  {k} {EU_CODES[k]}: land {int(((o == k) & ~sea).sum())} cells, with its sea {int((o == k).sum())}')
+    rng = np.random.default_rng(7)
+    pal = rng.integers(60, 230, (len(EU_CODES), 3)).astype(float)
+    pal[1] = [150, 150, 150]
+    rgb = pal[o]
+    rgb[sea] = rgb[sea] * 0.35 + np.array([10, 20, 40])
+    edge = np.zeros_like(sea)
+    edge[:, 1:] |= o[:, 1:] != o[:, :-1]; edge[1:, :] |= o[1:, :] != o[:-1, :]
+    rgb[edge] = 0
+    write_png(os.path.join(SHOTS, 'v070-bake-country.png'), np.clip(rgb, 0, 255).astype(np.uint8)[::-1])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', default=DATA)
     ap.add_argument('--no-ru', action='store_true')
     args = ap.parse_args()
+    if EUROPE:
+        return main_europe(args)
     codes = {k: v for k, v in CODES.items() if not (args.no_ru and k == 'RUS')}
     names = NAMES[:6] if args.no_ru else NAMES
     gr = GRID

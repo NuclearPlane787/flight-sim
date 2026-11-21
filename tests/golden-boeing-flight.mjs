@@ -24,7 +24,7 @@ export const SCRIPT = {
 };
 
 // v0.6.0: the terrain from the tiles (the same heights to the bit as manifest.national's grid).
-export const TILED = await tiledTerrain({ layers: ['h'], coasts: false, game: true });   // the terrain the game reads (the region's once EAST_ASIA_ON is on)
+export const TILED = await tiledTerrain({ layers: ['h'], coasts: false, game: true });   // the terrain the game reads (the region's)
 function loadTerrain() {
   return TILED;
 }

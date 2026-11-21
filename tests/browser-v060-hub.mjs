@@ -26,8 +26,7 @@ try {
     await page.waitForTimeout(1500);
     const menu = await frame.evaluate(() => ({ text: document.body.innerText.slice(0, 400).replace(/\s+/g, ' '), region: null }));
     check(`${what}: the menu is up`, /New|Continue|Load/i.test(menu.text), menu.text.slice(0, 120));
-    const flags = await frame.evaluate(async () => { const m = await import(new URL('src/world/region.js', location.href).href); return { region: m.EAST_ASIA_ON, cities: m.CITIES_ON, ground: m.GROUND_ON }; });
-    check(`${what}: every part on by default`, flags.region && flags.cities && flags.ground, JSON.stringify(flags));
+    // (v0.7.0: the check that v0.6.0's three flags are on by default went with the flags.)
     await frame.waitForFunction(() => window.__fs && window.__fs.inMenu, null, { timeout: 60000 });
     await frame.evaluate(() => { window.__fs.newScenario(); });   // the menu's New row (its click is the same call; the row slides in with the home page's animation)
     await frame.waitForSelector('[data-f="origin"]', { timeout: 10000 });

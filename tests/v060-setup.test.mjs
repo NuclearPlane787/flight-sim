@@ -4,7 +4,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { setEastAsia } from '../src/world/region.js';
 import { loadNodeRules, uninstallNodeRules } from './v060-rules-helpers.mjs';
 import {
   fuelEstimate, regionTrip, REGION_FUEL, airportGroups, airportOption, airportShort, airportCountry,
@@ -22,15 +21,10 @@ const AIRPORTS = ICAOS.map((id) => JSON.parse(readFileSync(new URL(`../data/airp
 const byIcao = (id) => AIRPORTS.find((a) => a.icao === id);
 // main.js's lookup for the home page and the Load list
 const place = (icao) => { const a = byIcao(icao); return a ? (a.shortName || shortPlace(a.name)) : null; };
-setEastAsia(false);   // the flag-off tests below, whatever the shipped default
-const withRegion = (fn) => { setEastAsia(true); loadNodeRules(); try { return fn(); } finally { uninstallNodeRules(); setEastAsia(false); } };
+// (v0.7.0: v0.6.0's region flag is gone; withRegion() installs the local rules alone, and the flag-off cases went.)
+const withRegion = (fn) => { loadNodeRules(); try { return fn(); } finally { uninstallNodeRules(); } };
 
 // ---- the lists ----
-
-test('flag off: the list text is v0.5.8\'s', () => {
-  assert.equal(airportOption(byIcao('RKSS')), 'RKSS · Seoul Gimpo International Airport');
-  assert.equal(airportOption(byIcao('RKPC')), 'RKPC · Jeju International Airport');
-});
 
 test('flag on: eleven airports grouped Korea, Japan, China, each by its short name', () => withRegion(() => {
   const g = airportGroups(AIRPORTS);
@@ -101,13 +95,6 @@ export const SIM_TRIP = {
 };
 const oldTrip = (id, d) => { const f = typeById(id).fuel; return f.climbKg + f.perNm * d; };
 
-test('flag off: the rule is v0.5.8\'s on every type and distance', () => {
-  for (const id of Object.keys(SIM_TRIP)) for (const d of [0, 120, 243, 300, 480, 640, 960, 3000]) {
-    const f = typeById(id).fuel, trip = oldTrip(id, d);
-    assert.deepEqual(fuelEstimate(d, id), { trip: Math.round(trip), total: Math.ceil((trip * 1.05 + f.holdKg + f.taxiKg) / 100) * 100 });
-  }
-});
-
 test('flag on: the trip within 2 % of the sim at 120, 300, 480, 640 and 960 nm on each type (v0.5.8\'s was 30 to 120 % over)', () => withRegion(() => {
   for (const [id, row] of Object.entries(SIM_TRIP)) for (const [d, sim] of Object.entries(row)) {
     const e = fuelEstimate(Number(d), id), err = e.trip / sim - 1;
@@ -160,18 +147,10 @@ test('flag on: the ticket names the new airports ("En route to Haneda", "At Pudo
   assert.equal(placeText('On the runway at XXXX', place), 'On the runway at XXXX');
 }));
 
-test('flag off: the ticket\'s stats and the Load list\'s text as v0.5.8 (codes)', () => {
-  const park = flightCard(entry(saved({ onGround: true, phase: 'parked', icao: 'RKPC', stand: '12', origin: 'RKSS', dest: 'RKPC' }, 'RKSS–RKPC')), { place });
-  assert.equal(park.title, 'At Jeju, stand 12');
-  assert.deepEqual(park.stats, [{ value: 'RKSS', label: 'From' }, { value: 'RKPC', label: 'To' }]);
-  assert.equal(placeText('Parked at RKPC stand 12', place), 'Parked at RKPC stand 12');
-});
-
-test('the logbook: a Gimpo–Pudong flight in each end\'s zone and names; old entries as KST; nothing new with the flag off', () => {
+test('the logbook: a Gimpo–Pudong flight in each end\'s zone and names; old entries as KST', () => {
   const dep = kstMs(2026, 11, 19, 15, 0), air = 2 * 3600 + 5 * 60;
   const args = { clockMs: dep + (air + 40) * 1000, speed: 1, nowT: 1000 + air + 40, touchdownT: 1000 + air, liftoffT: 1000, origin: byIcao('RKSS'), dest: byIcao('ZSPD') };
-  assert.deepEqual(logTimes(args), {});
-  withRegion(() => {
+  withRegion(() => {   // (v0.7.0: the flag-off assertion logTimes(args) = {} went)
     const t = logTimes(args);
     assert.deepEqual(t, { local: { dep, depZone: 'Asia/Seoul', depName: 'KST', arr: dep + air * 1000, arrZone: 'Asia/Shanghai', arrName: 'CST' }, places: { origin: 'Gimpo', dest: 'Pudong' } });
     const e = { date: new Date(dep + air * 1000 + 40e3).toISOString(), route: 'RKSS–ZSPD', ...t };

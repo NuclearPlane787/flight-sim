@@ -14,22 +14,46 @@
 // picture is the same, without the sea, fields and forest submitting empty boxes.
 
 import * as THREE from '../../vendor/three.module.js';
+import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { coverReader } from './clipwindow.js';
-import { EAST_ASIA_ON, CITIES_ON, countryAt } from './region.js';
+import { countryAt } from './region.js';
+import { REGION_ID } from './regions.js';
 
 const BLOCK = 400;          // m
 const HALF = 20;            // blocks each side of the camera: ±8 km
 const SLOTS = 15;           // 3 columns x 5 rows per block (Korea's)
-// v0.6.0 Part 6 (behind CITIES_ON): each country's own mix. A block's country goes to the shader in
+// v0.6.0 Part 6: each country's own mix. A block's country goes to the shader in
 // its slot index (slot + 64 x code); Japan's blocks have 30 slots (5 x 6), China's 20 (4 x 5).
 // v0.6.3: Russia (Vladivostok's Soviet-era slab blocks on its hills) takes Korea's apartment-slab mix.
 const COUNTRY_CODE = { KR: 0, KP: 0, other: 0, JP: 1, CN: 2, RU: 0 };
-const COUNTRY_SLOTS = [SLOTS, 30, 20];
+// v0.7.0, a stand-in until Europe's own mixes are written (briefs/V0-7-0.md Part 6: perimeter blocks, pitched roofs,
+// terraces, towers only in clusters): a country this table doesn't know takes the region's default, and Europe's is
+// Japan's mix (rows of two- and three-storey houses, mid-rise blocks, few towers), the nearest of the three to a low
+// old European town. East Asia's default stays Korea's, as it was.
+// v0.7.0 Part 6: Europe's own mixes (codes 3 to 7, drawn by EU_GEOM and EU_LOOK below; East Asia never sees them):
+// 3 Britain and Ireland (brick terraces and semis under slate), 4 France (perimeter blocks under zinc, houses under
+// slate, terracotta in the south), 5 Germany and the centre (perimeter blocks and houses under red-brown tile), 6 the
+// south (pale blocks under terracotta), 7 the Low Countries and Denmark (as 5, in brick under dark tile). 4 to 7 share
+// one geometry; only the walls and roofs differ. A European country not listed takes 5.
+const EU_CODE = {
+  GB: 3, IE: 3, GI: 3,
+  FR: 4, MC: 4,
+  DE: 5, AT: 5, CH: 5, LU: 5, LI: 5, PL: 5, CZ: 5, SK: 5, HU: 5, SI: 5, SE: 5, NO: 5,
+  ES: 6, PT: 6, IT: 6, AD: 6, HR: 6, BA: 6, ME: 6, RS: 6, AL: 6, MA: 6,
+  NL: 7, BE: 7, DK: 7,
+};
+const DEFAULT_CODE = REGION_ID === 'europe' ? 5 : 0;
+const CODES = REGION_ID === 'europe' ? EU_CODE : COUNTRY_CODE;
+const COUNTRY_SLOTS = [SLOTS, 30, 20, 20, 20, 20, 20, 20];   // Europe's: 4 x 5, fewer and bigger buildings than Japan's 30
+// A country's mix as the CPU picks it (for tests): its code and its slots per block.
+export function cityMixOf(country) {
+  const code = CODES[country] ?? DEFAULT_CODE;
+  return { code, slots: COUNTRY_SLOTS[code] };
+}
 const MAX_SLOTS = 30;
 export const CITY_MAX_AGL = 4500;   // m above the ground: no buildings above this
-// v0.6.1: the blocks in 4 x 4 tiles of 10 x 10 (HALF * 2 = TILES * TB), culled by the view; with the region off one
-// tile of them all, in v0.5.8's order and one draw (the flags are fixed at page load).
-const TILES = EAST_ASIA_ON ? 4 : 1, TB = (2 * HALF) / TILES;
+// v0.6.1: the blocks in 4 x 4 tiles of 10 x 10 (HALF * 2 = TILES * TB), culled by the view.
+const TILES = 4, TB = (2 * HALF) / TILES;
 const TILE_MARGIN = 120;          // m round a tile's square: a building reaches up to about 75 m past its block (275 m from the centre)
 
 // A unit box (x, z in -0.5..0.5, y 0..1) without a bottom; normals per face.
@@ -48,10 +72,114 @@ function boxGeometry() {
   return g;
 }
 
+// v0.7.0 Part 6: Europe's mixes, spliced into the vertex shader's text only when REGION_ID is 'europe' (euVert()):
+// a branch before Japan's for codes 3 to 7, Europe's walls before `vTint = tint;` and roofs after `vSeg = seg;`. The
+// kinds are the existing ones (3 a row of houses with vSeg, 4 a mid-rise, 5 a tower) plus 9, a church (its nave and
+// spire, plain boxes that only Europe's colour block names). East Asia's text is the template below, untouched.
+const EU_GEOM = /* glsl */ `        if (ctry >= 3) {
+          // v0.7.0 Europe: 4 x 5 slots. Where it's densely built, four perimeter blocks round courtyards (five to
+          // seven storeys; Britain's four to six), each side a slot, and a low building or (rarely, densest, not in
+          // Britain) a post-war tower of 8 to 16 floors in each courtyard. Elsewhere Britain's terraces (semis at the
+          // edges) in parallel streets; the continent's houses and small blocks of flats; a village church.
+          col = si % 4; row = si / 4;
+          ang = (ba - 0.5) * 1.0; rot = ang;
+          lp = vec2((float(col) - 1.5) * 95.0, (float(row) - 2.0) * 76.0) + (vec2(sh0, sh1) - 0.5) * vec2(10.0, 8.0);
+          bool town = dense > (ctry == 3 ? 0.62 : 0.5);
+          if (town) {
+            int qd = si < 16 ? si / 4 : si - 16;
+            vec2 qc = (vec2(float(qd % 2), float(qd / 2)) - 0.5) * 190.0;
+            if (si < 16) {
+              int sd = si % 4;
+              float bw = 118.0 + 30.0 * bh, bd = 13.0 + 3.0 * sh1;
+              kind = 4.0;
+              size = vec3(bw, ((ctry == 3 ? 4.0 : 5.0) + floor(3.0 * sh3)) * 3.2, bd);
+              if (sd < 2) {
+                lp = qc + vec2(0.0, (float(sd) - 0.5) * (bw - bd));
+              } else {
+                lp = qc + vec2((float(sd) - 2.5) * (bw - bd), 0.0);
+                size.x = bw - 2.0 * bd;
+                rot += 1.5708;
+              }
+              sh3 *= 0.5;                                    // the keep test: a block's sides stay together more often
+            } else if (dense > 0.7 && bt > 0.95 && ctry != 3) {
+              kind = 5.0;                                    // a tower: 8 to 16 floors
+              lp = qc;
+              size = vec3(22.0 + 10.0 * sh0, (8.0 + floor(9.0 * sh3 * sh3)) * 3.0, 20.0 + 8.0 * sh1);
+            } else {
+              kind = 4.0;                                    // a courtyard's workshop or school: 1 or 2 floors
+              lp = qc + (vec2(sh0, sh1) - 0.5) * 30.0;
+              size = vec3(18.0 + 14.0 * sh2, (1.0 + floor(2.0 * sh3)) * 3.5, 12.0 + 8.0 * sh0);
+            }
+          } else if (ctry == 3) {
+            kind = 3.0;                                      // terraces of 8 to 13 houses; semis (2 or 4) at the edges
+            bool semi = dense < 0.3;
+            seg = semi ? 7.5 + 2.0 * sh2 : 5.0 + 1.5 * sh2;
+            size = vec3(seg * (semi ? 2.0 + 2.0 * floor(1.6 * sh0) : 8.0 + floor(6.0 * sh0)), (2.0 + step(0.8, sh3)) * 2.9, 8.5 + 2.5 * sh1);
+            if (dense > 0.45 && sh2 > 0.85) {
+              kind = 4.0;                                    // a parade of shops, a block of flats: 3 to 6 floors
+              seg = 0.0;
+              size = vec3(30.0 + 20.0 * sh0, (3.0 + floor(4.0 * sh3)) * 3.0, 14.0 + 6.0 * sh1);
+            }
+          } else if (dense > 0.35 && sh2 > 0.5) {
+            kind = 4.0;                                      // small blocks of flats: 3 to 5 floors
+            size = vec3(24.0 + 22.0 * sh0, (3.0 + floor(3.0 * sh3)) * 3.0, 12.0 + 4.0 * sh1);
+            rot += sh0 > 0.6 ? 1.5708 : 0.0;
+          } else {
+            kind = 3.0;                                      // houses, one to two to a slot: 2 or 3 floors
+            seg = 10.0 + 3.0 * sh2;
+            size = vec3(seg * (1.0 + floor(1.9 * sh0)), (2.0 + step(0.75, sh3)) * 2.9, 9.0 + 3.0 * sh1);
+            rot += sh1 > 0.6 ? 1.5708 : 0.0;
+          }
+          if (!town && bh < 0.3 && si >= 18) {
+            kind = 9.0;                                      // a church: the nave (19) and its spire (18) at its west end
+            seg = 0.0;
+            sh2 = 0.9; sh3 = 0.0;                            // kept together, and at any distance
+            rot = ang;
+            lp = vec2(si == 18 ? -16.0 : 0.0, 38.0);
+            size = si == 18 ? vec3(6.0, 30.0 + 16.0 * bt, 6.0) : vec3(28.0, 13.0, 12.0);
+          }
+        } else `;
+const EU_WALLS = /* glsl */ `        if (ctry >= 3) {
+          // v0.7.0 Europe's walls: Britain's red and stock brick and white stucco; France's limestone blocks and pale
+          // render; Germany's render and some brick; the Low Countries' brick; the south's cream, ochre and white.
+          tint = kind == 5.0 ? mix(vec3(0.26, 0.27, 0.28), vec3(0.36, 0.36, 0.35), sh0)
+               : kind == 9.0 ? vec3(0.36, 0.34, 0.30)
+               : ctry == 3 ? (sh0 < 0.75 ? mix(vec3(0.24, 0.13, 0.09), vec3(0.31, 0.19, 0.13), sh2) : mix(vec3(0.36, 0.35, 0.32), vec3(0.42, 0.40, 0.36), sh2))
+               : ctry == 4 ? (kind == 4.0 && dense > 0.5 ? mix(vec3(0.40, 0.38, 0.33), vec3(0.45, 0.42, 0.36), sh2) : mix(vec3(0.36, 0.34, 0.30), vec3(0.42, 0.40, 0.35), sh2))
+               : ctry == 5 ? (sh0 < 0.3 ? mix(vec3(0.24, 0.14, 0.10), vec3(0.30, 0.19, 0.13), sh2) : mix(vec3(0.35, 0.34, 0.31), vec3(0.42, 0.40, 0.36), sh2))
+               : ctry == 7 ? (sh0 < 0.8 ? mix(vec3(0.22, 0.12, 0.08), vec3(0.30, 0.17, 0.11), sh2) : mix(vec3(0.36, 0.35, 0.33), vec3(0.42, 0.41, 0.38), sh2))
+               : (sh0 < 0.45 ? mix(vec3(0.42, 0.38, 0.30), vec3(0.46, 0.41, 0.32), sh2) : sh0 < 0.75 ? mix(vec3(0.42, 0.32, 0.21), vec3(0.47, 0.36, 0.24), sh2) : mix(vec3(0.40, 0.40, 0.38), vec3(0.45, 0.45, 0.43), sh2));
+        }
+`;
+const EU_ROOFS = /* glsl */ `
+        if (ctry >= 3) {
+          // v0.7.0 Europe's roofs: slate in Britain and on churches; zinc on France's blocks, slate on its houses
+          // (terracotta south of about 46 N); red-brown tile in Germany; dark tile in the Low Countries; terracotta south.
+          bool sud = mc.y < -110000.0;
+          vRoof = kind == 5.0 ? vec3(0.17, 0.17, 0.165) * (0.8 + 0.4 * sh1)
+                : ctry == 3 || kind == 9.0 ? (rr < 0.8 ? vec3(0.10, 0.105, 0.12) * (0.85 + 0.3 * sh1) : vec3(0.21, 0.11, 0.08))
+                : ctry == 4 ? (sud ? (rr < 0.8 ? mix(vec3(0.27, 0.12, 0.07), vec3(0.33, 0.17, 0.10), sh1) : vec3(0.24, 0.25, 0.26))
+                             : kind == 4.0 ? (rr < 0.75 ? vec3(0.24, 0.25, 0.26) * (0.9 + 0.2 * sh1) : vec3(0.13, 0.14, 0.16))
+                             : (rr < 0.7 ? vec3(0.12, 0.125, 0.14) : vec3(0.24, 0.12, 0.08)))
+                : ctry == 7 ? (rr < 0.6 ? vec3(0.10, 0.095, 0.095) : vec3(0.22, 0.11, 0.08))
+                : ctry == 5 ? (rr < 0.7 ? mix(vec3(0.22, 0.10, 0.07), vec3(0.27, 0.13, 0.09), sh1) : vec3(0.12, 0.11, 0.11))
+                : (rr < 0.85 ? mix(vec3(0.27, 0.12, 0.07), vec3(0.33, 0.17, 0.10), sh1) : vec3(0.24, 0.23, 0.21));
+        }`;
+// East Asia's vertex shader text -> Europe's: four splices at anchors that must each occur exactly once.
+export function euVert(src) {
+  const once = (a) => { const i = src.indexOf(a); if (i < 0 || src.indexOf(a, i + 1) >= 0) throw new Error('cities: euVert anchor ' + JSON.stringify(a)); return i; };
+  const A = '        if (ctry == 1) {', B = '        vTint = tint;', C = '        vSeg = seg;';
+  // (a fourth: a church's walls and spire have no storeys, so no window bands and no lit floors at night; the
+  // fragment shader draws both only above 1.5 m of the wall's own height, as rural.js's church does)
+  const D = '        vLocal.y = position.y * size.y;';
+  once(A); once(B); once(C); once(D);
+  return src.replace(A, EU_GEOM + A.trimStart()).replace(B, EU_WALLS + B).replace(C, C + EU_ROOFS).replace(D, D + '\n        if (kind == 9.0) vLocal.y = 0.0;');
+}
+
 export function createCities(scene, uniforms, chunks) {
-  // v0.6.0 Part 6: the countries' mixes are compiled in only when Part 6 is on (the flags are
-  // fixed at page load), so with it off the shader's text is v0.5.8's and Korea's pixels with it.
-  const MIX = EAST_ASIA_ON && CITIES_ON;
+  // v0.6.0 Part 6: the countries' mixes, always compiled in since v0.7.0 (v0.6.0's flags are gone;
+  // MIX stays a name so the shader's text below is v0.6.4's character for character).
+  const MIX = true;
   const SK = MIX ? 'sk' : 'bc * 16 + ivec2(si, 0)';
   const box = boxGeometry();
   // v0.6.1: the ±8 km of blocks in TILES x TILES tiles of TB x TB blocks (4 km), each its own
@@ -111,7 +239,7 @@ export function createCities(scene, uniforms, chunks) {
       if (maskAt && maskAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)) continue;
       blocks++;
       // The block's country, by its centre (0, Korea's mix, everywhere unless Part 6 is on).
-      const code = mix ? COUNTRY_CODE[countryAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)] || 0 : 0;
+      const code = mix ? CODES[countryAt((cx + i + 0.5) * BLOCK, (cy + j + 0.5) * BLOCK)] ?? DEFAULT_CODE : 0;
       const ns = COUNTRY_SLOTS[code];
       const T = tiles[Math.floor((j + HALF) / TB) * TILES + Math.floor((i + HALF) / TB)], inst = T.inst;
       let k = T.k;
@@ -228,7 +356,7 @@ export function createCities(scene, uniforms, chunks) {
         vec4 cov = uHasCover > 0.5 ? texture(uCover, uv) : vec4(0.0);
         float pw, zone;
         float raw = rawHeight(m, pw);
-        float h = max(flattenRunways(m, raw, zone), 0.0);
+        float h = ${seaFloor('flattenRunways(m, raw, zone)')};
         vec2 nn = texture(uNormal, uv).rg * (255.0 / 127.0) - (128.0 / 127.0);
         float sea = seaDistance(m, raw), inl = inlandDistance(m);
         // Keep off water, runways (and 250 m around them), steep slopes; follow the cover.
@@ -386,6 +514,7 @@ export function createCities(scene, uniforms, chunks) {
         #include <colorspace_fragment>
       }`,
   });
+  if (REGION_ID === 'europe') mat.vertexShader = euVert(mat.vertexShader);   // v0.7.0: before its first compile
   const mesh = new THREE.Group();          // (still `mesh` to its users: hiding it hides the cities)
   mesh.name = 'cities';
   tiles.forEach((T, t) => {

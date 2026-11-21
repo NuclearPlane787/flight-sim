@@ -31,7 +31,8 @@ const BRIDGE_M = 30;          // a piece of taxi line this close to the network,
 // the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
 // stands after the real numbers (gate-flow.js standList).
 const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW', 'ZKPY', 'ZKWS', 'RJSN', 'RJSS', 'RJSA', 'RJCC']);   // (ZSYN: v0.6.1; then five: v0.6.3; the last six: v0.6.4)
-export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao);
+// v0.7.0: every airport of a later region takes them too (Europe's codes begin E or L; Morocco's G).
+export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao) || /^[ELG]/.test(airport?.icao || '');
 const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
 const HOLD_STD_M = 90;        // the standard hold from a code 4 precision runway's centreline (Annex 14 Table 3-2)
 
@@ -636,6 +637,10 @@ const AIP_STANDS = {
   // first [EST: which of 3 to 10 take code E isn't published; 1 and 2 are the small aircraft's in AD 2.20].
   // (And a span over code E's 65 m only at spot 9, the AIP's B747-8 spot.)
   RJSN: { exclude: (ref, span) => (span > 65 && ref !== '9') || (span > 52 && !['3', '4', '5', '6', '7', '8', '9', '10'].includes(ref)), prefer: ['9'] },
+  // Frankfurt (v0.7.0, pending): the DFS AIP's stand charts aren't read; the geometry decides which stands take code E.
+  // Offered first: the bridge stands of the widebody piers that the geometry gives the 777 (Terminal 1's A pier's south
+  // side, the B pier's B26 to B48, Terminal 2's D and E). [EST]
+  EDDF: { exclude: () => false, prefer: ['A58A', 'A62A', 'A68A', 'A66B', 'B44', 'B46', 'B48', 'B26', 'B28', 'E2A', 'E5', 'E6', 'E9', 'D1', 'D4', 'D8'] },
   // Gimpo: the 500s to 900s are the West apron and the helicopter and GA spots, reached over W1,
   // W2, T and S, all "up to code letter B" (§1.7). The widebodies use the International Terminal
   // (North apron), stands 34 to 39.

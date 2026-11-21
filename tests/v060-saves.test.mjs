@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createSim } from '../src/sim/sim.js';
 import { createTiledHeightfield } from '../src/world/heightfield.js';
-import { setEastAsia, terrainSpec, rulesAt } from '../src/world/region.js';
+import { terrainSpec, rulesAt } from '../src/world/region.js';
+
 import { gridToMag } from '../src/world/frame.js';
 import { presetWeather, weatherContext, PRESETS } from '../src/sim/weather-presets.js';
 import { run, KT, FT, DEG } from './sim-helpers.mjs';
@@ -17,7 +18,6 @@ import { loadNodeRules } from './v060-rules-helpers.mjs';
 
 const m = manifest();
 const HAVE = !!m.tilesRegion;
-setEastAsia(true);
 loadNodeRules();
 const airports = HAVE ? terrainSpec(m, true).airports.map((f) => JSON.parse(readFileSync(new URL(f, DATA), 'utf8'))) : [];
 const hf = HAVE ? await createTiledHeightfield(m, DATA.href, { region: true, airports, readGz, readJson, layers: ['h'], airportTiles: true, maxTiles: 200 }) : null;

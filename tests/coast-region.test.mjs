@@ -11,7 +11,7 @@ import { toMap } from '../src/world/frame.js';
 const DATA = new URL('../data/', import.meta.url);
 const file = new URL('coast-region.json', DATA);
 const raw = JSON.parse(readFileSync(file, 'utf8'));
-const korea = JSON.parse(readFileSync(new URL('coast.json', DATA), 'utf8'));
+// (v0.7.0: Korea's own coast.json retired with v0.6.0's flags, and the two tests that read it.)
 
 // A canvas context that records the path.
 function pathCtx() {
@@ -86,19 +86,6 @@ test('land and sea where they are, at every level (Seoul, Tokyo, Shanghai, Fukuo
   }
 });
 
-test('Korea agrees with coast.json (land/sea on a grid round the peninsula, level 0)', () => {
-  const b = buildCoast(raw), k = buildCoast(korea);
-  let n = 0, same = 0;
-  for (let x = -300000; x <= 300000; x += 7000) {
-    for (let y = -300000; y <= 300000; y += 7000) {
-      const ctx = pathCtx();
-      traceRings(ctx, k.land, 0, { x0: x - 1, y0: y - 1, x1: x + 1, y1: y + 1 }, ident);
-      n++; if (inside(ctx.subs, x, y) === landAt(b, 0, x, y)) same++;
-    }
-  }
-  assert.ok(same / n > 0.985, `${same}/${n}`);
-});
-
 test('traceCoastLines leaves out the cells\' cut edges, keeps the coast', () => {
   const b = buildCoast(raw);
   const L = b.levels[0];
@@ -133,14 +120,6 @@ test('a frame traces only its cells: few points at 10 nm near Tokyo Bay, bounded
   const p10 = count(10, 10 * 1852 / 200), p160 = count(160, 160 * 1852 / 200);
   assert.ok(p10 < 15000, `10 nm: ${p10}`);
   assert.ok(p160 < 15000, `160 nm: ${p160}`);
-});
-
-test('Korea\'s file is built as before (no region fields)', () => {
-  const k = buildCoast(korea);
-  assert.ok(!k.region);
-  assert.equal(k.land.length, korea.land.length);
-  assert.equal(k.land[0].levels.length, 4);
-  assert.ok(FINE_EXTENT.x0 > REGION_EXTENT.x0);
 });
 
 test('screenBox: the map box of the screen round the aircraft, heading up', () => {

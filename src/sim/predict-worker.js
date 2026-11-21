@@ -2,28 +2,28 @@
 // old one, which is dropped at its next chunk boundary. Between jobs it does nothing (it
 // only wakes on a message). Each job is capped at ~2 s of CPU.
 //
-// The terrain: the first request starts loading the heights (national grid + the 30 m
-// patches + the runway flattening; no water or cover layers, ~33 MB in all) and waits for
+// The terrain: the first request starts loading the heights (the region's tiles as the runs
+// reach them + the 30 m patches + the runway flattening; no water or cover layers) and waits for
 // them at most WAIT_MS (they usually take a few hundred ms). Until they're in, or if they
 // fail, the path runs over flat sea level; when they arrive while the latest result was
 // computed flat, that request is run again (a second result for the same id).
 
 import { createPredictionRun, tilesForChunk, tilesForSnap } from './predict-core.js';
-import { createHeightfield, createTiledHeightfield, fetchGz, fetchJson } from '../world/heightfield.js';
+import { createTiledHeightfield, fetchJson } from '../world/heightfield.js';
 import { loadLocalRules, setGeoRules, geoRules } from '../world/region.js';
+import { dataUrl } from '../world/regions.js';
 
 const CHUNK = 3000;          // steps between checks for a newer request (~15–30 ms)
 const BUDGET_MS = 2000;
 const WAIT_MS = 1500;        // the longest a request waits for the terrain to load
-const DATA = new URL('../../data/', import.meta.url).href;
+const DATA = dataUrl(import.meta.url, '../../');   // v0.7.0: the region's folder (this worker's URL carries the page's region: predict.js)
 let current = 0;
 let hf = null;               // the heightfield once loaded
 let loading = null;          // its load promise (started once)
 let loaded = false;          // the load has finished (with or without the terrain)
 let last = null;             // the latest request: { id, snap, opts, flat }
-// v0.6.0: the local rules (magVar's WMM, the country), as the page installs them: with the region
-// on, no run starts before they are in (a run on the plane would put jumps off the live path);
-// with it off this is null and nothing waits.
+// v0.6.0: the local rules (magVar's WMM, the country), as the page installs them: no run starts
+// before they are in (a run on the plane would put jumps off the live path).
 let rules = loadLocalRules(DATA);
 let mine;                    // the rules this worker loaded (null: none), kept to put back
 
@@ -47,33 +47,12 @@ async function loadTerrain() {
   try {
     const url = (rel) => new URL(rel, DATA).href;
     const man = await fetchJson(url('manifest.json'));
-    // v0.6.0: the heights from the tiles (the same doubles as the national grid's), every tile
-    // in the extent for now; the region's loader will fetch the tiles each chunk reaches.
-    if (man && man.tiles) {
+    // v0.6.0: the heights from the region's tiles.
+    if (man && man.tilesRegion) {
       // The tiles come as the runs reach them (tilesForChunk); the patches and runways at once.
       hf = await createTiledHeightfield(man, DATA, { layers: ['h'], coasts: false, maxTiles: 48 });
       if (last && last.flat && current === last.id) { last.flat = false; runJob(last); }
-      return;
     }
-    const nat = man && man.national;
-    if (!nat || !nat.height) return;
-    const [hb, airports, ...pb] = await Promise.all([
-      fetchGz(url(nat.height)),
-      Promise.all((man.airports || []).map((f) => fetchJson(url(f)))),
-      ...(man.patches || []).map((p) => fetchGz(url(p.height))),
-    ]);
-    if (!hb || hb.byteLength !== nat.nx * nat.ny * 2) return;
-    const patches = [];
-    (man.patches || []).forEach((p, k) => {
-      const b = pb[k];
-      if (b && b.byteLength === p.nx * p.ny * 2) patches.push({ id: p.id, x0: p.x0, y0: p.y0, cell: p.cell, nx: p.nx, ny: p.ny, height: new Int16Array(b) });
-    });
-    patches.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-    hf = createHeightfield({
-      heightScale: man.heightScale || 0.25,
-      national: { x0: nat.x0, y0: nat.y0, cell: nat.cell, nx: nat.nx, ny: nat.ny, height: new Int16Array(hb), water: null, cover: null },
-      patches, coastPatches: [],
-    }, { airports: airports.filter(Boolean) });
   } catch (e) {
     hf = null; // stay on flat ground
     return;

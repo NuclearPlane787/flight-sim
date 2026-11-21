@@ -3,7 +3,9 @@
 // and the clock's own speed (1x real time up to 600x) multiplies on top of that.
 // v0.6.0: with the region on, the times are shown in the zone where you are (the end of the file).
 
-import { rulesAt, eastAsiaOn } from './world/region.js';
+import { rulesAt, regionRulesTable } from './world/region.js';
+import { REGION, REGION_ID } from './world/regions.js';
+import { EUROPE_ICAO_ZONES } from './world/rules-europe.js';
 
 export const KST_OFFSET_MS = 9 * 3600e3;
 const DAY_MS = 86400e3;
@@ -97,30 +99,39 @@ export function fmtKstDate(ms) {
 
 // ---- v0.6.0: local time (briefs/V0-6-0.md Part 5 step 8) ----
 // The clock by the time zone where you are: `rulesAt()`'s IANA zone, read through the browser's (or node's) Intl,
-// which has every zone offline, so a later region with summer time needs nothing here. No fixed offsets below:
-// with the region off everything stays the KST functions above, exactly as v0.5.8 drew them. The epoch ms never
+// which has every zone offline, so a later region with summer time needs nothing here. No fixed offsets below.
+// The epoch ms never
 // change, nor do the sun and the stars: only what is shown. A zone is { timeZone, zoneName } (region.js's rules) or
 // an IANA name (region.js is imported at the top).
 
 export const KST_ZONE = Object.freeze({ timeZone: 'Asia/Seoul', zoneName: 'KST' });
-// Whether the times are local (the region on). Off: KST everywhere, as v0.5.8.
-export const localTimeOn = () => eastAsiaOn();
-// The zone at a map point: the country's (region.js's rulesAt()), KST with the region off.
+// v0.7.0: a zone may carry its summer name too ({ timeZone, zoneName, zoneNameSummer }: GMT and BST, CET and CEST),
+// and zoneLabel(zone, ms) picks by the date; East Asia's zones have none. Where nothing says where (no position, an
+// unknown airport): the page's region's own default (Korea's in East Asia, as before; Central European in Europe).
+const zoneOfRules = (r) => (r && r.timeZone ? (r.zoneNameSummer ? { timeZone: r.timeZone, zoneName: r.zoneName || r.timeZone, zoneNameSummer: r.zoneNameSummer } : { timeZone: r.timeZone, zoneName: r.zoneName || r.timeZone }) : null);
+const DEFAULT_ZONE = REGION_ID === 'east-asia' ? KST_ZONE : Object.freeze(zoneOfRules(regionRulesTable()[REGION.defaultCountry]) || KST_ZONE);
+// Whether the times are local: always since v0.7.0 (v0.6.0's region flag is gone; scenarios.js still asks).
+export const localTimeOn = () => true;
+// The zone at a map point: the country's (region.js's rulesAt()).
 export function zoneAt(x, y) {
-  if (!eastAsiaOn() || !Number.isFinite(x) || !Number.isFinite(y)) return KST_ZONE;
-  const r = rulesAt(x, y);
-  return r && r.timeZone ? { timeZone: r.timeZone, zoneName: r.zoneName || r.timeZone } : KST_ZONE;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return DEFAULT_ZONE;
+  return zoneOfRules(rulesAt(x, y)) || DEFAULT_ZONE;
 }
 // By an airport's ICAO code, where no position is at hand (a saved plan): the ICAO region's first letters.
 const ICAO_ZONES = [['ZK', 'Asia/Pyongyang', 'KST'], ['RK', 'Asia/Seoul', 'KST'], ['RJ', 'Asia/Tokyo', 'JST'], ['RO', 'Asia/Tokyo', 'JST'], ['Z', 'Asia/Shanghai', 'CST'], ['U', 'Asia/Vladivostok', 'VLAT']];   // (U: Russia's far east, v0.6.3: Vladivostok)
+// (v0.7.0: Europe's prefixes too, in every region: the Load list and the logbook name another region's airports.)
+const ALL_ICAO_ZONES = ICAO_ZONES.concat(EUROPE_ICAO_ZONES);
 export function zoneOfIcao(icao) {
   const c = String(icao || '').toUpperCase();
-  if (!eastAsiaOn()) return KST_ZONE;
-  const z = ICAO_ZONES.find(([p]) => c.startsWith(p));
-  return z ? { timeZone: z[1], zoneName: z[2] } : KST_ZONE;
+  const z = ALL_ICAO_ZONES.find(([p]) => c.startsWith(p));
+  return z ? (z[3] ? { timeZone: z[1], zoneName: z[2], zoneNameSummer: z[3] } : { timeZone: z[1], zoneName: z[2] }) : DEFAULT_ZONE;
 }
 const tzOf = (zone) => (typeof zone === 'string' ? zone : zone?.timeZone) || 'Asia/Seoul';
-export const zoneLabel = (zone) => (typeof zone === 'string' ? zone : zone?.zoneName || zone?.timeZone) || 'KST';
+// The zone's name: with a time (epoch ms) and a zone that has a summer name, the name in force then.
+export function zoneLabel(zone, ms) {
+  if (typeof zone !== 'string' && zone?.zoneNameSummer && Number.isFinite(ms) && isSummerTime(ms, zone)) return zone.zoneNameSummer;
+  return (typeof zone === 'string' ? zone : zone?.zoneName || zone?.timeZone) || 'KST';
+}
 
 const DTF = new Map();
 function dtf(tz) {
@@ -153,6 +164,15 @@ export function zoneMs(y, mo, d, h = 0, mi = 0, s = 0, zone) {
   let t = wall - zoneOffsetMs(wall, zone);
   t = wall - zoneOffsetMs(t, zone);
   return t;
+}
+// Is summer time in force in the zone at ms? Its offset then against the year's smaller one (January's or July's),
+// through Intl: no dates of our own, so a zone that never changes its clocks is never in summer time.
+const STD = new Map();
+export function isSummerTime(ms, zone) {
+  const tz = tzOf(zone), y = new Date(ms).getUTCFullYear(), k = tz + '|' + y;
+  let std = STD.get(k);
+  if (std === undefined) { std = Math.min(zoneOffsetMs(Date.UTC(y, 0, 15, 12), tz), zoneOffsetMs(Date.UTC(y, 6, 15, 12), tz)); STD.set(k, std); }
+  return zoneOffsetMs(ms, tz) > std;
 }
 export function startOfZoneDay(ms, zone) { const p = zoneParts(ms, zone); return zoneMs(p.y, p.mo, p.d, 0, 0, 0, zone); }
 // 15:00 on ms's day in the zone.

@@ -8,7 +8,8 @@
 // One material for every ring: a ring's step and centre come from its model matrix.
 
 import * as THREE from '../../vendor/three.module.js';
-import { EAST_ASIA_ON, GROUND_ON } from './region.js';
+import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
+import { dataUrl } from './regions.js';   // v0.7.0: the fine cover from the page's region's folder
 import { FINE_GLSL, createFineCover, setFineOrigin } from './finecover.js';
 import { GROUND_GLSL } from './ground.js';
 
@@ -43,14 +44,13 @@ function gridGeometry(n, hole) {
 }
 
 export function createTerrain(scene, uniforms, chunks) {
-  // v0.6.0: the high ground's rock and snow are compiled in only with the region on (the flag is
-  // fixed at page load), so with it off the shader's text is v0.5.8's, and Korea's pixels with it.
-  const HIGH = EAST_ASIA_ON;
-  // v0.6.0 Part 7 (behind GROUND_ON, compiled in only with it): the fine cover's window round the
-  // camera (finecover.js) and the field mosaic (ground.js). Its uniforms go into the shared set
-  // before any material copies it.
-  const GROUND = GROUND_ON;
-  const fine = GROUND ? createFineCover(uniforms, { baseUrl: new URL('../../data/', import.meta.url).href }) : null;
+  // v0.6.0: the high ground's rock and snow, and (Part 7) the fine cover's window round the camera
+  // (finecover.js) and the field mosaic (ground.js), whose uniforms go into the shared set before
+  // any material copies it. Both behind v0.6.0's flags until v0.7.0, always on since: HIGH and
+  // GROUND stay names so the shader's text below is v0.6.4's character for character.
+  const HIGH = true;
+  const GROUND = true;
+  const fine = GROUND ? createFineCover(uniforms, { baseUrl: dataUrl(import.meta.url, '../../') }) : null;
   if (GROUND) setFineOrigin(uniforms, { x: 0, y: 0 });
   const ringGeo = gridGeometry(GRID, GRID / 4 - 1);
   const fillGeo = gridGeometry(GRID / 2, 0);
@@ -83,7 +83,7 @@ export function createTerrain(scene, uniforms, chunks) {
         vec2 m = sceneToMap(wp);
         float pw, zone;
         float raw = rawHeight(m, pw);
-        float h = max(flattenRunways(m, raw, zone), 0.0);
+        float h = ${seaFloor('flattenRunways(m, raw, zone)')};
         // Outside the baked map: open sea.
         if (natOutside(m)) { h = 0.0; raw = -40.0; }
         wp.y = h;

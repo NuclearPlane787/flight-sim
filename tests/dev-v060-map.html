@@ -20,7 +20,7 @@
 // The two NDs and the path map over the region's coast (?eastasia=1) or Korea's, with all the
 // airports in data/airports/ (the region's eleven, or Korea's three with the flag off), for
 // pictures and timing without WebGL (tests/browser-v060-map.mjs drives it through window.__dev).
-import { EAST_ASIA_ON } from '../src/world/region.js';
+const EAST_ASIA_ON = true;   // (v0.7.0: v0.6.0's region flag is gone; the region always)
 import { hidpiCanvas, buildCoast } from '../src/ui/common.js';
 import { createNd, ND_RANGES } from '../src/ui/nd.js';
 import { createBoeingNd } from '../src/ui/boeing/nd.js';
@@ -29,9 +29,16 @@ import { makeState, makeAp, derive, toMap, magToGrid } from './dev-ui-mock.js';
 
 const KOREA = ['RKSS', 'RKSI', 'RKPC'];
 const REGION = [...KOREA, 'RKPK', 'RJFF', 'RJBB', 'RJTT', 'RJAA', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW', 'RJCC', 'RJSA', 'RJSS', 'RJSN', 'ZKPY', 'ZKWS'];   // (five: v0.6.3; the last six: v0.6.4)
-const airports = (await Promise.all((EAST_ASIA_ON ? REGION : KOREA).map(async (i) => (await fetch(`../data/airports/${i}.json`)).json())))
+// v0.7.0: another region's airports from its own manifest (listed, and pending with ?pending=1), from its own folder.
+const { REGION_ID, dataUrl } = await import('../src/world/regions.js');
+const DATA_URL = dataUrl(location.href, '../');
+const LIST = REGION_ID === 'east-asia' ? REGION.map((i) => `airports/${i}.json`) : (await import('../src/world/region.js')).terrainSpec(await (await fetch(DATA_URL + 'manifest.json')).json()).airports;
+const airports = (await Promise.all(LIST.map(async (f) => (await fetch(DATA_URL + f)).json())))
   .map((a) => ({ ...a, runways: a.runways.map((r) => ({ ...r, ends: r.ends.map((e, j) => ({ ...e, hdgGridDeg: e.hdgGridDeg ?? Math.atan2(r.ends[1 - j].x - e.x, r.ends[1 - j].y - e.y) * 180 / Math.PI })) })) }));
-const coast = await (await fetch(EAST_ASIA_ON ? '../data/coast-region.json' : '../data/coast.json')).json();
+// v0.7.0: Europe's one-way and standby runways marked as the game marks them (runways.js's ONE_WAY: each end's `use`).
+// East Asia's list is left as it was, so its map pictures are v0.6.4's.
+if (REGION_ID !== 'east-asia') { const { runwayUse, canLand } = await import('../src/world/runways.js'); for (const a of airports) for (const r of a.runways) for (const e of r.ends) { const u = runwayUse(a.icao, e.ident); if (u) { e.use = u; if (!canLand(a.icao, e.ident)) e.ils = null; } } }
+const coast = await (await fetch(DATA_URL + 'coast-region.json')).json();
 if (document.fonts?.load) await Promise.all(['400 16px B612', '700 16px B612'].map((f) => document.fonts.load(f))).catch(() => {});
 const t0 = performance.now();
 const built = buildCoast(coast);
@@ -40,7 +47,7 @@ const cvA = hidpiCanvas(document.getElementById('nd-a')), cvB = hidpiCanvas(docu
 cvA.size(330, 330); cvB.size(330, 330);
 const ndA = createNd(cvA, { airports, coast: built }), ndB = createBoeingNd(cvB, { airports, coast: built });
 // v0.6.3: the map's city areas and names, as main.js loads them (the region only).
-const urban = EAST_ASIA_ON ? await fetch('../data/urban-region.json').then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+const urban = await fetch(DATA_URL + 'urban-region.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
 const map = createMap(document.getElementById('map-root'), { airports, coast, urban });
 const st = makeState(2), ap = makeAp(st);
 st.onGround = false; st.ias = 280 * 0.514444; st.pos.z = 30000 * 0.3048; derive(st);

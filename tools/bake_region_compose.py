@@ -52,6 +52,8 @@ GAME = os.path.dirname(HERE)
 DATA = os.path.join(GAME, 'data')
 L0 = os.path.join(DATA, 'terrain', 'l0')      # Korea's tiles (read); the output with --to-data
 R0 = os.path.join(DATA, 'terrain', 'r0')      # the region's shipped tiles (read)
+if os.environ.get('FS_REGION', '').strip().lower() == 'europe':
+    R0 = os.path.join(DATA, 'europe', 'terrain', 'r0')   # v0.7.0: Europe's installed tiles (later batches' old tiles)
 sys.path.insert(0, HERE)
 import bake_region_tiles as rt  # noqa: E402
 STAGE = rt.STAGE                              # v0.6.3's staging; v0.6.0's (rt.STAGE_OLD) is read through rt.find
@@ -64,10 +66,17 @@ TILE, B = 512, 2
 S = TILE + 2 * B
 CELL = 250.0
 X0 = Y0 = -400000.0
+import bake_common as _bc  # noqa: E402
+EUROPE = _bc.EUROPE           # v0.7.0: FS_REGION=europe (its lattice origin 0, 0; no Korea)
+X0, Y0 = _bc.NAT['x0'], _bc.NAT['y0']
 HALO = 24                      # cells of the neighbours around a tile for the filters (6 km)
 FADE_M = 5000.0                # the cross-fade outside south-korea.poly
 SEA = dict(h=-160, w=(0, 255), c=(0, 0, 0, 0))
+if EUROPE:
+    SEA = dict(h=0, w=(0, 255), c=(0, 0, 0, 0))   # v0.7.0: Europe's sea is exactly 0 m (manifest sea.h 0)
 KOREA = [(ti, tj) for ti in range(7) for tj in range(7)]   # Korea's old square's tiles
+if EUROPE:
+    KOREA = []
 
 # The frame, from bake_common (it makes folders on import: harmless, they exist).
 sys.path.insert(0, HERE)
@@ -178,9 +187,15 @@ def compose_height(dem, sea_sd, water_sd, urban):
             bank_h = h[idx[0], idx[1]]
             bank_h = ndimage.uniform_filter(np.where(water, bank_h, 0), size=3) / np.maximum(
                 ndimage.uniform_filter(water.astype(np.float32), size=3), 1e-3)
-            h = np.where(water, np.maximum(bank_h, 0.5) - 2.0, h)
+            h = np.where(water, (bank_h if EUROPE else np.maximum(bank_h, 0.5)) - 2.0, h)
     # The staged sea distance saturates at 2,560 m (its byte), so the sea reaches -40 m there.
-    return np.where(land, np.maximum(h, 0.5), -5.0 - 35.0 * smoothstep(0, 2560, -sea_sd)).astype(np.float32)
+    # v0.7.0, Europe: no 0.5 m floor on land (or on the water's bank): land below sea level stays
+    # where the land polygons say land (the polders); East Asia's floor is unchanged.
+    # Europe's sea is exactly 0 m (the game reads a stored 0 as sea; land is nudged off 0 when stored).
+    if EUROPE:
+        return np.where(land, h, 0.0).astype(np.float32)
+    return np.where(land, np.maximum(h, 0.5),
+                    -5.0 - 35.0 * smoothstep(0, 2560, -sea_sd)).astype(np.float32)
 
 
 def read_korea(ti, tj):
@@ -217,6 +232,8 @@ def compose_tile(ti, tj, rings):
     h = compose_height(raw, sea_sd, water_sd, cov[..., 2] / 255.0)
     core = slice(HALO, HALO + S)
     h16 = height_to_i16(h[core, core])
+    if EUROPE:   # v0.7.0: no land cell stores exactly 0 (0 is sea)
+        h16 = _bc.height_to_i16_land(h[core, core], sea_sd[core, core] > 0)
     w8 = wat[core, core].astype(np.uint8)
     c8 = cov[core, core].astype(np.uint8)
     kor = read_korea(ti, tj) if (ti, tj) in KOREA else None
@@ -396,7 +413,7 @@ def main():
         r = [t for t in allt if ready(*t)]
         print(f'{len(allt)} tiles staged, {len(r)} with all three layers, {len(done)} composed')
         return
-    rings = read_poly()
+    rings = [] if EUROPE else read_poly()
     t0 = time.time()
     for ti, tj in allt:
         if (ti, tj) in done and not args.force:

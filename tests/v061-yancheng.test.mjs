@@ -10,7 +10,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { setEastAsia, setPending, setGeoRules, terrainSpec, countryAt, rulesAt } from '../src/world/region.js';
+import { setPending, setGeoRules, terrainSpec, countryAt, rulesAt } from '../src/world/region.js';
+
 import { createGeoRules } from '../src/world/geo-rules.js';
 import { convergence, greatCircle } from '../src/world/frame.js';
 import { createAirports, pavementEnd } from '../src/world/runways.js';
@@ -57,16 +58,15 @@ function alongRunwayM(g, P) {
   }
   return m;
 }
-const withPending = async (fn) => { setEastAsia(true); setPending(true); try { return await fn(); } finally { setPending(false); } };
+const withPending = async (fn) => { setPending(true); try { return await fn(); } finally { setPending(false); } };
 
 // While it was checked ZSYN sat in the manifest's airportsPending (read only with ?pending=1);
 // once through its check it moved to airportsRegion. Either way: nothing of it with the region off.
 const LISTED = HAVE && (manifest().airportsRegion || []).includes('airports/ZSYN.json');
-test('the manifest: ZSYN pending (unlisted without the switch) or in the region\'s list, never with the region off', { skip }, () => {
-  setEastAsia(true); setPending(false);
+test('the manifest: ZSYN pending (unlisted without the switch) or in the region\'s list', { skip }, () => {
+  setPending(false);
   const m = manifest();
-  const off = terrainSpec(m, false), on = terrainSpec(m, true);
-  assert.ok(!off.airports.some((f) => f.includes('ZSYN')) && !off.patches.some((p) => p.id === 'yancheng'), 'region off: no ZSYN, no patch');
+  const on = terrainSpec(m);   // (v0.7.0: the region-off lists and their assertions went with the flag)
   if (LISTED) {
     assert.ok(on.airports.includes('airports/ZSYN.json') && on.patches.some((p) => p.id === 'yancheng'), 'listed with its patch');
     // (Twelve when Yancheng was listed; seventeen since v0.6.3's five; twenty-three since v0.6.4's six. No airport twice.)
@@ -82,7 +82,7 @@ test('the manifest: ZSYN pending (unlisted without the switch) or in the region\
 });
 
 test('pending on: terrainSpec adds ZSYN and its patch to the region\'s lists (and only with the region)', { skip }, () => withPending(() => {
-  const m = manifest(), on = terrainSpec(m, true);
+  const m = manifest(), on = terrainSpec(m);
   assert.ok(on.airports.includes('airports/ZSYN.json'));
   // (Twelve when this was written; seventeen since v0.6.3's five were listed, and nothing waits in airportsPending.)
   assert.equal(on.airports.length, 23 + (m.airportsPending || []).length);   // (17 until v0.6.4's six were listed)
@@ -91,8 +91,7 @@ test('pending on: terrainSpec adds ZSYN and its patch to the region\'s lists (an
   assert.ok(p, 'the patch is listed');
   assert.deepEqual(Object.keys(p), Object.keys(m.patchesRegion[0]));
   assert.equal(p.cell, 30);
-  const off = terrainSpec(m, false);
-  assert.ok(!off.airports.some((f) => f.includes('ZSYN')) && !off.patches.some((q) => q.id === 'yancheng'), 'Korea\'s lists stay Korea\'s');
+    // (v0.7.0: the region-off assertion, Korea's lists without it, went with the flag)
 }));
 
 test('ZSYN: the shape is Korea\'s (RKSI.json) and the eight\'s, with its names', { skip }, () => {
@@ -242,7 +241,7 @@ test('ZSYN: after landing, a taxi-in route from 45, 60 and 75 % along both runwa
 }));
 
 test('ZSYN: China by the country raster, China\'s rules (3,000 m / 3,600 m, [EST] as Hongqiao\'s and Qingdao\'s)', { skip }, () => {
-  setEastAsia(true);
+  
   setGeoRules(geo);
   try {
     const ap = load('ZSYN');

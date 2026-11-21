@@ -1,8 +1,7 @@
-// v0.6.0, the region's terrain (data/terrain/r0, r1, the manifest's tilesRegion): South Korea's
-// heights, water and cover the same doubles as Korea's own tiles (briefs/V0-6-0.md, "Korea unchanged,
-// exactly"), the new ground where it should be (Fuji, the new airports' runways, the margin's
+// v0.6.0, the region's terrain (data/terrain/r0, r1, the manifest's tilesRegion): the new ground where it should be (Fuji, the new airports' runways, the margin's
 // 1 km level), loaded by distance with no misses, and the GPU's clip window following the
-// camera over it block by block. Skipped while the region's tiles aren't in data/.
+// camera over it block by block. Skipped while the region's tiles aren't in data/. (v0.7.0: the
+// comparisons with Korea's own tiles went with them, and c2 became c.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -15,7 +14,7 @@ import { tiledTerrain, manifest, readGz, readJson, DATA } from './tile-terrain.m
 
 const m = manifest();
 const HAVE = !!m.tilesRegion;
-const spec = terrainSpec(m, true);
+const spec = terrainSpec(m);
 const airportsAll = spec.airports.map((f) => JSON.parse(readFileSync(new URL(f, DATA), 'utf8')));
 
 const region = (opts = {}) => createTiledHeightfield(m, DATA.href, { region: true, airports: airportsAll, readGz, readJson, ...opts });
@@ -29,52 +28,12 @@ test('the region: the manifest lists its tiles, patches and airports; the extent
   const t = m.tilesRegion, l0 = t.levels[0], l1 = t.levels[1];
   assert.deepEqual(FINE_EXTENT, { x0: t.x0 + l0.extent.i0 * l0.cell, y0: t.y0 + l0.extent.j0 * l0.cell, x1: t.x0 + l0.extent.i1 * l0.cell, y1: t.y0 + l0.extent.j1 * l0.cell });
   assert.deepEqual(REGION_EXTENT, { x0: t.x0 + l1.extent.i0 * l1.cell, y0: t.y0 + l1.extent.j0 * l1.cell, x1: t.x0 + l1.extent.i1 * l1.cell, y1: t.y0 + l1.extent.j1 * l1.cell });
-  // With the flag off (the default) the game reads Korea's own tiles and three airports.
-  const off = terrainSpec(m, false);
-  assert.equal(off.region, false);
-  assert.equal(off.tiles, m.tiles);
-  assert.deepEqual(off.airports, m.airports);
+  // (v0.7.0: the flag-off assertions, Korea's own tiles and three airports, went with the flag.)
   // Every airport of the region inside the 250 m data.
   for (const a of airportsAll) {
     const [x, y] = a.origin;
     assert.ok(x > FINE_EXTENT.x0 && x < FINE_EXTENT.x1 && y > FINE_EXTENT.y0 && y < FINE_EXTENT.y1, a.icao);
   }
-});
-
-test('the region: South Korea reads the same doubles as Korea\'s own tiles', { skip: !HAVE }, async () => {
-  // Korea's heightfield as the flag-off game has it (its three airports), and the region's with
-  // the same three, so the runways' flattening is the same and only the tiles differ.
-  const { hf: kor, airports: aps3 } = await tiledTerrain({ layers: ['h', 'w', 'c'], coasts: true });
-  // (cover2: false: the cover compared here is c, Korea's own bytes. With GROUND_ON the game reads
-  // Korea's re-aggregated cover, c2, instead: the last test in this file checks that.)
-  const reg = await createTiledHeightfield(m, DATA.href, { region: true, airports: aps3, readGz, readJson, layers: ['h', 'w', 'c'], maxTiles: 400, cover2: false });
-  // Points well inside Geofabrik's south-korea.poly: the mainland from 34.3 to 37.5 N west of
-  // 128.9 E (south of the DMZ, west of Tsushima), Jeju, and 20 km round each Korean airport.
-  let seed = 12345;
-  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const pts = [];
-  for (let k = 0; k < 26000; k++) pts.push(toMap(34.3 + rnd() * 3.2, 126.1 + rnd() * 2.8));
-  for (let k = 0; k < 4000; k++) pts.push(toMap(33.1 + rnd() * 0.6, 126.1 + rnd() * 0.9));
-  for (const a of aps3) for (let k = 0; k < 4000; k++) pts.push([a.origin[0] + (rnd() - 0.5) * 40000, a.origin[1] + (rnd() - 0.5) * 40000]);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
-  await reg.tiles.whenReady((x0 + x1) / 2, (y0 + y1) / 2, Math.hypot(x1 - x0, y1 - y0) / 2 + 1000, 'test');
-  let bad = 0;
-  const a = {}, b = {};
-  for (const [x, y] of pts) {
-    kor.coverAt(x, y, a); reg.coverAt(x, y, b);
-    // The region adds Gimhae's 30 m patch (briefs/V0-6-0.md's one exception): skip the points it reaches.
-    const inGimhae = reg.layers.patches.some((p) => p.id === 'gimhae' && x > p.x0 && y > p.y0 && x < p.x0 + p.nx * p.cell && y < p.y0 + p.ny * p.cell);
-    if (!inGimhae && (kor.rawHeight(x, y) !== reg.rawHeight(x, y) || kor.heightAt(x, y) !== reg.heightAt(x, y))) bad++;
-    if (kor.inlandDistance(x, y) !== reg.inlandDistance(x, y)) bad++;
-    if (a.forest !== b.forest || a.farm !== b.farm || a.urban !== b.urban) bad++;
-    // The sea's distance: the same from the tiles; near Gimhae the region has its 10 m coast patch too.
-    const nearNew = reg.layers.coastPatches.some((p) => p.id === 'RKPK' && x > p.x0 && y > p.y0 && x < p.x0 + p.nx * p.cell && y < p.y0 + p.ny * p.cell);
-    if (!nearNew && kor.seaDistance(x, y) !== reg.seaDistance(x, y)) bad++;
-  }
-  assert.equal(bad, 0, `${bad} of ${pts.length} points differ`);
-  assert.equal(reg.tiles.misses, 0);
-  assert.equal(kor.tiles.misses, 0);
 });
 
 test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by distance, no misses', { skip: !HAVE }, async () => {
@@ -233,33 +192,19 @@ test('the region: a lean clip window fills one block at a time into its scratch;
   assert.equal(cw.valid()[2] - cw.valid()[0], 4096);
 });
 
-// v0.6.0 Part 7: South Korea's cover re-aggregated from the fine cover's source (c2 files), read
-// only by a store made with cover2 (the game with GROUND_ON); the heights and the water are the
-// same bytes either way, and without cover2 the cover is c's.
-test('the region: c2 (Korea\'s re-aggregated cover) is read only with cover2, and changes the cover alone', async () => {
+// v0.6.0 Part 7: South Korea's cover re-aggregated from the fine cover's source (the c2 files, read in place of c
+// with GROUND_ON). v0.7.0: the c2 files became the tiles' c, Korea's old cover in them retired, and the manifest's
+// cover2 list went; this checks the store asks for c alone. (Its comparisons with the old c went with it.)
+test('the region: Korea\'s tiles read their cover from c, and no c2 file or list is left', async () => {
   const { createTileStore } = await import('../src/world/tilestore.js');
   const { terrainSpec } = await import('../src/world/region.js');
   const { manifest, readGz } = await import('./tile-terrain.mjs');
-  const spec = terrainSpec(manifest(), true).tiles;
-  const list = spec.levels[0].cover2 || [];
-  if (!list.length) return;
-  assert.ok(list.every((n) => spec.levels[0].tiles.includes(n)), 'every c2 tile is a listed tile');
-  const asked = [];
-  const rd = (log) => async (rel) => { log.push(rel); return readGz(rel); };
-  const a = [], b = [];
-  const A = createTileStore(spec, { readGz: rd(a) }), B = createTileStore(spec, { readGz: rd(b), cover2: true });
+  const spec = terrainSpec(manifest()).tiles;
+  assert.equal(spec.levels[0].cover2, undefined, 'no cover2 list');
+  const a = [];
+  const A = createTileStore(spec, { readGz: async (rel) => { a.push(rel); return readGz(rel); } });
   const x = -40000, y = -20000;                       // Seoul: tile 2_2
-  await A.whenReady(x + 15000, y + 15000, 25000, 't'); await B.whenReady(x + 15000, y + 15000, 25000, 't');
-  assert.ok(a.some((f) => f.endsWith('2_2.c.rgba8.gz')) && !a.some((f) => f.includes('.c2.')), 'without cover2: c');
-  assert.ok(b.some((f) => f.endsWith('2_2.c2.rgba8.gz')) && !b.some((f) => f.endsWith('2_2.c.rgba8.gz')), 'with cover2: c2 in place of c');
-  let differs = 0;
-  for (let i = 0; i < 400; i++) {
-    const px = x + (i % 20) * 1500, py = y + Math.floor(i / 20) * 1500;
-    assert.equal(A.height(px, py), B.height(px, py));
-    assert.equal(A.water(px, py, 0), B.water(px, py, 0)); assert.equal(A.water(px, py, 1), B.water(px, py, 1));
-    if (A.cover(px, py, 2) !== B.cover(px, py, 2) || A.cover(px, py, 0) !== B.cover(px, py, 0)) differs++;
-    assert.ok(B.cover(px, py, 2) >= A.cover(px, py, 2) - 1e-9, 'the built-up share is never less than the old one');
-  }
-  assert.ok(differs > 20, `the cover differs at ${differs} of 400 points round Seoul`);
-  assert.equal(A.misses + B.misses, 0);
+  await A.whenReady(x + 15000, y + 15000, 25000, 't');
+  assert.ok(a.some((f) => f.endsWith('2_2.c.rgba8.gz')) && !a.some((f) => f.includes('.c2.')), 'c, never c2');
+  assert.ok(A.cover(x, y, 2) >= 0 && A.misses === 0);
 });

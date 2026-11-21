@@ -15,7 +15,6 @@ import * as THREE from '../../vendor/three.module.js';
 import { sunHorizontal, moonHorizontal, moonPhase, j2000ToEnuMatrix, galacticToEquatorial } from '../astro.js';
 import { runwayStateOf } from '../sim/weather.js';
 import { convergence } from './frame.js';
-import { eastAsiaOn } from './region.js';
 
 // v0.1.4's fixed afternoon sun: azimuth 230° true (south-west), 35° up.
 export const SUN_AZIMUTH_DEG = 230;
@@ -42,9 +41,9 @@ export function sunDirection(out = new THREE.Vector3()) {
 
 // v0.6.0 (briefs/V0-6-0.md, "The sky's north"): the map's north is the grid's, so a true azimuth turns by
 // the grid convergence at the camera (grid azimuth = true azimuth - convergence): -0.41° at
-// Gimpo, +7.13° at Haneda. Degrees; 0 with EAST_ASIA_ON off, so the flag-off sky is v0.5.8's.
+// Gimpo, +7.13° at Haneda. Degrees.
 export function skyNorthDeg(lonDeg) {
-  return eastAsiaOn() ? convergence(lonDeg) * 180 / Math.PI : 0;
+  return convergence(lonDeg) * 180 / Math.PI;
 }
 
 // ------------------------------------------------------------------ the light (pure)

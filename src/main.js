@@ -28,7 +28,8 @@ import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
 import { runwayStateOf } from './sim/weather.js';
-import { createTerrainLoader, eastAsiaOn } from './world/region.js';
+import { createTerrainLoader } from './world/region.js';
+import { REGION_ID, dataUrl, defaultPlan, planInRegion, regionOfSave, switchRegion, takeCarry, rememberRegion, airportShortName, regionName } from './world/regions.js';   // v0.7.0: one region a page
 
 const STEP = 1 / 120;
 const KT = 1.943844, FT = 3.28084, NM = 1852, DEG = Math.PI / 180;
@@ -90,12 +91,12 @@ async function boot() {
   if (params.get('view')) rig.viewId = params.get('view');
 
   ui.loadingText.textContent = 'Loading terrain and airports…';
-  const base = new URL('../data/', import.meta.url).href;
+  const base = dataUrl(import.meta.url, '../');   // v0.7.0: the page's region's folder (data/ for East Asia, data/europe/ for Europe)
   const [hf, rw, coast, , urban] = await Promise.all([
     hfMod.loadHeightfield(base), rwMod.loadAirports(base),
-    import('./world/region.js').then((m) => fetch(base + (m.EAST_ASIA_ON ? 'coast-region.json' : 'coast.json'))).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    import('./world/region.js').then((m) => m.loadLocalRules(base)),   // v0.6.0: the local rules (WMM, the country) installed before the first step; null at once with the region off
-    import('./world/region.js').then((m) => (m.EAST_ASIA_ON ? fetch(base + 'urban-region.json').then((r) => (r.ok ? r.json() : null)) : null)).catch(() => null),   // v0.6.3: the map's city areas and names (the region's map only)
+    fetch(base + 'coast-region.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    import('./world/region.js').then((m) => m.loadLocalRules(base)),   // v0.6.0: the local rules (WMM, the country) installed before the first step
+    fetch(base + 'urban-region.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),   // v0.6.3: the map's city areas and names
   ]);
   rw.setHeightfield(hf);
   // v0.6.0: the terrain loader (region.js): the tiles the flight reads, and the sim's waits.
@@ -395,7 +396,25 @@ async function boot() {
   const navKeyNow = () => (map.waypoints || []).join(';') + '|' + (dest ? dest.end.x + ',' + dest.end.y : '');
   const payloadOf = (p) => (p.pax || 0) * (sim.type.limits.PAX_KG || 84) + (p.cargoKg || 0);
 
+  // v0.7.0: a plan whose departure end is only landed on, or whose arrival end is only taken off from (runways.js's
+  // ONE_WAY; the setup never offers one, but a scenario saved by hand or before an end was marked can hold one): the
+  // same runway's other end where that is usable, else the airport's first that is, a standby runway's last. Only
+  // an end with a `use` is ever changed, so East Asia's plans come back as they are.
+  function usablePlan(p) {
+    const fix = (icao, ident, bad) => {
+      const r = icao && ident ? runwayEnds(icao, ident) : null;
+      if (!r || !bad(r.end.use)) return ident;
+      if (!bad(r.other.use)) return r.other.ident;
+      const ends = (r.airport.runways || []).flatMap((rw) => rw.ends).filter((e) => !bad(e.use));
+      return (ends.find((e) => e.use !== 'standby') || ends[0] || r.end).ident;
+    };
+    const dep = fix(p.origin, p.depRunway, (u) => u === 'landing' || u === 'closed');
+    const arr = fix(p.dest, p.arrRunway, (u) => u === 'takeoff' || u === 'closed');
+    return dep === p.depRunway && arr === p.arrRunway ? p : { ...p, depRunway: dep, arrRunway: arr };
+  }
+
   function startFlight(p, { keepClock = false } = {}) {
+    p = usablePlan(p);
     plan = p;
     useType(p.design || p.type);
     // v0.4.0: the plan's weather, before the aircraft is placed (the reset and the trim read the wind).
@@ -421,7 +440,7 @@ async function boot() {
       gate.clear();
       world.traffic?.setPlayerStand(p.origin, null);
       // v0.6.2: no 15 nm final to a circling-only end (the setup won't offer one; a check's URL might): the runway instead
-      if (p.start === 'final' && dest && !dest.end.circling) placeOnFinal(null);
+      if (p.start === 'final' && dest && !dest.end.circling && dest.end.use !== 'takeoff' && dest.end.use !== 'closed') placeOnFinal(null);   // (v0.7.0: nor to an end nothing lands on)
       else placeOnRunway(p.origin, p.depRunway, null);
     }
     sim.setLocalQnh();   // v0.4.0: the altimeter set to the day's QNH before the flight, as a crew sets it (1013.25 in calm)
@@ -449,7 +468,7 @@ async function boot() {
     setPaused(true, true);
     input.setEnabled(false);
     const last = plan || store.load('lastflight', null);
-    const defaults = { ...(last || { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' }) };
+    const defaults = { ...(last && planInRegion(last) ? last : defaultPlan()) };   // (v0.7.0: the region's first flight; a last flight from another region doesn't count)
     const at = arrivedAt();
     if (at) Object.assign(defaults, { origin: at.icao, start: 'gate', stand: at.stand, depRunway: '' });
     if (!defaults.type) defaults.type = sim.type.id;   // a plan from before v0.3.0
@@ -555,12 +574,20 @@ async function boot() {
   function loadScenario(id) {
     const rec = scenarios?.get(id);
     if (!rec) { toast('That scenario could not be read'); menu.refresh(); return; }
+    // v0.7.0: a scenario of another region: its state's map coordinates are that region's, so the page reloads into
+    // it and loads the scenario there (regions.js's switchRegion(); the boot's takeCarry() below).
+    const where = regionOfSave(scenarios.entry(id) || rec);
+    if (where !== REGION_ID) {
+      ui.loading.hidden = false; ui.loadingText.textContent = `Opening ${regionName(where)}…`;
+      if (!switchRegion(where, { load: id })) { ui.loading.hidden = true; toast('That scenario belongs to a region this build doesn’t have'); }
+      return;
+    }
     current = { id: rec.id, name: rec.name };
     hideMenu();
     const st = rec.state;
     try {
       if (!st || st.fresh || !st.sim) {
-        startFlight(st?.plan || { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway', pax: 190, cargoKg: 1500, fuelKg: 4000, waypoints: [] });
+        startFlight(st?.plan || { ...defaultPlan(), pax: 190, cargoKg: 1500, fuelKg: 4000, waypoints: [] });
         if (!st?.plan?.time && st?.clock) clock.load(st.clock);   // the migrated Scenario 1: the afternoon
         saveNow('load fresh');
       } else {
@@ -580,7 +607,7 @@ async function boot() {
     const last = store.load('lastflight', null);
     // Decision 4: a new scenario starts clear, whatever the last flight flew in. v0.5.2: from the warehouse's Fly it,
     // with that design picked.
-    const from = last ? { ...last, weather: 'clear' } : { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07', start: 'runway' };
+    const from = last && planInRegion(last) ? { ...last, weather: 'clear' } : defaultPlan();
     const p = await setup.show(design ? { ...from, design, type: design.base } : from,
       { title: 'New scenario', name: scenarios ? scenarios.defaultName() : 'Scenario 1', nameField: true, cancel: true });
     if (!p) { menu.show(); menu.refresh(); return; }
@@ -645,6 +672,7 @@ async function boot() {
     if (!dest) { toast('No destination runway set'); return; }
     // v0.6.2: Gimhae's 18L and 18R are flown by a circle from the approach to 36: their straight-in final meets the hills.
     if (dest.end.circling) { toast(circlingNote(dest), 6000); return; }
+    if (dest.end.use === 'takeoff' || dest.end.use === 'closed') { toast(`${dest.airport.shortName || dest.airport.icao} ${dest.end.ident} is ${dest.end.use === 'takeoff' ? 'for take-offs only' : 'not in use'}: change the runway on the map for a final.`, 6000); return; }   // v0.7.0 (runways.js ONE_WAY)
     fadeThen(() => {
       const s = sim.state;
       // The load as it is now (v0.3.2: the Weight window may have changed it from the plan's).
@@ -657,9 +685,8 @@ async function boot() {
   }
 
   function jumpTo(sample) {
-    // v0.6.0: the target's tiles load behind the fade, and the fade waits for them (with the
-    // region off they are all resident: no wait, v0.5.8's timing).
-    const tilesIn = terrainLoader.whenReadyAt(sample.x, sample.y), ready = eastAsiaOn() ? tilesIn : null;
+    // v0.6.0: the target's tiles load behind the fade, and the fade waits for them.
+    const tilesIn = terrainLoader.whenReadyAt(sample.x, sample.y), ready = tilesIn;
     fadeThen(() => {
       sim.restore(sample.snap, { keepWeather: true });
       world.ensureNear?.(sim.state.pos.x, sim.state.pos.y);   // v0.6.0: behind the fade
@@ -680,6 +707,7 @@ async function boot() {
     if (landed && sim.state.onGround) return { ok: false, error: 'You’ve landed. A new flight (Esc → New flight) starts from here.' };
     const d = runwayEnds(icao, ident);
     if (!d) return { ok: false, error: `${icao} has no runway ${ident}` };
+    if (d.end.use === 'takeoff' || d.end.use === 'closed') return { ok: false, error: `${icao} ${ident} is ${d.end.use === 'takeoff' ? 'for take-offs only' : 'not in use'}` };   // v0.7.0 (runways.js ONE_WAY)
     const same = dest && d.end === dest.end;
     plan.dest = icao; plan.arrRunway = ident; plan.waypoints = [];
     dest = d; destOther = d.other;
@@ -1336,11 +1364,14 @@ async function boot() {
   const menu = createMenu($('menu-root'), {
     version: VERSION.label,
     // v0.5.7: the home page's card names the airports ("En route to Jeju"): the data's shortName, else its name made short
-    place: (icao) => { const a = byIcao(icao); return a ? (a.shortName || shortPlace(a.name)) : null; },
+    // (v0.7.0: an airport of another region, which this page hasn't loaded, by the index of every region's: "Heathrow")
+    place: (icao) => { const a = byIcao(icao); return a ? (a.shortName || shortPlace(a.name)) : (airportShortName(icao) !== icao ? airportShortName(icao) : null); },
     scenarios: scenarios || { list: () => [], rename: () => ({ ok: false, error: 'storage' }), duplicate: () => ({ ok: false, error: 'storage' }), remove: () => false, newest: () => null },
     onContinue: (id) => loadScenario(id),
     onLoad: (id) => loadScenario(id),
     onNew: () => newScenario(),
+    // v0.7.0: New scenario in another region: reload into it, and open its setup there.
+    onNewIn: (region) => { ui.loading.hidden = false; ui.loadingText.textContent = `Opening ${regionName(region)}…`; if (!switchRegion(region, { newScenario: true })) ui.loading.hidden = true; },
     onFlyDesign: (d) => newScenario(d),   // v0.5.2: the warehouse's Fly it
     keys: keysApi,                        // v0.5.6: the parts' keys, in the warehouse
     onLogbook: () => openLogbook(false),
@@ -1455,6 +1486,7 @@ async function boot() {
 
   // ---- Test hooks (used by tests/browser-*.mjs) ----
   window.__fs = {
+    region: REGION_ID,   // v0.7.0
     sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, scene, menu, setup, logbook, settingsPage, controlsPage, hud,   // v0.6.2: hud for checks
     get aircraft() { return aircraft; }, get cockpit() { return cockpit; }, useType,
     get synth() { return synth; },
@@ -1477,8 +1509,8 @@ async function boot() {
   };
 
   if (TEST && params.get('origin')) {
-    startFlight({ origin: params.get('origin'), depRunway: params.get('dep') || '14R', dest: params.get('dest') || 'RKPC',
-      arrRunway: params.get('arr') || '07', start: params.get('start') || 'runway', stand: params.get('stand') || null, pax: 180, cargoKg: 2000,
+    startFlight({ origin: params.get('origin'), depRunway: params.get('dep') || defaultPlan().depRunway, dest: params.get('dest') || defaultPlan().dest,
+      arrRunway: params.get('arr') || defaultPlan().arrRunway, start: params.get('start') || 'runway', stand: params.get('stand') || null, pax: 180, cargoKg: 2000,
       fuelKg: Number(params.get('fuel')) || 7500, waypoints: [], type: params.get('type') || undefined,
       // v0.5.0: a design for the checks, as JSON (sim/designs.js's shape)
       ...(params.get('design') ? (() => { const d = JSON.parse(params.get('design')); return { design: d, type: d.base }; })() : {}) });
@@ -1486,7 +1518,12 @@ async function boot() {
     // The main menu (v0.5.7: line art, no 3D): nothing renders or steps behind it (PLAN.md → CPU at runtime).
     paused = true;
     showMenu();
+    // v0.7.0: what a reload from another region carried here: a scenario to load, or New scenario's setup.
+    const carry = takeCarry();
+    if (carry?.load) loadScenario(carry.load);
+    else if (carry?.newScenario) newScenario();
   }
+  if (!TEST) rememberRegion();   // the next visit opens in this region (a test page's ?region= isn't remembered)
 }
 
 boot().catch(fail);

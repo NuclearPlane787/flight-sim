@@ -10,7 +10,7 @@ import { tiledTerrain, manifest, readGz, readJson, DATA } from './tile-terrain.m
 
 const m = manifest();
 
-test('a path from near Gimpo: tiles by chunk = every tile at once, 0 misses', { skip: !m.tiles }, async () => {
+test('a path from near Gimpo: tiles by chunk = every tile at once, 0 misses', { skip: !m.tilesRegion }, async () => {
   const { hf: full, airports } = await tiledTerrain({ layers: ['h'] });
   // Slow reads, so the chunks really wait.
   const slow = async (rel) => { await new Promise((r) => setTimeout(r, 2)); return readGz(rel); };

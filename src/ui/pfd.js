@@ -5,7 +5,7 @@
 
 import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from './common.js';
 import { inchesOf, metricAltOn } from './fcu.js';
-import { EAST_ASIA_ON, rulesAt } from '../world/region.js';
+import { rulesAt } from '../world/region.js';
 
 // The altitude the tapes show, ft: the altimeter's reading (state.altInd), which depends on the setting.
 export const shownAltFt = (st) => (st.altInd ?? st.pos.z) * FT;
@@ -19,10 +19,10 @@ export function baroLabel(view) {
 }
 // v0.6.0: the setting's digits as the PFDs show them: '29.92' when the BARO's unit is inches, else null (hPa).
 export const baroInchesText = (view) => (view?.sim?.baro?.inHg ? inchesOf(view.sim.baro.hpa).toFixed(2) : null);
-// v0.6.0: the selected altitude shows as a flight level at or above the transition level: Korea's FL140 as in
-// v0.5.8 (exactly 14,000 with the region's flag off), else the place's (China's 3,600 m: 11,811 ft).
+// v0.6.0: the selected altitude shows as a flight level at or above the transition level: the place's (Korea's
+// FL140, China's 3,600 m: 11,811 ft); 14,000 with no position.
 export function transLevelFt(st) {
-  if (!EAST_ASIA_ON || !st?.pos) return 14000;
+  if (!st?.pos) return 14000;
   const m = rulesAt(st.pos.x, st.pos.y).transLevelM;
   return Math.round(m / 0.3048);
 }

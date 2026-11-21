@@ -22,7 +22,7 @@ try {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(`${ROOT}games/flight-sim/tests/dev-world.html?hud=0&eastasia=1${cities}&x=${x0.toFixed(0)}&y=${y0.toFixed(0)}&alt=${alt}&hdg=${hdg.toFixed(1)}&pitch=-9`);
+  await page.goto(`${ROOT}games/flight-sim/tests/dev-world.html?hud=0&eastasia=1${cities}&x=${x0.toFixed(0)}&y=${y0.toFixed(0)}&alt=${alt}&hdg=${hdg.toFixed(1)}&pitch=-9${process.env.E2E_EXTRA || ''}`);   // (v0.7.0: E2E_EXTRA '&region=europe', with FS_REGION=europe so toMap() here is Europe's)
   await page.waitForFunction(() => window.__dev && window.__dev.info, null, { timeout: 90000 });
   // Let the first window fill, then start.
   await page.waitForFunction(() => { const c = window.__dev.world.uniforms.__clip; return !c || !c.window.pending(); }, null, { timeout: 60000 });

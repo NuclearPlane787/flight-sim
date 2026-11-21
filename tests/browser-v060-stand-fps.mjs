@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { standList } from '../src/ground/gate-flow.js';
 import { standHeading } from '../src/world/traffic-layout.js';
 import { typeById } from '../src/sim/types.js';
+import { REGION, REGION_ID } from '../src/world/regions.js';
+import { canLand } from '../src/world/runways.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
@@ -25,15 +27,16 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   for (const icao of LIST) {
-    const ap = JSON.parse(readFileSync(path.join(here, `../data/airports/${icao}.json`), 'utf8'));
-    const rw = ap.runways.filter((r) => r.ends.some((e) => e.ils)).sort((p, q) => q.lengthM - p.lengthM)[0];
-    const arr = rw.ends.find((e) => e.ils).ident;
+    const ap = JSON.parse(readFileSync(path.join(here, '..', REGION.data, `airports/${icao}.json`), 'utf8'));   // v0.7.0: the run's region's folder
+    const rw = ap.runways.filter((r) => r.ends.some((e) => e.ils && canLand(icao, e.ident))).sort((p, q) => q.lengthM - p.lengthM)[0];
+    const arr = rw.ends.find((e) => e.ils && canLand(icao, e.ident)).ident;   // (v0.7.0: an end that is landed on: runways.js ONE_WAY)
     for (const st of ap.stands) if (!(st.leadIn && st.leadIn.length > 1)) { st.hdgGridDeg = ((standHeading(ap, st) * 180) / Math.PI + 360) % 360; st.hdgFixed = true; }
     const offered = standList(ap, typeById('a321neo')); const want = (offered.find((x) => x.gate) || offered[0]).ref;   // (an airport with no gates mapped: its first stand; v0.6.1, Yancheng)
     await page.goto(`${BASE}?test&eastasia=1&cities=1&ground=${GROUND}&origin=${icao}&dep=${arr}&dest=${icao}&arr=${arr}&start=gate&stand=${encodeURIComponent(want)}&view=orbit${process.env.E2E_EXTRA || ''}`);
     await page.waitForFunction(() => window.__fs && window.__fs.gate && window.__fs.gate.phase === 'parked' && window.__fs.frames > 30, null, { timeout: 60000 });
     const out = [];
-    for (const [tod, hourUtc] of [['day', 3], ['night', 14]]) {
+    // (12:00 and 23:00 in Korea and Japan; v0.7.0, Europe: 12:00 and 21:00 UTC, midday and night there)
+    for (const [tod, hourUtc] of (REGION_ID === 'europe' ? [['day', 12], ['night', 21]] : [['day', 3], ['night', 14]])) {
       await page.evaluate((ms) => window.__fs.clock.set(ms), Date.UTC(2026, 10, 19, hourUtc, 0, 0));
       await page.waitForTimeout(2500);
       const r = await page.evaluate(async () => {

@@ -24,24 +24,35 @@ from bake_common import (CACHE, DATA, EXTRA_DEM90, NAT, RAW, cell_centres, heigh
 
 
 def load_tiles(paths):
-    """{(lat, lon): array (n+1, n+1)} with one extra row (south) and column (east),
+    """{(lat, lon): array (nr+1, nc+1)} with one extra row (south) and column (east),
     borrowed from the neighbouring tiles so bilinear sampling crosses tile edges.
-    Copernicus tiles are PixelIsPoint: pixel (r, c) is at (lat+1 - r/n, lon + c/n)."""
+    Copernicus tiles are PixelIsPoint: pixel (r, c) is at (lat+1 - r/nr, lon + c/nc).
+    v0.7.0: west (W) and south (S) names; from 50 N the tiles are narrower (1200 x 800 at GLO-90),
+    so a south neighbour of another width gives its top row resampled linearly to this tile's
+    columns (square tiles, all of East Asia's, take exactly the old path)."""
     raw = {}
     for p in paths:
-        m = re.search(r'_N(\d+)_00_E(\d+)_00_DEM', os.path.basename(p))
-        raw[(int(m.group(1)), int(m.group(2)))] = tifffile.imread(p).astype(np.float32)
+        m = re.search(r'_([NS])(\d+)_00_([EW])(\d+)_00_DEM', os.path.basename(p))
+        la = int(m.group(2)) * (1 if m.group(1) == 'N' else -1)
+        lo = int(m.group(4)) * (1 if m.group(3) == 'E' else -1)
+        raw[(la, lo)] = tifffile.imread(p).astype(np.float32)
     tiles = {}
     for (la, lo), a in raw.items():
-        n = a.shape[0]
-        b = np.zeros((n + 1, n + 1), np.float32)
-        b[:n, :n] = a
+        n, nc = a.shape
+        b = np.zeros((n + 1, nc + 1), np.float32)
+        b[:n, :nc] = a
         s = raw.get((la - 1, lo))
-        b[n, :n] = s[0] if s is not None else a[-1]
+        if s is not None and s.shape[1] != nc:
+            s = s[:1]
+            row = np.interp(np.arange(nc) / nc, np.arange(s.shape[1]) / s.shape[1], s[0]).astype(np.float32)
+            s = row[None, :]
+        b[n, :nc] = s[0] if s is not None else a[-1]
         e = raw.get((la, lo + 1))
-        b[:n, n] = e[:, 0] if e is not None else a[:, -1]
+        if e is not None and e.shape[0] != n:
+            e = None
+        b[:n, nc] = e[:, 0] if e is not None else a[:, -1]
         se = raw.get((la - 1, lo + 1))
-        b[n, n] = se[0, 0] if se is not None else b[n - 1, n]
+        b[n, nc] = se[0, 0] if se is not None else b[n - 1, nc]
         tiles[(la, lo)] = b
     return tiles
 
@@ -53,17 +64,18 @@ def sample_tiles(tiles, lat, lon):
     out = np.full(lat.shape, np.nan, np.float32)
     tla = np.floor(lat).astype(int)
     tlo = np.floor(lon).astype(int)
-    key = tla * 1000 + tlo
+    key = (tla + 100) * 1000 + (tlo + 500)       # v0.7.0: offsets so west/south keys decode
     for k in np.unique(key):
-        t = tiles.get((k // 1000, k % 1000))
+        t = tiles.get((k // 1000 - 100, k % 1000 - 500))
         if t is None:
             continue
         sel = key == k
         n = t.shape[0] - 1
+        nc = t.shape[1] - 1
         r = (tla[sel] + 1 - lat[sel]) * n
-        c = (lon[sel] - tlo[sel]) * n
+        c = (lon[sel] - tlo[sel]) * nc
         r0 = np.clip(np.floor(r).astype(int), 0, n - 1)
-        c0 = np.clip(np.floor(c).astype(int), 0, n - 1)
+        c0 = np.clip(np.floor(c).astype(int), 0, nc - 1)
         fr = (r - r0).astype(np.float32)
         fc = (c - c0).astype(np.float32)
         v = (t[r0, c0] * (1 - fr) * (1 - fc) + t[r0, c0 + 1] * (1 - fr) * fc

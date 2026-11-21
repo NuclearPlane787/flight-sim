@@ -27,7 +27,7 @@ const keyListeners = [];
 globalThis.document = { createElement: makeEl };
 globalThis.window = { addEventListener(t, f) { if (t === 'keydown') keyListeners.push(f); } };
 
-const { setEastAsia, setGeoRules, rulesAt, countryAt } = await import('../src/world/region.js');
+const { setGeoRules, rulesAt, countryAt } = await import('../src/world/region.js');
 const { createGeoRules } = await import('../src/world/geo-rules.js');
 const { inHgToHpa, hpaToInHg, STD_INHG_HPA, HPA_PER_INHG } = await import('../src/sim/atmosphere.js');
 const { createSim } = await import('../src/sim/sim.js');
@@ -51,7 +51,7 @@ const [HND, PVG, GMP] = ['RJTT', 'ZSPD', 'RKSS'].map(originOf);
 const viaJson = (o) => JSON.parse(JSON.stringify(o));
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b} (±${tol})`);
 const wx = (o) => ({ ...calmWeather(), preset: 'custom', ...o });
-const flag = (on, fn) => { setEastAsia(on); try { return fn(); } finally { setEastAsia(false); } };
+const flag = (on, fn) => fn();   // (v0.7.0: v0.6.0's region flag is gone, the region always on; its flag-off cases went)
 
 // A sim in the air at (x, y), at altitude zM (true; in calm air with the baro standard, the reading).
 function aloft([x, y], zM, { hdg = 0 } = {}) {
@@ -65,7 +65,7 @@ const tick = (s, vd) => {
   s.step(1 / 120); s.events.length = 0;
 };
 
-test('the places: Haneda is Japan, Pudong China, Gimpo Korea, and with the flag off everywhere is Korea', () => {
+test('the places: Haneda is Japan, Pudong China, Gimpo Korea', () => {
   flag(true, () => {
     assert.equal(countryAt(...HND), 'JP');
     assert.equal(countryAt(...PVG), 'CN');
@@ -74,8 +74,7 @@ test('the places: Haneda is Japan, Pudong China, Gimpo Korea, and with the flag 
     assert.equal(rulesAt(...PVG).transAltM, 3000);
     assert.equal(rulesAt(...PVG).transLevelM, 3600);
   });
-  assert.equal(countryAt(...HND), 'KR');
-  assert.equal(rulesAt(...PVG).transAltM, 14000 * 0.3048, 'the very double v0.5.8 used');
+  // (v0.7.0: the flag-off assertions went: Haneda Korea, Pudong's transition 14,000 ft.)
 });
 
 test('inches of mercury: the conversions, and 29.92 is 1013.21 hPa', () => {
@@ -155,16 +154,6 @@ for (const [name, create, metricK] of [['FCU', createFcu, 'metric'], ['MCP', cre
     keyListeners.length = 0;
   }));
 
-  test(`${name}: with the flag off, no new buttons and v0.5.8's steps`, () => {
-    const s = strip(create, { hpa: 1013.25, std: false });
-    assert.ok(!s.kinds.includes('unit') && !s.kinds.includes(metricK), s.kinds.join(','));
-    s.wheel(1);
-    assert.deepEqual(s.calls.at(-1), ['setBaro', 1014]);
-    s.click(); s.panel.update(s.view);
-    for (const k of '29.92') s.key(k);   // the point closes the window, as in v0.5.8 (not a key the window takes)
-    assert.deepEqual(s.calls.at(-1), ['setBaro', 1014]);
-    keyListeners.length = 0;
-  });
 }
 
 test('the sim: the unit is the pilot\'s, Shift+B sets the local QNH in the local unit', () => flag(true, () => {
@@ -226,32 +215,14 @@ test('the alert at 3,000 m climbing and 3,600 m descending in China (Korea: 14,0
   assert.equal(kd.state.baroAlert, true, 'Korea: STD descending below FL140');
 }));
 
-test('the flag off: Haneda and Pudong are Korea (the alert at 14,000 ft, hPa, no metres), as v0.5.8', () => {
-  const p = aloft(PVG, 3150);
-  p.setWeather(wx({ qnh: 1020 })); p.setLocalQnh(); tick(p, -8);
-  assert.equal(p.state.baroAlert, false);
-  assert.deepEqual(p.baro, { hpa: 1020, std: false });
-  const h = aloft(HND, 14500 * FT);
-  h.setWeather(wx({ qnh: 1014.9 })); h.setLocalQnh(); tick(h);
-  assert.deepEqual(h.baro, { hpa: 1014.9, std: false }, 'no inches with the flag off');
-  assert.equal(h.state.baroAlert, true);
-  const view = { state: p.state, ap: { altFt: 10000 }, sim: p };
-  assert.equal(metricAltOn(view), false);
-  toggleMetricAlt(view);
-  assert.equal(metricAltOn(view), false, 'the toggle does nothing with the flag off');
-  assert.equal(transLevelFt(p.state), 14000);
-  assert.equal(baroText(h.baro), '1015');
-});
-
-test('the METAR line: Korea as now, Japan Q1014 ... RMK A2997, China\'s wind in MPS; flag off as v0.5.8', () => {
+test('the METAR line: Korea as now, Japan Q1014 ... RMK A2997, China\'s wind in MPS', () => {
   const rain = normalizeWeather(wx({ wind: { fromDeg: 250, kt: 15, gustKt: 25 }, visM: 4000, tempC: 12, qnh: 1008,
     precip: { kind: 'rain', rate: 0.2 }, clouds: [{ okta: 6, baseFt: 1200, topFt: 3000 }, { okta: 8, baseFt: 3000, topFt: 8000 }] }));
   const jp = normalizeWeather(wx({ wind: { fromDeg: 220, kt: 8 }, qnh: 1014.9, tempC: 20 }));
   const kr0 = metarOf(rain, 'RKPC'), cal0 = metarOf(calmWeather(), 'RKSI'), jp0 = metarOf(jp, 'RJTT'), cn0 = metarOf(jp, 'ZSPD');
   assert.equal(kr0, 'RKPC 25015G25KT 4000 -RA BKN012 OVC030 12/10 Q1008');
   assert.equal(cal0, 'RKSI 00000KT CAVOK 15/07 Q1013');
-  assert.equal(jp0, 'RJTT 22008KT CAVOK 20/12 Q1014', 'flag off: Korea\'s form everywhere');
-  assert.equal(cn0, 'ZSPD 22008KT CAVOK 20/12 Q1014');
+  // (v0.7.0: the flag-off assertions on jp0 and cn0, Korea's form at Haneda and Pudong, went.)
   flag(true, () => {
     assert.equal(metarOf(rain, 'RKPC'), kr0);
     assert.equal(metarOf(calmWeather(), 'RKSI'), cal0);
@@ -301,23 +272,6 @@ test('the PFDs: inches as 29.92 (Airbus QNH 29.92, Boeing 29.92 IN), metres in C
   assert.equal(metricAlt(vh), null, 'Japan: its own default');
   assert.notEqual(metricAlt(vp), null, 'back in China: on by itself again');
 }));
-
-test('the flag off: the PFDs draw v0.5.8\'s text at Pudong (no metres, 1013 HPA, FL from 14,000 ft)', () => {
-  const draw = (make, view) => {
-    const calls = { text: [] };
-    const ctx = new Proxy({ fillText: (t) => calls.text.push(String(t)), measureText: (t) => ({ width: String(t).length * 10 }), createLinearGradient: () => ({ addColorStop() {} }) },
-      { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
-    make({ ctx, w: 1000, h: 1000, begin() {} }).draw(view, 0);
-    return calls.text;
-  };
-  const pvg = aloft(PVG, 3000); tick(pvg);
-  const vq = { state: pvg.state, ap: { altFt: 12000 }, sim: pvg };
-  const a = draw(createPfd, vq), b = draw(createBoeingPfd, vq);
-  assert.ok(!a.includes('M') && !a.some((t) => / M$/.test(t)) && !b.some((t) => / M$/.test(t)));
-  assert.ok(a.includes('12000'), 'not a flight level below 14,000 ft');
-  assert.ok(b.includes('1013 HPA'));
-  assert.deepEqual(baroLabel(vq), { std: false, hpa: 1013 });
-});
 
 test('a snapshot round trip with the unit set: restores IN and flies on exactly; a save without it is hPa', () => flag(true, () => {
   const a = aloft(HND, 3000);

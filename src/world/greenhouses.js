@@ -18,6 +18,8 @@
 // origin"), never from float32 map metres.
 
 import * as THREE from '../../vendor/three.module.js';
+import { REGION } from './regions.js';
+import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { FINE_GLSL, FINE_PX, ihash, glassPatch } from './finecover.js';
 import { coverReader } from './clipwindow.js';
 
@@ -40,7 +42,7 @@ export const GH_MAX_AGL = 1200;                     // m above the ground: nothi
 export const GH_SINK = 0.12;                        // m the tunnel stands below the ground's height
 export const GH_CAPACITY = 20000;                   // slots the buffer holds (280k triangles at most)
 export const GH_TRIS = 14;                          // triangles a segment
-const X0 = -400000, Y0 = -400000;                   // the fine lattice's origin (finecover.js)
+const X0 = REGION.lattice.x0, Y0 = REGION.lattice.y0;   // the fine lattice's origin (finecover.js; -400 km in East Asia, 0 in Europe)
 
 // The block's direction, as the shader computes it (float32 angle), and its cos and sin.
 export function blockDir(bx, by) {
@@ -277,7 +279,7 @@ export function createGreenhouses(scene, uniforms, chunks, { fine = null } = {})
         vec2 m = sceneToMap(wp);
         float pw, zone;
         float raw = rawHeight(m, pw);
-        float gh = max(flattenRunways(m, raw, zone), 0.0);
+        float gh = ${seaFloor('flattenRunways(m, raw, zone)')};
         wp.y = gh - ${f(GH_SINK)} + position.y * hh;
         vec3 rel = wp - uCamPos;
         wp.y -= curveDrop(rel.xz);

@@ -4,8 +4,7 @@
 //   const lm = createLandmarks(scene, uniforms, chunks, { heightfield, renderer });
 //   each frame: lm.update({ camMap, origin, camScene, agl });   lm.stats; lm.dispose();
 //
-// Only with CITIES_ON (?cities=1); the ones outside Korea also need EAST_ASIA_ON (their ground
-// isn't there without it). Each model is built the first time the camera comes within BUILD_M of
+// Each model is built the first time the camera comes within BUILD_M of
 // it (a few thousand triangles, a few milliseconds), drawn within SHOW_M (a 600 m tower is still a
 // few pixels tall at 80 km), hidden beyond (no draw call), and released beyond RELEASE_M. One
 // shared material for the buildings, one mesh per landmark; at night one point draw per landmark
@@ -19,8 +18,8 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { toMap, EARTH_RADIUS } from './frame.js';
-import { EAST_ASIA_ON, CITIES_ON } from './region.js';
-import { MODELS } from './landmark-models.js';
+import { MODELS, EUROPE_MODELS } from './landmark-models.js';
+import { REGION_ID } from './regions.js';
 
 export const BUILD_M = 85000;
 export const SHOW_M = 80000;
@@ -135,10 +134,91 @@ for (const L of LANDMARKS) {
   }
 }
 
+// v0.7.0: Europe's landmarks (briefs/V0-7-0.md Part 6), in the brief's order: their own list, each `region: 'europe'`,
+// placed in Europe's frame (in East Asia's page their x, y are far off the map, and landmarkOn() keeps them off).
+// Figures as published: "(read 2026-11-21)" where the article was read tonight (its height and coordinates), the
+// rest as the articles give them, from memory, their positions to some tens of metres; [EST] marks what is estimated.
+const EU = (o) => ({ region: 'europe', ...o });
+export const EUROPE_LANDMARKS = [
+  // London
+  EU({ id: 'shard', city: 'london', country: 'GB', lat: 51.5045, lon: -0.0865, heightM: 309.6, footprintM: 40, brg: 0, floors: 72,
+    source: 'Wikipedia "The Shard" (read 2026-11-21, with its coordinates): 309.6 m, 72 floors, a tapering glass pyramid; plan size and the bearing [EST]' }),
+  EU({ id: 'westminster', city: 'london', country: 'GB', lat: 51.49952, lon: -0.12497, heightM: 98.5, footprintM: 145, brg: 10,
+    source: 'Wikipedia "Elizabeth Tower" (read 2026-11-21: 96 m, 51.5007 N 0.1245 W, which the model\'s tower sits on; the clock stage about 55 m up) and "Palace of Westminster" (from memory: the Victoria Tower 98.5 m, the Central Tower 91 m, about 265 m along the river); the palace\'s plan and the axis [EST] from the towers\' coordinates' }),
+  EU({ id: 'eye', city: 'london', country: 'GB', lat: 51.5033, lon: -0.1194, heightM: 135, footprintM: 64, brg: 25,
+    source: 'Wikipedia "London Eye" (read 2026-11-21, with its coordinates): 135 m, the wheel 120 m across, 32 capsules; the wheel\'s plane along the bank [EST]' }),
+  EU({ id: 'stpauls', city: 'london', country: 'GB', lat: 51.5138, lon: -0.0983, heightM: 111, footprintM: 85, brg: 0,
+    source: 'Wikipedia "St Paul\'s Cathedral" (read 2026-11-21, with its coordinates): 111 m to the cross, 158 m long; the drum\'s, dome\'s and towers\' sizes [EST]' }),
+  EU({ id: 'towerbridge', city: 'london', country: 'GB', lat: 51.5056, lon: -0.0753, heightM: 65, footprintM: 122, brg: 0,
+    source: 'Wikipedia "Tower Bridge" (read 2026-11-21, with its coordinates): towers 65 m, 290 m with the abutments (the model 240 m), main span 61 m, walkways 44 m above high water; the bearing [EST]' }),
+  // Paris
+  EU({ id: 'eiffel', city: 'paris', country: 'FR', lat: 48.858222, lon: 2.2945, heightM: 330, footprintM: 90, brg: 46,
+    source: 'Wikipedia "Eiffel Tower" (read 2026-11-21, with its coordinates): 330 m (antenna), base 125 m square, the top platform 276 m; the first and second floors at 57 and 115 m [EST: from memory]; the bearing from the Champ de Mars [EST]' }),
+  EU({ id: 'arc', city: 'paris', country: 'FR', lat: 48.873778, lon: 2.295028, heightM: 49.54, footprintM: 27, brg: 116,
+    source: 'Wikipedia "Arc de Triomphe" (read 2026-11-21, with its coordinates): 49.54 m high, 44.82 m wide, 22.21 m deep, the great arch 29.19 x 14.62 m, the transverse arches 18.68 x 8.44 m; the axis\'s bearing [EST]' }),
+  EU({ id: 'sacrecoeur', city: 'paris', country: 'FR', lat: 48.88671, lon: 2.34306, heightM: 84, footprintM: 48, brg: 0,
+    source: 'Wikipedia "Sacré-Cœur, Paris" (read 2026-11-21): the dome 83.33 m, the campanile 84 m, 85 m long, 35 m wide; the coordinates (from memory) and the small domes [EST]' }),
+  EU({ id: 'notredame', city: 'paris', country: 'FR', lat: 48.85306, lon: 2.35000, heightM: 96, footprintM: 68, brg: 112,
+    source: 'Wikipedia "Notre-Dame de Paris" (read 2026-11-21: 128 m long, 48 m wide, the coordinates): towers 69 m and the spire 96 m (rebuilt) [from memory]; the bearing [EST]' }),
+  EU({ id: 'grandearche', city: 'paris', country: 'FR', lat: 48.89264, lon: 2.23602, heightM: 110, footprintM: 80, brg: 122,
+    source: 'Wikipedia "La Grande Arche" (read 2026-11-21: a 110 m cube, turned 6.33 degrees): 110 m high, 108 m wide, 112 m deep, turned 6.33 degrees off the axis; the frame\'s thickness [EST]' }),
+  // Frankfurt
+  EU({ id: 'commerzbank', city: 'frankfurt', country: 'DE', lat: 50.11123, lon: 8.67436, heightM: 258.7, footprintM: 36, brg: 0, floors: 56,
+    source: 'Wikipedia "Commerzbank Tower" (read 2026-11-21): roof 258.7 m (the antenna to 300.1 m not modelled), 56 floors, a rounded triangle about 60 m a side; coordinates from the article; the crown\'s shape [EST]' }),
+  EU({ id: 'messeturm', city: 'frankfurt', country: 'DE', lat: 50.11222, lon: 8.65278, heightM: 256.5, footprintM: 30, brg: 0, floors: 63,
+    source: 'Wikipedia "Messeturm" (read 2026-11-21): 256.5 m (257 m roof in the infobox), top floor 228 m, coordinates from the article; 41 m square, the cylinder\'s heights [EST]' }),
+  EU({ id: 'europaturm', city: 'frankfurt', country: 'DE', lat: 50.13528, lon: 8.65472, heightM: 337.5, footprintM: 31, brg: 0,
+    source: 'Wikipedia "Europaturm" (read 2026-11-21): 337.5 m with the antenna, "59 m" its widest part, coordinates from the article; the pod\'s heights [EST]' }),
+  // Madrid: the four towers and Caleido (their order along the Castellana and spacing [EST])
+  EU({ id: 'cepsa', city: 'madrid', country: 'ES', lat: 40.47556, lon: -3.68778, heightM: 248.3, footprintM: 34, brg: 0, floors: 45,
+    source: 'Wikipedia "Torre Cepsa" (read 2026-11-21): 248.3 m (CTBUH), coordinates from the article; two cores joined by an arch at the top' }),
+  EU({ id: 'pwc', city: 'madrid', country: 'ES', lat: 40.47667, lon: -3.68778, heightM: 236, footprintM: 26, brg: 0, floors: 52,
+    source: 'Wikipedia "Torre PwC" (read 2026-11-21): 236 m, coordinates from the article; the crown about 30 m [EST]' }),
+  EU({ id: 'cristal', city: 'madrid', country: 'ES', lat: 40.47806, lon: -3.68722, heightM: 249, footprintM: 31, brg: 0, floors: 52,
+    source: 'Wikipedia "Torre de Cristal" (read 2026-11-21): 249 m architectural (tip 250 m), top floor 210 m, coordinates from the article; a garden under glass at the top' }),
+  EU({ id: 'emperador', city: 'madrid', country: 'ES', lat: 40.47889, lon: -3.68667, heightM: 230, footprintM: 28, brg: 0, floors: 57,
+    source: 'Wikipedia "Torre Espacio" (now Torre Emperador Castellana; read 2026-11-21): 230 m roof (the area\'s article also gives 224.5 m), coordinates from the article; square at the foot, two arcs at the top' }),
+  EU({ id: 'caleido', city: 'madrid', country: 'ES', lat: 40.4745, lon: -3.6881, heightM: 181, footprintM: 32, brg: 0, floors: 36,
+    source: 'Wikipedia "Cuatro Torres Business Area" (read 2026-11-21): Caleido 181 m; its position (south of Torre Cepsa) [EST: no coordinates read], the slab\'s plan and the frame on top [EST]' }),
+  EU({ id: 'kio', city: 'madrid', country: 'ES', lat: 40.46639, lon: -3.68778, heightM: 114, footprintM: 76, brg: 0, floors: 26,
+    parts: [[-55, 0, 25], [55, 0, 25]],
+    source: 'Wikipedia "Gate of Europe" (read 2026-11-21): 114 m roof, 15 degrees, coordinates from the article; the bases\' spacing [EST]' }),
+  // Zurich
+  EU({ id: 'grossmunster', city: 'zurich', country: 'CH', lat: 47.37014, lon: 8.54399, heightM: 64, footprintM: 40, brg: 90,
+    source: 'Wikipedia "Grossmünster" (read 2026-11-21): coordinates; the towers\' height not given there: 64 m [EST], the nave\'s size [EST]' }),
+  EU({ id: 'primetower', city: 'zurich', country: 'CH', lat: 47.38600, lon: 8.51720, heightM: 126, footprintM: 30, brg: 15, floors: 36,
+    source: 'Wikipedia "Prime Tower" (read 2026-11-21): 126 m roof, coordinates; an irregular octagon widening upwards, plan and bearing [EST]' }),
+  // Munich
+  EU({ id: 'olympiaturm', city: 'munich', country: 'DE', lat: 48.17444, lon: 11.55361, heightM: 291, footprintM: 18, brg: 0,
+    source: 'Wikipedia "Olympiaturm" (read 2026-11-21): 291 m, the observation platform at 190 m, the restaurant at 182 m, coordinates; the pod\'s rings [EST]' }),
+  EU({ id: 'frauenkirche', city: 'munich', country: 'DE', lat: 48.13861, lon: 11.57389, heightM: 98.5, footprintM: 61, brg: 90,
+    source: 'Wikipedia "Frauenkirche, Munich" (read 2026-11-21, with its coordinates): towers 98.57 m and 98.45 m with onion domes, the church 109 m long and 40 m wide; the roof\'s ridge [EST]' }),
+  // Barcelona
+  EU({ id: 'sagrada', city: 'barcelona', country: 'ES', lat: 41.40369, lon: 2.17433, heightM: 172.5, footprintM: 60, brg: -45,
+    source: 'Wikipedia "Sagrada Família": (read 2026-11-21): the Tower of Jesus Christ 172.5 m, structurally completed on 20 February 2026; coordinates; Mary 138 m and the Evangelists 135 m [EST: not given there]; the bell towers\' heights, the plan and the bearing [EST]' }),
+  EU({ id: 'glories', city: 'barcelona', country: 'ES', lat: 41.40347, lon: 2.18966, heightM: 144.4, footprintM: 24, brg: 0, floors: 38,
+    source: 'Wikipedia "Torre Glòries" (read 2026-11-21): 144.44 m, 38 floors, a rounded bullet on an elliptical plan; the plan\'s size [EST]' }),
+  EU({ id: 'collserola', city: 'barcelona', country: 'ES', lat: 41.41722, lon: 2.11417, heightM: 288.4, footprintM: 47, brg: 0,
+    source: 'Wikipedia "Torre de Collserola" (read 2026-11-21): 288.4 m, the pod of 13 floors topping out at 152 m, coordinates; the floors\' spacing and the guys\' anchors [EST]' }),
+  // Rome
+  EU({ id: 'stpeters', city: 'rome', country: 'IT', lat: 41.90222, lon: 12.45381, heightM: 136.6, footprintM: 128, brg: 90,
+    source: 'Wikipedia "St. Peter\'s Basilica" (read 2026-11-21: the dome\'s top 136.6 m, 220 m long, 150 m wide, 41.90222 N 12.45333 E at the dome): 136.6 m, the facade 114.7 m wide and 45.5 m high; the model\'s centre 40 m east of the dome; the drum\'s sizes [EST]' }),
+  EU({ id: 'colosseum', city: 'rome', country: 'IT', lat: 41.8903, lon: 12.4922, heightM: 48, footprintM: 97, brg: -18,
+    source: 'Wikipedia "Colosseum" (read 2026-11-21, with its coordinates): 189 x 156 m, 48 m high, the arena 87 x 55 m; the long axis\'s bearing and the fallen south side\'s height [EST]' }),
+];
+export const EUROPE_CITY_BOXES = {
+  london: [51.40, -0.25, 51.60, 0.05], paris: [48.80, 2.20, 48.92, 2.42], frankfurt: [50.05, 8.58, 50.16, 8.75],
+  madrid: [40.38, -3.75, 40.50, -3.65], zurich: [47.33, 8.48, 47.42, 8.58], munich: [48.10, 11.50, 48.20, 11.62],
+  barcelona: [41.35, 2.08, 41.45, 2.23], rome: [41.85, 12.42, 41.94, 12.52],
+};
+for (const L of EUROPE_LANDMARKS) { const [x, y] = toMap(L.lat, L.lon); L.x = x; L.y = y; }
+// The page's region's list: what the runtime builds and the real centres leave out (East Asia's: LANDMARKS itself).
+export const REGION_LANDMARKS = REGION_ID === 'europe' ? EUROPE_LANDMARKS : LANDMARKS;
+
 // The real centres' extrusion leaves these out: one circle per tower, in map metres.
 export function landmarkFootprints() {
   const out = [];
-  for (const L of LANDMARKS) {
+  for (const L of REGION_LANDMARKS) {
     if (L.parts) for (const [dx, dy, r] of L.parts) out.push({ id: L.id, x: L.x + dx, y: L.y + dy, r });
     else out.push({ id: L.id, x: L.x, y: L.y, r: L.footprintM });
   }
@@ -147,6 +227,7 @@ export function landmarkFootprints() {
 
 // endH: a bridge's ground at its two ends (m; heightAt there when built), else 30 m.
 export function buildModel(L, endH = null) {
+  if (L.region === 'europe') return EUROPE_MODELS[L.id](L.brg);
   const f = MODELS[L.id];
   if (L.id === 'parc1') return f(L.brg, L.parts[1].slice(0, 2));
   if (L.id === 'lct') return f(undefined, L.brg);
@@ -163,8 +244,10 @@ export function bridgeEnds(L, heightAt) {
   return a0 <= 0 ? e : [e[1], e[0]];
 }
 
-// Is this landmark on in the scene now (the flags)?
-export const landmarkOn = (L) => CITIES_ON && (L.country === 'KR' || EAST_ASIA_ON);
+// Is this landmark on in the scene now? Every one since v0.7.0 (v0.6.0's flags held all but Korea's back).
+// v0.7.0: and only in its own region (a landmark with no `region` is East Asia's: the thirty of v0.6.x; in
+// another region's frame its latitude and longitude would land far off the map).
+export const landmarkOn = (L) => (L.region || 'east-asia') === REGION_ID;
 
 // ------------------------------------------------------------------ the shaders
 
@@ -328,7 +411,7 @@ export function createLandmarks(scene, uniforms, chunks, { heightfield = null, r
   const group = new THREE.Group();
   group.name = 'landmarks';
   let mat = null, lmat = null, added = false;
-  const items = LANDMARKS.map((L) => ({ L, state: 'none', mesh: null, pts: null, ground: 0, tris: 0, ms: 0 }));
+  const items = REGION_LANDMARKS.map((L) => ({ L, state: 'none', mesh: null, pts: null, ground: 0, tris: 0, ms: 0 }));
   const stats = { drawCalls: 0, triangles: 0, shown: 0, built: 0, lights: 0, buildMs: 0 };
 
   function build(it) {

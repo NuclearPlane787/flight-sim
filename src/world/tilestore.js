@@ -2,7 +2,7 @@
 // and samples them exactly as heightfield.js sampled Korea's one national grid.
 // Pure: no DOM, no three.js, so it runs in the page, in the prediction worker and in node.
 //
-//   const store = createTileStore(manifest.tiles, { base: 'data/', layers: ['h', 'w', 'c'] });
+//   const store = createTileStore(manifest.tilesRegion, { base: 'data/', layers: ['h', 'w', 'c'] });
 //   await store.whenReady(x, y, radius);   // the tiles within radius (m) of (x, y) resident
 //   store.height(x, y)                     // bilinear, heightScale units (as the old grid's)
 //   store.water(x, y, ch)                  // ch 0: sea, 1: inland distance bytes
@@ -36,10 +36,7 @@ export function createTileStore(spec, opts = {}) {
       I0: ext.i0, J0: ext.j0, I1: ext.i1, J1: ext.j1, listed: new Set(L.tiles),
       // The tiles baked at this level (with a file or open sea); the others in the extent read the
       // next level (the region's l0 rectangle has unbaked corners). Absent: every tile is baked.
-      covered: L.covered ? new Set(L.covered) : null,
-      // v0.6.0 Part 7: tiles with a second cover file (c2: South Korea's cover re-aggregated from
-      // the fine cover's source), read in place of c when the store is made with cover2.
-      cover2: opts.cover2 && L.cover2 ? new Set(L.cover2) : null };
+      covered: L.covered ? new Set(L.covered) : null };
     lv.mx0 = X0 + lv.I0 * lv.CELL; lv.mx1 = X0 + lv.I1 * lv.CELL;   // the extent in map metres
     lv.my0 = Y0 + lv.J0 * lv.CELL; lv.my1 = Y0 + lv.J1 * lv.CELL;
     return lv;
@@ -83,7 +80,7 @@ export function createTileStore(spec, opts = {}) {
       const jobs = [];
       if (wanted.has('h') && !t.h) jobs.push(read(base + 'h.i16.gz').then((b) => { if (b && b.byteLength === S2 * 2) t.h = new Int16Array(b); }, () => {}));
       if (wanted.has('w') && !t.w) jobs.push(read(base + 'w.rg8.gz').then((b) => { if (b && b.byteLength === S2 * 2) t.w = new Uint8Array(b); }, () => {}));
-      if (wanted.has('c') && !t.c) jobs.push(read(base + (lv.cover2 && lv.cover2.has(name) ? 'c2.rgba8.gz' : 'c.rgba8.gz')).then((b) => { if (b && b.byteLength === S2 * 4) t.c = new Uint8Array(b); }, () => {}));
+      if (wanted.has('c') && !t.c) jobs.push(read(base + 'c.rgba8.gz').then((b) => { if (b && b.byteLength === S2 * 4) t.c = new Uint8Array(b); }, () => {}));
       return Promise.all(jobs).then(() => {
         if (tiles.get(k) !== t) return t;        // evicted while loading
         const whole = (!wanted.has('h') || t.h) && (!wanted.has('w') || t.w) && (!wanted.has('c') || t.c);

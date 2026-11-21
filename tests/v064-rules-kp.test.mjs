@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { createGeoRules } from '../src/world/geo-rules.js';
-import { setEastAsia, setGeoRules, rulesAt, countryAt, COUNTRY_RULES } from '../src/world/region.js';
+import { setGeoRules, rulesAt, countryAt, COUNTRY_RULES } from '../src/world/region.js';
+
 import { toMap } from '../src/world/frame.js';
 import { metarOf, metarFormOf, presetWeather } from '../src/sim/weather-presets.js';
 import { zoneOfIcao } from '../src/clock.js';
@@ -16,7 +17,7 @@ const gz = (n) => { const b = zlib.gunzipSync(fs.readFileSync(new URL(n, D))); r
 const json = (n) => JSON.parse(fs.readFileSync(new URL(n, D), 'utf8'));
 const geo = createGeoRules({ magvar: { header: json('magvar.json'), values: gz('magvar.i16.gz') }, country: { header: json('country.json'), values: gz('country.u8.gz') }, krmask: { header: json('krmask.json'), values: gz('krmask.u8.gz') } });
 const FT = 0.3048;
-const on = (fn) => { setGeoRules(geo); setEastAsia(true); return fn(); };
+const on = (fn) => { setGeoRules(geo); return fn(); };   // (v0.7.0: v0.6.0's region flag is gone)
 
 test('North Korea\'s rules at Pyongyang and Wonsan: hPa and feet, 12,000 ft / FL130, UTC+9, metres per second', () => on(() => {
   for (const [name, lat, lon] of [['Pyongyang Sunan', 39.224, 125.67], ['Wonsan Kalma', 39.165, 127.488]]) {
@@ -44,8 +45,7 @@ test('a North Korean weather line: metres per second, Q in hPa; China\'s and Kor
   assert.match(line, /^ZKPY \d{5}(G\d{2})?MPS /, line);
   assert.match(line, / Q\d{4}/, line);
   assert.ok(!/RMK A\d{4}/.test(line));
-  setEastAsia(false);
-  try { assert.equal(metarFormOf('ZKPY'), 'kr'); assert.equal(zoneOfIcao('ZKPY').timeZone, 'Asia/Seoul'); assert.equal(rulesAt(...toMap(39.224, 125.67)).country, 'KR'); } finally { setEastAsia(true); }
+  // (v0.7.0: the flag-off assertions went: Korea's METAR form, Seoul's zone and Korea at Pyongyang.)
 }));
 
 test('the setup\'s lists: Japan\'s northern four after Fukuoka, North Korea between China and Russia', () => on(() => {

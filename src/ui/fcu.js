@@ -17,7 +17,7 @@
 
 import { clamp, wrap360 } from './common.js';
 import { bindKnobs } from './knobs.js';
-import { EAST_ASIA_ON, rulesAt } from '../world/region.js';
+import { rulesAt } from '../world/region.js';
 import { inHgToHpa, hpaToInHg } from '../sim/atmosphere.js';
 
 const WINDOWS = [
@@ -71,17 +71,17 @@ export function toggleBaroUnit(view) { const s = view?.sim; if (s?.baro && s.set
 // v0.6.0: the PFDs' metric altitude (Airbus's METRIC ALT, Boeing's MTRS). On by itself where the country's rules
 // say so (China), off elsewhere; a click on the button flips it, and the pilot's choice then holds until the
 // country under the aircraft changes, when it goes back to that country's default. A display choice only: it
-// isn't saved (a loaded flight starts from its place's default). Never on with the region's flag off.
+// isn't saved (a loaded flight starts from its place's default).
 const metric = { pick: null, country: null };
 export function metricAltOn(view) {
   const p = view?.state?.pos;
-  if (!EAST_ASIA_ON || !p) return false;
+  if (!p) return false;
   const r = rulesAt(p.x, p.y);
   if (r.country !== metric.country) { metric.country = r.country; metric.pick = null; }
   return metric.pick ?? r.metricAlt;
 }
-export function toggleMetricAlt(view) { if (EAST_ASIA_ON && view?.state?.pos) metric.pick = !metricAltOn(view); }
-export const metricUnitShown = () => EAST_ASIA_ON;   // the IN/HPA and METRIC ALT / MTRS buttons exist only then
+export function toggleMetricAlt(view) { if (view?.state?.pos) metric.pick = !metricAltOn(view); }
+export const metricUnitShown = () => true;   // the IN/HPA and METRIC ALT / MTRS buttons (v0.6.0's region only; always since v0.7.0)
 
 export function createFcu(root, hud) {
   const el = document.createElement('div');

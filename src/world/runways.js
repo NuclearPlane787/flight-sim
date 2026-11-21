@@ -11,6 +11,7 @@
 // (rounded to ~0.001°, so up to ~45 m off) keeps Gimpo, Jeju and Incheon usable.
 
 import { toMap, toGeo, convergence, magVar } from './frame.js';
+import { REGION_ID } from './regions.js';
 import { terrainSpec } from './region.js';
 
 const DEG = Math.PI / 180;
@@ -263,9 +264,43 @@ export function circleFrom(airport, ident) {
   return other;
 }
 
+// v0.7.0: runway ends used one way, from each AIP (briefs/V0-7-0.md's pitfall), as CIRCLING_ONLY is a table:
+//   'takeoff'  departures only (no approach to it: its ILS is cleared, no final start or Skip to final);
+//   'landing'  arrivals only (the setup doesn't offer it for a departure);
+//   'closed'   neither (the other end of a one-way runway);
+//   'standby'  usable both ways but only when the main runway is shut: listed last, never picked by default.
+// Frankfurt (AIP Germany, EDDF AD 2.13, read 2026-11-21: 07L/25R's TORA is "-", landings only; 18 has no LDA and
+// there is no row for 36: take-offs only, southward, and 36 never used). Madrid (AIP Spain, LEMD AD 2.12, read
+// 2026-11-21: 32R, 32L, 18L and 18R "not available for take-off"; 14L, 14R, 36R and 36L "not available for landing":
+// arrivals 32 and departures 36 in the north configuration, arrivals 18 and departures 14 in the south). Gatwick (UK
+// AIP, EGKK AD 2.20, read 2026-11-21: "Runway 08L/26R is a non-instrument runway and will only be used when Runway
+// 08R/26L is temporarily non-operational due to maintenance or incident"; "not available on request by pilots").
+// Orly (AIP France, LFPO AD 2.21, read 2026-11-21: "The RWY 02/20 is exceptionally used in case of: unavailability of
+// a main runway ...; strong Northbound or Southbound winds": a standby here. Its main runways have a preferred
+// direction each (west: take-offs 24, landings 25; east: take-offs 07, landings 06) but an ILS at all four ends, so
+// they stay both ways).
+export const ONE_WAY = {
+  EDDF: { 18: 'takeoff', 36: 'closed', '07L': 'landing', '25R': 'landing' },
+  LEMD: { '32R': 'landing', '32L': 'landing', '18L': 'landing', '18R': 'landing', '14L': 'takeoff', '14R': 'takeoff', '36L': 'takeoff', '36R': 'takeoff' },
+  EGKK: { '08L': 'standby', '26R': 'standby' },
+  LFPO: { '02': 'standby', 20: 'standby' },
+  // Barcelona (AIP Spain, LEBL AD 2.12 remark 1, read 2026-11-21: 20 "Not available for landing").
+  LEBL: { 20: 'takeoff' },
+  // Schiphol, [EST]: the Dutch eAIP couldn't be read in this run (it answers automated readers with a challenge).
+  // From general knowledge of its published use: 18R/36L (the Polderbaan) is landed on southward and taken off from
+  // northward only; 18L/36R (the Aalsmeerbaan) is taken off from southward and landed on northward only.
+  EHAM: { '18R': 'landing', '36L': 'takeoff', '18L': 'takeoff', '36R': 'landing' },
+};
+export const runwayUse = (icao, ident) => ONE_WAY[icao]?.[String(ident).toUpperCase()] || null;
+export const canTakeOff = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'landing' && u !== 'closed'; };
+export const canLand = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'takeoff' && u !== 'closed'; };
+const USE_NOTE = { takeoff: 'take-off only', landing: 'landing only', closed: 'not in use', standby: 'standby' };
+export const runwayUseNote = (icao, ident) => USE_NOTE[runwayUse(icao, ident)] || '';
+
 // Normalise and index a list of airport JSONs.
 export function createAirports(list, opts = {}) {
   const airports = list || [];
+  for (const a of airports) if (ONE_WAY[a.icao]) for (const r of a.runways || []) for (const e of r.ends) { const u = runwayUse(a.icao, e.ident); if (u) { e.use = u; if (!canLand(a.icao, e.ident)) e.ils = null; } }   // (v0.7.0: no ILS shown or tuned to an end nothing lands on)
   for (const a of airports) for (const r of a.runways || []) for (const e of r.ends) if (circlingOnly(a.icao, e.ident)) { e.circling = true; e.ils = null; }   // (v0.6.4: no ILS shown or tuned to an end with no straight-in path: Wonsan 33L's was an estimate; Gimhae's two have none)
   const rects = runwayRects(airports);
   const byIcao = new Map(airports.map((a) => [a.icao, a]));
@@ -296,6 +331,7 @@ export function createAirports(list, opts = {}) {
           lengthM: len, widthM: r.widthM, displacedM: disp,
           ldaM: len - disp,
           circling: !!e.circling,                           // v0.6.2: no straight-in approach (CIRCLING_ONLY)
+          use: e.use || null,                               // v0.7.0: 'takeoff' | 'landing' | 'closed' | 'standby' (ONE_WAY)
         };
       }
     }
@@ -337,10 +373,11 @@ export async function loadAirports(baseUrl, opts = {}) {
     try { const r = await fetch(new URL(rel, base).href); return r.ok ? await r.json() : null; } catch (e) { return null; }
   };
   const manifest = (await get('manifest.json')) || {};
-  // v0.6.0: Korea's three, and the region's eight behind EAST_ASIA_ON (region.js).
+  // v0.6.0: Korea's three, and the region's (region.js's terrainSpec()).
   const loaded = (await Promise.all(terrainSpec(manifest).airports.map(get))).filter((a) => a && a.runways && a.runways.length);
   const have = new Set(loaded.map((a) => a.icao));
-  const list = loaded.concat(fallbackAirports().filter((a) => !have.has(a.icao)));
+  // (v0.7.0: the fallback is Korea's three, so only in East Asia: found in Chrome, where Europe's lists showed Gimpo, Jeju and Incheon under "Elsewhere".)
+  const list = loaded.concat(REGION_ID === 'east-asia' ? fallbackAirports().filter((a) => !have.has(a.icao)) : []);
   return createAirports(list, opts);
 }
 

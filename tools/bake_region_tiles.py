@@ -31,10 +31,29 @@ BATCHES = [
     ('0.6.3', '/tmp/flight-sim/v063/bake', '/tmp/flight-sim/v063/work', EXTRA_063),
     ('0.6.4', '/tmp/flight-sim/v064/bake', '/tmp/flight-sim/v064/work', EXTRA_064),
 ]
+STAGE_OLD = '/tmp/flight-sim/v060/bake'       # v0.6.0's staging: READ-ONLY
+
+# v0.7.0: Europe, a region of its own (FS_REGION=europe; see bake_common.REGION). Its lattice's
+# origin is its frame's origin, so tile indices are negative west and south of 47 N 4 E. Batch A:
+# every 128 km tile with land within 200 km of airports 1 to 11 (briefs/V0-7-0.md, from Natural
+# Earth's 1:50 m land). Later batches (v0.7.1 ...) are appended to EU_BATCHES with their own staging.
+REGION = 'europe' if os.environ.get('FS_REGION', '').strip().lower() == 'europe' else 'eastasia'
+EU_BATCH_A = ('-7_-7 -7_-6 -7_-5 -6_-7 -6_-6 -6_-5 -6_-4 -5_-7 -5_-6 -5_-5 -5_-4 -4_-7 -4_-6 -4_-5 -4_2 -4_3 '
+              '-4_4 -4_5 -3_-6 -3_-5 -3_-4 -3_0 -3_1 -3_2 -3_3 -3_4 -3_5 -2_-7 -2_-6 -2_-5 -2_-4 -2_-1 -2_0 '
+              '-2_1 -2_2 -2_3 -2_4 -2_5 -1_-7 -1_-5 -1_-4 -1_-1 -1_0 -1_1 -1_2 -1_3 -1_4 0_0 0_1 0_2 0_3 0_4 '
+              '0_5 1_-1 1_0 1_1 1_2 1_3 1_4 1_5 2_-2 2_-1 2_0 2_1 2_2 2_3 2_4 3_-4 3_-2 3_-1 3_0 3_1 3_2 3_3 '
+              '3_4 4_-4 4_-3 4_-1 4_0 4_1 4_2 4_3 5_-5 5_-4 5_-3 5_-1 5_0 5_1 5_2 6_-6 6_-5 6_-4 6_-3').split()
+EU_BATCHES = [
+    ('A', '/tmp/flight-sim/v070/bake', '/tmp/flight-sim/v070/work', EU_BATCH_A),
+]
+if REGION == 'europe':
+    BATCHES = EU_BATCHES
+    STAGE_OLD = EU_BATCHES[0][1]      # no older staging: the first batch's own (find() falls back to it)
 VERSION = os.environ.get('FLIGHT_SIM_TILES_VERSION', BATCHES[-1][0])
+if REGION == 'europe':
+    VERSION = os.environ.get('FS_EUROPE_BATCH', BATCHES[-1][0])
 _k = [b[0] for b in BATCHES].index(VERSION)
 
-STAGE_OLD = '/tmp/flight-sim/v060/bake'       # v0.6.0's staging: READ-ONLY
 STAGE = BATCHES[_k][1]                        # the baked batch's staging: its new tiles' layers
 WORK = BATCHES[_k][2]                         # its work state (fine cover's per-tile state, logs)
 STAGES_EARLIER = [b[1] for b in BATCHES[:_k]][::-1]   # earlier batches' staging, newest first: READ-ONLY

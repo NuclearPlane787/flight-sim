@@ -38,7 +38,7 @@ from shapely.geometry import Polygon
 from shapely.geometry.polygon import orient
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bake_common import RAW, SHOTS, to_geo, to_map
+from bake_common import EUROPE, RAW, SHOTS, to_geo, to_map
 
 OSMIUM = '/opt/homebrew/bin/osmium'
 # (v0.6.3: FS_CENTRES_WORK and FS_CENTRES_OUT move the two folders, FS_SHOT_PREFIX names the quick-looks, so new
@@ -90,6 +90,52 @@ CENTRES = {
     'sendai': ('Sendai', 'tohoku', (140.850, 38.240, 140.900, 38.280), (38.260, 140.878, 4.0)),
     'niigata': ('Niigata', 'chubu', (139.025, 37.900, 139.080, 37.935), (37.918, 139.052, 4.0)),
 }
+
+# v0.7.0 (briefs/V0-7-0.md Part 6): Europe's nine, in Europe's frame, chosen by FS_REGION=europe (bake_common.EUROPE).
+# East Asia's tables above are untouched and used exactly as before when no region is set.
+# Europe's old centres are dense: each box is tight round what is named, and the keep rule is held to a vertex budget
+# (EU_MAX_VERTS: Tokyo's 271,578) as well as the count, raising the height threshold first (never dropping the towers).
+EU_SOURCES = {
+    'greater-london': 'osm/greater-london-261121.osm.pbf',
+    'ile-de-france': 'osm/ile-de-france-261121.osm.pbf',
+    'hessen': 'osm/hessen-261121.osm.pbf',
+    'madrid': 'osm/madrid-261121.osm.pbf',
+    'switzerland': 'osm/switzerland-261121.osm.pbf',
+    'noord-holland': 'osm/noord-holland-261121.osm.pbf',
+    'oberbayern': 'osm/oberbayern-261121.osm.pbf',
+    'cataluna': 'osm/cataluna-261121.osm.pbf',
+    'centro': 'osm/centro-261121.osm.pbf',
+}
+EU_CENTRES = {
+    # the City, Westminster and the South Bank, east to Canary Wharf (one box: the river's bend between is thin)
+    'london': ('London', 'greater-london', (-0.135, 51.490, -0.005, 51.522), (51.508, -0.085, 6.0)),
+    # from La Defense to the Marais: the western half of Paris intra-muros, its tallest and best known (see notes)
+    'paris': ('Paris', 'ile-de-france', (2.225, 48.849, 2.362, 48.897), (48.870, 2.300, 8.0)),
+    # the bank towers, the Messe and the Europaturm
+    'frankfurt': ('Frankfurt', 'hessen', (8.640, 50.100, 8.695, 50.125), (50.112, 8.668, 3.5)),
+    # the centre (Sol, Gran Via) and the Castellana north to the four towers
+    'madrid': ('Madrid', 'madrid', (-3.722, 40.405, -3.680, 40.482), (40.445, -3.697, 6.0)),
+    # the Altstadt both sides of the Limmat, west to the Prime Tower
+    'zurich': ('Zurich', 'switzerland', (8.512, 47.362, 8.556, 47.391), (47.374, 8.537, 3.0)),
+    # the canal ring and the old centre
+    'amsterdam': ('Amsterdam', 'noord-holland', (4.872, 52.357, 4.918, 52.384), (52.370, 4.893, 3.0)),
+    # the Altstadt, Maxvorstadt and north to the Olympiapark
+    'munich': ('Munich', 'oberbayern', (11.548, 48.128, 11.595, 48.178), (48.140, 11.572, 4.0)),
+    # the Eixample, the old town and Glories
+    'barcelona': ('Barcelona', 'cataluna', (2.140, 41.373, 2.195, 41.408), (41.392, 2.168, 5.0)),
+    # inside the Aurelian walls, west to St Peter's
+    'rome': ('Rome', 'centro', (12.448, 41.874, 12.522, 41.915), (41.897, 12.482, 5.0)),
+}
+EU_MAX_COUNT = 40000
+EU_MAX_VERTS = 271578
+EU_MAX_THR = 45.0
+EU_MIN_THR = 9.0
+# Untagged footprints of 100-5,000 m2 stand at least this many storeys (the usual height of each old town's blocks;
+# most of Madrid's and Rome's centres carry no building:levels). Still flagged estimated (the plainer facade).
+EU_EST_FLOORS = {'london': 4, 'paris': 5, 'frankfurt': 4, 'madrid': 5, 'zurich': 4, 'amsterdam': 4, 'munich': 4,
+                 'barcelona': 5, 'rome': 4}
+if EUROPE:
+    SOURCES, CENTRES = EU_SOURCES, EU_CENTRES
 
 
 # ---------------------------------------------------------------- boxes
@@ -261,7 +307,7 @@ def heights(feats):
         f['minH'] = mh or 0.0
 
 
-def estimate(feats, box):
+def estimate(feats, box, floors_min=None):
     """Untagged heights from footprint and place: floors by area (2 under 200 m², 3 under 1,000, else 4),
     raised towards 0.75 x the median tagged height of the buildings of 300 m² or more within the
     surrounding 1.5 km (3 x 3 cells of 500 m, at least 10 of them) for compact (4πA/P² >= 0.5) footprints
@@ -295,6 +341,8 @@ def estimate(feats, box):
                 h = max(h, 0.75 * m)
             elif A > 5000:
                 h = min(max(h, 0.5 * m), 30.0)
+        if floors_min and 100 <= A <= 5000:   # v0.7.0, Europe only: the old town's usual storeys as the least
+            h = max(h, floors_min * LEVEL_M)
         f['H'] = min(h, EST_CAP)
     for f in feats:
         if f['minH'] >= f['H']:
@@ -363,15 +411,28 @@ def bake_centre(cid):
     feats = load_features(cid, box)
     n_read = len(feats)
     heights(feats)
-    estimate(feats, box)
+    estimate(feats, box, EU_EST_FLOORS.get(cid) if EUROPE else None)
     feats, dropped, both = drop_outlines(feats)
 
     thr = 12.0
-    while True:
-        kept = [f for f in feats if f['H'] >= thr or f['area'] >= KEEP_AREA]
-        if len(kept) <= MAX_COUNT or thr >= 30:
-            break
-        thr += 3.0
+    if EUROPE:   # v0.7.0: Europe's budget by count and by vertices (approximated by the raw rings' length)
+        thr = EU_MIN_THR   # three-storey old towns (9.6 m) stand where the budget allows
+        for f in feats:    # the stored vertex count, exactly (the ring as it will be written)
+            if f['H'] >= thr or f['area'] >= KEEP_AREA:
+                r = simplify_ring(f['xy'])
+                f['nv'] = 0 if r is None else len(r)
+        while True:
+            kept = [f for f in feats if f['H'] >= thr or f['area'] >= KEEP_AREA]
+            nv = sum(f['nv'] for f in kept)
+            if (len(kept) <= EU_MAX_COUNT and nv <= EU_MAX_VERTS) or thr >= EU_MAX_THR:
+                break
+            thr += 1.0
+    else:
+        while True:
+            kept = [f for f in feats if f['H'] >= thr or f['area'] >= KEEP_AREA]
+            if len(kept) <= MAX_COUNT or thr >= 30:
+                break
+            thr += 3.0
 
     ox, oy = origin
     x0, y0, x1, y1 = box
@@ -517,7 +578,8 @@ def quicklook(cid, recs, origin, box):
     out.paste(whole, (cw, 0))
     out.paste(leg, (0, max(cw, whole.size[1])))
     os.makedirs(SHOTS, exist_ok=True)
-    out.save(os.path.join(SHOTS, f'{SHOT_PREFIX}-bake-centre-{cid}.png'), optimize=True)
+    name = f'{SHOT_PREFIX}-centre-{cid}.png' if EUROPE else f'{SHOT_PREFIX}-bake-centre-{cid}.png'   # v0.7.0: Europe's names
+    out.save(os.path.join(SHOTS, name), optimize=True)
 
 
 def stage_bake(ids):

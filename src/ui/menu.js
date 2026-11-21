@@ -4,6 +4,7 @@
 // ui/home-scene.js's line art), the panel on the right (the saved-flight card, ui/home-card.js, and the rows);
 // its styles in home.css.
 //
+//   (v0.7.0: onNewIn(regionId) for New scenario in another region; with more than one region offered, New scenario asks which first)
 //   const menu = createMenu(root, { version, scenarios, place?(icao), backdrop?, onContinue(id), onNew(), onLoad(id),
 //                                   onLogbook(), onSettings(), onControls(), onExit?, onWarehouseClose? });
 //   menu.show(); menu.hide(); menu.refresh(); menu.isOpen
@@ -21,6 +22,7 @@
 // menu: it's plain DOM and line art.
 
 import { cleanName, nameOk, NAME_MIN, NAME_MAX, savedText, typeName } from '../scenarios.js';
+import { REGION_ID, REGIONS, regionsOffered, regionName } from '../world/regions.js';   // v0.7.0: the region picker, the Load list by region
 import { onDesignRename, designName } from '../designs-store.js';   // v0.5.8: designName, the Load list's live names
 import { createHomeScene, BACKDROPS, DEFAULT_BACKDROP } from './home-scene.js';   // v0.5.7: the home page
 import { flightCard, placeText } from './home-card.js';
@@ -69,7 +71,7 @@ function arrowNav(e, items) {
   return true;
 }
 
-export function createMenu(root, { version = '', scenarios, place = null, backdrop = DEFAULT_BACKDROP, onContinue, onNew, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose, onFlyDesign, keys = null } = {}) {
+export function createMenu(root, { version = '', scenarios, place = null, backdrop = DEFAULT_BACKDROP, onContinue, onNew, onNewIn = null, onLoad, onLogbook, onSettings, onControls, onExit, onWarehouseClose, onFlyDesign, keys = null } = {}) {
   const el = document.createElement('div');
   el.className = 'fsm';
   el.hidden = true;
@@ -112,6 +114,12 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
         <div class="fsm-list" data-o="list"></div>
         <p class="fsm-help">Click a scenario or press Enter to fly it. Duplicate copies one, so you can fly on from the same point again. Esc goes back.</p>
       </section>
+      <section class="fsm-load fsm-regions" data-o="region" hidden aria-label="New scenario: the region">
+        <div class="fsm-load-bar"><h2>New scenario</h2><button class="fsui-b" data-k="regionBack">Back</button></div>
+        <p class="fsm-region-ask">Where do you want to fly?</p>
+        <div class="fsm-list" data-o="regions"></div>
+        <p class="fsm-help">Each region is its own map: a flight stays inside one. Esc goes back.</p>
+      </section>
     </div>`;
   root.appendChild(el);
   const $ = (k) => el.querySelector(`[data-o="${k}"]`);
@@ -145,6 +153,17 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
     ? new MutationObserver((list) => { if (!el.hidden && list.some((m) => !el.contains(m.target))) syncScene(); }) : null;
 
   // ---- The main page ----
+
+  // v0.7.0: the ticket's title and its From and To, where a name is cut short ("Heathrow to Charles d…"): a smaller
+  // size that may take a second line (home.css's .fit). Only text that doesn't fit is touched, so a name that fitted
+  // is drawn as it was. Measured once the page is laid out; a hidden page (width 0) is left for the next fill.
+  function fitCard() {
+    const els = [$('cardTitle'), ...$('cardStats').querySelectorAll('b')];
+    for (const el of els) el.classList.remove('fit');
+    const fit = () => { for (const el of els) if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) el.classList.add('fit'); };
+    fit();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fit);
+  }
   function renderMain() {
     const top = scenarios?.newest?.() || scenarios?.list?.()[0] || null;
     const card = top ? flightCard(top, { place }) : null;
@@ -158,6 +177,7 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
       $('cardSub').textContent = card.sub;
       $('cardStats').innerHTML = card.stats.map((s) => `<span class="fsh-stat"><b>${esc(s.value)}</b><small>${esc(s.label)}</small></span>`).join('');
       $('cardAction').textContent = card.action;
+      fitCard();
       c.setAttribute('aria-label', `${card.action}: ${card.title}, ${card.sub}${card.stats.length ? `, ${card.stats.map((s) => `${s.label} ${s.value}`).join(', ')}` : ''}`);
     }
     // With nothing to continue, New scenario is the primary button.
@@ -190,11 +210,16 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
     return `<div class="fsm-row${confirming === e.id ? ' asking' : ''}" data-id="${id}" tabindex="0">${main}${act}</div>`;
   }
 
+  // v0.7.0: the scenarios of every region in one list, grouped under each region's name once more than one region has
+  // any (this page's region first). Loading one from another region reopens the game there (main.js's loadScenario()).
   function renderLoad(focusId) {
     const m = $('loadMsg');
     m.textContent = loadMsg; m.classList.toggle('bad', loadMsgBad);
     const list = scenarios?.list?.() || [];
-    $('list').innerHTML = list.length ? list.map(rowHtml).join('')
+    const groups = scenarios?.byRegion?.() || [{ region: REGION_ID, entries: list }];
+    const many = groups.length > 1 || (groups.length === 1 && groups[0].region !== REGION_ID);
+    $('list').innerHTML = list.length
+      ? groups.map((g) => (many ? `<div class="fsm-group" data-region="${esc(g.region)}">${esc(regionName(g.region) || g.region)}${g.region !== REGION_ID ? '<small>loading one reopens the game there</small>' : ''}</div>` : '') + g.entries.map(rowHtml).join('')).join('')
       : '<div class="fsm-empty">No scenarios yet. Start one with New scenario.</div>';
     if (editing) {
       const inp = $('list').querySelector('[data-r="name"]');
@@ -207,13 +232,28 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
     }
   }
 
+  // ---- New scenario: the region first (v0.7.0), once more than one is offered ----
+  const regionRows = () => [...$('regions').querySelectorAll('.fsm-row')];
+  function renderRegions() {
+    $('regions').innerHTML = regionsOffered().map((id) => `<button class="fsm-row fsm-region-row" data-region="${esc(id)}">
+        <div class="fsm-row-main"><b>${esc(REGIONS[id].name)}</b><small>${esc(REGIONS[id].blurb || '')}</small></div>
+        <span class="fsm-when">${id === REGION_ID ? 'loaded' : ''}</span></button>`).join('');
+    (regionRows().find((b) => b.dataset.region === REGION_ID) || regionRows()[0] || btn('regionBack')).focus();
+  }
+  function pickRegion(id) {
+    if (!id) return;
+    if (id === REGION_ID || !onNewIn) onNew?.(); else onNewIn(id);
+  }
+
   function showPage(p) {
     page = p;
     editing = confirming = null; renameMsg = ''; loadMsg = ''; loadMsgBad = false;
     $('nav').hidden = p !== 'main';
     $('load').hidden = p !== 'load';
-    el.classList.toggle('on-load', p === 'load');
+    $('region').hidden = p !== 'region';
+    el.classList.toggle('on-load', p === 'load' || p === 'region');
     if (p === 'load') { renderLoad(null); $('list').scrollTop = 0; }
+    else if (p === 'region') renderRegions();
     else { renderMain(); (btn('continue').hidden ? btn('new') : btn('continue')).focus(); }
     syncScene();
   }
@@ -273,7 +313,9 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
 
   // ---- The buttons ----
   btn('continue').onclick = () => { const id = btn('continue').dataset.id; if (id) onContinue?.(id); };
-  btn('new').onclick = () => onNew?.();
+  btn('new').onclick = () => { if (regionsOffered().length > 1) showPage('region'); else onNew?.(); };
+  btn('regionBack').onclick = () => showPage('main');
+  $('regions').addEventListener('click', (ev) => pickRegion(ev.target.closest?.('[data-region]')?.dataset.region));
   btn('load').onclick = () => showPage('load');
   btn('warehouse').onclick = () => openWarehouse();
   btn('logbook').onclick = () => onLogbook?.();
@@ -293,6 +335,10 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
         e.preventDefault(); btn(e.key === 'ArrowLeft' ? 'settings' : 'controls').focus(); return;
       }
       arrowNav(e, navItems()); return;
+    }
+    if (page === 'region') {
+      if (e.key === 'Escape') { e.preventDefault(); showPage('main'); return; }
+      arrowNav(e, regionRows()); return;
     }
     // Load scenario
     const row = e.target.closest?.('.fsm-row[data-id]');
@@ -319,7 +365,7 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
     if (el.hidden || (e.target !== document.body && e.target !== document.documentElement)) return;
     e.stopPropagation();
     if (page === 'warehouse') { if (e.key === 'Escape') { e.preventDefault(); warehouse?.back(); } return; }
-    if (e.key === 'Escape' && page === 'load') { e.preventDefault(); showPage('main'); }
+    if (e.key === 'Escape' && (page === 'load' || page === 'region')) { e.preventDefault(); showPage('main'); }
     else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab') { e.preventDefault(); showPage(page); }
   }
 
@@ -378,7 +424,7 @@ export function createMenu(root, { version = '', scenarios, place = null, backdr
   }
   // The list changed elsewhere (a save, a rename): redraw what's showing, keeping the page.
   function refresh() {
-    if (page === 'load') renderLoad(); else renderMain();
+    if (page === 'load') renderLoad(); else if (page === 'region') renderRegions(); else renderMain();
   }
 
   return {

@@ -122,13 +122,7 @@ try {
     await page.close();
   }
 
-  // The flag off: Gimpo exactly as v0.5.8 (no new buttons), and Haneda's coordinates are Korea.
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${BASE}?test&eastasia=0&cities=0&origin=RKSS&dep=14R&dest=RKPC&arr=07&start=runway`);   // v0.6.0: the region is on by default since 19 Nov, so "off" is asked for
-  await page.waitForFunction(() => window.__fs && window.__fs.sim && window.__fs.frames > 30, null, { timeout: 90000 });
-  const off = await page.evaluate(() => ({ unit: document.querySelectorAll('.fsui-unit').length, metric: document.querySelectorAll('[data-k="metric"],[data-k="mtrs"]').length }));
-  check('flag off: no IN/HPA or METRIC ALT buttons', off.unit === 0 && off.metric === 0, JSON.stringify(off));
-  await page.close();
+  // (v0.7.0: the flag-off check, no IN/HPA or METRIC ALT buttons with ?eastasia=0, went with the flag.)
 } finally { await browser.close(); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS');
 process.exit(failed ? 1 : 0);

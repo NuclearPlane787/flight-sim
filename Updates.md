@@ -4,6 +4,34 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.7.0 · 2026-11-21 · The regions, and Europe
+
+- **A second region: Europe.** New scenario asks where you want to fly first, East Asia or Europe. Each region is its own map, and a flight stays inside one. The Load list shows both regions' scenarios under their names; loading one from the other region reopens the game there. The home page's ticket and the logbook name either region's airports.
+- **Eleven airports in Europe, thirty-four in all,** each with its runways, lights, ILS, taxiways and signs, stands with their own numbers, jet bridges, parked traffic, taxi routes out and in, and its terminals from OpenStreetMap:
+  - **Heathrow** (EGLL): two runways of 3.9 and 3.6 km, ILS category III to all four ends, 288 stands.
+  - **Gatwick** (EGKK): the main runway 08R/26L, 3.3 km, and the northern runway as a standby: listed last and never picked for you. 189 stands.
+  - **Charles de Gaulle** (LFPG): four runways in two pairs, the long ones 4.2 and 4.1 km, ILS category III to all eight ends, 446 stands.
+  - **Orly** (LFPO): 06/24 and 07/25, with 02/20 as a standby; 155 stands.
+  - **Frankfurt** (EDDF): 07C/25C and 07R/25L, 4 km each; 07L/25R for landings only and 18 for take-offs only, as its AIP has them; 366 stands.
+  - **Munich** (EDDM): two 4 km runways, ILS category III to all four ends, 209 stands.
+  - **Madrid** (LEMD): four runways, each used one way (land on the 32s or the 18s, take off from the 36s or the 14s), 609 m up; 381 stands.
+  - **Barcelona** (LEBL): by the sea, three runways; 20 for take-offs only; 209 stands.
+  - **Zurich** (LSZH): 14/32, 10/28 and 16/34; 218 stands.
+  - **Schiphol** (EHAM): six runways on a polder 3.4 m below the sea; the Polderbaan and the Aalsmeerbaan used one way each; 293 stands. From the Polderbaan it is a 5.6 km taxi to the gate, as it really is.
+  - **Fiumicino** (LIRF): by the sea, three runways; 144 stands.
+
+  Eight are from their countries' AIPs. **Zurich's, Schiphol's and Fiumicino's lights, ILS and one-way runways are estimates:** those three AIPs couldn't be read by a script. The setup lists the airports by country. Some routes, as the game measures them: Heathrow–Charles de Gaulle 187 nm, Zurich–Gatwick 405 nm, Heathrow–Madrid 667 nm, Schiphol–Fiumicino 696 nm, Frankfurt–Madrid 762 nm.
+- **Europe's ground.** 250 m terrain over England, the Low Countries, France, western Germany, the Alps, northern Italy to Rome, and Spain round Madrid and Barcelona, with 1 km terrain to the region's edge (Ireland and Scotland to Denmark, Vienna, Sicily, Lisbon and the Strait). The Alps, the Pyrenees, the Thames, the Seine and the lakes are where they are. **Land below sea level stays below it:** the Dutch polders and Schiphol's runways.
+- **Each country's rules.** Hectopascals and feet everywhere; each country's transition altitude, and each airport's own where it sets one (6,000 ft round Heathrow and Gatwick, 13,000 ft round Madrid, 7,000 ft round Zurich); local time with summer time (GMT and BST, CET and CEST, WET and WEST); weather reports in Europe's form (`EGLL 24008KT 9999 SCT035 12/07 Q1013 NOSIG`).
+- **Runways used one way.** An end that is only taken off from isn't offered as an arrival, and the other way round, in the setup, on the map and for Skip to final.
+- **Nine real city centres** from OpenStreetMap's buildings: London (Westminster and the City to Canary Wharf), Paris (La Défense to the Marais), Frankfurt, Madrid (Sol to the four towers), Zurich, Amsterdam's canal ring, Munich, Barcelona (the Eixample and the old town) and Rome inside its walls.
+- **Twenty-eight landmarks,** lit at night: the Shard, Westminster with the Elizabeth Tower, the London Eye, St Paul's and Tower Bridge; the Eiffel Tower, the Arc de Triomphe, Sacré-Cœur, Notre-Dame and the Grande Arche; Frankfurt's Commerzbank Tower, Messeturm and Europaturm; Madrid's five towers and the leaning Puerta de Europa; Zurich's Grossmünster and Prime Tower; Munich's Olympiaturm and Frauenkirche; the Sagrada Família, Torre Glòries and the Collserola tower; St Peter's and the Colosseum.
+- **Europe's towns.** Brick terraces under slate round Britain's cities; five- to seven-storey blocks round courtyards on the continent, zinc grey in France, red tile in Germany and the Low Countries, terracotta in Spain and Italy; a church spire here and there; no tower blocks outside the real centres. In the country, villages in each country's style: brick and slate in Britain, pale render and steep slate or low terracotta in France, red-brown tile in the centre, cream walls under terracotta in the south, steep dark roofs on brick in the Low Countries; farmhouses and long barns among the fields, and a church with its tower in most villages.
+- **The path map** draws Europe's outline, coast, city areas and names.
+- **East Asia is unchanged:** the same picture pixel for pixel, the same flights, and your saved scenarios load as they were. Under the hood, v0.6.0's test switches and Korea's old map files are gone (18 MB lighter), and every picture check now steps a fixed number of frames, so the same view gives the same picture every time.
+- **Under the hood:** 1,392 unit tests; `data/` is 322 MB (217 MB before), Europe's share 123 MB.
+- **Known:** Zurich, Schiphol and Fiumicino are estimates, as above. At Munich, OpenStreetMap maps only part of the aprons, so the ground under each stand's pushback is paved by the game's own rule (a strip from the stand back to its taxi line). Europe's fields are still the generic ones: no hedgerows, no Dutch ditches, no olive groves; and its forests are all conifers. The aurora shows over Europe on clear nights as it does over East Asia. Town blocks can stand in a narrow river (the Main at Frankfurt, the Thames by Tower Bridge), and a real centre's courtyards are roofed over. Gatwick's fine ground stops just east of the field and Munich's 15 km east of it; beyond, the ground is the coarser 250 m kind. One frame of 33 ms at 16× on the way from Heathrow to Charles de Gaulle, at the same place each time, not yet found. With Paris's or Madrid's centre in view the scene is over its budget of a million triangles (it still holds 60 fps on the Mac it was measured on). Low landmarks (the Arc de Triomphe, the Colosseum, Notre-Dame) are hidden behind their neighbours from low down, as they are in life.
+
 ## v0.6.4 · 2026-11-21 · Pyongyang, Wonsan, Niigata, Sendai, Aomori and Sapporo
 
 - **Six more airports, twenty-three in all.** North Korea and northern Japan:

@@ -1,4 +1,4 @@
-// The fine land cover round the camera (v0.6.0 Part 7, behind GROUND_ON): ESA WorldCover's
+// The fine land cover round the camera (v0.6.0 Part 7): ESA WorldCover's
 // classes at 31.25 m (data/terrain/fine/, tools/bake_region_fine.py), which drive the near
 // ground: where the woods, the fields, the villages and the water really are. The 250 m cover
 // (the clip window) takes over beyond it.
@@ -17,6 +17,9 @@
 // createFineCover() adds the fetches, the texture and the uniforms.
 
 import * as THREE from '../../vendor/three.module.js';
+import { REGION } from './regions.js';
+
+const NO_GLASS = REGION.glass === false;   // v0.7.0: East Asia's plains have greenhouses by the square kilometre; Europe's built-up specks in farm country are villages
 
 export const FINE_PX = 31.25, FINE_SUB = 1024, FINE_N = 4096;
 export const FINE_CLASSES = ['water', 'tree', 'shrub', 'grass', 'crop', 'built', 'bare', 'wetland'];
@@ -32,7 +35,9 @@ export function ihash(cx, cy, s) {
 }
 
 // FINE_GLSL's glassPatch() on the CPU: px, py the continuous fine pixel from the lattice's origin.
+// v0.7.0: a region with no glass country (regions.js's glass: false, Europe) has villages on every such patch: 0.
 export function glassPatch(px, py) {
+  if (NO_GLASS) return 0;
   const gx = px / 8, gy = py / 8, cx = Math.floor(gx), cy = Math.floor(gy);
   const fx = gx - cx, fy = gy - cy, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
   const a = ihash(cx, cy, 97), b = ihash(cx + 1, cy, 97), c = ihash(cx, cy + 1, 97), d = ihash(cx + 1, cy + 1, 97);
@@ -221,7 +226,7 @@ export function createFineCover(uniforms, { baseUrl = 'data/' } = {}) {
   return fine;
 }
 
-// The shaders' side, compiled in only with GROUND_ON. uFineOrg: the scene origin's fine pixel
+// The shaders' side. uFineOrg: the scene origin's fine pixel
 // (the integer part, set per frame from doubles) and uFineFrac its fraction, so a fragment's
 // pixel comes from small numbers wherever the map's origin is (briefs/V0-6-0.md, "Precision far from
 // the origin"). fineAt(rel): the class + 1 (0: none) at scene offset rel.xz from the origin;
@@ -258,7 +263,7 @@ void fineMix(vec2 fp, out vec4 lo, out vec4 hi) {
 // float noise of the map position): a smooth value over a 250 m lattice (8 fine pixels) of
 // exact hashes, which the CPU works out the same (glassPatch() below), so greenhouses.js lists
 // only the tunnels that stand. fp: the continuous fine pixel from uFineOrg (finePos()).
-float glassPatch(vec2 fp) {
+float glassPatch(vec2 fp) {${NO_GLASS ? '\n  if (uFineOn > -1.0) return 0.0;   // v0.7.0: no glass country in this region: every such patch is a village' : ''}
   vec2 q = floor(fp);
   ivec2 b = ivec2(q) + uFineOrg, c = b >> 3;
   vec2 f = (vec2(b & 7) + (fp - q)) / 8.0, u = f * f * (3.0 - 2.0 * f);
@@ -280,7 +285,7 @@ float fineWater(vec2 fp) {
 `;
 
 // Set the per-frame uniforms FINE_GLSL needs (origin: the scene origin's map x, y, in doubles).
-export function setFineOrigin(uniforms, origin, index = { x0: -400000, y0: -400000 }) {
+export function setFineOrigin(uniforms, origin, index = REGION.lattice) {
   if (!uniforms.uFineOrg) { uniforms.uFineOrg = { value: new THREE.Vector2() }; uniforms.uFineFrac = { value: new THREE.Vector2() }; }
   const px = (origin.x - index.x0) / FINE_PX, py = (origin.y - index.y0) / FINE_PX;
   const ix = Math.floor(px), iy = Math.floor(py);

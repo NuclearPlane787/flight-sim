@@ -11,7 +11,7 @@ import {
 } from '../src/world/centres-worker.js';
 import { tallCut, CUT_KNOTS, countAtLeast, rowRange, boxDistance, landmarkExclusions, centreAllowed, createCentres } from '../src/world/centres.js';
 import { toMap } from '../src/world/frame.js';
-import { CITIES_ON, setCities } from '../src/world/region.js';
+// (v0.7.0: v0.6.0's flags are gone: every centre is allowed; the flag-off test and assertions went.)
 
 const DATA = new URL('../data/centres/', import.meta.url);
 const INDEX = JSON.parse(readFileSync(new URL('centres.json', DATA)));
@@ -282,30 +282,8 @@ test('the tiers\' helpers', () => {
   assert.equal(countAtLeast(top, 60), 5); assert.equal(countAtLeast(top, 61), 3); assert.equal(countAtLeast(top, 0), 6); assert.equal(countAtLeast(top, 700), 0);
   assert.equal(boxDistance([0, 0, 10, 10], 5, 5), 0);
   assert.equal(boxDistance([0, 0, 10, 10], 13, 14), 5);
-  // The flags: Korea's three with CITIES_ON alone, the six others with the region too.
-  assert.equal(centreAllowed('seoul', true, false), true);
-  assert.equal(centreAllowed('tokyo', true, false), false);
-  assert.equal(centreAllowed('tokyo', true, true), true);
-  assert.equal(centreAllowed('busan', false, true), false);
-  // v0.6.3's five: behind the region's flag, as the others outside Korea
-  // v0.6.4's four too (Pyongyang is not Korea's three: behind the region's flag)
-  for (const id of ['beijing', 'tianjin', 'shenyang', 'dalian', 'vladivostok', 'pyongyang', 'sapporo', 'sendai', 'niigata']) {
-    assert.equal(centreAllowed(id, true, false), false, id);
-    assert.equal(centreAllowed(id, false, true), false, id);
-    assert.equal(centreAllowed(id, true, true), true, id);
+  // Every centre allowed (v0.7.0: the flags' cases, Korea's three alone with the region off, went).
+  for (const id of ['seoul', 'tokyo', 'busan', 'beijing', 'tianjin', 'shenyang', 'dalian', 'vladivostok', 'pyongyang', 'sapporo', 'sendai', 'niigata']) {
+    assert.equal(centreAllowed(id), true, id);
   }
-});
-
-test('with CITIES_ON off nothing exists', () => {
-  const was = CITIES_ON;
-  setCities(false);                              // whatever the shipped default
-  const added = [];
-  const c = createCentres({ add: (o) => added.push(o), remove() {} }, {}, {}, {});
-  assert.equal(added.length, 0);
-  assert.equal(c.group, null);
-  c.update({ camMap: { x: -43294, y: 170336 }, origin: { x: 0, y: 0 }, agl: 900 });
-  assert.equal(c.stats.drawCalls, 0);
-  assert.equal(c.maskAt(-43294, 170336), false);
-  assert.equal(c.maskVersion(), 0);
-  setCities(was);
 });

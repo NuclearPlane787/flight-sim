@@ -68,7 +68,7 @@ export function createBoeingNd(cv, { airports, coast }) {
         ctx.fillStyle = '#10201a'; ctx.fill('evenodd');
         ctx.strokeStyle = '#35604a'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.stroke();
       }
-      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, cbox, tf, 3 / k);
+      ctx.beginPath(); traceRings(ctx, nd.coast.water, lod, cbox, tf, 3 / k, true);
       ctx.fillStyle = '#0a1622'; ctx.fill('evenodd');
     }
     // The range arcs, dashed, at each quarter.

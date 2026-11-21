@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { createGeoRules, COUNTRY_NAMES } from '../src/world/geo-rules.js';
-import { setEastAsia, setGeoRules, rulesAt, countryAt, COUNTRY_RULES } from '../src/world/region.js';
+import { setGeoRules, rulesAt, countryAt, COUNTRY_RULES } from '../src/world/region.js';
+
 import { toMap } from '../src/world/frame.js';
 import { metarOf, metarFormOf, presetWeather } from '../src/sim/weather-presets.js';
 import { zoneOfIcao, zoneAt } from '../src/clock.js';
@@ -16,7 +17,7 @@ const gz = (n) => { const b = zlib.gunzipSync(fs.readFileSync(new URL(n, D))); r
 const json = (n) => JSON.parse(fs.readFileSync(new URL(n, D), 'utf8'));
 const geo = createGeoRules({ magvar: { header: json('magvar.json'), values: gz('magvar.i16.gz') }, country: { header: json('country.json'), values: gz('country.u8.gz') }, krmask: { header: json('krmask.json'), values: gz('krmask.u8.gz') } });
 const FT = 0.3048;
-const on = (fn) => { const was = [setEastAsia(true), setGeoRules(geo)]; try { return fn(); } finally { void was; } };
+const on = (fn) => { setGeoRules(geo); return fn(); };   // (v0.7.0: v0.6.0's region flag is gone)
 
 test('the raster: Russia is its own country (code 6), and nothing else moved', () => on(() => {
   assert.equal(COUNTRY_NAMES[6], 'RU');
@@ -73,21 +74,14 @@ test('the setup\'s lists: Russia after North Korea, Beijing\'s two first in Chin
 // The review (2026-11-20): with the region's flag off none of this may show. The tests above switch the region
 // on, so the flags-off run never looked: here it is switched off on purpose, and back.
 import { fineOutline, terrainSpec } from '../src/world/region.js';
+
 import { standsFor } from '../src/ground/taxi.js';
 import { typeById } from '../src/sim/types.js';
 import { standHeading } from '../src/world/traffic-layout.js';
-test('with the region off: Korea\'s zone, Korea\'s METAR, no outline, Korea everywhere', () => {
-  setGeoRules(geo); setEastAsia(false);
-  try {
-    assert.equal(zoneOfIcao('UHWW').zoneName, 'KST');
-    assert.equal(metarFormOf('UHWW'), 'kr');
-    assert.match(metarOf(presetWeather('rain', { refX: 0, refY: 0 }), 'UHWW'), /KT /);
-    terrainSpec(json('manifest.json'), false);
-    assert.equal(fineOutline(), null);
-    assert.equal(countryAt(...toMap(43.396, 132.148)), 'KR');
-    assert.equal(rulesAt(...toMap(43.396, 132.148)).country, 'KR');
-  } finally { setEastAsia(true); }
-  terrainSpec(json('manifest.json'), true);
+// (v0.7.0: this test's flag-off half went with the flag: KST, Korea's METAR, no outline and Korea at Vladivostok.)
+test('the 250 m data\'s outline is there once the manifest is read', () => {
+  setGeoRules(geo);
+  terrainSpec(json('manifest.json'));
   assert.ok(fineOutline().length > 20, 'and with it on the outline is there');
 });
 

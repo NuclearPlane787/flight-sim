@@ -22,7 +22,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
 RAW = os.path.join(GAME, 'reference', 'raw')
 DATA = os.path.join(GAME, 'data')
-CACHE = '/tmp/flight-sim/bake'          # intermediate results (resumable pieces)
+# v0.7.0: the region. FS_REGION=europe selects Europe's frame and lattice; unset (or anything
+# else) is East Asia, exactly as before.
+REGION = 'europe' if os.environ.get('FS_REGION', '').strip().lower() == 'europe' else 'eastasia'
+EUROPE = REGION == 'europe'
+CACHE = '/tmp/flight-sim/v070/work/cache' if EUROPE else '/tmp/flight-sim/bake'   # intermediate results (resumable pieces)
 EXTRA_DEM90 = os.path.join(CACHE, 'dem90extra')  # N32 and N39 GLO-90 tiles, fetched by the bake
 SHOTS = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'Claude outputs', 'flight-sim'))  # GameDump/Claude outputs/flight-sim
 
@@ -36,6 +40,8 @@ A = 6378137.0
 F = 1 / 298.257223563
 E = np.sqrt(2 * F - F * F)
 LAT0, LON0, LAT1, LAT2 = 36.0, 127.5, 33.0, 38.0
+if EUROPE:   # Europe's frame (briefs/V0-7-0.md): origin 47 N 4 E, standard parallels 39 and 54
+    LAT0, LON0, LAT1, LAT2 = 47.0, 4.0, 39.0, 54.0
 
 
 def _m(phi):
@@ -77,6 +83,18 @@ def to_geo(x, y):
     return phi / DEG, theta / N / DEG + LON0
 
 
+def scale_factor(lat):
+    """The frame's point scale k at a latitude (map length = k x true length on the ellipsoid)."""
+    phi = np.asarray(lat, dtype=np.float64) * DEG
+    rho = A * FF * _t(phi) ** N
+    return rho * N / (A * _m(phi))
+
+
+def frame():
+    """The region's frame parameters (for notes and checks)."""
+    return dict(region=REGION, lat0=LAT0, lon0=LON0, lat1=LAT1, lat2=LAT2, n=float(N), rho0=float(RHO0))
+
+
 def convergence_deg(lon):
     """Grid convergence in degrees: grid azimuth = true azimuth - convergence."""
     return N * (np.asarray(lon) - LON0)
@@ -89,6 +107,42 @@ def mag_var(lat, lon):
 
 # ---------------------------------------------------------------- grids
 NAT = dict(x0=-400000.0, y0=-400000.0, cell=250.0, nx=3200, ny=3200)
+if EUROPE:   # Europe's lattice origin is the frame's origin (tile 0_0's SW corner at 47 N 4 E);
+    NAT = dict(x0=0.0, y0=0.0, cell=250.0, nx=0, ny=0)   # no national grid: nx/ny unused
+
+
+def lattice():
+    """The region's tile lattice: x0/y0 (map m of lattice cell (0, 0)'s SW corner), the 250 m level
+    in 128 km tiles (512 cells, 2-cell borders), the 1 km level in 512 km tiles, the 31 m cover in
+    32 km sub-files. Tile (ti, tj)'s core covers x0 + ti*128 km .. +128 km (negative ti/tj allowed)."""
+    return dict(x0=NAT['x0'], y0=NAT['y0'], l0=dict(cell=250.0, tile=512, border=2),
+                l1=dict(cell=1000.0, tile=512, border=2), fine=dict(px=31.25, sub=1024, perTile=4))
+
+
+# Europe's outline (lat, lon), briefs/V0-7-0.md: it bounds the 1 km land, the map's edge and the path.
+EU_OUTLINE = [(35.0, -11.0), (59.0, -11.0), (59.0, 19.5), (42.5, 19.5), (39.6, 18.6),
+              (36.3, 16.0), (36.3, 12.0), (37.6, 11.0), (37.6, 1.0), (35.0, -2.5)]
+
+
+def outline_latlon(step=0.25):
+    """Europe's outline densified: each edge linear in lat/lon (so the edges between points on one
+    parallel or meridian run along it), a point at least every `step` degrees. Returns (lat, lon)
+    arrays of the closed ring (first point not repeated)."""
+    la, lo = [], []
+    pts = EU_OUTLINE
+    for k in range(len(pts)):
+        (a0, o0), (a1, o1) = pts[k], pts[(k + 1) % len(pts)]
+        n = max(1, int(np.ceil(max(abs(a1 - a0), abs(o1 - o0)) / step)))
+        t = np.arange(n) / n
+        la.append(a0 + (a1 - a0) * t)
+        lo.append(o0 + (o1 - o0) * t)
+    return np.concatenate(la), np.concatenate(lo)
+
+
+def tile_of(x, y, cell=250.0, tile=512):
+    """The (ti, tj) of the tile holding map point (x, y) (floor: negative west/south of x0, y0)."""
+    span = cell * tile
+    return int(np.floor((x - NAT['x0']) / span)), int(np.floor((y - NAT['y0']) / span))
 
 
 def cell_centres(x0, y0, cell, nx, ny):
@@ -117,6 +171,18 @@ def read_gz(path, dtype, shape):
 def height_to_i16(h):
     """Metres -> int16 in 0.25 m units (the manifest's heightScale)."""
     return np.clip(np.round(h / 0.25), -32768, 32767).astype('<i2')
+
+
+def height_to_i16_land(h, land):
+    """v0.7.0, Europe's height encoding: height_to_i16, then a land cell (land: bool, sea_sd > 0,
+    inland water included) never stores exactly 0 (0 means sea): +1 step if h >= 0, -1 if below.
+    Sea cells are expected to be exactly 0 m already (compose_height for Europe)."""
+    q = height_to_i16(h)
+    z = (q == 0) & np.asarray(land, bool)
+    if z.any():
+        q = q.copy()
+        q[z] = np.where(np.asarray(h)[z] >= 0, 1, -1).astype('<i2')
+    return q
 
 
 def signed_to_u8(d, per):

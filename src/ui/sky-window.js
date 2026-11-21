@@ -20,7 +20,6 @@
 
 import { startOfKstDay, kstParts, kstMs, fmtKst, fmtKstDate, zoneAt, zoneLabel, startOfZoneDay, fmtZone, fmtZoneDate } from '../clock.js';
 import { sunHorizontal, moonHorizontal, moonPhase, sunEvents, moonEvents } from '../astro.js';
-import { eastAsiaOn } from '../world/region.js';
 import { toMap } from '../world/frame.js';
 
 const DAY_MS = 86400e3;
@@ -175,9 +174,9 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
         + `<span class="fssw-ico${on ? '' : ` fssw-ico--${t.id}`}">${on ? ICON.sun : t.icon || ''}</span>${t.label}</button>`;
     }).join('')}</div>`
     : `<span class="fssw-ico">${ICON.sun}</span><h2>Sky</h2>`;
-  // v0.6.0: the zone at the aircraft (null with the region off: KST, as v0.5.8)
+  // v0.6.0: the zone at the aircraft
   let zone = null;
-  const zoneFor = (p) => (eastAsiaOn() ? zoneAt(...toMap(p.lat, p.lon)) : null);
+  const zoneFor = (p) => zoneAt(...toMap(p.lat, p.lon));
   const hhmm = (ms) => (zone ? fmtZone(ms, zone) : fmtKst(ms));
   const dayText = (ms) => (zone ? fmtZoneDate(ms, zone) : fmtKstDate(ms));
   const dayStart = (ms) => (zone ? startOfZoneDay(ms, zone) : startOfKstDay(ms));
@@ -441,11 +440,11 @@ export function createSkyWindow(root, { clock, place, tabs } = {}) {
   let zoneKey = '';
   function setZone(z) {
     zone = z;
-    const k = z ? z.timeZone + '|' + zoneLabel(z) : '';
+    const k = z ? z.timeZone + '|' + zoneLabel(z, clock.ms) : '';   // (v0.7.0: the name in force at the clock's time, so the window relabels when the clocks change too)
     if (k === zoneKey) return;
     zoneKey = k;
     if (!z) return;   // the region off: v0.5.8's markup, untouched
-    const zn = zoneLabel(z);
+    const zn = zoneLabel(z, clock.ms);
     el.querySelector('.fssw-sub').textContent = `Time of day · ${zn}`;
     el.querySelector('.fssw-time small').textContent = zn;
     btn('today').title = `Today's date here (${zn}), same time of day`;

@@ -56,7 +56,7 @@ try {
   page.on('pageerror', (e) => errors.push(String(e)));
   const L0 = opt.legs[0];
   const fuelFor = (nm) => Math.round(Math.min(opt.type ? 60000 : 17500, (opt.type ? 9000 : 3500) + nm * (opt.type ? 16 : 7.5)));
-  await page.goto(`${ROOT}games/flight-sim/?test&eastasia=1${opt.ground ? '&ground=1' : ''}&origin=${L0.origin}&dep=${L0.dep}&dest=${L0.dest}&arr=${L0.arr}&start=${opt.final ? 'final' : 'runway'}&fuel=${opt.final ? 6000 : 17000}${opt.type ? `&type=${opt.type}` : ''}`);
+  await page.goto(`${ROOT}games/flight-sim/?test&eastasia=1${opt.ground ? '&ground=1' : ''}&origin=${L0.origin}&dep=${L0.dep}&dest=${L0.dest}&arr=${L0.arr}&start=${opt.final ? 'final' : 'runway'}&fuel=${opt.final ? 6000 : 17000}${opt.type ? `&type=${opt.type}` : ''}${process.env.E2E_EXTRA || ''}`);   // (v0.7.0: E2E_EXTRA, '&region=europe' or '&pending=1')
   await page.waitForFunction(() => window.__fs && window.__fs.sim && window.__fs.frames > 10, null, { timeout: 90000 });
   await page.addScriptTag({ content: readFileSync(path.join(here, 'e2e-controller.js'), 'utf8') });
   const gl = await page.evaluate(() => { const c = document.createElement('canvas').getContext('webgl2'); const e = c.getExtension('WEBGL_debug_renderer_info'); return c.getParameter(e.UNMASKED_RENDERER_WEBGL); });
@@ -127,7 +127,7 @@ try {
       const a = f.airports.find((q) => q.icao === L.origin), b = f.airports.find((q) => q.icao === L.dest);
       const nm = Math.hypot(a.origin[0] - b.origin[0], a.origin[1] - b.origin[1]) / 1852;
       if (li > 0) f.startFlight({ origin: L.origin, depRunway: L.dep, dest: L.dest, arrRunway: L.arr, start: L.final ? 'final' : 'runway', stand: null, pax: 180, cargoKg: 2000, fuelKg: L.final ? 6000 : fuel, waypoints: [], type: type || undefined });
-      f.clock.set(Date.UTC(2026, 10, 19, 2, 0, 0));   // 11:00 in Korea and Japan, 10:00 in China
+      f.clock.set(Date.UTC(2026, 10, 19, f.region === 'europe' ? 11 : 2, 0, 0));   // 11:00 in Korea and Japan, 10:00 in China; v0.7.0: 11:00 UTC in Europe (midday)
       window.__e2e.phase = 'idle'; delete window.__e2e.rotateT; delete window.__e2e.liftT;
       return { nm, names: [a.shortName || a.name, b.shortName || b.name] };
     }, { L: { ...L, final: !!opt.final }, li, fuel: 17000, type: opt.type });

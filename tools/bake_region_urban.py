@@ -43,6 +43,18 @@ import bake_common as bc  # noqa: E402
 EXTENT = (-1600000, -1338000, 2110000, 1284000)   # region.js REGION_EXTENT
 CELL = 500
 STAGING = '/tmp/flight-sim/v063/bake'
+# v0.7.0, Europe: its rectangle (the outline's bounding box) and staging; the tiles and the manifest are
+# read from staging (bake_europe_manifest.py's manifest.json, l0/, l1/), the places kept inside the outline.
+MANIFEST, DIRS = bc.MANIFEST, None
+if bc.EUROPE:
+    EXTENT = (-1377000, -1330000, 1422000, 1425000)
+    STAGING = '/tmp/flight-sim/v070/bake'
+    MANIFEST = os.path.join(STAGING, 'manifest.json')
+    DIRS = {'terrain/r0/': os.path.join(STAGING, 'l0'), 'terrain/r1/': os.path.join(STAGING, 'l1')}
+
+
+def tile_dir(d):
+    return DIRS[d] if DIRS else os.path.join(bc.DATA, d)
 SIGMA = 1.6          # cells
 THRESHOLD = 0.30     # the smoothed built-up share that counts as city
 MIN_KM2 = 6.0        # smaller shapes are dropped
@@ -62,7 +74,7 @@ def tile_layer(path, n=516, ch=4):
 
 def built_grid():
     """The built-up share (0..1, float32) on the 500 m grid, row 0 south."""
-    m = json.load(open(bc.MANIFEST))
+    m = json.load(open(MANIFEST))
     T = m['tilesRegion']
     l0, l1 = T['levels'][0], T['levels'][1]
     nx, ny = (EXTENT[2] - EXTENT[0]) // CELL, (EXTENT[3] - EXTENT[1]) // CELL
@@ -80,7 +92,7 @@ def built_grid():
     b, ts, cell = l1['border'], l1['tile'], l1['cell']
     for name in l1['tiles']:
         ti, tj = map(int, name.split('_'))
-        c = tile_layer(os.path.join(bc.DATA, l1['dir'], name + '.c.rgba8.gz'), ts + 2 * b)[b:-b, b:-b, 2]
+        c = tile_layer(os.path.join(tile_dir(l1['dir']), name + '.c.rgba8.gz'), ts + 2 * b)[b:-b, b:-b, 2]
         put(np.repeat(np.repeat(c, 2, 0), 2, 1).astype(np.float32) / 255, T['x0'] + ti * ts * cell, T['y0'] + tj * ts * cell)
     # Then the 250 m level over it, wherever it covers (a covered tile with no file is open sea).
     b, ts, cell = l0['border'], l0['tile'], l0['cell']
@@ -88,7 +100,7 @@ def built_grid():
     for name in l0.get('covered', l0['tiles']):
         ti, tj = map(int, name.split('_'))
         if name in have:
-            c = tile_layer(os.path.join(bc.DATA, l0['dir'], name + '.c.rgba8.gz'), ts + 2 * b)[b:-b, b:-b, 2].astype(np.float32) / 255
+            c = tile_layer(os.path.join(tile_dir(l0['dir']), name + '.c.rgba8.gz'), ts + 2 * b)[b:-b, b:-b, 2].astype(np.float32) / 255
             c = c.reshape(ts // 2, 2, ts // 2, 2).mean(axis=(1, 3))
         else:
             c = np.zeros((ts // 2, ts // 2), np.float32)
@@ -155,12 +167,20 @@ def urban_rings(g):
 def places():
     g = json.load(open(os.path.join(bc.RAW, 'ne', 'ne_10m_populated_places_simple.geojson')))
     rows = []
+    inside = None
+    if bc.EUROPE:
+        from shapely.geometry import Point, Polygon
+        la, lo = bc.outline_latlon(0.25)
+        ring = Polygon(np.stack([lo, la], 1))
+        inside = lambda lat, lon: ring.contains(Point(lon, lat))
     for f in g['features']:
         p = f['properties']
         lon, lat = f['geometry']['coordinates']
         x, y = bc.to_map(lat, lon)
         x, y = float(x), float(y)
         if not (EXTENT[0] < x < EXTENT[2] and EXTENT[1] < y < EXTENT[3]):
+            continue
+        if inside is not None and not inside(lat, lon):
             continue
         name = p.get('nameascii') or p.get('name') or ''
         name = FIXES.get(name, name)
@@ -197,7 +217,7 @@ def main():
         img[..., 0] = np.clip(40 + a * 400 + mm * 215, 0, 255)
         img[..., 1] = np.clip(40 + a * 400 + mm * 150, 0, 255)
         img[..., 2] = np.clip(40 + a * 400, 0, 255)
-        bc.write_png(os.path.join(bc.SHOTS, 'v063-bake-urban.png'), bc.south_up_to_image(img))
+        bc.write_png(os.path.join(bc.SHOTS, 'v070-bake-urban.png' if bc.EUROPE else 'v063-bake-urban.png'), bc.south_up_to_image(img))
 
 
 if __name__ == '__main__':

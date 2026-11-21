@@ -4,7 +4,8 @@
 //   - instanced simple trees in forest cover, placed on the GPU around the camera.
 
 import * as THREE from '../../vendor/three.module.js';
-import { GROUND_ON } from './region.js';
+import { REGION } from './regions.js';
+import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { FINE_GLSL, FINE_PX, ihash } from './finecover.js';
 import { coverReader } from './clipwindow.js';
 
@@ -67,7 +68,7 @@ const TREE_LEVELS = [
   { spacing: 28, half: 40, scale: 1.6 },
 ];
 export const TREE_MAX_AGL = 1000;   // m above the ground: no trees above this
-// v0.6.0 Part 7 (behind GROUND_ON): two more rings (clumps, to 2.2 and 4.5 km), trees to 3,000 m
+// v0.6.0 Part 7: two more rings (clumps, to 2.2 and 4.5 km), trees to 3,000 m
 // above the ground, and near the camera the fine cover's own tree pixels (woodlots, the woods'
 // real edges) instead of the 250 m forest share.
 const TREE_LEVELS_FAR = [
@@ -134,7 +135,7 @@ function ringCells(half, hole) {
 export const TREE_SNAP = 16;
 const sstep = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
 export function treeCells(ai, aj, half, spacing, texel, coverAt, out) {
-  const E = 1e-6, EDGE = 0.02, X0 = -400000, Y0 = -400000, SPAN = 2 * half + TREE_SNAP - 1, o = { mark: 0, forest: 0 };
+  const E = 1e-6, EDGE = 0.02, X0 = REGION.lattice.x0, Y0 = REGION.lattice.y0, SPAN = 2 * half + TREE_SNAP - 1, o = { mark: 0, forest: 0 };
   let n = 0;
   for (let j = -half; j < -half + SPAN; j++) for (let i = -half; i < -half + SPAN; i++) {
     const cx = ai + i, cy = aj + j;
@@ -164,7 +165,7 @@ export function createTrees(scene, uniforms, chunks, { fine = null } = {}) {
   group.name = 'trees';
   const levels = [];
   let shown = 0;
-  const G = GROUND_ON;                                   // fixed at page load: compiled in or not
+  const G = true;                                        // (v0.6.0's ground flag until v0.7.0)
   const LEVELS = G ? TREE_LEVELS.concat(TREE_LEVELS_FAR) : TREE_LEVELS;
   const MAX_AGL = G ? TREE_MAX_AGL_GROUND : TREE_MAX_AGL;
   LEVELS.forEach((L, k) => {
@@ -224,7 +225,7 @@ export function createTrees(scene, uniforms, chunks, { fine = null } = {}) {
           vec4 cov = uHasCover > 0.5 ? texture(uCover, uv) : vec4(0.0);
           float pw, zone;
           float raw = rawHeight(m, pw);
-          float h = max(flattenRunways(m, raw, zone), 0.0);
+          float h = ${seaFloor('flattenRunways(m, raw, zone)')};
           // Without cover data: forest on slopes, like most Korean hills.
           vec2 nn = texture(uNormal, uv).rg * (255.0 / 127.0) - (128.0 / 127.0);
           float slope = length(nn);

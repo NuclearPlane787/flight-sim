@@ -7,7 +7,6 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import * as THREE from '../vendor/three.module.js';
 import { toMap, toGeo, magVar, magToGrid, convergence, convergenceAt, magModelInstalled } from '../src/world/frame.js';
-import { setEastAsia } from '../src/world/region.js';
 import { compileWeather, windAt, newWind, windTurnAt } from '../src/sim/weather.js';
 import { createSky, azElToScene, skyNorthDeg } from '../src/world/sky.js';
 import { sunHorizontal, moonHorizontal } from '../src/astro.js';
@@ -22,11 +21,11 @@ const PLACES = {
   haneda: [35.5523, 139.7798], narita: [35.7647, 140.3864], pudong: [31.1434, 121.8052],
   tsushima: [34.42, 129.33], pyongyang: [39.0392, 125.7625],
 };
-// Each test sets the flag and the model it needs, and puts v0.5.8 back after.
+// Each test installs the model it needs, and takes it out after. (v0.7.0: v0.6.0's region flag is gone; `on`
+// is always true, and every flag-off case below went with it.)
 function withRules(on, fn) {
-  setEastAsia(on);
   const g = loadNodeRules();
-  try { return fn(g); } finally { uninstallNodeRules(); setEastAsia(false); }
+  try { return fn(g); } finally { uninstallNodeRules(); }
 }
 
 test('the mask: its header, the saturated edge, and the margin keeps every inside cell at 0', () => {
@@ -69,7 +68,7 @@ test('magVar inside South Korea: the plane exactly, at the known places and acro
   });
 });
 
-test('magVar beyond: WMM2025 at Haneda, Narita and Pudong; flag off (or no model) is the plane everywhere', () => {
+test('magVar beyond: WMM2025 at Haneda, Narita and Pudong; no model is the plane everywhere', () => {
   withRules(true, () => {
     assert.ok(Math.abs(magVar(...PLACES.haneda) - -7.85) < 0.05, String(magVar(...PLACES.haneda)));
     assert.ok(Math.abs(magVar(...PLACES.narita) - -7.82) < 0.05, String(magVar(...PLACES.narita)));
@@ -80,13 +79,9 @@ test('magVar beyond: WMM2025 at Haneda, Narita and Pudong; flag off (or no model
     const viaConv = wrap180((magToGrid(0, x, y) + convergence(PLACES.haneda[1])) / DEG);
     assert.ok(Math.abs(viaConv - magVar(...PLACES.haneda)) < 1e-6, `${viaConv}`);
   });
-  withRules(false, () => {
-    for (const [la, lo] of Object.values(PLACES)) assert.equal(magVar(la, lo), plane(la, lo));
-  });
+  // (v0.7.0: the flag-off case, the plane everywhere with the model installed, went.)
   assert.ok(!magModelInstalled());
-  setEastAsia(true);
-  try { for (const [la, lo] of Object.values(PLACES)) assert.equal(magVar(la, lo), plane(la, lo)); }
-  finally { setEastAsia(false); }
+  for (const [la, lo] of Object.values(PLACES)) assert.equal(magVar(la, lo), plane(la, lo));
 });
 
 // A line from a to b, every 250 m: the weight never falls, magVar never jumps.
@@ -165,19 +160,14 @@ const skyUniforms = () => ({ uSunDir: { value: new THREE.Vector3() }, uSunColor:
 const MS = Date.UTC(2026, 10, 20, 5, 0);   // 14:00 JST
 const MS_NIGHT = Date.UTC(2026, 10, 24, 14, 0);
 
-test('the sky: the sun, the Moon and the stars turn by the convergence at the camera with the flag on', () => {
+test('the sky: the sun, the Moon and the stars turn by the convergence at the camera', () => {
   const [la, lo] = PLACES.haneda;
   const s = sunHorizontal(MS, la, lo);
   const conv = convergence(lo) / DEG;
   assert.ok(Math.abs(conv - 7.13) < 0.01 && Math.abs(convergence(PLACES.gimpo[1]) / DEG - -0.41) < 0.01);
-  // Flag off: v0.5.8's sky, the true azimuth on the map.
-  setEastAsia(false);
-  assert.equal(skyNorthDeg(lo), 0);
-  let u = skyUniforms();
-  createSky(new THREE.Scene(), u, { UNIFORMS_GLSL: '' }).setTime(MS, la, lo);
-  assert.ok(u.uSunDir.value.angleTo(azElToScene(s.azDeg, s.altRefractedDeg)) < 1e-9);
-  // Flag on: the true azimuth turned by the convergence.
-  setEastAsia(true);
+  // (v0.7.0: the flag-off sky, skyNorthDeg() 0 and the true azimuth on the map, went with the flag.)
+  let u;
+  // The true azimuth turned by the convergence.
   try {
     assert.equal(skyNorthDeg(lo), conv);
     u = skyUniforms();
@@ -194,16 +184,12 @@ test('the sky: the sun, the Moon and the stars turn by the convergence at the ca
     const M = sky.mesh.material.uniforms.uStarMat.value;
     const ra = 165.93 * DEG, dec = 61.75 * DEG;
     const v = new THREE.Vector3(Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)).applyMatrix3(M);
-    const u2 = skyUniforms(), off = createSky(new THREE.Scene(), u2, { UNIFORMS_GLSL: '' });
-    setEastAsia(false);
-    off.setTime(MS_NIGHT, la, lo);
-    const v0 = new THREE.Vector3(Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)).applyMatrix3(off.mesh.material.uniforms.uStarMat.value);
-    const turned = v0.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), conv * DEG);   // about up: clockwise az = −turn
-    assert.ok(v.angleTo(turned) < 1e-9, `Dubhe off by ${v.angleTo(turned)}`);
+    // (v0.7.0: Dubhe against the flag-off sky turned by the convergence, and the flag-off Moon, went:
+    // nothing draws the unturned sky any more. Dubhe is checked against astro.js in tests/sky.test.mjs.)
+    void v;
     const m = moonHorizontal(MS_NIGHT, la, lo);
     assert.ok(u.uMoonDir.value.angleTo(azElToScene(m.azDeg - conv, m.altRefractedDeg)) < 1e-9, 'the Moon turned');
-    assert.ok(u2.uMoonDir.value.angleTo(azElToScene(m.azDeg, m.altRefractedDeg)) < 1e-9, 'the Moon, flag off');
-  } finally { setEastAsia(false); }
+  } finally { /* (v0.7.0) */ }
 });
 
 // ---- the wind
@@ -213,8 +199,8 @@ const wx = (extra = {}) => ({ refX: haneda[0], refY: haneda[1], wind: { fromDeg:
 const trueFrom = (W, x, y) => { const lo = toGeo(x, y)[1]; return ((Math.atan2(-W.meanE, -W.meanN) + convergence(lo)) / DEG + 360) % 360; };
 function windHere(C, x, y, agl = 5) { return windAt(C, x, y, agl, agl, 0, 0, 0, 0, newWind()); }
 
-test('the wind at the arrival: v0.5.8\'s arithmetic to the bit, flag on or off', () => {
-  for (const on of [false, true]) withRules(on, () => {
+test('the wind at the arrival: v0.5.8\'s arithmetic to the bit', () => {
+  for (const on of [true]) withRules(on, () => {   // (v0.7.0: flag off went)
     const C = compileWeather(wx());
     // v0.5.8's compileWeather: vec(from, kt) = magToGrid at (refX, refY), "from" to "going".
     const a = magToGrid(270 * DEG, haneda[0], haneda[1]), v = 10 * KT;
@@ -226,10 +212,8 @@ test('the wind at the arrival: v0.5.8\'s arithmetic to the bit, flag on or off',
     // Gusts, shear, turbulence and a burst: the same doubles at the reference with the flag on as off.
     const C2 = compileWeather(wx({ wind: { fromDeg: 270, kt: 10, gustKt: 25 }, turbulence: 'moderate', shear: { ftAgl: 500, fromDeg: 90, kt: 20 }, microbursts: [{ x: haneda[0] + 2000, y: haneda[1], radiusM: 1000, dvKt: 30 }] }));
     const W1 = windAt(C2, haneda[0], haneda[1], 300, 300, 12.5, 0.6, 0.8, 35, newWind());
-    setEastAsia(!on);
-    const W2 = windAt(C2, haneda[0], haneda[1], 300, 300, 12.5, 0.6, 0.8, 35, newWind());
-    setEastAsia(on);
-    assert.deepEqual(W1, W2);
+    // (v0.7.0: the comparison of W1 with the same wind with the flag the other way went with the flag.)
+    void W1;
   });
 });
 
@@ -239,13 +223,12 @@ test('the wind at the departure: Gimpo keeps the true direction set at Haneda (v
     const H = windHere(C, haneda[0], haneda[1]), G = windHere(C, gimpo[0], gimpo[1]);
     return { h: trueFrom(H, ...haneda), g: trueFrom(G, ...gimpo), sh: Math.hypot(H.meanN, H.meanE), sg: Math.hypot(G.meanN, G.meanE) };
   });
-  const on = at(true), off = at(false);
+  const on = at(true);   // (v0.7.0: the flag-off run and its assertion, v0.5.8 7.5° off, went with the flag)
   assert.ok(Math.abs(wrap180(on.g - on.h)) < 0.01, `${on.g} vs ${on.h}`);
   assert.ok(Math.abs(on.sg - on.sh) < 1e-12);
-  assert.ok(Math.abs(wrap180(off.g - off.h)) > 6, `v0.5.8: ${off.g} vs ${off.h}`);
   // The tower's magnetic reading at Gimpo: the true wind less Gimpo's variation (the plane there).
   const magG = (on.g - plane(...PLACES.gimpo) + 360) % 360;
-  console.log(`wind set 270°M at Haneda: true ${on.h.toFixed(3)}° there; at Gimpo true ${on.g.toFixed(3)}° (${magG.toFixed(1)}°M), v0.5.8 ${off.g.toFixed(3)}°`);
+  console.log(`wind set 270°M at Haneda: true ${on.h.toFixed(3)}° there; at Gimpo true ${on.g.toFixed(3)}° (${magG.toFixed(1)}°M)`);
   // Calm stays calm: nothing to turn.
   withRules(true, () => {
     const C = compileWeather(null);
@@ -281,8 +264,5 @@ test('the wind: v0.5.8\'s settings (no tag) never turn; new presets and the Weat
     assert.equal('trueWind' in normalizeWeather(wx({ trueWind: undefined })), false);
     assert.equal(isDefaultWeather({ trueWind: true }), true, 'the tag alone is no weather');
   });
-  withRules(false, () => {
-    const p = presetWeather('gusty-crosswind', { refX: 0, refY: 0, seed: 7 });
-    assert.equal('trueWind' in p, false, 'with the region off the settings are v0.5.8\'s, key for key');
-  });
+  // (v0.7.0: the flag-off case, a preset without the tag, went with the flag.)
 });

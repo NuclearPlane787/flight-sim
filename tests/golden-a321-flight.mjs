@@ -15,7 +15,7 @@ const KT = 0.514444, FT = 0.3048, DEG = Math.PI / 180;
 export const FIXTURE = new URL('./fixtures/golden-a321.json.gz', import.meta.url);
 
 // v0.6.0: the terrain from the tiles (the same heights to the bit as manifest.national's grid).
-export const TILED = await tiledTerrain({ layers: ['h'], coasts: false, game: true });   // the terrain the game reads (the region's once EAST_ASIA_ON is on)
+export const TILED = await tiledTerrain({ layers: ['h'], coasts: false, game: true });   // the terrain the game reads (the region's)
 function loadTerrain() {
   return TILED;
 }

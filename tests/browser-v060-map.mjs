@@ -22,7 +22,7 @@ const f2 = (v) => v.toFixed(2);
 try {
   // ---- 1. the dev page: costs and the ND pictures ----
   const costs = {};
-  for (const flag of [1, 0]) {
+  for (const flag of [1]) {   // (v0.7.0: the flag-off pass went with v0.6.0's flag; ?eastasia= is ignored)
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -73,7 +73,7 @@ try {
   check('the region\'s ND coast within 2x Korea\'s today (10-160 nm) or under 1 ms', regionWorst < Math.max(1, 2 * koreaWorst), `region ${f2(regionWorst)} ms, Korea ${f2(koreaWorst)} ms`);
 
   // ---- 2. the game with the region on ----
-  for (const flag of [1, 0]) {
+  for (const flag of [1]) {   // (v0.7.0: the flag-off pass went with v0.6.0's flag; ?eastasia= is ignored)
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });

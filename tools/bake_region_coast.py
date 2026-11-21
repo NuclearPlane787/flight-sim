@@ -87,6 +87,17 @@ FINE_NEW = [(-400000 + ti * 128000, -400000 + tj * 128000, -400000 + (ti + 1) * 
 FINE_BATCH = [(-400000 + ti * 128000, -400000 + tj * 128000, -400000 + (ti + 1) * 128000, -400000 + (tj + 1) * 128000)
               for ti, tj in rt.NEW_TILES]
 KOREA = (-400000, -400000, 400000, 400000)
+if bc.EUROPE:
+    # v0.7.0: Europe's region rectangle = its outline's bounding box (the 1 km level's extent, in
+    # metres); no v0.6.0 FINE rectangle, no Korea; the 250 m tiles' cells take the fine detail.
+    REGION = (-1377000, -1330000, 1422000, 1425000)
+    FINE = (0, 0, 0, 0)
+    _x0, _y0 = bc.NAT['x0'], bc.NAT['y0']
+    FINE_NEW = [(_x0 + ti * 128000, _y0 + tj * 128000, _x0 + (ti + 1) * 128000, _y0 + (tj + 1) * 128000)
+                for ti, tj in rt.EXTRA_TILES]
+    FINE_BATCH = [(_x0 + ti * 128000, _y0 + tj * 128000, _x0 + (ti + 1) * 128000, _y0 + (tj + 1) * 128000)
+                  for ti, tj in rt.NEW_TILES]
+    KOREA = (0, 0, 0, 0)
 BLOCK = 512000
 NBX = int(np.ceil((REGION[2] - REGION[0]) / BLOCK))
 NBY = int(np.ceil((REGION[3] - REGION[1]) / BLOCK))
@@ -99,14 +110,26 @@ LEVELS = [  # tol (fine, margin), cell, min area (fine, margin) m2
     dict(tol=(6000, 6000), cell=None, area=(1e8, 1e8)),   # uncut: one cell, the whole extent
 ]
 WHOLE = 4096000                 # level 3's one cell (>= the extent's width and height)
-WORK = '/tmp/flight-sim/v060/map-work'
+WORK = '/tmp/flight-sim/v070/work/map-work' if bc.EUROPE else '/tmp/flight-sim/v060/map-work'
 BLOCKS = os.path.join(WORK, 'blocks')
 LANDPOLY = '/tmp/flight-sim/v060/landpoly/land-polygons-split-4326/land_polygons'
 LPINDEX = '/tmp/flight-sim/v060/landpoly/bbox_index.npy'
 WATER_TILES = [os.path.join(d, 'water') for d in [rt.STAGE_OLD] + rt.STAGES_EARLIER[::-1] + [rt.STAGE]]   # v0.6.0's tiles, then each batch's
-SHIPPED = os.path.join(bc.DATA, 'coast-region.json')       # read (--water-only keeps its land levels)
+SHIPPED = os.path.join(bc.DATA, 'europe' if bc.EUROPE else '', 'coast-region.json')   # read (--water-only keeps its land levels)
 OUT = os.path.join(rt.STAGE, 'coast-region.json')         # v0.6.3: staging; the lead installs it
 KOREA_COAST = os.path.join(bc.DATA, 'coast.json')
+
+
+_EU = None
+
+
+def eu_outline():
+    global _EU
+    if _EU is None:
+        la, lo = bc.outline_latlon(0.25)
+        x, y = bc.to_map(la, lo)
+        _EU = shapely.Polygon(np.stack([np.round(x), np.round(y)], 1))
+    return _EU
 
 
 def block_rect(bi, bj):
@@ -145,6 +168,8 @@ def bake_block(bi, bj, idx, reader):
             pts += shapely.get_num_coordinates(g)
             geoms.append(g)
     u = shapely.union_all(geoms, grid_size=1.0) if geoms else shapely.Polygon()
+    if bc.EUROPE and not u.is_empty:   # v0.7.0: no land outside Europe's outline (the map's edge)
+        u = shapely.intersection(u, eu_outline(), grid_size=1.0)
     os.makedirs(BLOCKS, exist_ok=True)
     with open(p + '.tmp', 'wb') as f:
         f.write(shapely.to_wkb(u))
@@ -291,6 +316,8 @@ def lakes():
             for ring in [q.exterior, *q.interiors]:
                 put(ring)
     n_wc = len(out)
+    if bc.EUROPE:
+        return out, n_wc
     with open(KOREA_COAST) as f:
         kw = json.load(f).get('water', [])
     for r in kw:
@@ -399,9 +426,12 @@ def main():
         levels.append(dict(tol=L['tol'][0], cell=L['cell'] or WHOLE, rings=rings))
     water, n_wc = lakes()
     print(f'water: {len(water)} rings ({n_wc} from WorldCover outside Korea\'s square)', flush=True)
-    with open(SHIPPED) as f:
-        shipped = json.load(f)['water']
-    water, cnt = merge_water(shipped, water)
+    if bc.EUROPE and not os.path.exists(SHIPPED):
+        cnt = dict(kept=0, dropped=0, added=len(water), note='Europe: first bake, nothing shipped')
+    else:
+        with open(SHIPPED) as f:
+            shipped = json.load(f)['water']
+        water, cnt = merge_water(shipped, water)
     print(f'water merged with the shipped file: {cnt}', flush=True)
     out = dict(v=2, kind='region', extent=list(REGION), levels=levels, water=water)
     with open(OUT + '.tmp', 'w') as f:

@@ -108,10 +108,7 @@ test('trees: the pixel asked is the tree\'s own (its jittered place in the cell)
 // 200 where only a neighbour's is. Every older rule (more than 0.2, or 0.25 to 0.75) reads both as marked.
 test('the airport mask: 255 inside the fence, 200 in the ring of neighbours, nothing beyond', async () => {
   const { maskAirportCover } = await import('../src/world/airport-mask.js');
-  const { setGround, GROUND_ON } = await import('../src/world/region.js');
-  const wasG = GROUND_ON;
-  try {
-    setGround(true);
+  {   // (v0.7.0: v0.6.0's ground flag is gone; this ran with it on)
     const g = { layers: { national: { x0: 0, y0: 0, cell: 250, nx: 20, ny: 20, cover: new Uint8Array(20 * 20 * 4) } } };
     g.layers.national.cover.fill(90);
     for (let k = 3; k < 1600; k += 4) g.layers.national.cover[k] = 0;
@@ -131,5 +128,5 @@ test('the airport mask: 255 inside the fence, 200 in the ring of neighbours, not
     const sst = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
     assert.equal(sst(0.25, 0.75, 200 / 255), 1); assert.equal(sst(0.25, 0.75, 1), 1);
     assert.equal(sst(0.86, 0.98, 200 / 255), 0); assert.equal(sst(0.86, 0.98, 1), 1);
-  } finally { setGround(wasG); }
+  }
 });

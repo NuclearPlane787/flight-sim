@@ -142,3 +142,11 @@
   .fskb { grid-template-columns: minmax(0, 1fr); }
   .fskb-legend { flex-direction: row; flex-wrap: wrap; gap: 4px 16px; }
 }
+
+/* v0.7.0: the Load list by region, and New scenario's region picker */
+.fsm-group { margin: 10px 2px 2px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8fa3b3; display: flex; align-items: baseline; gap: 10px; }
+.fsm-group:first-child { margin-top: 0; }
+.fsm-group small { font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #8a9097; }
+.fsm-region-ask { margin: -2px 0 10px; font-size: 15px; color: #c9d3db; }
+.fsm-region-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.fsm-region-row .fsm-when { color: #2fe3ff; }

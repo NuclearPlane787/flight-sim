@@ -1,74 +1,67 @@
-// The region (v0.6.0): East Asia, Korea's map grown. Everything beyond Korea is behind
-// EAST_ASIA_ON: with it off the game is v0.5.8 in everything a player sees. It stayed off until the
-// new airports could be picked, flown to and landed at end to end, and is on by default since.
+// The region (v0.6.0): East Asia, Korea's map grown. Since v0.7.0 it is the only game: v0.6.0's
+// flags (the region, each country's cities, the new ground) and v0.5.8's Korea-only paths are gone.
+//
+// v0.7.0: a page is in one region (regions.js: East Asia, or Europe). What differs by region is asked
+// for here: the map's extent (outline.js's rectangle round the region's outline), the country rules
+// (East Asia's below, Europe's in rules-europe.js, with the transition altitudes its airports set
+// themselves), and the query a worker needs to open in the page's region. East Asia's answers are the
+// ones it gave before.
 //
 // The terrain loader also lives here: it keeps the tiles round the aircraft, the camera, the
 // departure and the arrival resident, loads ahead along the track, and tells the sim's loop
-// whether this frame's steps may run (briefs/V0-6-0.md, "The sim never sees a missing tile"). Over
-// Korea alone every tile is loaded at the start, so it never holds a step.
+// whether this frame's steps may run (briefs/V0-6-0.md, "The sim never sees a missing tile").
 
-import { setMagModel } from './frame.js';
+import { setMagModel, toMap } from './frame.js';
 import { loadGeoRules } from './geo-rules.js';
+import { REGION, REGION_ID, DEFAULT_REGION } from './regions.js';
+import { regionExtent } from './outline.js';
+import { EUROPE_RULES, EUROPE_DEFAULT_RULES, EUROPE_AIRPORT_TRANSITIONS, AIRPORT_TRANSITION_RADIUS_M } from './rules-europe.js';
 
-// The shipped default. A URL parameter overrides it for a test build: ?eastasia=0 turns the
-// region off (v0.5.8's Korea), ?eastasia=1 on; predict.js passes the same parameter to
-// the prediction worker, whose `location` is its own script's URL, so both read one value.
-// Node's tests call setEastAsia(). Importers see the live binding: read EAST_ASIA_ON (or
-// eastAsiaOn()) when you need it, never copy it at import time.
-export const EAST_ASIA_DEFAULT = true;    // on since the evening of 2026-11-19: the eight new airports are flown to and landed at end to end (STATUS.md)
-function urlFlag(name = 'eastasia') {
+// A URL parameter (the page's, or the prediction worker's own script URL, which predict.js
+// gives the same query) or, in node, an environment variable: '1' or '0', else null.
+function urlFlag(name) {
   try {
     const q = (typeof location !== 'undefined' && location && location.search) || '';
     const m = new RegExp('[?&]' + name + '=([01])\\b').exec(q);
     return m ? m[1] === '1' : null;
   } catch (e) { return null; }
 }
-// (Node: FS_EAST_ASIA=1 or 0 in the environment overrides the default for a whole test run.)
 function envFlag(name) {
   try { const v = typeof process !== 'undefined' && process.env ? process.env[name] : undefined; return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; }
 }
-export let EAST_ASIA_ON = urlFlag() ?? envFlag('FS_EAST_ASIA') ?? EAST_ASIA_DEFAULT;
-export function setEastAsia(on) { EAST_ASIA_ON = !!on; setGeoRules(geo); }   // (installing the rules again drops frame.js's last-point cache)
-export const eastAsiaOn = () => EAST_ASIA_ON;
-
-// Part 6 (each country's own city mix, the landmarks, the real centres) and Part 7 (the new
-// ground) have a flag each, off until that part was done (briefs/V0-6-0.md): ?cities=0 and ?ground=0 on
-// the page's URL turn them off, setCities() / setGround() in node. Both only do anything
-// with the region on, except where a part changes Korea's look on purpose.
-export const CITIES_DEFAULT = true, GROUND_DEFAULT = true;   // both on since the evening of 2026-11-19 (Part 6's and Part 7's views, flights and frame rates are in STATUS.md)
-export let CITIES_ON = urlFlag('cities') ?? envFlag('FS_CITIES') ?? CITIES_DEFAULT;
-export function setCities(on) { CITIES_ON = !!on; }
-// The new ground is on by default only with the region: ?eastasia=0&cities=0 stays v0.5.8's
-// Korea, pixel for pixel (?ground=1 with it still gives Korea the new ground, for a look).
-export let GROUND_ON = urlFlag('ground') ?? envFlag('FS_GROUND') ?? (GROUND_DEFAULT && EAST_ASIA_ON);
-export function setGround(on) { GROUND_ON = !!on; }
-// The query to add to a worker's or a dev page's URL so it sees the same region as this page.
 // An airport still being checked (v0.6.1: Yancheng) sits in the manifest's `airportsPending` and
 // `patchesPending`, which nothing reads unless ?pending=1 is on the page's URL (FS_PENDING=1 in
 // node): out of every list, the map and the terrain until it has passed the check the others
 // passed, then its entries move to `airportsRegion` and `patchesRegion`. Off by default, always.
-export let PENDING_ON = (urlFlag('pending') ?? envFlag('FS_PENDING') ?? false) && EAST_ASIA_ON;
+// Importers see the live binding: read PENDING_ON when you need it, never copy it at import time.
+export let PENDING_ON = urlFlag('pending') ?? envFlag('FS_PENDING') ?? false;
 export function setPending(on) { PENDING_ON = !!on; }
+// The query to add to a worker's or a dev page's URL so it sees the same region as this page: the region
+// itself unless it is the default (a worker has no storage to remember one with: regions.js), and pending.
 export const regionQuery = () => {
   const q = [];
-  if (EAST_ASIA_ON !== EAST_ASIA_DEFAULT) q.push(`eastasia=${EAST_ASIA_ON ? 1 : 0}`);
+  if (REGION_ID !== DEFAULT_REGION) q.push('region=' + REGION_ID);
   if (PENDING_ON) q.push('pending=1');
   return q.length ? '?' + q.join('&') : '';
 };
 
-// The map's extent (m, the map frame): Korea's 800 km square (frame.js's MAP_EXTENT, v0.5.8),
-// or the region's whole data, the 1 km level's rectangle round 24-46 N, 112-148 E. FINE_EXTENT
-// is the 250 m data's bounding rectangle (v0.6.0: the tiles meeting 29-40 N, 119-142 E; v0.6.3 adds 26 tiles
-// round Beijing and north to Vladivostok, v0.6.4 ten over Hokkaido: the data itself is the manifest's `covered` tiles, fineOutline()). The predicted path ends at mapExtent(),
-// and the path map draws it. (tests/region-loader.test.mjs checks both against the manifest.)
-export const KOREA_EXTENT = { x0: -400000, y0: -400000, x1: 400000, y1: 400000 };
+// The map's extent (m, the map frame): the region's whole data, the 1 km level's rectangle round
+// 24-46 N, 112-148 E. FINE_EXTENT is the 250 m data's bounding rectangle (v0.6.0: the tiles meeting
+// 29-40 N, 119-142 E; v0.6.3 adds 26 tiles round Beijing and north to Vladivostok, v0.6.4 ten over
+// Hokkaido: the data itself is the manifest's `covered` tiles, fineOutline()). The predicted path
+// ends at mapExtent(), and the path map draws it. (tests/region-loader.test.mjs checks both against
+// the manifest.)
 export const REGION_EXTENT = { x0: -1600000, y0: -1338000, x1: 2110000, y1: 1284000 };
 export const FINE_EXTENT = { x0: -1040000, y0: -784000, x1: 1520000, y1: 1008000 };   // (v0.6.3: Beijing's column in the west, two rows north to Vladivostok, y1 880000; v0.6.4: Hokkaido's row, y1 1008000; v0.6.2's was -912000 .. 624000)
-export const mapExtent = () => (EAST_ASIA_ON ? REGION_EXTENT : KOREA_EXTENT);
+// (REGION_EXTENT and FINE_EXTENT are East Asia's. Europe's map extent is the rectangle round its outline; its
+// 250 m data's rectangle comes from the manifest's covered tiles once one has been read.)
+const HOME_REGION = REGION_ID === 'east-asia';
+const MAP_RECT = HOME_REGION ? REGION_EXTENT : regionExtent();
+export const mapExtent = () => MAP_RECT;
 // v0.6.3: the 250 m data is a set of tiles, not a rectangle (Shane, 2026-11-20: "we don't have to keep every
 // region a perfect rectangle"). fineOutline() is its edge for the map: every side of a covered tile whose
 // neighbour isn't covered, as [x0, y0, x1, y1] in map metres; null until a manifest with the region's tiles has
-// been read (terrainSpec() notes it), and with the flag off.
+// been read (terrainSpec() notes it).
 let fineSpec = null, fineEdges = null;
 export function tileOutline(spec) {
   const L = spec && spec.levels && spec.levels[0];
@@ -84,32 +77,41 @@ export function tileOutline(spec) {
   return out;
 }
 export function fineOutline() {
-  if (!EAST_ASIA_ON || !fineSpec) return null;
+  if (!fineSpec) return null;
   return fineEdges || (fineEdges = tileOutline(fineSpec));
 }
-export const fineExtent = () => (EAST_ASIA_ON ? FINE_EXTENT : KOREA_EXTENT);
+let fineRect = null;
+function coveredRect() {
+  if (fineRect || !fineSpec) return fineRect;
+  const L = fineSpec.levels && fineSpec.levels[0];
+  if (!L || !L.covered || !L.covered.length) return null;
+  const size = L.tile * L.cell;
+  let i0 = Infinity, j0 = Infinity, i1 = -Infinity, j1 = -Infinity;
+  for (const name of L.covered) { const [i, j] = name.split('_').map(Number); if (i < i0) i0 = i; if (i > i1) i1 = i; if (j < j0) j0 = j; if (j > j1) j1 = j; }
+  fineRect = { x0: fineSpec.x0 + i0 * size, y0: fineSpec.y0 + j0 * size, x1: fineSpec.x0 + (i1 + 1) * size, y1: fineSpec.y0 + (j1 + 1) * size };
+  return fineRect;
+}
+export const fineExtent = () => (HOME_REGION ? FINE_EXTENT : coveredRect() || MAP_RECT);
 
 // ---- The local rules by place (briefs/V0-6-0.md Part 5). One lookup the sim, the screens and the clock
 // share. `geo` is geo-rules.js's object (the country raster and WMM2025), installed once it is
-// loaded: by main.js, by the prediction worker before its first run, and by node's tests. With
-// the flag off, or before it is installed, everywhere is Korea, as in v0.5.8. A function of
+// loaded: by main.js, by the prediction worker before its first run, and by node's tests. Before
+// it is installed, everywhere is Korea (and the magnetic model frame.js's plane). A function of
 // position only: nothing here may depend on the frame, the clock or what happens to be loaded.
 let geo = null;
 // Installing the geo rules also installs frame.js's magnetic model (briefs/V0-6-0.md, "Magnetic
-// variation"): geo.magVarAt while EAST_ASIA_ON is on, the plane itself while it is off.
+// variation"): geo.magVarAt (the plane itself inside south-korea.poly).
 export function setGeoRules(g) {
   geo = g || null;
   const G = geo;
-  setMagModel(G && typeof G.magVarAt === 'function' ? (x, y, plane) => (EAST_ASIA_ON ? G.magVarAt(x, y, plane) : plane) : null);
+  setMagModel(G && typeof G.magVarAt === 'function' ? (x, y, plane) => G.magVarAt(x, y, plane) : null);
 }
 export const geoRules = () => geo;
-// The page and the prediction worker, once at startup: with the flag off, null at once (no
-// load, nothing waits: v0.5.8); with it on, a promise that resolves once the geo rules are
-// loaded and installed (to the rules, or to null if they could not load: then the plane holds
-// everywhere, as with the flag off). It never rejects. Whoever steps the sim waits for it.
+// The page and the prediction worker, once at startup: a promise that resolves once the geo
+// rules are loaded and installed (to the rules, or to null if they could not load: then the
+// plane holds everywhere). It never rejects. Whoever steps the sim waits for it.
 let localRules = null;
 export function loadLocalRules(base) {
-  if (!EAST_ASIA_ON) return null;
   if (!localRules) {
     // Three tries (a dropped request shouldn't leave one side on the plane), then null.
     const attempt = (n) => loadGeoRules(base).then((g) => { setGeoRules(g); return g; }, (e) => {
@@ -122,8 +124,10 @@ export function loadLocalRules(base) {
   }
   return localRules;
 }
-// 'KR' | 'KP' | 'JP' | 'CN' | 'RU' (v0.6.3) | 'other' (the sea takes its nearest land's country).
-export function countryAt(x, y) { return EAST_ASIA_ON && geo ? geo.countryAt(x, y) : 'KR'; }
+// 'KR' | 'KP' | 'JP' | 'CN' | 'RU' (v0.6.3) | 'other' in East Asia; an ISO code from Europe's raster in Europe
+// (the sea takes its nearest land's country). Before the rules are in: the region's default country.
+const DEFAULT_COUNTRY = REGION.defaultCountry;
+export function countryAt(x, y) { return geo ? geo.countryAt(x, y) : DEFAULT_COUNTRY; }
 const FT_M = 0.3048;
 const KR_RULES = { country: 'KR', timeZone: 'Asia/Seoul', zoneName: 'KST', baroUnit: 'hPa',
   transAltM: 14000 * FT_M, transLevelM: 14000 * FT_M, metricAlt: false, metar: 'kr' };
@@ -147,21 +151,45 @@ export const COUNTRY_RULES = {
   // transition (Sakhalin is UTC+11): right at the one Russian airport, [EST] elsewhere.
   RU: { ...KR_RULES, country: 'RU', timeZone: 'Asia/Vladivostok', zoneName: 'VLAT', transAltM: 8000 * FT_M, transLevelM: 9000 * FT_M, metar: 'ru' },
 };
-export function rulesAt(x, y) { return COUNTRY_RULES[countryAt(x, y)] || KR_RULES; }
+// v0.7.0: the page's region's table and default. COUNTRY_RULES above is East Asia's, as it was.
+const RULES = HOME_REGION ? COUNTRY_RULES : EUROPE_RULES;
+const DEFAULT_RULES = HOME_REGION ? KR_RULES : EUROPE_DEFAULT_RULES;
+export const regionRulesTable = () => RULES;
+// The transition altitudes set airport by airport (rules-europe.js; East Asia has none): within the radius of
+// such an airport its altitude and level replace the country's, the nearer airport's where two reach. The zone,
+// the units and the country stay the place's own. One object per (country, airport), made once: no garbage.
+const AIRPORT_TA = HOME_REGION ? [] : Object.entries(EUROPE_AIRPORT_TRANSITIONS).map(([icao, t]) => {
+  const [x, y] = toMap(t.at[0], t.at[1]);
+  return { icao, x, y, transAltM: t.taFt * FT_M, transLevelM: t.tlFl * 100 * FT_M };
+});
+const TA_R2 = AIRPORT_TRANSITION_RADIUS_M * AIRPORT_TRANSITION_RADIUS_M;
+const taRules = new Map();
+export function rulesAt(x, y) {
+  const r = RULES[countryAt(x, y)] || DEFAULT_RULES;
+  if (AIRPORT_TA.length === 0) return r;
+  let best = null, bd = TA_R2;
+  for (let k = 0; k < AIRPORT_TA.length; k++) {
+    const a = AIRPORT_TA[k], dx = x - a.x, dy = y - a.y, d2 = dx * dx + dy * dy;
+    if (d2 < bd) { bd = d2; best = a; }
+  }
+  if (best === null || (best.transAltM === r.transAltM && best.transLevelM === r.transLevelM)) return r;
+  const key = r.country + '|' + best.icao;
+  let o = taRules.get(key);
+  if (o === undefined) { o = Object.freeze({ ...r, transAltM: best.transAltM, transLevelM: best.transLevelM, transAt: best.icao }); taRules.set(key, o); }
+  return o;
+}
 
-// Which terrain the manifest gives: with the flag off, Korea's (`tiles`, `patches`,
-// `coastPatches`, v0.5.8's extent); with it on, the region's when the manifest has it
-// (`tilesRegion`, and `patchesRegion`/`coastPatchesRegion`/`airportsRegion` added to Korea's).
-// A manifest without the region's sections gives Korea's either way.
-export function terrainSpec(manifest, on = EAST_ASIA_ON) {
-  if (on === undefined || on === null) on = EAST_ASIA_ON;
+// Which terrain the manifest gives: the region's tiles (`tilesRegion`), and Korea's three airports'
+// `patches`/`coastPatches`/`airports` with the region's (`…Region`) and, with PENDING_ON, the
+// pending ones (`…Pending`) added. `region` is true whenever the manifest has the region's tiles.
+export function terrainSpec(manifest) {
   const m = manifest || {};
-  const region = !!(on && m.tilesRegion);
+  const region = !!m.tilesRegion;
   if (m.tilesRegion && m.tilesRegion !== fineSpec) { fineSpec = m.tilesRegion; fineEdges = null; }   // (for fineOutline())
   const pending = region && PENDING_ON;
   return {
     region,
-    tiles: region ? m.tilesRegion : m.tiles,
+    tiles: region ? m.tilesRegion : null,
     patches: (m.patches || []).concat(region ? m.patchesRegion || [] : [], pending ? m.patchesPending || [] : []),
     coastPatches: (m.coastPatches || []).concat(region ? m.coastPatchesRegion || [] : [], pending ? m.coastPatchesPending || [] : []),   // (coastPatchesPending: v0.6.3)
     airports: (m.airports || []).concat(region ? m.airportsRegion || [] : [], pending ? m.airportsPending || [] : []),

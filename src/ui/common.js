@@ -3,6 +3,7 @@
 // and the raw ILS-style deviations. DOM only where a function says so.
 
 import { gridToMag, magToGrid } from '../world/frame.js';
+import { REGION } from '../world/regions.js';
 
 export const DEG = Math.PI / 180;
 export const KT = 1 / 0.514444;   // m/s -> kt
@@ -236,13 +237,17 @@ export function buildUrban(doc) {
 // only the cities of about five million and more; each doubling of the zoom names cities about a fifth the size; from
 // about 0.003 (300 km across a 900 px map) every place in the list.
 export const PLACE_K0 = 0.0003, PLACE_POP0 = 5.5e6;
+// v0.7.0: a region's cities against East Asia's (regions.js's placePopScale): Europe's great cities are a third the size
+// of Tokyo, Shanghai and Seoul, and with East Asia's threshold the whole of Europe named only Paris and Madrid.
+const PLACE_POP_SCALE = REGION.placePopScale || 1;
 export function placePopMin(k) {
   if (!(k > 0)) return Infinity;
-  const p = PLACE_POP0 * Math.pow(PLACE_K0 / k, 2.3);
+  const p = PLACE_POP0 * PLACE_POP_SCALE * Math.pow(PLACE_K0 / k, 2.3);
   return p < 30000 ? 0 : p;
 }
 // The size a name is written at: the great cities larger and heavier.
-export const placeStyle = (pop) => (pop >= 5e6 ? { px: 14, bold: true, alpha: 0.82 } : pop >= 1e6 ? { px: 12.5, bold: true, alpha: 0.7 } : pop >= 2e5 ? { px: 11.5, bold: false, alpha: 0.66 } : { px: 11, bold: false, alpha: 0.56 });
+export const placeStyle = (pop0) => placeStyle0(pop0 / PLACE_POP_SCALE);
+const placeStyle0 = (pop) => (pop >= 5e6 ? { px: 14, bold: true, alpha: 0.82 } : pop >= 1e6 ? { px: 12.5, bold: true, alpha: 0.7 } : pop >= 2e5 ? { px: 11.5, bold: false, alpha: 0.66 } : { px: 11, bold: false, alpha: 0.56 });
 // Which names to write, and where. places: largest first; toScreen(x, y) -> [sx, sy]; W, H the canvas (px);
 // taken: boxes { x0, y0, x1, y1 } no name may touch (the airports' labels and dots); measure(name, style) -> px.
 // A name is centred on its city; if that touches something, just under it, then just over it; else it is left
@@ -259,6 +264,10 @@ export function pickPlaces(places, { k, toScreen, W, H, taken = [], measure, max
     // A city of a million or more also tries beside its place and two lines off (Seoul and Tokyo sit under
     // their airports' labels at the region's scale, and the map shouldn't lose them to that).
     const tries = c.pop >= 1e6 ? [[0, 0], [0, h + 3], [0, -h - 3], [w / 2 + 12, 0], [-w / 2 - 12, 0], [0, 2 * h + 6], [0, -2 * h - 6], [w / 2 + 12, h + 3], [-w / 2 - 12, h + 3]] : [[0, 0], [0, h + 3], [0, -h - 3]];
+    // v0.7.0: a great city (five million in East Asia's measure) tries farther still before the map gives it up:
+    // London sits between Heathrow's and Gatwick's labels at the region's scale and all nine places were taken.
+    // (Only in a region that scales its cities: East Asia's names are placed exactly as before. The review's finding.)
+    if (PLACE_POP_SCALE !== 1 && c.pop >= 5e6 * PLACE_POP_SCALE) tries.push([w / 2 + 12, -h - 3], [-w / 2 - 12, -h - 3], [0, 3 * h + 9], [0, -3 * h - 9], [w / 2 + 12, 2 * h + 6], [-w / 2 - 12, 2 * h + 6], [w / 2 + 12, -2 * h - 6], [-w / 2 - 12, -2 * h - 6], [w + 24, 0], [-w - 24, 0]);
     for (const [dx, dy] of tries) {
       const b = { x0: sx + dx - w / 2 - 4, y0: sy + dy - h / 2 - 1, x1: sx + dx + w / 2 + 4, y1: sy + dy + h / 2 + 1 };
       if (boxes.every((q) => b.x1 < q.x0 || b.x0 > q.x1 || b.y1 < q.y0 || b.y0 > q.y1)) {
@@ -272,7 +281,10 @@ export function pickPlaces(places, { k, toScreen, W, H, taken = [], measure, max
 }
 
 // Trace the rings that touch a box into the current path, with a transform fn(x, y) -> [sx, sy].
-export function traceRings(ctx, rings, lod, box, tf, minSize = 0) {
+// v0.7.0: `open` leaves each ring unclosed, for a path that is only filled (a fill closes every subpath itself, so the
+// picture is the same). Chrome's closePath() slows with the number of subpaths already in the path: Europe's map at
+// the region's scale spent 88 % of its 13 ms a draw in it (3,477 rings), East Asia's 66 % of 3.8 ms (1,675).
+export function traceRings(ctx, rings, lod, box, tf, minSize = 0, open = false) {
   const p = [0, 0];
   for (const r of rings) {
     if (r.x1 < box.x0 || r.x0 > box.x1 || r.y1 < box.y0 || r.y0 > box.y1 || r.size < minSize) continue;
@@ -280,7 +292,7 @@ export function traceRings(ctx, rings, lod, box, tf, minSize = 0) {
     if (f.length < 6) continue;
     tf(f[0], f[1], p); ctx.moveTo(p[0], p[1]);
     for (let i = 2; i < f.length; i += 2) { tf(f[i], f[i + 1], p); ctx.lineTo(p[0], p[1]); }
-    ctx.closePath();
+    if (!open) ctx.closePath();
   }
 }
 
@@ -364,13 +376,13 @@ export function screenBox(px, py, ch, sh, k, u0, u1, w0, w1) {
 
 // The land to fill (even-odd) into the current path: the region's cells in view, or Korea's rings.
 export function traceLand(ctx, b, lod, box, tf, minSize = 0) {
-  if (!b.region) { traceRings(ctx, b.land, lod, box, tf, minSize); return; }
+  if (!b.region) { traceRings(ctx, b.land, lod, box, tf, minSize, true); return; }
   const p = [0, 0];
   eachPiece(b, lod, box, minSize, (r) => {
     const f = r.f;
     tf(f[0], f[1], p); ctx.moveTo(p[0], p[1]);
     for (let i = 2; i < f.length; i += 2) { tf(f[i], f[i + 1], p); ctx.lineTo(p[0], p[1]); }
-    ctx.closePath();
+    // (no closePath(): the land is only ever filled, and the fill closes each piece: see traceRings())
   });
 }
 

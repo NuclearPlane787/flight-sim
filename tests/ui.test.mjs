@@ -4,11 +4,9 @@ import assert from 'node:assert/strict';
 import { ilsDeviation, findEnd, buildCoast, thresholdOf, NM } from '../src/ui/common.js';
 import { fuelEstimate, LIMITS } from '../src/ui/setup.js';
 import { mockAirports } from './dev-ui-mock.js';
-import { setEastAsia } from '../src/world/region.js';
-// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
-// flag is set off here whatever the shipped default (the region's own behaviour is checked in
-// tests/v060-*.test.mjs). No assertion below changed.
-setEastAsia(false);
+// v0.7.0: v0.6.0's region flag is gone, so the fuel estimate is the region's rule (regionTrip(), fitted to
+// the sim's own burn in tests/v060-setup.test.mjs): Gimpo–Jeju is about 3.1 t, not v0.5.8's 4 t, and the
+// trip that overfills the tanks is 4,000 nm, not 3,000. Those two assertions changed; nothing else.
 
 const DEG = Math.PI / 180;
 const airports = mockAirports();
@@ -56,10 +54,10 @@ test('course is the runway magnetic heading (07 ≈ 066°)', () => {
   assert.ok(Math.abs(r.courseMag - 66) < 1.5, String(r.courseMag));
 });
 
-test('fuel estimate: Gimpo–Jeju about 4 t, within the tanks', () => {
+test('fuel estimate: Gimpo–Jeju about 3 t, within the tanks', () => {
   const f = fuelEstimate(243);
-  assert.ok(f.total >= 3700 && f.total <= 4300, String(f.total));
-  assert.ok(fuelEstimate(3000).total > LIMITS.FUEL_MAX, 'long trips exceed the tanks (setup caps them)');
+  assert.ok(f.total >= 2800 && f.total <= 3400, String(f.total));   // (v0.7.0: the region's rule, 3,100; v0.5.8's 3,700–4,300)
+  assert.ok(fuelEstimate(4000).total > LIMITS.FUEL_MAX, 'long trips exceed the tanks (setup caps them)');   // (v0.7.0: 4,000 nm; v0.5.8's 3,000)
   assert.equal(LIMITS.FUEL_MAX, 18510);   // v0.4.4: the sim's tanks (was v0.1.0's 18,864)
 });
 

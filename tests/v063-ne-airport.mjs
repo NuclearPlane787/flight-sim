@@ -10,24 +10,31 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { setEastAsia, setPending, setGeoRules, terrainSpec, countryAt } from '../src/world/region.js';
+import { setPending, setGeoRules, terrainSpec, countryAt } from '../src/world/region.js';
+
 import { createGeoRules } from '../src/world/geo-rules.js';
 import { convergence, greatCircle, scaleFactor } from '../src/world/frame.js';
 import { createAirports, pavementEnd, profileAt, runwayCrossings } from '../src/world/runways.js';
 import { buildTaxiGraph, routeFromStand, snapToGraph, standsFor, regionRules } from '../src/ground/taxi.js';
 import { standHeading, pointInPoly } from '../src/world/traffic-layout.js';
 import { typeById } from '../src/sim/types.js';
+import { dataUrl } from '../src/world/regions.js';
 
-const DATA = new URL('../data/', import.meta.url);
+// v0.7.0: the page's region's data folder (REGION.data: East Asia's is data/ itself, so nothing changes there); the
+// shape's references (RKSI, ZSQD) are East Asia's.
+const DATA = new URL(dataUrl(import.meta.url, '../'));
+const EAST_ASIA = new URL('../data/', import.meta.url);
 export const has = (rel) => existsSync(new URL(rel, DATA));
 export const load = (i) => JSON.parse(readFileSync(new URL(`airports/${i}.json`, DATA), 'utf8'));
+const loadRef = (i) => JSON.parse(readFileSync(new URL(`airports/${i}.json`, EAST_ASIA), 'utf8'));
 const manifest = () => JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8'));
 const DEG = Math.PI / 180;
 const NM = 1852;
 const FT = 0.3048;
 const wrapd = (a) => ((a + 540) % 360) - 180;
+// ('512839.00N', '0002905.97W': v0.7.0, south and west negative)
 const dms = (s) => { const v = s.slice(0, -1), n = /[NS]/.test(s.slice(-1)) ? 2 : 3;
-  return Number(v.slice(0, n)) + Number(v.slice(n, n + 2)) / 60 + Number(v.slice(n + 2)) / 3600; };
+  return (/[SW]/.test(s.slice(-1)) ? -1 : 1) * (Number(v.slice(0, n)) + Number(v.slice(n, n + 2)) / 60 + Number(v.slice(n + 2)) / 3600); };
 const part = (name) => {
   const header = JSON.parse(readFileSync(new URL(name + '.json', DATA), 'utf8'));
   const buf = gunzipSync(readFileSync(new URL(header.file, DATA)));
@@ -60,8 +67,12 @@ function lsqPlane(P) {
 }
 // v0.6.4 (cfg.fieldSurface 'runways'): each runway's straight profile between its ends, blended by 1 / (1 + d^2) of the
 // distance to its centreline (bake_region_patches.py field_runways(), FIELD_RUNWAYS: Sendai, Niigata)
-function runwaySurface(runways) {
-  const R = runways.map((r) => { const [a, b] = r.ends, L = Math.hypot(b.x - a.x, b.y - a.y); return { a, b, L, ux: (b.x - a.x) / L, uy: (b.y - a.y) / L }; });
+// (pavement, v0.7.0: between the pavement's ends, as runwayRects() draws a runway: bake_region_patches.py FIELD_PAVEMENT)
+function runwaySurface(runways, pavement = false) {
+  const R = runways.map((r) => {
+    const [a, b] = pavement ? r.ends.map((e) => ({ ...pavementEnd(e), elevM: e.elevM })) : r.ends, L = Math.hypot(b.x - a.x, b.y - a.y);
+    return { a, b, L, ux: (b.x - a.x) / L, uy: (b.y - a.y) / L };
+  });
   return (x, y) => {
     let n = 0, d = 0;
     for (const { a, b, L, ux, uy } of R) {
@@ -71,7 +82,7 @@ function runwaySurface(runways) {
     return n / d;
   };
 }
-const withPending = async (fn) => { setEastAsia(true); setPending(true); try { return await fn(); } finally { setPending(false); } };
+const withPending = async (fn) => { setPending(true); try { return await fn(); } finally { setPending(false); } };
 
 // cfg: { icao, patch, coast (bool), shortName, name, latLon, elevM, runway: { id, lengthM, widthM, source }
 //   (or runways: [{ id, lengthM, widthM, source }, ...] for more than one: v0.6.4, New Chitose),
@@ -85,12 +96,22 @@ const withPending = async (fn) => { setEastAsia(true); setPending(true); try { r
 //   crossingProfile: true (v0.6.4: two runways cross: the shorter's ground checked against runwayCrossings()'s profile),
 //   fieldSurface: 'runways' (v0.6.4: the field flattened to its runways' profiles, not a plane: FIELD_RUNWAYS),
 //   lowFinals: { ident: reason } (ends whose 3° final is known to pass under 60 m over the ground; logged, not hidden),
+//   standGround: { byStand: { ref: m }, reason } (v0.7.0: stands whose ground the game's runway crossing moves; logged),
+//   closeHolds: { ident: { m, reason } } (v0.7.0: an end whose hold OSM puts nearer the centreline than half + 12 m; logged),
 //   routes: [[a, b, nm]], countries: [...] }
 export function airportSuite(cfg) {
   const { icao: ICAO, patch: PATCH } = cfg;
   const HAVE = has(`airports/${ICAO}.json`) && has(`terrain/patch-${PATCH}.i16.gz`) && has('manifest.json');
   const skip = !HAVE && `${ICAO} data not baked`;
-  const geo = HAVE ? createGeoRules({ magvar: part('magvar'), country: part('country') }) : null;
+  // v0.7.0: a region's WMM grid, country raster and 250 m tiles arrive part by part while it is built (Europe's): the
+  // checks that need one skip until it is there (East Asia has all three, so nothing skips there).
+  const HAVE_GEO = HAVE && has('magvar.json') && has('country.json');
+  const TILES = HAVE && !!manifest().tilesRegion;
+  const noTiles = skip || (!TILES && `${ICAO}: the region's 250 m tiles not installed yet (no tilesRegion)`);
+  const geo = HAVE_GEO ? createGeoRules({ magvar: part('magvar'), country: part('country') }) : null;
+  // the WMM grid's variation where there is one; else the airport's own magVarDeg (the bake's WMM at its reference point)
+  const varAt = (ap, x, y) => (geo ? geo.wmmVar(x, y) : ap.magVarDeg);
+  const varTol = geo ? 0.02 : 0.1;
   const bootAirport = () => {
     const ap = load(ICAO);
     for (const st of ap.stands) if (!(st.leadIn && st.leadIn.length > 1)) { st.hdgGridDeg = ((standHeading(ap, st) * 180) / Math.PI + 360) % 360; st.hdgFixed = true; }
@@ -99,12 +120,10 @@ export function airportSuite(cfg) {
   const LISTED = HAVE && (manifest().airportsRegion || []).includes(`airports/${ICAO}.json`);
   const RUNWAYS = cfg.runways || [cfg.runway];
 
-  test(`the manifest: ${ICAO} pending (unlisted without the switch) or in the region's list, never with the region off`, { skip }, () => {
-    setEastAsia(true); setPending(false);
+  test(`the manifest: ${ICAO} pending (unlisted without the switch) or in the region's list`, { skip }, () => {
+    setPending(false);
     const m = manifest();
-    const off = terrainSpec(m, false), on = terrainSpec(m, true);
-    assert.ok(!off.airports.some((f) => f.includes(ICAO)) && !off.patches.some((p) => p.id === PATCH), 'region off: neither');
-    assert.ok(!off.coastPatches.some((p) => p.id === ICAO), 'region off: no coast patch');
+    const on = terrainSpec(m);   // (v0.7.0: the region-off lists and their assertions went with the flag)
     const pend = (m.airportsPending || []).includes(`airports/${ICAO}.json`), pendP = (m.patchesPending || []).some((p) => p.id === PATCH);
     if (LISTED) {
       assert.ok(on.airports.includes(`airports/${ICAO}.json`) && on.patches.some((p) => p.id === PATCH), 'listed with its patch');
@@ -118,26 +137,27 @@ export function airportSuite(cfg) {
     }
   });
 
-  test(`pending on: terrainSpec adds ${ICAO} and its patch to the region's lists (and only with the region)`, { skip }, () => withPending(() => {
-    const m = manifest(), on = terrainSpec(m, true);
+  test(`pending on: terrainSpec adds ${ICAO} and its patch to the region's lists (and only with the region)`, { skip: noTiles }, () => withPending(() => {
+    const m = manifest(), on = terrainSpec(m);
     assert.ok(on.airports.includes(`airports/${ICAO}.json`));
     const p = on.patches.find((q) => q.id === PATCH);
     assert.ok(p, 'the patch is listed');
-    assert.deepEqual(Object.keys(p), Object.keys(m.patchesRegion[0]));
+    // (v0.7.0: a region with no listed patch yet, Europe's, takes East Asia's entry's keys)
+    const refManifest = () => JSON.parse(readFileSync(new URL('manifest.json', EAST_ASIA), 'utf8'));
+    assert.deepEqual(Object.keys(p), Object.keys((m.patchesRegion || [])[0] || refManifest().patchesRegion[0]));
     assert.equal(p.cell, 30);
     assert.ok(Number.isInteger(p.x0) && Number.isInteger(p.y0) && p.x0 % 30 === 0 && p.y0 % 30 === 0, 'cell-aligned integers, as the others');
     if (cfg.coast) {
       const c = (m.coastPatchesPending || []).concat(m.coastPatchesRegion || []).find((q) => q.id === ICAO);
       assert.ok(c, 'a coast patch in the manifest');
-      assert.deepEqual(Object.keys(c), Object.keys(m.coastPatchesRegion[0]));
+      assert.deepEqual(Object.keys(c), Object.keys((m.coastPatchesRegion || [])[0] || refManifest().coastPatchesRegion[0]));
       assert.ok(has(c.coast), `${c.coast} on disk`);
     }
-    const off = terrainSpec(m, false);
-    assert.ok(!off.airports.some((f) => f.includes(ICAO)) && !off.patches.some((q) => q.id === PATCH), 'Korea\'s lists stay Korea\'s');
+    // (v0.7.0: the region-off assertion, Korea's lists without it, went with the flag)
   }));
 
   test(`${ICAO}: the shape is Korea's (RKSI.json) and the region's, with its names`, { skip }, () => {
-    const ap = load(ICAO), RKSI = load('RKSI'), ZSQD = load('ZSQD');
+    const ap = load(ICAO), RKSI = loadRef('RKSI'), ZSQD = loadRef('ZSQD');
     assert.deepEqual(Object.keys(ap), Object.keys(ZSQD));
     assert.deepEqual(Object.keys(ap).filter((k) => k !== 'shortName'), Object.keys(RKSI));
     assert.equal(ap.icao, ICAO);
@@ -150,7 +170,8 @@ export function airportSuite(cfg) {
     for (const k of ['taxiways', 'aprons', 'stands', 'holdingPositions', 'buildings', 'serviceRoads']) assert.ok(ap[k].length > 0, `${k}: ${ap[k].length}`);
     assert.ok(Math.abs(ap.lat - cfg.latLon[0]) < 0.02 && Math.abs(ap.lon - cfg.latLon[1]) < 0.02);
     assert.ok(Math.abs(ap.elevM - cfg.elevM) < 0.1, `elevM ${ap.elevM}`);
-    assert.ok(Math.abs(ap.magVarDeg - geo.wmmVar(ap.origin[0], ap.origin[1])) < 0.01, `magVarDeg ${ap.magVarDeg} is the WMM grid's`);
+    if (geo) assert.ok(Math.abs(ap.magVarDeg - geo.wmmVar(ap.origin[0], ap.origin[1])) < 0.01, `magVarDeg ${ap.magVarDeg} is the WMM grid's`);
+    else console.log(`  ${ICAO}: no WMM grid in the region's data yet: magVarDeg ${ap.magVarDeg} not checked against it`);
     if (cfg.pubVar !== undefined) assert.ok(Math.abs(ap.magVarDeg - cfg.pubVar) < 1, `magVarDeg ${ap.magVarDeg} vs the AIP's ${cfg.pubVar}`);
     assert.ok(regionRules(ap), 'the region\'s taxi rules apply');
   });
@@ -177,7 +198,7 @@ export function airportSuite(cfg) {
       assert.ok(Math.abs(f.ldaM - (r.lengthM - e.displacedM)) < 0.2);
       assert.ok(Math.abs(e.elevM - c.elevFt * FT) < 0.06, `${e.ident}: ${e.elevM} m, ${c.elevFt} ft`);
       assert.ok(Math.abs(wrapd(e.hdgGridDeg - (e.hdgTrueDeg - convergence(e.lon) / DEG))) < 0.02, `${e.ident}: grid vs true`);
-      assert.ok(Math.abs(wrapd(e.hdgMagDeg - (e.hdgTrueDeg - geo.wmmVar(e.x, e.y)))) < 0.02, `${e.ident}: mag = true - WMM`);
+      assert.ok(Math.abs(wrapd(e.hdgMagDeg - (e.hdgTrueDeg - varAt(ap, e.x, e.y)))) < varTol, `${e.ident}: mag = true - WMM`);
       assert.ok(Math.abs(wrapd(e.hdgTrueDeg - o.hdgTrueDeg - 180)) < 0.2, 'reciprocal');
       assert.ok(Math.abs(wrapd(e.hdgMagDeg - parseInt(e.ident, 10) * 10)) <= (cfg.identTolDeg ?? 5), `${e.ident}: ${e.hdgMagDeg} M rounds to its ident`);
       if (c.pubMag != null) assert.ok(Math.abs(wrapd(e.hdgMagDeg - c.pubMag)) < c.pubMagTol, `${e.ident}: ${e.hdgMagDeg} M vs the published ${c.pubMag}`);
@@ -192,19 +213,21 @@ export function airportSuite(cfg) {
       const [la, lo] = typeof c.thr[0] === 'string' ? c.thr.map(dms) : c.thr;
       const off = Math.hypot((la - e.lat) * 111320, (lo - e.lon) * 111320 * Math.cos(e.lat * DEG));
       assert.ok(off < c.thrTolM, `${e.ident}: the threshold ${off.toFixed(0)} m from the ${c.thrSource}'s`);
-      console.log(`  ${e.ident}: true ${e.hdgTrueDeg.toFixed(2)}, magnetic ${e.hdgMagDeg.toFixed(2)} (WMM2025 ${geo.wmmVar(e.x, e.y).toFixed(2)}), ${e.elevM} m, displaced ${e.displacedM} m, ${off.toFixed(0)} m from the ${c.thrSource}'s threshold`);
+      console.log(`  ${e.ident}: true ${e.hdgTrueDeg.toFixed(2)}, magnetic ${e.hdgMagDeg.toFixed(2)} (WMM2025 ${varAt(ap, e.x, e.y).toFixed(2)}), ${e.elevM} m, displaced ${e.displacedM} m, ${off.toFixed(0)} m from the ${c.thrSource}'s threshold`);
     }
     }
   });
 
-  test(`${ICAO}: the 30 m patch: the ground on the runway and at the stands`, { skip }, () => withPending(async () => {
+  test(`${ICAO}: the 30 m patch: the ground on the runway and at the stands`, { skip: noTiles }, () => withPending(async () => {
     const { createTiledHeightfield } = await import('../src/world/heightfield.js');
     const m = manifest(), ap = load(ICAO);
     const hf = await createTiledHeightfield(m, DATA.href, { region: true, airports: [ap], readGz, readJson, layers: ['h'], maxTiles: 60 });
     assert.ok(hf.layers.patches.some((p) => p.id === PATCH), 'the patch is loaded');
     await hf.tiles.whenReady(ap.origin[0], ap.origin[1], 12000, 'test');
     for (const rw of ap.runways) {
-      const [e0, e1] = rw.ends;
+      // (cfg.fieldPavement, v0.7.0: the runway sampled between its pavement's ends, where the game's surface runs from
+      // one end's elevation to the other's: a displaced threshold moves it)
+      const [e0, e1] = cfg.fieldPavement ? rw.ends.map((e) => ({ ...e, ...pavementEnd(e) })) : rw.ends;
       for (let f = 0; f <= 1.0001; f += 0.05) {
         // (cfg.crossingProfile, v0.6.4: two runways that cross: the shorter follows the longer's level across it, as
         // runwayCrossings() draws it, so its profile is the game's, not the straight line between its ends)
@@ -217,12 +240,16 @@ export function airportSuite(cfg) {
     // the field flattened to the plane through the runway's ends (bake_region_patches.py FIELD_PLANE): with one
     // runway that plane is level across it, so a stand stands at its projection's height on the runway
     const L = Math.hypot(e1.x - e0.x, e1.y - e0.y), ux = (e1.x - e0.x) / L, uy = (e1.y - e0.y) / L;
-    const plane = cfg.fieldSurface === 'runways' ? runwaySurface(ap.runways) : ap.runways.length > 1 ? lsqPlane(ap.runways.flatMap((q) => q.ends))
+    const plane = cfg.fieldSurface === 'runways' ? runwaySurface(ap.runways, !!cfg.fieldPavement) : ap.runways.length > 1 ? lsqPlane(ap.runways.flatMap((q) => q.ends))
       : (x, y) => e0.elevM + (e1.elevM - e0.elevM) * (((x - e0.x) * ux + (y - e0.y) * uy) / L);
     let worst = 0, steep = 0;
     for (const st of ap.stands) {
       const h = hf.heightAt(st.x, st.y);
-      assert.ok(Math.abs(h - plane(st.x, st.y)) < 0.6, `stand ${st.ref}: ${h.toFixed(2)} m, the field's plane ${plane(st.x, st.y).toFixed(2)} m`);
+      // (cfg.standGround, v0.7.0: { byStand: { ref: m }, reason }: stands near two crossing runways, where the game's
+      // crossing profile (runwayCrossings()) bends the shorter runway's surface away from its straight one; logged)
+      const gTol = cfg.standGround?.byStand?.[st.ref] ?? 0.6, gDev = Math.abs(h - plane(st.x, st.y));
+      if (gTol > 0.6 && gDev >= 0.6) console.log(`  stand ${st.ref}: ${gDev.toFixed(2)} m off the field's plane (allowed ${gTol} m: ${cfg.standGround.reason})`);
+      assert.ok(gDev < gTol, `stand ${st.ref}: ${h.toFixed(2)} m, the field's plane ${plane(st.x, st.y).toFixed(2)} m`);
       const d = [[20, 0], [-20, 0], [0, 20], [0, -20]].map(([dx, dy]) => hf.heightAt(st.x + dx, st.y + dy));
       const dz = Math.max(...d) - Math.min(...d);
       worst = Math.max(worst, dz);
@@ -258,9 +285,18 @@ export function airportSuite(cfg) {
   test(`${ICAO}: from every stand a route to a hold of every runway end`, { skip }, () => withPending(() => {
     const ap = bootAirport(), g = buildTaxiGraph(ap), ENDS = ap.runways.flatMap((q) => q.ends);
     let n = 0, worst = 0, longest = 0;
+    const noRoute = {};
     for (const st of ap.stands) for (const end of ENDS) {
       const rect = g.rects.find((q) => q.idents.includes(end.ident));
       const r = routeFromStand(g, st, end), at = `${st.ref} → ${end.ident}`;
+      // (cfg.knownNoRoute, v0.7.0: { ident: reason }: an end OSM's taxiways don't reach from any stand, a landing-only end
+      // whose holds are an island; logged, and it must stay so: a route there means the entry comes off the list)
+      if (cfg.knownNoRoute?.[end.ident]) {
+        assert.ok(!r, `${at}: a route now: take ${end.ident} off knownNoRoute`);
+        noRoute[end.ident] = (noRoute[end.ident] || 0) + 1;
+        n++;
+        continue;
+      }
       assert.ok(r && r.points.length >= 2, `${at}: a route`);
       assert.ok(r.hold, `${at}: ends at a hold`);
       for (let k = 1; k < r.points.length; k++) {
@@ -268,7 +304,11 @@ export function airportSuite(cfg) {
         assert.ok(snapToGraph(g, m[0], m[1]).d < 0.5, `${at}: leg ${k} on the graph`);
       }
       const h = r.points.at(-1);
-      assert.ok(clM(rect, h) >= rect.half + 12, `${at}: hold ${clM(rect, h).toFixed(0)} m from the centreline`);
+      // (cfg.closeHolds, v0.7.0: { ident: { m, reason } }: an end whose only entry in OSM is a taxiway stub on the runway's
+      // first metres, its hold closer to the centreline than half the width + 12 m, but at least m; logged)
+      const close = cfg.closeHolds?.[end.ident];
+      if (close && clM(rect, h) < rect.half + 12) console.log(`  ${at}: hold ${clM(rect, h).toFixed(0)} m from the centreline (allowed: ${close.reason})`);
+      assert.ok(clM(rect, h) >= (close ? close.m : rect.half + 12), `${at}: hold ${clM(rect, h).toFixed(0)} m from the centreline`);
       const dEnd = Math.hypot(h[0] - end.x, h[1] - end.y);
       worst = Math.max(worst, dEnd);
       longest = Math.max(longest, r.lengthM);
@@ -285,6 +325,7 @@ export function airportSuite(cfg) {
       assert.ok(along < allowM, `${at}: ${along.toFixed(0)} m along the runway (allowed ${allowM} m)`);
       n++;
     }
+    for (const [id, k] of Object.entries(noRoute)) console.log(`  ${ICAO} ${id}: no route from ${k} stands (known: ${cfg.knownNoRoute[id]})`);
     assert.equal(n, ap.stands.length * ENDS.length);
     console.log(`  ${ICAO}: ${n} routes, the longest ${longest.toFixed(0)} m, the farthest hold ${worst.toFixed(0)} m from its end`);
   }));
@@ -323,7 +364,7 @@ export function airportSuite(cfg) {
     assert.equal(n, 10 * ap.runways.length);
   }));
 
-  test(`${ICAO}: every straight-in 3° final clears the ground from 1 to 15 nm (60 m, as tests/v062-finals.test.mjs)`, { skip }, () => withPending(async () => {
+  test(`${ICAO}: every straight-in 3° final clears the ground from 1 to 15 nm (60 m, as tests/v062-finals.test.mjs)`, { skip: noTiles }, () => withPending(async () => {
     const { createTiledHeightfield } = await import('../src/world/heightfield.js');
     const m = manifest(), ap = load(ICAO);
     const hf = await createTiledHeightfield(m, DATA.href, { region: true, airports: [ap], readGz, readJson, layers: ['h'], maxTiles: 120 });
@@ -343,8 +384,8 @@ export function airportSuite(cfg) {
     }
   }));
 
-  test(`${ICAO}: the country by the raster`, { skip }, () => {
-    setEastAsia(true);
+  test(`${ICAO}: the country by the raster`, { skip: skip || (!HAVE_GEO && `${ICAO}: the region's country raster or WMM grid not installed yet`) }, () => {
+    
     setGeoRules(geo);
     try {
       const ap = load(ICAO);

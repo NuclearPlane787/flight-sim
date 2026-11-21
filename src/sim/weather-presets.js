@@ -10,12 +10,12 @@
 
 import { calmWeather, normalizeWeather, isDefaultWeather } from './weather.js';
 import { magToGrid } from '../world/frame.js';
-import { EAST_ASIA_ON, eastAsiaOn, rulesAt } from '../world/region.js';
+import { rulesAt } from '../world/region.js';
 import { hpaToInHg } from './atmosphere.js';
 
 // v0.6.0: new weather is tagged so that its wind keeps its true direction across the region
-// (weather.js's windTurnAt); with the region off the settings are v0.5.8's, key for key.
-const TRUE_WIND = () => (eastAsiaOn() ? { trueWind: true } : {});
+// (weather.js's windTurnAt).
+const TRUE_WIND = () => ({ trueWind: true });
 
 const DEG = Math.PI / 180, NM_M = 1852;
 const wrap = (d) => ((d % 360) + 360) % 360;
@@ -249,16 +249,16 @@ function windGroupMps(w) {
   const dir = Math.round(wrap(w.fromDeg) / 10) * 10 || 360;
   return `${pad(dir, 3)}${pad(ms, 2)}${gust > ms ? `G${pad(gust, 2)}` : ''}MPS`;
 }
-// v0.6.0: whose form the line takes ('kr' | 'jp' | 'cn' | 'ru' | 'kp'): Korea's everywhere with the region's flag off; else by
+// v0.6.0: whose form the line takes ('kr' | 'jp' | 'cn' | 'ru' | 'kp', and v0.7.0's 'eu'): by
 // the ICAO's prefix (RJ, RO: Japan; Z: China; RK: Korea; U: Russia, v0.6.3), or the country at the arrival when the code says nothing.
 export function metarFormOf(icao, ctx) {
-  if (!EAST_ASIA_ON) return 'kr';
   const c = String(icao || '').toUpperCase();
   if (/^R[JO]/.test(c)) return 'jp';
   if (/^ZK/.test(c)) return 'kp';   // (North Korea, v0.6.4: every Z code took China's form until then)
   if (/^Z/.test(c)) return 'cn';
   if (/^U/.test(c)) return 'ru';
   if (/^RK/.test(c)) return 'kr';
+  if (/^[ELG]/.test(c)) return 'eu';   // v0.7.0: Europe's (E, L) and Morocco's (G) codes: ICAO's standard form
   const a = ctx?.arrival;
   return a && Number.isFinite(a.x) && Number.isFinite(a.y) ? rulesAt(a.x, a.y).metar : 'kr';
 }
@@ -302,5 +302,7 @@ export function metarOf(settings, icao, ctx) {
   // v0.6.0: Japan's give the hPa, with the inches in the remarks (Q1014 ... RMK A2997), to the nearest 0.01 inHg as
   // the BARO window shows them (1014.9 hPa: Q1014, A2997).
   if (form === 'jp') parts.push(`RMK A${pad(Math.round(hpaToInHg(s.qnh) * 100), 4)}`);
+  // v0.7.0: Europe's lines end with the two-hour trend; the game's weather doesn't change, so "no significant change".
+  if (form === 'eu') parts.push('NOSIG');
   return parts.join(' ');
 }

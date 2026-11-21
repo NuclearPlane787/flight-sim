@@ -67,8 +67,8 @@ COMPOSE_STATE = os.path.join(rt.STAGE_OLD, 'compose-state.json')
 OUT = os.path.join(STAGE, 'l1')
 STATE = os.path.join(STAGE, 'l1-state.json')
 URBAN = os.path.join(bc.RAW, 'ne', 'ne_10m_urban_areas.geojson')
-PNG = os.path.join(bc.SHOTS, 'v063-bake-l1.png')
-R1 = os.path.join(bc.DATA, 'terrain', 'r1')        # the shipped l1 tiles (read)
+PNG = os.path.join(bc.SHOTS, 'v070-bake-l1.png' if bc.EUROPE else 'v063-bake-l1.png')
+R1 = os.path.join(bc.DATA, 'europe' if bc.EUROPE else '', 'terrain', 'r1')        # the shipped l1 tiles (read)
 NEW_L0 = os.path.join(STAGE, 'l0')                 # v0.6.3's sealed new l0 tiles
 
 X0, Y0 = brh.X0, brh.Y0
@@ -79,6 +79,9 @@ CELL = 1000.0
 F = 4                             # l0 cells per l1 cell
 MBOX = dict(lat0=24.0, lat1=46.0, lon0=112.0, lon1=148.0)
 FBOX = brh.BOX
+if bc.EUROPE:   # v0.7.0: the outline's bounding rectangle; the outline bounds the 1 km land
+    MBOX = dict(lat0=35.0, lat1=59.0, lon0=-11.0, lon1=19.5)
+    FBOX = dict(lat0=35.0, lat1=35.0, lon0=-11.0, lon1=-11.0)   # no fine box: nothing outlined
 WM = 4                            # margin window: l1 cells beyond the border (4 km) for the distances
 WN = S + 2 * WM                   # 524 cells
 PX = 500.0                        # the sea mask's pixels
@@ -177,7 +180,26 @@ def fine_part(ti, tj, region):
         w[oy + sy0:oy + sy1, ox + sx0:ox + sx1] = tw[cs]
         c[oy + sy0:oy + sy1, ox + sx0:ox + sx1] = tc[cs]
     mask = m.reshape(S, F, S, F).any(axis=(1, 3))
+    if bc.EUROPE:
+        return rmean_land_h(h), rmean(w).astype(np.uint8), rmean(c).astype(np.uint8), mask
     return rmean(h).astype('<i2'), rmean(w).astype(np.uint8), rmean(c).astype(np.uint8), mask
+
+
+def rmean_land_h(h):
+    """v0.7.0, Europe: a 1 km height is the rounded mean of its land l0 cells (stored != 0; sea is
+    exactly 0), 0 where all 16 are sea, and never exactly 0 where any is land (nudged a step, by the
+    sign of the land mean)."""
+    n, m = h.shape[0] // F, h.shape[1] // F
+    b = h.astype(np.int64).reshape(n, F, m, F)
+    land = b != 0
+    cnt = land.sum(axis=(1, 3))
+    s = np.where(land, b, 0).sum(axis=(1, 3))
+    mean = s / np.maximum(cnt, 1)
+    out = np.floor(mean + 0.5).astype(np.int64)
+    out = np.where(cnt == 0, 0, out)
+    z = (cnt > 0) & (out == 0)
+    out[z] = np.where(mean[z] >= 0, 1, -1)
+    return out.astype('<i2')
 
 
 # ------------------------------------------------------------------ the margin part
@@ -222,6 +244,20 @@ class Urban:
         return r.reshape(n, F, n, F).mean(axis=(1, 3)).astype(np.float32)
 
 
+_EU_POLY = None
+
+
+def eu_outline_mask(x0, y0, px, n):
+    """uint8 (n, n): 1 inside Europe's outline (bake_common.outline_latlon, projected)."""
+    global _EU_POLY
+    if _EU_POLY is None:
+        from shapely.geometry import Polygon
+        la, lo = bc.outline_latlon(0.25)
+        x, y = bc.to_map(la, lo)
+        _EU_POLY = Polygon(np.stack([x, y], 1))
+    return bg.rasterize([_EU_POLY], x0, y0, px, n, n).astype(np.uint8)
+
+
 def margin_part(ti, tj, dem, lp, urban):
     x0, y0 = X0 + (ti * TILE - B) * CELL, Y0 + (tj * TILE - B) * CELL
     t0 = time.time()
@@ -232,6 +268,8 @@ def margin_part(ti, tj, dem, lp, urban):
     geoms = lp.query(*window_geo_bounds(wx0, wy0, WN * CELL))
     land_m = bg.rasterize(geoms, wx0, wy0, PX, npx, npx) if geoms else np.zeros((npx, npx), np.uint8)
     del geoms
+    if bc.EUROPE:   # v0.7.0: no land outside the region's outline (at 1 km: it's the map's edge)
+        land_m = land_m * eu_outline_mask(wx0, wy0, PX, npx)
     sea_sd = bg.block_mean(bg.signed_distance(land_m, PX), int(CELL / PX)).astype(np.float32)
     sea_sd = sea_sd[WM:WM + S, WM:WM + S]
     t2 = time.time()
@@ -253,7 +291,7 @@ def margin_part(ti, tj, dem, lp, urban):
     for k, a in enumerate((fo, fa, ur)):
         c[..., k] = np.clip(np.round(np.where(land, a, 0) * 255), 0, 255)
     w = np.stack([sea8, np.full(sea8.shape, 255, np.uint8)], -1)
-    return bc.height_to_i16(h), w, c, dict(t_h=round(t1 - t0, 1), t_sea=round(t2 - t1, 1),
+    return (bc.height_to_i16_land(h, land) if bc.EUROPE else bc.height_to_i16(h)), w, c, dict(t_h=round(t1 - t0, 1), t_sea=round(t2 - t1, 1),
                                            t_all=round(time.time() - t0, 1), land=int(land.sum()))
 
 
@@ -393,7 +431,7 @@ def cmd_new(args):
             # l0 core local rows/cols of those cells: (g - a * 512) + BORDER, 4 a cell
             lc = (gi[cs][:, None] - a * T0 + np.arange(F)[None, :]).ravel() + brh.BORDER
             lr = (gj[rs][:, None] - b * T0 + np.arange(F)[None, :]).ravel() + brh.BORDER
-            h[np.ix_(rs, cs)] = rmean(th[np.ix_(lr, lc)])
+            h[np.ix_(rs, cs)] = rmean_land_h(th[np.ix_(lr, lc)]) if bc.EUROPE else rmean(th[np.ix_(lr, lc)])
             w[np.ix_(rs, cs)] = rmean(tw[np.ix_(lr, lc)])
             c[np.ix_(rs, cs)] = rmean(tc[np.ix_(lr, lc)])
         changed = (h != h0) | (w != w0).any(-1) | (c != c0).any(-1)

@@ -80,7 +80,7 @@ LOG = os.path.join(OUT, 'log.tsv')
 LANDPOLY = '/tmp/flight-sim/v060/landpoly/land-polygons-split-4326/land_polygons'
 LPINDEX = '/tmp/flight-sim/v060/landpoly/bbox_index.npy'
 WCDIR = os.path.join(bc.RAW, 'worldcover')
-PNG = os.path.join(bc.SHOTS, 'v063-bake-water.png')
+PNG = os.path.join(bc.SHOTS, 'v070-bake-water.png' if bc.EUROPE else 'v063-bake-water.png')
 WCGRID = '/tmp/flight-sim/v060/lists/wc_grid.geojson'   # the bucket's tile grid: the tiles that exist (land)
 
 # WorldCover class -> category: 0 forest (10, 95), 1 crop (40), 2 grass (30), 3 shrub (20),
@@ -97,6 +97,11 @@ AIRPORTS = {  # lat, lon (published reference points, rounded)
     'Narita': (35.765, 140.386), 'Kansai': (34.427, 135.244), 'Fukuoka': (33.586, 130.451),
     'Qingdao': (36.362, 120.088),
 }
+if bc.EUROPE:   # v0.7.0: airports 1 to 11 (their reference points)
+    AIRPORTS = {'EGLL': (51.4706, -0.4619), 'LFPG': (49.0097, 2.5479), 'EDDF': (50.0333, 8.5706),
+                'LEMD': (40.4722, -3.5609), 'LSZH': (47.4647, 8.5492), 'EGKK': (51.1481, -0.1903),
+                'LFPO': (48.7233, 2.3794), 'EHAM': (52.3086, 4.7639), 'EDDM': (48.3538, 11.7861),
+                'LEBL': (41.2971, 2.0785), 'LIRF': (41.8003, 12.2389)}
 
 
 # ------------------------------------------------------------------ the land polygons
@@ -151,8 +156,9 @@ class WorldCover:
         self.files = {}
         for n in os.listdir(WCDIR):
             if n.endswith('_Map.tif'):
-                t = n.split('_')[5]          # N36E126
-                la, lo = int(t[1:3]), int(t[4:7])
+                t = n.split('_')[5]          # N36E126; v0.7.0: N51W003 west of Greenwich
+                la = int(t[1:3]) * (1 if t[0] == 'N' else -1)
+                lo = int(t[4:7]) * (1 if t[3] == 'E' else -1)
                 self.files[(la, lo)] = os.path.join(WCDIR, n)
         self.open = {}
         self.lru = collections.OrderedDict()
@@ -375,7 +381,7 @@ def priority_order(tiles):
             dy = max(cy0 - y, 0, y - (cy0 + brh.TSPAN))
             if np.hypot(dx, dy) < 20000 and (ti, tj) not in first:
                 first.append((ti, tj))
-    old = [t for t in tiles if 0 <= t[0] <= 6 and 0 <= t[1] <= 6 and t not in first]
+    old = [t for t in tiles if 0 <= t[0] <= 6 and 0 <= t[1] <= 6 and t not in first and not bc.EUROPE]
     rest = [t for t in tiles if t not in first and t not in old]
     return first + old + rest
 
@@ -406,7 +412,7 @@ def cmd_bake(args):
             continue
         miss = wc_missing(ti, tj, listed, set(wc.files))
         if miss:
-            print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'N{a}E{b}' for a, b in miss))
+            print(f'{ti}_{tj}: waits for WorldCover ' + ', '.join(f'{a}/{b}' for a, b in miss))
             continue
         if time.time() - t_start > args.budget * 60:
             print(f'budget of {args.budget} min reached; stopping (resumable)')

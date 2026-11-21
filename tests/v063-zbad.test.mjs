@@ -10,7 +10,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { setEastAsia, setPending, setGeoRules, terrainSpec, countryAt, rulesAt } from '../src/world/region.js';
+import { setPending, setGeoRules, terrainSpec, countryAt, rulesAt } from '../src/world/region.js';
+
 import { createGeoRules } from '../src/world/geo-rules.js';
 import { convergence, greatCircle, scaleFactor } from '../src/world/frame.js';
 import { createAirports, pavementEnd } from '../src/world/runways.js';
@@ -85,14 +86,13 @@ function fitPlane(P) {
   const [a, b, c] = [0, 1, 2].map((k) => det(col(k)) / D);
   return (x, y) => a * x + b * y + c;
 }
-const withPending = async (fn) => { setEastAsia(true); setPending(true); try { return await fn(); } finally { setPending(false); } };
+const withPending = async (fn) => { setPending(true); try { return await fn(); } finally { setPending(false); } };
 
 const LISTED = HAVE && (manifest().airportsRegion || []).includes(`airports/${ICAO}.json`);
-test(`the manifest: ${ICAO} pending (unlisted without the switch) or in the region's list, never with the region off`, { skip }, () => {
-  setEastAsia(true); setPending(false);
+test(`the manifest: ${ICAO} pending (unlisted without the switch) or in the region's list`, { skip }, () => {
+  setPending(false);
   const m = manifest();
-  const off = terrainSpec(m, false), on = terrainSpec(m, true);
-  assert.ok(!off.airports.some((f) => f.includes(ICAO)) && !off.patches.some((p) => p.id === PATCH), 'region off: neither');
+  const on = terrainSpec(m);   // (v0.7.0: the region-off lists and their assertions went with the flag)
   const pend = (m.airportsPending || []).includes(`airports/${ICAO}.json`), pendP = (m.patchesPending || []).some((p) => p.id === PATCH);
   if (LISTED) {
     assert.ok(on.airports.includes(`airports/${ICAO}.json`) && on.patches.some((p) => p.id === PATCH), 'listed with its patch');
@@ -104,15 +104,14 @@ test(`the manifest: ${ICAO} pending (unlisted without the switch) or in the regi
 });
 
 test(`pending on: terrainSpec adds ${ICAO} and its patch to the region's lists (and only with the region)`, { skip }, () => withPending(() => {
-  const m = manifest(), on = terrainSpec(m, true);
+  const m = manifest(), on = terrainSpec(m);
   assert.ok(on.airports.includes(`airports/${ICAO}.json`));
   const p = on.patches.find((q) => q.id === PATCH);
   assert.ok(p, 'the patch is listed');
   assert.deepEqual(Object.keys(p), Object.keys(m.patchesRegion[0]));
   assert.equal(p.cell, 30);
   assert.ok(Number.isInteger(p.x0) && Number.isInteger(p.y0) && p.x0 % 30 === 0 && p.y0 % 30 === 0, 'cell-aligned integers, as the others');
-  const off = terrainSpec(m, false);
-  assert.ok(!off.airports.some((f) => f.includes(ICAO)) && !off.patches.some((q) => q.id === PATCH), 'Korea\'s lists stay Korea\'s');
+    // (v0.7.0: the region-off assertion, Korea's lists without it, went with the flag)
 }));
 
 test(`${ICAO}: the shape is Korea's (RKSI.json) and the region's, with its names`, { skip }, () => {
@@ -299,7 +298,7 @@ test(`${ICAO}: after landing, a taxi-in route from 30 to 90 % along every runway
 }));
 
 test(`${ICAO}: China by the country raster, China's rules`, { skip }, () => {
-  setEastAsia(true);
+  
   setGeoRules(geo);
   try {
     const ap = load(ICAO);

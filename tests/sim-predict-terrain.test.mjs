@@ -12,7 +12,7 @@ import { toMap } from '../src/world/frame.js';
 import { airborne, run, KT } from './sim-helpers.mjs';
 
 const DATA = new URL('../data/', import.meta.url);
-const HAVE = existsSync(new URL('manifest.json', DATA)) && !!JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8')).tiles;
+const HAVE = existsSync(new URL('manifest.json', DATA)) && !!JSON.parse(readFileSync(new URL('manifest.json', DATA), 'utf8')).tilesRegion;
 
 // The worker's layers: heights from the tiles (v0.6.0; the same doubles as the national grid's),
 // the 30 m patches, the runway flattening.

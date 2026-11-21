@@ -59,7 +59,7 @@ NSUB = 4 * brw.SUB * brw.SUB          # 576 sub-points a 250 m cell
 STAGE = brw.STAGE
 OUT = os.path.join(STAGE, 'cover')
 LOG = os.path.join(OUT, 'log.tsv')
-PNG = os.path.join(bc.SHOTS, 'v063-bake-cover.png')
+PNG = os.path.join(bc.SHOTS, 'v070-bake-cover.png' if bc.EUROPE else 'v063-bake-cover.png')
 
 
 def out_path(ti, tj):

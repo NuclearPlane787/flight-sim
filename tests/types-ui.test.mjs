@@ -4,11 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fuelEstimate, fitLoad, typeCardHtml, LIMITS } from '../src/ui/setup.js';
 import { TYPE_LIST, typeById } from '../src/sim/types.js';
-import { setEastAsia } from '../src/world/region.js';
-// v0.6.0: this file checks v0.5.8's behaviour, which the game keeps with the region off: so the
-// flag is set off here whatever the shipped default (the region's own behaviour is checked in
-// tests/v060-*.test.mjs). No assertion below changed.
-setEastAsia(false);
+// v0.7.0: v0.6.0's region flag is gone, so the fuel rule is the region's (regionTrip(), checked in
+// tests/v060-setup.test.mjs against the sim): the v0.5.8 rule's numbers below went, the rest stands.
 
 const A321 = typeById('a321neo');
 // A made-up widebody: the shape of a registry entry, with numbers far from the A321's.
@@ -16,16 +13,13 @@ const BIG = { ...A321, id: 'big', name: 'Big <one>', registration: 'HL0000',
   limits: { OEW: 130000, MTOW: 250000, MLW: 190000, MZFW: 180000, FUEL_MAX: 100000, PAX_MAX: 300, PAX_KG: 90, CARGO_MAX: 30000 },
   fuel: { climbKg: 3000, perNm: 20, holdKg: 3500, taxiKg: 500 }, defaults: { pax: 250, cargoKg: 8000 } };
 
-test('fuelEstimate keeps its numbers for the A321neo, with or without the type', () => {
-  // The numbers of the rule before the registry: 1,100 + 6.2/nm, 5 %, 1,000 hold, 200 taxi, up to 100 kg.
+test('fuelEstimate gives the A321neo the same numbers with or without the type', () => {
+  // (v0.7.0: the numbers are the region's rule's, regionTrip(); v0.5.8's 1,100 + 6.2/nm went with the flag.)
   for (const nm of [0, 1, 100, 243, 244.7, 1000, 3000]) {
-    const trip = 1100 + 6.2 * nm;
-    const want = { trip: Math.round(trip), total: Math.ceil((trip * 1.05 + 1000 + 200) / 100) * 100 };
-    assert.deepEqual(fuelEstimate(nm), want);
+    const want = fuelEstimate(nm);
     assert.deepEqual(fuelEstimate(nm, A321), want);
     assert.deepEqual(fuelEstimate(nm, 'a321neo'), want);
   }
-  assert.deepEqual(fuelEstimate(243), { trip: 2607, total: 4000 });
 });
 
 test('fuelEstimate reads the given type', () => {

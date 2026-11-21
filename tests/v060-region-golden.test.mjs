@@ -1,19 +1,17 @@
-// v0.6.0: the three golden flights as the game flies them with EAST_ASIA_ON on: over the REGION's
+// v0.6.0: the three golden flights as the game flies them with the region on: over the REGION's
 // tiles (data/terrain/r0, loaded as the tests' "game" terrain), with all eleven airports'
 // runways flattened and the local rules installed (WMM2025 beyond South Korea). They still match
 // v0.5.8's recordings to 1e-9: South Korea's heights are the same doubles from the region's
 // tiles, and inside south-korea.poly magVar() is the plane. (The golden modules load their
-// terrain when imported, so the flag is set first and they are imported after it.)
+// terrain when imported, so the rules are installed first and they are imported after it. v0.7.0:
+// v0.6.0's flag is gone, and with it this file's two assertions on it.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { setEastAsia, EAST_ASIA_ON } from '../src/world/region.js';
 import { manifest } from './tile-terrain.mjs';
 
 const HAVE = !!manifest().tilesRegion;
-const wasOn = EAST_ASIA_ON;
-setEastAsia(true);
 const { loadNodeRules } = await import('./v060-rules-helpers.mjs');
 loadNodeRules();
 const A = HAVE ? await import('./golden-a321-flight.mjs') : null;
@@ -40,8 +38,6 @@ for (const type of ['b787-9', 'b777-300er']) {
 }
 
 test('the region on: the flights flew the region\'s terrain with eleven airports', { skip: !HAVE }, async () => {
-  assert.equal(EAST_ASIA_ON, true);
-  assert.ok(wasOn === true || wasOn === false);
   // The terrain the golden modules loaded is the region's: Fuji stands in it (Korea's tiles
   // end 400 km east of the origin), and Haneda's and Pudong's runways are flattened in it.
   const { toMap } = await import('../src/world/frame.js');

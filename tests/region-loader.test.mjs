@@ -1,27 +1,21 @@
-// v0.6.0: the terrain loader's waits (src/world/region.js): the flag is off; a frame's steps
+// v0.6.0: the terrain loader's waits (src/world/region.js): a frame's steps
 // wait while a tile they could reach isn't in, and go once it is; over Korea fully loaded it
 // never holds a step; with no tiles it does nothing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EAST_ASIA_ON, EAST_ASIA_DEFAULT, createTerrainLoader, terrainSpec } from '../src/world/region.js';
+import { createTerrainLoader, terrainSpec } from '../src/world/region.js';
 import { createTileStore } from '../src/world/tilestore.js';
 import { createHeightfield } from '../src/world/heightfield.js';
 import { readGz, manifest, tiledTerrain } from './tile-terrain.mjs';
 
 const m = manifest();
 
-// (Until the evening of 2026-11-19 this asserted the flag off: "off until the new airports fly end
-// to end". The shipped default is region.js's EAST_ASIA_DEFAULT; an environment override,
-// FS_EAST_ASIA, is for whole test runs.)
-test('EAST_ASIA_ON is the shipped default, or the environment\'s override', () => {
-  const env = process.env.FS_EAST_ASIA;
-  assert.equal(EAST_ASIA_ON, env === '1' ? true : env === '0' ? false : EAST_ASIA_DEFAULT);
-});
+// (v0.7.0: the test of EAST_ASIA_ON's default went with the flag.)
 
-test('the loader holds the steps until the tiles are in, then lets them go', { skip: !m.tiles }, async () => {
+test('the loader holds the steps until the tiles are in, then lets them go', { skip: !m.tilesRegion }, async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
-  const store = createTileStore(m.tiles, { layers: ['h'], readGz: async (rel) => { await gate; return readGz(rel); } });
+  const store = createTileStore(m.tilesRegion, { layers: ['h'], readGz: async (rel) => { await gate; return readGz(rel); } });
   const hf = createHeightfield({ heightScale: 0.25, tiles: store, patches: [], coastPatches: [] });
   const L = createTerrainLoader(hf);
   const state = { pos: { x: -60000, y: 180000, z: 1000 }, vel: { x: 200, y: 0, z: 0 } };
@@ -34,7 +28,7 @@ test('the loader holds the steps until the tiles are in, then lets them go', { s
   assert.equal(store.misses, 0);
 });
 
-test('over Korea fully loaded it never holds a step; without tiles it does nothing', { skip: !m.tiles }, async () => {
+test('over Korea fully loaded it never holds a step; without tiles it does nothing', { skip: !m.tilesRegion }, async () => {
   const { hf } = await tiledTerrain({ layers: ['h'] });
   const L = createTerrainLoader(hf);
   for (const [x, y] of [[-60000, 180000], [-100000, -300000], [399000, 399000], [-399000, -399000]]) {
@@ -46,15 +40,12 @@ test('over Korea fully loaded it never holds a step; without tiles it does nothi
   assert.equal(N.ready({ pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 } }, 1), true);
 });
 
-test("terrainSpec: Korea's terrain with the flag off, the region's with it on (when the manifest has it)", () => {
+// (v0.7.0: the flag-off half went with the flag: Korea's `tiles` and lists, the default following
+// EAST_ASIA_ON, and Korea's terrain from a manifest without the region's sections.)
+test("terrainSpec: the region's terrain (when the manifest has it)", () => {
   const man = { tiles: { k: 'korea' }, patches: [{ id: 'jeju' }], coastPatches: [{ id: 'RKSS' }],
     tilesRegion: { k: 'region' }, patchesRegion: [{ id: 'fuji' }], coastPatchesRegion: [{ id: 'RJTT' }] };
-  const off = terrainSpec(man, false), on = terrainSpec(man, true);
-  assert.equal(off.region, false); assert.equal(off.tiles.k, 'korea');
-  assert.deepEqual(off.patches.map((p) => p.id), ['jeju']); assert.deepEqual(off.coastPatches.map((p) => p.id), ['RKSS']);
+  const on = terrainSpec(man);
   assert.equal(on.region, true); assert.equal(on.tiles.k, 'region');
   assert.deepEqual(on.patches.map((p) => p.id), ['jeju', 'fuji']); assert.deepEqual(on.coastPatches.map((p) => p.id), ['RKSS', 'RJTT']);
-  // The default follows EAST_ASIA_ON (off), and a manifest without the region's sections gives Korea's.
-  assert.equal(terrainSpec(man).tiles.k, EAST_ASIA_ON ? 'region' : 'korea');
-  assert.equal(terrainSpec({ tiles: { k: 'korea' } }, true).tiles.k, 'korea');
 });

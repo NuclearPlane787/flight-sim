@@ -5,7 +5,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { setEastAsia } from '../src/world/region.js';
 import { toMap } from '../src/world/frame.js';
 import { loadNodeRules, uninstallNodeRules } from './v060-rules-helpers.mjs';
 import {
@@ -17,17 +16,16 @@ import { kstFieldValues, kstFromFields } from '../src/ui/sky-window.js';
 
 const ICAOS = ['RKSS', 'RKPC', 'RKSI', 'RKPK', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'ZSPD', 'ZSSS', 'ZSQD', 'ZSYN'];   // (ZSYN: v0.6.1)
 const AIRPORTS = ICAOS.map((id) => JSON.parse(readFileSync(new URL(`../data/airports/${id}.json`, import.meta.url), 'utf8')));
-setEastAsia(false);   // the flag-off tests below, whatever the shipped default
-const withRegion = (fn) => { setEastAsia(true); loadNodeRules(); try { return fn(); } finally { uninstallNodeRules(); setEastAsia(false); } };
+// (v0.7.0: v0.6.0's region flag is gone; withRegion() installs the local rules alone.)
+const withRegion = (fn) => { loadNodeRules(); try { return fn(); } finally { uninstallNodeRules(); } };
 const T = kstMs(2026, 11, 19, 15, 0);   // 15:00 KST, Thursday 19 November 2026
 
-test('flag off: KST everywhere, and the KST functions as v0.5.8', () => {
-  assert.equal(localTimeOn(), false);
-  for (const a of AIRPORTS) assert.deepEqual(zoneAt(a.origin[0], a.origin[1]), KST_ZONE);
-  assert.deepEqual(zoneOfIcao('ZSPD'), KST_ZONE);
+// (v0.7.0: the flag-off half of this test went with the flag: localTimeOn() false, KST at every airport and
+// for ZSPD, afternoonAt(ZSPD) = afternoonKst. The KST functions' own checks stay.)
+test('the KST functions as v0.5.8, and the zone functions agree with them in Seoul', () => {
+  assert.equal(localTimeOn(), true);   // (v0.7.0: always)
   assert.equal(fmtKst(T), '15:00');
   assert.equal(fmtKstDate(T), 'Thu 19 Nov 2026');
-  assert.equal(afternoonAt(T, 'ZSPD'), afternoonKst(T));
   // the zone functions agree with the KST ones in Seoul, minute by minute through a day
   for (let t = startOfKstDay(T); t < startOfKstDay(T) + 86400e3; t += 7 * 60e3 + 13e3) {
     assert.equal(fmtZone(t, KST_ZONE), fmtKst(t));

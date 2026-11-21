@@ -199,6 +199,9 @@
 .fsh-stat + .fsh-stat { padding-left: clamp(14px, 1.5vw, 24px); border-left: 1px solid rgba(255, 255, 255, 0.13); }
 .fsh-stat b { display: block; font: 700 clamp(22px, 3vh, 35px)/1.05 var(--font); color: #eef3f7; font-variant-numeric: tabular-nums;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* v0.7.0: a title or a name too long for its line (menu.js's fitCard()): smaller, and on two lines if it must. */
+.fsh-card-title.fit { font-size: clamp(21px, 3vh, 37px); white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.fsh-stat b.fit { font-size: clamp(16.5px, 2.25vh, 26px); line-height: 1.12; white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .fsh-stat small { display: block; margin-top: 5px; font: 600 clamp(10.5px, 1.3vh, 12.5px)/1 var(--font); text-transform: uppercase; letter-spacing: 0.14em; color: #7f909f; }
 .fsh-go { display: flex; align-items: center; justify-content: center; gap: 0.5em; height: clamp(46px, 6.6vh, 70px); border-radius: 10px;
   background: #9ff0ff; color: #05232c; font: 700 clamp(17px, 2.4vh, 25px)/1 var(--font); letter-spacing: 0.01em; }

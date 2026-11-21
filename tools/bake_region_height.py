@@ -58,12 +58,14 @@ DEM90 = os.path.join(bc.RAW, 'dem90')
 TILELIST = '/tmp/flight-sim/v060/lists/glo90_tileList.txt'
 OUT = os.path.join(rt.STAGE, 'raw-h')         # v0.6.3: new tiles are written here; v0.6.0's are read from rt.STAGE_OLD
 LOG = os.path.join(OUT, 'log.tsv')
-PNG = os.path.join(bc.SHOTS, 'v063-bake-raw-heights.png')
+PNG = os.path.join(bc.SHOTS, 'v070-bake-raw-heights.png' if bc.EUROPE else 'v063-bake-raw-heights.png')
 SUB = 3
 
 
 def src_name(la, lo):
-    return f'Copernicus_DSM_COG_30_N{la:02d}_00_E{lo:03d}_00_DEM'
+    # v0.7.0: W/S names west of Greenwich and south of the equator (East Asia's: N.., E..)
+    return (f'Copernicus_DSM_COG_30_{"N" if la >= 0 else "S"}{abs(la):02d}_00_'
+            f'{"E" if lo >= 0 else "W"}{abs(lo):03d}_00_DEM')
 
 
 def land_keys():
@@ -110,7 +112,7 @@ class LazyTiles:
         built = bh.load_tiles([src_path(k) for k in group])
         self.reads += len(group)
         a = built[key]
-        assert a.shape[0] == a.shape[1], (key, a.shape)
+        assert a.shape[0] == a.shape[1] or bc.EUROPE, (key, a.shape)   # Europe: narrower from 50 N
         del built
         self.lru[key] = a
         while len(self.lru) > self.cap:
@@ -195,6 +197,8 @@ def box_tiles():
     """v0.6.0's enumeration: every tile meeting the box. The candidate range comes from the box's
     corners and edges. (Cached: it never changes.)"""
     global _BOX_TILES
+    if bc.EUROPE:
+        return []          # v0.7.0: Europe has no box; its tiles are all batches (bake_region_tiles)
     if _BOX_TILES is not None:
         return list(_BOX_TILES)
     t = np.linspace(0, 1, 2001)
@@ -287,7 +291,7 @@ def cmd_bake(args):
     print(f'baked {n_done}, already done {n_skip_done}, waiting for sources {n_wait}, '
           f'of {len(todo)} in range; source reads {tiles.reads}; {time.time() - t_start:.0f} s')
     for k, v in waiting.items():
-        print(f'  waiting {k[0]}_{k[1]}: ' + ', '.join(f'N{a}E{b}' for a, b in v))
+        print(f'  waiting {k[0]}_{k[1]}: ' + ', '.join(f'{a}/{b}' for a, b in v))
 
 
 def cmd_plan(args):
@@ -300,7 +304,7 @@ def cmd_plan(args):
     for ti, tj in todo:
         direct, need = needed_sources(ti, tj, land)
         missing = sorted(k for k in need if not have(k))
-        st = 'done' if done(ti, tj) else ('WAIT ' + ' '.join(f'N{a}E{b}' for a, b in missing) if missing else 'ready')
+        st = 'done' if done(ti, tj) else ('WAIT ' + ' '.join(f'{a}/{b}' for a, b in missing) if missing else 'ready')
         nd += st == 'done'
         nw += st.startswith('WAIT')
         if args.verbose or st != 'done':

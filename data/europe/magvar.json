@@ -1,0 +1,19 @@
+{
+  "model": "WMM2025 (NOAA NCEI, public domain)",
+  "epoch": 2026.0,
+  "altitudeM": 0,
+  "unit": "degrees, east positive",
+  "scale": 0.001,
+  "type": "int16le",
+  "rowOrder": "south first",
+  "sampling": "cell-centred: value (i, j) is at x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell",
+  "file": "magvar.i16.gz",
+  "frame": "Europe's map frame (LCC 47 N 4 E, 39/54) metres",
+  "covers": "35-59 N, 11 W-19.5 E (Europe's outline's bounding rectangle) and more",
+  "testMaxErrDeg": 0.0046,
+  "x0": -1380000.0,
+  "y0": -1330000.0,
+  "cell": 10000.0,
+  "nx": 281,
+  "ny": 276
+}

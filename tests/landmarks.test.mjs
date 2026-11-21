@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LANDMARKS, CITY_BOXES, buildModel, landmarkFootprints, baseHeight, createLandmarks, landmarkOn, bridgeEnds, PYLON_R } from '../src/world/landmarks.js';
 import { MODELS } from '../src/world/landmark-models.js';
-import { setCities, setEastAsia, CITIES_ON, EAST_ASIA_ON } from '../src/world/region.js';
+// (v0.7.0: v0.6.0's flags are gone: every landmark is on; the tests of them off went.)
 
 // The brief's heights (briefs/V0-6-0.md Part 6 and the subagent's brief): within 2 %.
 const BRIEF = {
@@ -107,22 +107,7 @@ function fakeScene() { const kids = new Set(); return { kids, add: (o) => kids.a
 const UNI = { uNight: { value: 0 } };
 const CHUNKS = { UNIFORMS_GLSL: '', NOISE_GLSL: '', HEIGHT_GLSL: '', ATMOS_GLSL: '' };
 
-test('with CITIES_ON off nothing exists in the scene', () => {
-  const was = CITIES_ON;
-  setCities(false);
-  const scene = fakeScene();
-  const lm = createLandmarks(scene, UNI, CHUNKS, { heightfield: { heightAt: () => 10 } });
-  const L = LANDMARKS[0];
-  const s = lm.update({ camMap: { x: L.x, y: L.y - 1000 }, origin: { x: L.x, y: L.y - 1000 }, camScene: { x: 0, y: 500, z: 0 } });
-  assert.equal(scene.kids.size, 0);
-  assert.equal(s.drawCalls, 0);
-  assert.equal(s.built, 0);
-  setCities(was);
-});
-
-test('built near, shown within 80 km, hidden and then released far away; lights only at night; Korea only without the region', () => {
-  const wasC = CITIES_ON, wasE = EAST_ASIA_ON;
-  setCities(true); setEastAsia(false);
+test('built near, shown within 80 km, hidden and then released far away; lights only at night', () => {
   const scene = fakeScene();
   const uni = { uNight: { value: 0 } };
   const lm = createLandmarks(scene, uni, CHUNKS, { heightfield: { heightAt: () => 12 } });
@@ -142,8 +127,7 @@ test('built near, shown within 80 km, hidden and then released far away; lights 
   s = at(0, -3000);
   assert.ok(it.pts.visible);
   assert.ok(s.drawCalls > dayCalls);
-  // nothing outside Korea without the region
-  assert.ok(lm.items.filter((i) => i.L.country !== 'KR').every((i) => i.state === 'none'));
+  // (v0.7.0: the flag-off assertion, nothing outside Korea without the region, went.)
   // hidden beyond 80 km (no draw call), kept until 250 km, released beyond
   s = at(0, -82000);
   assert.equal(it.state, 'built');
@@ -153,8 +137,7 @@ test('built near, shown within 80 km, hidden and then released far away; lights 
   assert.equal(it.state, 'none');
   assert.equal(s.drawCalls, 0);
   assert.equal(scene.kids.size, 0);
-  // the region on: Shanghai's build near Lujiazui
-  setEastAsia(true);
+  // Shanghai's build near Lujiazui
   const sh = LANDMARKS.find((l) => l.id === 'shtower');
   const o = { x: sh.x, y: sh.y - 5000 };
   s = lm.update({ camMap: o, origin: o, camScene: { x: 0, y: 900, z: 0 } });
@@ -162,7 +145,6 @@ test('built near, shown within 80 km, hidden and then released far away; lights 
   assert.ok(landmarkOn(sh));
   lm.dispose();
   assert.equal(scene.kids.size, 0);
-  setCities(wasC); setEastAsia(wasE);
 });
 
 // ------------------------------------------------------------------ v0.6.3 (briefs/V0-6-3.md Part 5)
@@ -182,7 +164,7 @@ test('v0.6.3: the new landmarks\' countries, cities and sources', () => {
     assert.ok(['beijing', 'tianjin', 'shenyang', 'vladivostok'].includes(L.city), id);
     assert.equal(L.country, L.city === 'vladivostok' ? 'RU' : 'CN', id);
     assert.match(L.source, /Wikipedia/, `${id}: a public source`);
-    assert.equal(landmarkOn(L), CITIES_ON && EAST_ASIA_ON, `${id}: behind both flags`);
+    assert.equal(landmarkOn(L), true, `${id}: on`);   // (v0.7.0: was CITIES_ON && EAST_ASIA_ON, both flags gone)
   }
 });
 
@@ -272,7 +254,7 @@ const NEW4 = ['ryugyong', 'juche', 'sapporotv', 'daikannon'];
 const SOURCE4 = { ryugyong: 330, juche: 170, sapporotv: 147.2, daikannon: 100 };
 const bearingOf = (x, z) => ((Math.atan2(x, -z) * 180 / Math.PI) + 360) % 360;   // scene x east, z = -north
 
-test('v0.6.4: the four new landmarks\' countries, cities, heights and sources; behind both flags', () => {
+test('v0.6.4: the four new landmarks\' countries, cities, heights and sources', () => {
   const city = { ryugyong: 'pyongyang', juche: 'pyongyang', sapporotv: 'sapporo', daikannon: 'sendai' };
   for (const id of NEW4) {
     const L = byId(id);
@@ -281,13 +263,7 @@ test('v0.6.4: the four new landmarks\' countries, cities, heights and sources; b
     assert.match(L.source, /Wikipedia/, `${id}: a public source`);
     assert.match(L.source, /OSM/, `${id}: placed from OSM`);
     assert.ok(Math.abs(L.heightM - SOURCE4[id]) / SOURCE4[id] < 0.005, `${id}: ${L.heightM} m against ${SOURCE4[id]} m`);
-    assert.equal(landmarkOn(L), CITIES_ON && EAST_ASIA_ON, `${id}: behind both flags`);
-    for (const [c, e] of [[true, false], [false, true]]) {
-      const wc = CITIES_ON, we = EAST_ASIA_ON;
-      setCities(c); setEastAsia(e);
-      assert.equal(landmarkOn(L), false, `${id}: off with cities ${c}, region ${e}`);
-      setCities(wc); setEastAsia(we);
-    }
+    assert.equal(landmarkOn(L), true, `${id}: on`);   // (v0.7.0: was CITIES_ON && EAST_ASIA_ON; the two flag-off checks went)
   }
   // the Juche Tower on the Taedong's east bank: east of Kim Il Sung Square (39.0195 N, 125.7527 E) across the river
   assert.ok(byId('juche').lon > 125.758);

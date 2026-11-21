@@ -35,7 +35,6 @@
 import { esc, gradeColor, partsHtml, verdict } from './score-panel.js';
 import { typeName } from '../scenarios.js';
 import { designName as liveDesignName } from '../designs-store.js';
-import { eastAsiaOn } from '../world/region.js';
 import { KST_ZONE, zoneAt, zoneOfIcao, fmtZone, fmtZoneDate, zoneLabel } from '../clock.js';
 import { shortPlace } from './home-card.js';
 
@@ -57,18 +56,18 @@ export function fmtDate(iso) {
   return { day: `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`, time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}` };
 }
 
-// v0.6.0: the entry's fields for local times and names (nothing with the region off: the entry is v0.5.8's). clockMs and
+// v0.6.0: the entry's fields for local times and names. clockMs and
 // speed: the game clock now (speed 0 if it's stopped); nowT, touchdownT, liftoffT: sim seconds (the scorer's touchdown,
 // main.js's lift-off); origin, dest: the airports' data ({ icao, name, shortName?, origin: [x, y] }).
 export function logTimes({ clockMs, speed = 1, nowT, touchdownT, liftoffT, origin, dest } = {}) {
-  if (!eastAsiaOn() || !Number.isFinite(clockMs)) return {};
+  if (!Number.isFinite(clockMs)) return {};
   const back = (s) => (Number.isFinite(s) ? s * 1000 * (Number.isFinite(speed) ? speed : 1) : 0);
   const arr = Math.round(clockMs - back(nowT - touchdownT));
   const dep = Number.isFinite(liftoffT) && Number.isFinite(touchdownT) ? Math.round(arr - back(touchdownT - liftoffT)) : null;
   const zoneOf = (a) => (a?.origin ? zoneAt(a.origin[0], a.origin[1]) : zoneOfIcao(a?.icao));
   const zo = zoneOf(origin), zd = zoneOf(dest);
   const name = (a) => (a ? a.shortName || shortPlace(a.name) || a.icao || null : null);
-  const out = { local: { ...(dep !== null ? { dep, depZone: zo.timeZone, depName: zoneLabel(zo) } : {}), arr, arrZone: zd.timeZone, arrName: zoneLabel(zd) } };
+  const out = { local: { ...(dep !== null ? { dep, depZone: zo.timeZone, depName: zoneLabel(zo, dep) } : {}), arr, arrZone: zd.timeZone, arrName: zoneLabel(zd, arr) } };   // (v0.7.0: the name in force then: BST in summer, GMT in winter)
   const places = { origin: name(origin), dest: name(dest) };
   if (places.origin || places.dest) out.places = places;
   return out;
@@ -295,7 +294,7 @@ export function createLogbook(root, { load, save, onclose, designName = liveDesi
     // The scenario's name on each row while all are shown (not for a bare open(), as in v0.1.x).
     const names = !scoped && sel == null && lastScenarios !== undefined;
     const html = rows.map(({ e, i }) => {
-      const region = eastAsiaOn(), d = region ? fmtLocal(e) : fmtDate(e.date), pl = region ? placesText(e) : '';
+      const d = fmtLocal(e), pl = placesText(e);
       const rwys = [e.depRunway, e.arrRunway].map((r) => (r ? esc(r) : '—')).join(' → ');
       const on = i === openIdx;
       return `<div class="fslb-row${on ? ' on' : ''}" data-i="${i}">
