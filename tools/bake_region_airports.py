@@ -399,6 +399,7 @@ HOLD_DROP_M = {}    # v0.7.0: icao -> m; OSM holds farther than this from every 
 REF_SQUEEZE = set()  # v0.7.0: airports whose OSM stand refs 'B 44' are read as B44 (Europe's block fills it)
 STAND_DROP = {}     # v0.7.0: icao -> (refs, reason): OSM stands on taxiways no route reaches (Europe's block fills it)
 AREA_EXTRA = {}     # v0.7.1: icao -> [(lon0, lat0, lon1, lat1), ...]: boxes added to the aerodrome's area (Toulouse's Airbus sites)
+STAND_DROP_NUMBERED = {}  # v0.7.2: icao -> (refs, reason): unnamed stands left out by the number the bake gave them
 # - Pyongyang 17/35: ILS CAT I at both ends (17: 109.5, 35: 109.9, 3.0 deg glide paths; the nav data); 17 ALSF-I, PAPI-4R
 #   (right), 35 SALS (drawn as the game's SSALF, 420 m [EST]) and PAPI-4L, centreline lights, no TDZ (the scenery's runway
 #   row and light fixtures, and OSM's PAPI node beside 35). Its stopways (99 m and 72 m, OSM's aeroway=stopway and the
@@ -1164,6 +1165,181 @@ if EUROPE:
     ICAOS = list(NAMES)
 
 
+# - v0.7.2, airports subagent A: Duesseldorf (EDDL, duesseldorf-regbez-261121), Cologne Bonn (EDDK, koeln-regbez-261121),
+#   Prague (LKPR, czech-republic-261121), Geneva (LSGG, switzerland-261121) and Nice (LFMN, provence-alpes-cote-d-azur-
+#   261121): boxes cut by /tmp/flight-sim/v072/airports/osm/extract-a.sh. No page kept in the repository.
+#   - EDDL, Germany's DFS AIP IFR (BasicIFR 2026OCT29, page images read by eye): AD 2.12 (1-6) 05L/23R 2700 x 45, 05R/23L
+#     2997 x 45, true 052.80 / 232.80; THR elevations 115.7 / 123.2 / 119.9 / 137.7 ft; the THR co-ordinates the landing
+#     thresholds (OSM's ref'd ways end there; OSM's unnamed runway ways beyond them, 297 to 302 m, are the displaced
+#     parts). AD 2.13 (1-7): LDA 2400 at 05L and 23R (300 m displaced), 2696 at 05R and 23L (301 m). AD 2.14 (1-8): ALSAF
+#     at all four (length not stated: ALSF-II 900 m [EST]), PAPI 3.0 deg (side not stated: left [EST]), TDZ at 23R, 05R
+#     and 23L, centreline lights at all four. AD 2.19 (1-11): ILS CAT I to 05L, CAT III to 05R, 23L and 23R; MAG VAR
+#     3 deg E (2024). AD 2.17 (1-9): transition altitude 5000 ft MSL.
+#   - EDDK: the AIP's and OSM's designators are still 13L/31R and 13R/31L (not 14/32). AD 2.12 (1-8) 06/24 2459 x 45, 13L/31R
+#     3815 x 60, 13R/31L 1863 x 45, true 064.40 / 244.40 and 137.50 / 317.50; THR elevations 229.1 / 270.7 / 228.8 / 300.3
+#     / 219.9 / 257.9 ft; AD 2.13 (1-9) LDA = TORA at all six: the thresholds are the runway ends. AD 2.14 (1-10): SALS at
+#     06, 13R and 31L (length not stated: 420 m [EST]), ALSAF at 24, 13L and 31R (ALSF-II 900 m [EST]); PAPI 3.0 deg (left
+#     [EST]); TDZ at 24, 13L and 31R; centreline lights at all six. AD 2.19 (1-13, 1-14): ILS CAT III to 13L and 31R, CAT I
+#     to 24 (none listed for 06, 13R, 31L); MAG VAR 3 deg E (2024). AD 2.17 (1-12): 5000 ft.
+#   - LKPR, Czechia's AIP (ANS CR, aim.rlp.cz, AD 2-LKPR text PDF): AD 2.12 06/24 3715 x 45, 12/30 3250 x 45, true 065 /
+#     245 and 127 / 307 (MAG 060 / 240, 122 / 302); THR elevations 1202.1 / 1157.5 / 1160.1 / 1231.9 ft; AD 2.13 no
+#     displacement. AD 2.14: 06 CAT I 480 m, 24 CAT II/III 900 m with TDZ 900 m, 12 SALS 420 m (the game's SSALF), 30 CAT I
+#     900 m; PAPI left 3 deg at all four; centreline lights on 06/24 only. AD 2.19: ILS CAT I to 06, 12 and 30, CAT III to
+#     24. AD 2.17: transition altitude 5000 ft AMSL (ENR 1.7 1.7.2.2.1 the same for the FIR). OSM's grass 05/23 (450 x 30,
+#     a strip south-west of the field) is no runway of the airport's AIP: left out (RUNWAY_SKIP).
+#   - LSGG: skyguide's eAIP asks for a login: not read. Every value [EST]: OSM's runway (04/22; its unnamed runway way of
+#     343 m before 04 the displaced part), OurAirports' 3900 x 50 m (12,795 x 164 ft), elevations 1411 / 1365 ft and 04's
+#     displacement 330 m (1,082 ft); lights and ILS from general knowledge of the field (CAT III to 22, CAT I to 04, 900 m
+#     approach lights at both, TDZ at 22). The grass runway beside it is not baked.
+#   - LFMN, France's SIA eAIP (AD 2 LFMN, AIRAC 29 OCT 2026, read as HTML): AD 2.12 04L/22R 2628 x 45, 04R/22L 2963 x 45,
+#     true 044.95 (MAG 042) / 224.96 (222), 044.95 / 224.97; THR elevations 9.7 / 9.7 / 9.8 / 11.4 ft; the THR co-ordinates
+#     the runway ends, 04L's and 22R's DTHR beside them (90 m and 58 m in). AD 2.13: LDA 2538 at 04L, 2480 at 22R (its
+#     declared distances end 90 m short of 04L's end, the starter extension). AD 2.14: no approach lights at any end; PAPI 3.0 deg at 04L and 04R, 3.2 deg at 22R and 22L (side not
+#     stated: left [EST]); no TDZ lights; centreline lights on both. AD 2.19: LOC 04L CAT I (I.B.1, offset from the axis),
+#     LOC 04R with no category (the game: none). AD 2.20: transition altitude 5000 ft (NICE TMA).
+if EUROPE:
+    for _i, _n in (('EDDL', ('Düsseldorf', 'Düsseldorf Airport')), ('EDDK', ('Cologne Bonn', 'Cologne Bonn Airport')),
+                   ('LKPR', ('Prague', 'Václav Havel Airport Prague')), ('LSGG', ('Geneva', 'Geneva Airport')),
+                   ('LFMN', ('Nice', "Nice Côte d'Azur Airport"))):
+        NAMES[_i] = _n
+        OSM_DIRS[_i] = '/tmp/flight-sim/v072/airports/osm'
+        NOTES_DIRS[_i] = '/tmp/flight-sim/v072/airports'
+        HOLD_DROP_M[_i] = 30.0
+    AIP_SOURCE['EDDL'] = "Germany's DFS AIP IFR, AD 2 EDDL (effective 29 OCT 2026) AD 2.12-2.14, 2.17 and 2.19"
+    AIP_SOURCE['EDDK'] = "Germany's DFS AIP IFR, AD 2 EDDK (effective 29 OCT 2026) AD 2.12-2.14, 2.17 and 2.19"
+    AIP_SOURCE['LKPR'] = "Czechia's AIP (ANS CR), AD 2 LKPR AD 2.12-2.14, 2.17, 2.19 and 2.21"
+    AIP_SOURCE['LSGG'] = ("no AIP (skyguide's eAIP asks for a login): OurAirports' length, elevations and displacement, "
+                          "OSM's runway, the lights and ILS from general knowledge of the field, all [EST]")
+    AIP_SOURCE['LFMN'] = "France's SIA eAIP, AD 2 LFMN (AIRAC 29 OCT 2026) AD 2.12-2.14, 2.19 and 2.20"
+    AIP['EDDL'] = {'05L': ('ALSF-II', 900, 'left', 3.0, 'I', 115.7, False, True, 45, 300),
+                   '23R': ('ALSF-II', 900, 'left', 3.0, 'III', 123.2, True, True, 45, 300),
+                   '05R': ('ALSF-II', 900, 'left', 3.0, 'III', 119.9, True, True, 45, 301),
+                   '23L': ('ALSF-II', 900, 'left', 3.0, 'III', 137.7, True, True, 45, 301)}
+    AIP['EDDK'] = {'06': ('SSALF', 420, 'left', 3.0, None, 229.1, False, True, 45, 0),
+                   '24': ('ALSF-II', 900, 'left', 3.0, 'I', 270.7, True, True, 45, 0),
+                   '13L': ('ALSF-II', 900, 'left', 3.0, 'III', 228.8, True, True, 60, 0),
+                   '31R': ('ALSF-II', 900, 'left', 3.0, 'III', 300.3, True, True, 60, 0),
+                   '13R': ('SSALF', 420, 'left', 3.0, None, 219.9, False, True, 45, 0),
+                   '31L': ('SSALF', 420, 'left', 3.0, None, 257.9, False, True, 45, 0)}
+    AIP['LKPR'] = {'06': ('ALSF-I', 480, 'left', 3.0, 'I', 1202.1, False, True, 45, 0),
+                   '24': ('ALSF-II', 900, 'left', 3.0, 'III', 1157.5, True, True, 45, 0),
+                   '12': ('SSALF', 420, 'left', 3.0, 'I', 1160.1, False, False, 45, 0),
+                   '30': ('ALSF-I', 900, 'left', 3.0, 'I', 1231.9, False, False, 45, 0)}
+    AIP['LSGG'] = {'04': ('ALSF-I', 900, 'left', 3.0, 'I', 1411.0, False, True, 50, 330),
+                   '22': ('ALSF-II', 900, 'left', 3.0, 'III', 1365.0, True, True, 50, 0)}
+    AIP['LFMN'] = {'04L': (None, 0, 'left', 3.0, 'I', 9.7, False, True, 45, 90),
+                   '22R': (None, 0, 'left', 3.2, None, 9.7, False, True, 45, 58),
+                   '04R': (None, 0, 'left', 3.0, None, 9.8, False, True, 45, 0),
+                   '22L': (None, 0, 'left', 3.2, None, 11.4, False, True, 45, 0)}
+    # the published magnetic: EDDL and EDDK AD 2.12's TRUE BRG less AD 2.19's 3 deg E (2024); LKPR and LFMN AD 2.12's MAG
+    PUBLISHED_MAG['EDDL'] = {'05L': 49.80, '23R': 229.80, '05R': 49.80, '23L': 229.80}
+    PUBLISHED_MAG['EDDK'] = {'06': 61.40, '24': 241.40, '13L': 134.50, '31R': 314.50, '13R': 134.50, '31L': 314.50}
+    PUBLISHED_MAG['LKPR'] = {'06': 60.0, '24': 240.0, '12': 122.0, '30': 302.0}
+    PUBLISHED_MAG['LFMN'] = {'04L': 42.0, '22R': 222.0, '04R': 42.0, '22L': 222.0}
+    AIP_THR['EDDL'] = {'05L': ('511707.132N', '0064507.643E'), '23R': ('511748.248N', '0064633.931E'),
+                       '05R': ('511652.445N', '0064519.467E'), '23L': ('511739.431N', '0064658.073E')}
+    AIP_THR['EDDK'] = {'06': ('505136.438N', '0070725.605E'), '24': ('505210.811N', '0070918.976E'),
+                       '13L': ('505249.688N', '0070744.668E'), '31R': ('505118.699N', '0070956.491E'),
+                       '13R': ('505215.043N', '0070715.101E'), '31L': ('505130.615N', '0070819.468E')}
+    AIP_THR['LKPR'] = {'06': ('500606.61N', '0141334.68E'), '24': ('500657.42N', '0141624.12E'),
+                       '12': ('500628.84N', '0141443.32E'), '30': ('500525.68N', '0141654.02E')}
+    AIP_THR['LFMN'] = {'04L': ('433906.51N', '0071214.55E'), '22R': ('434006.76N', '0071337.42E'),
+                       '04R': ('433848.26N', '0071208.97E'), '22L': ('433956.19N', '0071342.40E')}
+    # EDDL: each end at the outer end of OSM's unnamed runway way (the displaced part), trimmed evenly to AD 2.12's length.
+    # LSGG: 04 at the outer end of OSM's unnamed way, 22 at the ref'd way's end, trimmed evenly to OurAirports' 3900 m.
+    # EDDK, LKPR and LFMN: each end at AD 2.12's threshold (the runway's end), trimmed evenly to AD 2.12's length.
+    THR_AT.update({('EDDL', '05L'): (51.28365, 6.748638), ('EDDL', '23R'): (51.298365, 6.779516),
+                   ('EDDL', '05R'): (51.279609, 6.751993), ('EDDL', '23L'): (51.29591, 6.786211),
+                   ('LSGG', '04'): (46.22565, 6.090765), ('LSGG', '22'): (46.250405, 6.127082)})
+    for _ic in ('EDDK', 'LKPR', 'LFMN'):
+        THR_AT.update({(_ic, e): (_dms_signed(la), _dms_signed(lo)) for e, (la, lo) in AIP_THR[_ic].items()})
+    THR_LEN.update({('EDDL', '05L/23R'): 2700, ('EDDL', '05R/23L'): 2997, ('EDDK', '06/24'): 2459,
+                    ('EDDK', '13L/31R'): 3815, ('EDDK', '13R/31L'): 1863, ('LKPR', '06/24'): 3715,
+                    ('LKPR', '12/30'): 3250, ('LSGG', '04/22'): 3900, ('LFMN', '04L/22R'): 2628, ('LFMN', '04R/22L'): 2963})
+    RUNWAY_SKIP.add(('LKPR', '05/23'))
+    # LFMN K26C: on the Kilo apron's edge by the shore, where the field's flattening meets the ground (1.6 m across 40 m)
+    STAND_DROP['LFMN'] = ({'K26C', '2', '3', '4', '6', '8', '10', '12', '15'},
+                          "K26C on the Kilo apron's edge, where the field's flattening meets the shore (1.6 m across 40 m); "
+                          "2 to 15 on OSM taxi lines joined to nothing else: no route to any runway")
+    STAND_DROP_NUMBERED['LKPR'] = ({'R2', 'R3', 'R4', 'R5', 'R6'}, "unnamed OSM stands on taxi lines joined to nothing else: no route to any runway")
+    ICAOS = list(NAMES)
+
+
+# - v0.7.2, airports subagent B: Edinburgh (EGPH) and Glasgow (EGPF, both scotland-261121), Nantes (LFRS,
+#   pays-de-la-loire-261121) and Santiago (LEST, galicia-261121): boxes cut by /tmp/flight-sim/v072/airports/osm/
+#   extract-b.sh. No page kept in the repository.
+#   - EGPH, the UK's NATS eAIP (EG AD 2 EGPH, AIRAC 29 OCT 2026): AD 2.12 06/24 2558 x 45, true 058.85 / 238.88; THR
+#     (inset 214 m at 06, 211 m at 24) elevations 110.1 / 99.8 ft. 12/30 is no longer published. AD 2.14: coded centre-
+#     line with five crossbars 870 m at 06, 914 m at 24 (CAT III: the game's ALSF-II); PAPI left 3 deg; TDZ and centreline
+#     lights at both. AD 2.19: ILS CAT III to 06 and 24; MAG VAR 0.24 / 0.25 W (2027). AD 2.17: transition altitude 6000 FT.
+#   - EGPF, NATS (EG AD 2 EGPF): AD 2.12 05/23 2661 x 45, true 046.40 / 226.42; 23's threshold displaced 304 m; THR
+#     elevations 26.1 / 20.8 ft. AD 2.14: coded centre-line with five crossbars 914 m at both (CAT III: ALSF-II); PAPI left
+#     3 deg; TDZ and centreline lights at both. AD 2.19: ILS CAT III to 05 and 23; MAG VAR 0.65 / 0.66 W (2027). AD 2.17:
+#     transition altitude 6000 FT. AD 2.20: a full-length take-off on 23 back-tracks the runway (no taxiway to 23's end).
+#   - LFRS, France's SIA eAIP (AD 2 LFRS, AIRAC 29 OCT 2026): AD 2.12 03/21 2853 x 45, true 027.44 (MAG 028) / 207.44
+#     (208); THR 03 at the runway end, 21's position GEO the runway end with its DTHR beside it (AD 2.13 LDA 2591: 262 m);
+#     THR elevations 73 / 83 ft. AD 2.14: 03 CAT I-II-III 900 m (ALSF-II), 21 420 m (SSALF); PAPI 3.0 deg at 03, 3.1 at 21
+#     (side not stated: left [EST]); TDZ 900 m at 03 only; centreline lights on both. AD 2.19: LOC 03 III.E.4, none to 21.
+#     AD 2.20 20.2: transition altitude 5000 ft (NANTES TMA).
+#   - LEST, Spain's ENAIRE AIP (AD 2-LEST, WEF 29-OCT-26): AD 2.12 17/35, TORA 3140 / 3170 x 45, true 166.15 (MAG 167) /
+#     346.16 (347); DTHR 17 120 m and DTHR 35 150 m from each take-off run's beginning (AD 2.13's coordinates); THR
+#     elevations 1170 / 1200 ft. The pavement between the two take-off starts: 3200 m (the edge lights' 3200 m, AD 2.14).
+#     AD 2.14: 17 precision CAT II/III 900 m (ALSF-II), TDZ 900 m; 35 precision CAT I 420 m (ALSF-I, provisional); PAPI 3
+#     deg (side not stated: left [EST]); centreline lights on both. AD 2.19: ILS CAT III to 17, CAT I to 35. AD 2.17:
+#     transition altitude 1850 m / 6000 ft (CTR SANTIAGO).
+if EUROPE:
+    for _i, _n in (('EGPH', ('Edinburgh', 'Edinburgh Airport')), ('EGPF', ('Glasgow', 'Glasgow Airport')),
+                   ('LFRS', ('Nantes', 'Nantes Atlantique Airport')),
+                   ('LEST', ('Santiago', 'Santiago–Rosalía de Castro Airport'))):
+        NAMES[_i] = _n
+        OSM_DIRS[_i] = '/tmp/flight-sim/v072/airports/osm'
+        NOTES_DIRS[_i] = '/tmp/flight-sim/v072/airports'
+        HOLD_DROP_M[_i] = 30.0
+    AIP_SOURCE['EGPH'] = "the UK's NATS eAIP, EG AD 2 EGPH (AIRAC 29 OCT 2026) AD 2.12-2.14, 2.17, 2.19 and 2.20"
+    AIP_SOURCE['EGPF'] = "the UK's NATS eAIP, EG AD 2 EGPF (AIRAC 29 OCT 2026) AD 2.12-2.14, 2.17, 2.19 and 2.20"
+    AIP_SOURCE['LFRS'] = "France's SIA eAIP, AD 2 LFRS (AIRAC 29 OCT 2026) AD 2.12-2.14, 2.19-2.21"
+    AIP_SOURCE['LEST'] = "Spain's ENAIRE AIP, AD 2-LEST (WEF 29-OCT-26) AD 2.12-2.14, 2.17, 2.19 and 2.20"
+    AIP['EGPH'] = {'06': ('ALSF-II', 870, 'left', 3.0, 'III', 110.1, True, True, 45, 214),
+                   '24': ('ALSF-II', 914, 'left', 3.0, 'III', 99.8, True, True, 45, 211)}
+    AIP['EGPF'] = {'05': ('ALSF-II', 914, 'left', 3.0, 'III', 26.1, True, True, 45, 0),
+                   '23': ('ALSF-II', 914, 'left', 3.0, 'III', 20.8, True, True, 45, 304)}
+    AIP['LFRS'] = {'03': ('ALSF-II', 900, 'left', 3.0, 'III', 73.0, True, True, 45, 0),
+                   '21': ('SSALF', 420, 'left', 3.1, None, 83.0, False, True, 45, 262)}
+    AIP['LEST'] = {'17': ('ALSF-II', 900, 'left', 3.0, 'III', 1170.0, True, True, 45, 120),
+                   '35': ('ALSF-I', 420, 'left', 3.0, 'I', 1200.0, False, True, 45, 150)}
+    # EGPH, EGPF: AD 2.12's true plus AD 2.19's west variation (notes only); LFRS and LEST: AD 2.12's MAG
+    PUBLISHED_MAG['EGPH'] = {'06': 59.09, '24': 239.13}
+    PUBLISHED_MAG['EGPF'] = {'05': 47.05, '23': 227.08}
+    PUBLISHED_MAG['LFRS'] = {'03': 28.0, '21': 208.0}
+    PUBLISHED_MAG['LEST'] = {'17': 167.0, '35': 347.0}
+    # EGPH, EGPF: AD 2.12's THR PSN, the landing thresholds; LFRS: the runway ends (21's DTHR listed beside it); LEST:
+    # AD 2.13's beginnings of the take-off runs (the pavement's ends)
+    AIP_THR['EGPH'] = {'06': ('555641.99N', '0032313.90W'), '24': ('555717.66N', '0032128.66W')}
+    AIP_THR['EGPF'] = {'05': ('555148.53N', '0042656.59W'), '23': ('555241.07N', '0042518.43W')}
+    AIP_THR['LFRS'] = {'03': ('470829.77N', '0013710.36W'), '21': ('470951.73N', '0013607.95W')}
+    AIP_THR['LEST'] = {'17': ('425442.47N', '0082513.18W'), '35': ('425301.77N', '0082439.42W')}
+    # EGPH and EGPF: each end at AD 2.12's landing threshold moved out along the runway by its displacement (times the
+    # frame's scale), then trimmed evenly to AD 2.12's length (as Manchester's). LFRS and LEST: each end at the AIP's
+    # coordinates above, trimmed evenly to the length.
+    for _ic, _a, _b in (('EGPH', '06', '24'), ('EGPF', '05', '23')):
+        _pa = np.array(to_map(*(_dms_signed(s) for s in AIP_THR[_ic][_a])), float)
+        _pb = np.array(to_map(*(_dms_signed(s) for s in AIP_THR[_ic][_b])), float)
+        _u = (_pa - _pb) / np.hypot(*(_pa - _pb))
+        for _e, _p, _s in ((_a, _pa, 1.0), (_b, _pb, -1.0)):
+            _k = frame_scale(*(float(v) for v in to_geo(*_p)))
+            THR_AT[(_ic, _e)] = tuple(float(v) for v in to_geo(*(_p + _s * _u * AIP[_ic][_e][9] * _k)))
+    for _ic in ('LFRS', 'LEST'):
+        THR_AT.update({(_ic, e): (_dms_signed(la), _dms_signed(lo)) for e, (la, lo) in AIP_THR[_ic].items()})
+    THR_LEN.update({('EGPH', '06/24'): 2558, ('EGPF', '05/23'): 2661, ('LFRS', '03/21'): 2853, ('LEST', '17/35'): 3200})
+    # LFRS: OSM maps a second, older set of stands as named points ("Porte 1", "Poste L2", "Parking 7" ...) 16 to 67 m from
+    # the ref'd stands with the same numbers: those left out (Porte 3 and Porte 6, with no ref'd twin, are kept)
+    STAND_DROP['LFRS'] = ({'Porte 1', 'Porte 2', 'Porte 4', 'Porte 5', 'Porte 5A', 'Poste L2', 'Poste L3', 'Poste L4',
+                           'Poste L5', 'Poste 18', 'Parking 7', 'Parking 8', 'Parking 9', 'Parking 10', 'Parking 11A',
+                           'Parking 12', 'Parking 14'},
+                          "a second, older set of OSM stands mapped as named points beside the ref'd stands of the same numbers")
+    ICAOS = list(NAMES)
+
+
 class WmmPoint:
     """v0.7.0, Europe: WMM2025 at epoch 2026.0 at the point itself (tools/bake_wmm.py's routine), Wmm's interface."""
     def __init__(self):
@@ -1682,6 +1858,13 @@ def bake(icao, wmm, oa_ap, oa_rw):
     if numbered:
         est.append(('stand numbers', f'{len(numbered)} stands {numbered[0]}..{numbered[-1]}',
                     f'no ref in OSM and no gate within 80 m: numbered {fmt.format(1)}.. west to east'))
+    # v0.7.2 (airports subagent A): unnamed stands left out by the numbers they were just given (STAND_DROP_NUMBERED, empty
+    # but for Prague's)
+    if icao in STAND_DROP_NUMBERED:
+        refs_d, why = STAND_DROP_NUMBERED[icao]
+        n0 = len(stands)
+        stands = [st for st in stands if st['ref'] not in refs_d]
+        est.append(('stands left out', f'{n0 - len(stands)}: {", ".join(sorted(refs_d))}', why + ' (STAND_DROP_NUMBERED)'))
 
     if not aprons and stands:
         blob = shapely.unary_union([Point(s['x'], s['y']).buffer(40) for s in stands] +

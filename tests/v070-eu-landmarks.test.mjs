@@ -14,7 +14,9 @@ const BRIEF = { shard: 310, eye: 135, stpauls: 111, towerbridge: 65, eiffel: 330
   messeturm: 257, europaturm: 337, kio: 114, primetower: 126, olympiaturm: 291, stpeters: 137, colosseum: 48 };
 const COUNTRY = { london: 'GB', paris: 'FR', frankfurt: 'DE', madrid: 'ES', zurich: 'CH', munich: 'DE', barcelona: 'ES', rome: 'IT',
   // v0.7.1's cities
-  berlin: 'DE', vienna: 'AT', milan: 'IT', lisbon: 'PT', oresund: 'DK', malmo: 'SE', dublin: 'IE', brussels: 'BE', manchester: 'GB', toulouse: 'FR' };
+  berlin: 'DE', vienna: 'AT', milan: 'IT', lisbon: 'PT', oresund: 'DK', malmo: 'SE', dublin: 'IE', brussels: 'BE', manchester: 'GB', toulouse: 'FR',
+  // v0.7.2's cities
+  cologne: 'DE', dusseldorf: 'DE', prague: 'CZ', geneva: 'CH', edinburgh: 'GB', santiago: 'ES' };
 const TRI_BUDGET = 6000, TOTAL_BUDGET = 60000;
 
 if (inRegion('europe', import.meta.url)) {

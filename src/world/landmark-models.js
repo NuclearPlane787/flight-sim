@@ -2405,3 +2405,376 @@ export function rocket(brg = 0) {
 
 Object.assign(EUROPE_MODELS, { fernsehturm, brandenburg, stephansdom, donauturm, riesenrad, duomo, ponte25, cristorei, vascodagama,
   oresund, torso, poolbeg, palaisjustice, lovell, rocket });
+
+// ================================================================== v0.7.2: Europe's next landmarks (briefs/V0-7-2.md part 4)
+// The same rules: our own massing from public figures, no logos, lettering or names. Added to EUROPE_MODELS below.
+
+const DARKSTONE = [0.33, 0.31, 0.28], GRANITE = [0.55, 0.53, 0.48], FORTH_RED = [0.50, 0.12, 0.07], BASALT = [0.13, 0.135, 0.115];   // (the pictures-only review: the rock drew as a pale slab at 0.27; dark basalt under grass)
+
+// A bridge's deck along local n: a box girder (half width hw, depth d) whose top follows top(n), from n0 to n1, cut
+// every `step` metres and at the `extra` points.
+function deckAlong(b, top, n0, n1, hw, d, step, extra = []) {
+  const ns = [];
+  for (let n = n0; n < n1; n += step) ns.push(n);
+  ns.push(n1);
+  for (const e of extra) if (e > n0 && e < n1 && !ns.includes(e)) ns.push(e);
+  ns.sort((p, q) => p - q);
+  const q = (x, y, n) => b.T([x, y, n]);
+  for (let i = 0; i + 1 < ns.length; i++) {
+    const na = ns[i], nb = ns[i + 1], ya = top(na), yb = top(nb);
+    const c = b.T([0, (ya + yb) / 2 - d / 2, (na + nb) / 2]);
+    const A = [q(-hw, ya - d, na), q(hw, ya - d, na), q(hw, ya, na), q(-hw, ya, na)];
+    const B = [q(-hw, yb - d, nb), q(hw, yb - d, nb), q(hw, yb, nb), q(-hw, yb, nb)];
+    for (let k = 0; k < 4; k++) { const k1 = (k + 1) % 4; b.tri(A[k], A[k1], B[k1], c); b.tri(A[k], B[k1], B[k], c); }
+    if (i === 0) { b.tri(A[0], A[1], A[2], c); b.tri(A[0], A[2], A[3], c); }
+    if (i + 2 === ns.length) { b.tri(B[0], B[1], B[2], c); b.tri(B[0], B[2], B[3], c); }
+  }
+}
+// A deck's top: `y` within |n| <= m, then straight down to the ground read at each end (a few metres at least).
+const rampTop = (g, m, y) => (n) => {
+  const a = Math.abs(n);
+  if (a <= m) return y;
+  const end = n < 0 ? g.n0 : g.n1, h = Math.max(n < 0 ? g.h0 : g.h1, 3) + 0.3;
+  return lerp(y, h, Math.min((a - m) / Math.max(Math.abs(end) - m, 1), 1));
+};
+// Piers under a deck beyond |n| = m, every `step`, where the deck is clear of the water by 3 m.
+function piersAlong(b, g, top, d, m, step, hx, hn) {
+  for (const side of [-1, 1]) {
+    const end = Math.abs(side < 0 ? g.n0 : g.n1);
+    for (let a = m + step; a < end - 25; a += step) { const y = top(side * a) - d; if (y > 3) box(b, 0, side * a, 0, y, hx, hn, 0, { capTop: false }); }
+  }
+}
+
+// ------------------------------------------------------------------ Cologne and Düsseldorf
+
+// Cologne Cathedral: the twin west spires 157.4 m, the church 144.5 m long (local x, east to the choir) and 86.25 m
+// across the transept. Dark stone: the five-aisled nave (the aisles' and clerestory's heights and the roof's ridge, about
+// 61 m, [EST]), the transept, the choir and its apse, the buttresses' pinnacles along the sides, the towers stepping in
+// to their open octagons and the spires; the ridge turret over the crossing [EST]. Floodlit at night.
+export function koelnerdom(brg = 0) {
+  const b = new Builder(0.61).frame(0, 0, brg);
+  const stone = GLASS(DARKSTONE, 9.0, 4.5, 0.0, 0.08, { glow: flood(0.9) });
+  const L = 144.5 / 2, H = 157.4, WX = -L + 12.5;
+  b.set(stone);
+  box(b, -10, 0, 0, 19, 38, 22);                           // the aisles
+  box(b, -10, 0, 19, 43, 38, 8.5);                         // the nave's clerestory
+  box(b, 14, 0, 0, 43, 14, 43.1);                          // the transept
+  box(b, 40, 0, 0, 19, 12, 22);                            // the choir's aisles
+  box(b, 40, 0, 19, 43, 12, 8.5);                          // the choir
+  profile(b, 52, 0, [[0, 20], [19, 20]], 12, false);       // the chevet's chapels
+  profile(b, 52, 0, [[19, 8.5], [43, 8.5]], 10, false);    // the apse
+  b.set(PLAIN(SLATE, 0.2, { glow: flood(0.3) }));
+  gable(b, -10, 0, 43, 61, 38, 8.5, true);
+  gable(b, 14, 0, 43, 61, 8.5, 43.1);
+  gable(b, 40, 0, 43, 61, 12, 8.5, true);
+  profile(b, 52, 0, [[43, 8.5], [59, 0.5]], 10);
+  spire(b, 14, 0, 61, 109, 2.4, 8);                        // the crossing's ridge turret
+  b.set(stone);
+  for (let x = -44; x <= 60; x += 9) if (Math.abs(x - 14) > 12) for (const s of [-1, 1]) spire(b, x, s * 22, 19, 36, 1.1, 4);
+  // the west towers: square to 60 m, stepping in to 100 m, the open octagon, the spire
+  for (const s of [-1, 1]) {
+    const tn = s * 18.5;
+    box(b, WX, tn, 0, 60, 12.5, 12.5);
+    b.loft([at(shift(chamferRect(12.5, 12.5, 2), WX, tn), 60), at(shift(chamferRect(10, 10, 2.5), WX, tn), 100)], { capTop: false });
+    b.loft([at(shift(circle(10, 8, Math.PI / 8), WX, tn), 100), at(shift(circle(8.5, 8, Math.PI / 8), WX, tn), 110)], { capTop: false });
+    spire(b, WX, tn, 110, H, 8.5, 8);
+    for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) spire(b, WX + dx * 10.5, tn + dn * 10.5, 60, 76, 1.3, 4);
+    b.light([WX, H, tn], 1);
+    b.light([WX + 9, 100, tn], 0);
+  }
+  // the west front between the towers, with its gable
+  box(b, WX - 4, 0, 0, 44, 8, 6);
+  return b.result();
+}
+
+// Düsseldorf's Rheinturm: 240.5 m, on the Rhine's bank. A slim tapering concrete shaft, the pod with the observation
+// deck at 168 m and the revolving restaurant at 172.5 m, the shaft on above it and the antenna mast; the shaft's
+// and the pod's sizes [EST].
+export function rheinturm() {
+  const b = new Builder(0.63);
+  tvTower(b, { H: 240.5, r0: 8.4, r1: 4.4, podY0: 160, pod: [[160, 4.4], [163, 10], [166, 13.5], [175, 13.5], [178, 12.5], [181, 10.5], [185, 4.6]],
+    shaftTop: 198, shaftR: 3.6, mastR: 1.8, bands: 6, foot: [[0, 14], [5, 13], [8, 8.6]] });
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Prague
+
+// The Žižkov television tower: 216 m. Three steel tubes filled with concrete on a triangle, two to the decks at
+// about 134 m and the third on to 191 m and the antenna; nine pods clinging to the tubes in threes (the restaurant's
+// at about 63 m, the observation pods at about 93 m, the equipment pods under the decks); the heights and sizes [EST].
+export function zizkov(brg = 0) {
+  const b = new Builder(0.65).frame(0, 0, brg);
+  const steel = PLAIN([0.60, 0.60, 0.58], 0.25, { glow: [0.14, 0.14, 0.16] });
+  const R = 7.5, tubes = [0, 1, 2].map((k) => { const a = Math.PI / 2 + (k * TAU) / 3; return [R * Math.cos(a), R * Math.sin(a), Math.cos(a), Math.sin(a)]; });
+  b.set(steel);
+  tubes.forEach(([x, n], k) => cyl(b, x, n, 0, k === 0 ? 191 : 134, k === 0 ? 3.3 : 2.8, k === 0 ? 3.0 : 2.6, 10));
+  b.set(PLAIN([0.66, 0.66, 0.64], 0.2, { glow: [0.18, 0.18, 0.20] }));
+  const tri = tubes.map(([x, n]) => [x * 1.75, n * 1.75]);
+  for (const [y0, y1] of [[116, 122], [128, 134]]) b.loft([at(tri, y0), at(tri, y1)], { capBottom: true });
+  cyl(b, tubes[0][0], tubes[0][1], 168, 175, 6.5, 6.5, 8, { capBottom: true });
+  b.set(PLAIN([0.70, 0.70, 0.68], 0.35, { glow: [0.22, 0.22, 0.25] }));
+  for (const [x, n, ux, un] of tubes) for (const y of [63, 93, 108]) {
+    const px = x + ux * 5.8, pn = n + un * 5.8;
+    profile(b, px, pn, [[y - 5.5, 1.5], [y - 4.5, 4.2], [y + 3.5, 4.2], [y + 4.5, 1.5]], 8);
+  }
+  b.set(PLAIN([0.60, 0.07, 0.04], 0.2));
+  cyl(b, tubes[0][0], tubes[0][1], 191, 216, 1.2, 0.3, 6);
+  b.light([tubes[0][0], 216, tubes[0][1]], 1);
+  for (const [x, n] of tubes) b.light([x * 1.75, 134.5, n * 1.75], 0);
+  b.light([tubes[0][0], 191, tubes[0][1]], 0);
+  return b.result();
+}
+
+// Prague Castle and St Vitus Cathedral: the cathedral 124 x 60 m (local x, east), its main tower 102.8 m (the
+// article; about 97 m the commonly quoted figure) on the south side with its Baroque helm, the twin west spires 82 m,
+// the nave's vault 33.2 m (the roof's ridge [EST]); round it the castle's long low ranges and the Old Royal Palace on a
+// terrace along the ridge above the river (their plans and heights [EST], the castle about 570 m long, drawn shorter).
+export function stvitus(brg = 0) {
+  const b = new Builder(0.69).frame(0, 0, brg);
+  const stone = GLASS([0.55, 0.52, 0.45], 8.0, 4.5, 0.0, 0.08, { glow: flood(0.9) });
+  const plaster = GLASS([0.70, 0.67, 0.58], 4.0, 4.0, 0.0, 0.15, { glow: flood(0.5) });
+  b.set(PLAIN(GRANITE, 0.05));
+  box(b, -20, -5, 0, 4, 105, 72);                           // the terrace on the ridge
+  b.set(plaster);
+  for (const [x, n, hx, hn, h] of [[-25, -68, 100, 8, 22], [-110, -5, 10, 55, 20], [-60, 58, 50, 8, 18], [45, 58, 30, 8, 16], [55, -45, 28, 18, 20]]) {
+    box(b, x, n, 4, h, hx, hn);
+    b.set(PLAIN(TILES, 0.15)); gable(b, x, n, h, h + 7, hx, hn, hx > hn); b.set(plaster);
+  }
+  b.set(stone);
+  box(b, -8, 0, 4, 30, 52, 16);                             // the nave and aisles
+  box(b, -8, 0, 30, 40, 52, 7);                             // the clerestory
+  box(b, 12, 0, 4, 34, 7, 30);                              // the transept
+  profile(b, 44, 0, [[4, 16], [30, 16], [30, 9], [40, 9]], 10, false);   // the choir's chevet
+  b.set(PLAIN([0.22, 0.24, 0.25], 0.25, { glow: flood(0.3) }));
+  gable(b, -8, 0, 40, 52, 52, 7, true);
+  gable(b, 12, 0, 34, 46, 7, 30);
+  profile(b, 44, 0, [[40, 9], [50, 0.5]], 10);
+  b.set(stone);
+  spire(b, 22, 0, 52, 70, 2, 8);                            // the ridge turret
+  // the west front's twin spires, 82 m
+  for (const s of [-1, 1]) { box(b, -58, s * 11, 4, 52, 5, 5); spire(b, -58, s * 11, 52, 82, 5, 8); }
+  // the great south tower: square to 56 m, the Renaissance gallery, the Baroque helm and lantern
+  const TX = 18, TN = -24;
+  box(b, TX, TN, 4, 56, 8, 8);
+  box(b, TX, TN, 56, 66, 7, 7);
+  b.set(PLAIN(COPPER, 0.3, { glow: flood(0.5) }));
+  profile(b, TX, TN, [[66, 7], [72, 6.5], [77, 3.5], [80, 2], [84, 3.6], [88, 2.4], [92, 1.2], [102.8, 0.15]], 8);
+  b.light([TX, 102.8, TN], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Geneva
+
+// The Jet d'Eau: a plume of water about 140 m high (the brief; the article says the water is jetted to 150 m) at the
+// end of a stone jetty from the lake's left bank. A thin pale cone leaning a little downwind (local +x [EST]), wider
+// and paler towards its top, where the spray falls back; the jetty about 150 m long towards the shore (local -n)
+// [EST]. Lit at night.
+export function jetdeau(brg = 0) {
+  const b = new Builder(0.71).frame(0, 0, brg);
+  b.set(PLAIN(GRANITE, 0.05));
+  box(b, 0, -75, 0, 1.6, 2.6, 75);
+  box(b, 0, 0, 0, 1.8, 4, 4);
+  const H = 140, lean = Math.tan(4 * DEG);
+  const rings = [[1.8, 0.4], [20, 1.0], [50, 2.0], [85, 3.4], [115, 5.0], [131, 6.4], [137, 5.2], [H, 0.8]];
+  const cols = [[0.70, 0.74, 0.76], [0.74, 0.77, 0.79], [0.78, 0.80, 0.82], [0.80, 0.82, 0.84], [0.84, 0.86, 0.87], [0.86, 0.88, 0.89], [0.88, 0.89, 0.90]];
+  for (let i = 0; i + 1 < rings.length; i++) {
+    b.set(PLAIN(cols[i], 0.5, { glow: [0.42, 0.44, 0.48].map((v) => v * (0.8 + 0.05 * i)) }));
+    const [y0, r0] = rings[i], [y1, r1] = rings[i + 1];
+    b.loft([at(shift(circle(r0, 10), y0 * lean, 0), y0), at(shift(circle(r1, 10), y1 * lean, 0), y1)], { smooth: true, capTop: i + 2 === rings.length });
+  }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ the Forth bridges, west of Edinburgh
+
+// The Forth Bridge (1890): a cantilever railway bridge, 2,467 m (8,094 ft) long, its three double cantilevers 110 m
+// (361 ft) above high water, two main spans of 1,700 ft (518 m) between them. Each cantilever: four tubular legs on
+// granite piers, the bottom tubes sweeping out and up to the arms' tips 207 m out, the ties from the top down to them,
+// and the suspended girder (107 m) between two tips; the middle (Inchgarvie) cantilever wider at its foot. The rail
+// deck about 48 m up [EST], the approach viaducts on granite piers every 51 m [EST], the deck down to the ground read
+// at its ends. Red. Lights at the towers' tops.
+export function forthbridge(brg = -15, geo = {}) {
+  const b = new Builder(0.73).frame(0, 0, brg);
+  const g = { s: 552, n0: -1360, n1: 1107, h0: 30, h1: 30, ...geo };
+  const S = g.s, DY = 48, ARM = 207, TOP = 110, W0 = 18, W1 = 5;
+  const towers = [[-S, 11], [0, 20], [S, 11]];
+  const M = S + 11 + ARM;
+  const top = rampTop(g, M, DY);
+  b.set(PLAIN([0.30, 0.28, 0.26], 0.1));
+  deckAlong(b, top, g.n0, g.n1, 5, 3, 120, [-M, M]);
+  b.set(PLAIN(GRANITE, 0.05));
+  piersAlong(b, g, top, 3, M, 51, 4, 3);
+  for (const [Tn, a] of towers) for (const sn of [-1, 1]) box(b, 0, Tn + sn * a, 0, 6, W0 + 4, 6);
+  b.set(PLAIN(FORTH_RED, 0.2, { glow: [0.20, 0.06, 0.03] }));
+  const wAt = (y) => lerp(W0, W1, (y - 6) / (TOP - 6));
+  for (const [Tn, a] of towers) {
+    for (const sn of [-1, 1]) for (const sx of [-1, 1]) b.member([sx * W0, 6, Tn + sn * a], [sx * W1, TOP, Tn + sn * a], 1.8, 4);
+    for (const y of [6, 58, TOP - 4]) {
+      const w = wAt(y);
+      for (const sn of [-1, 1]) b.member([-w, y, Tn + sn * a], [w, y, Tn + sn * a], 1.0, 4);
+      for (const sx of [-1, 1]) b.member([sx * w, y, Tn - a], [sx * w, y, Tn + a], 1.0, 4);
+    }
+    for (const sx of [-1, 1]) { b.member([sx * W0, 6, Tn - a], [sx * wAt(TOP - 4), TOP - 4, Tn + a], 0.8, 4); b.member([sx * W0, 6, Tn + a], [sx * wAt(TOP - 4), TOP - 4, Tn - a], 0.8, 4); }
+    for (const dir of [-1, 1]) {
+      const nA = Tn + dir * a, nT = Tn + dir * (a + ARM);
+      const bot = (t, sx) => [sx * lerp(W0, W1, t), lerp(6, DY - 1, t ** 0.8), lerp(nA, nT, t)];
+      const tie = (t, sx) => [sx * W1, lerp(TOP, DY + 3, t), lerp(nA, nT, t)];
+      const T = [0, 0.25, 0.5, 0.75, 1];
+      for (const sx of [-1, 1]) {
+        for (let i = 0; i < 4; i++) { b.member(bot(T[i], sx), bot(T[i + 1], sx), 1.8, 4); b.member(tie(T[i], sx), tie(T[i + 1], sx), 1.0, 4); }
+        for (let i = 1; i < 4; i++) b.member(bot(T[i], sx), tie(T[i], sx), 0.8, 4);
+        for (let i = 0; i < 4; i++) b.member(bot(T[i], sx), tie(T[i + 1], sx), 0.6, 4);
+      }
+      for (let i = 1; i < 4; i++) b.member(bot(T[i], -1), bot(T[i], 1), 0.6, 4);
+    }
+    for (const sn of [-1, 1]) for (const sx of [-1, 1]) b.light([sx * W1, TOP + 1, Tn + sn * a], 1);
+    b.light([0, 58, Tn], 0);
+  }
+  // the suspended girders between the arms' tips: two trusses, 10 m deep at the middle
+  for (const [nA, nB] of [[-S + 11 + ARM, -20 - ARM], [20 + ARM, S - 11 - ARM]]) {
+    const K = 5, P = (k, up, sx) => [sx * W1, DY - 1 + (up ? 4 + 6 * Math.sin(Math.PI * k / K) : 0), lerp(nA, nB, k / K)];
+    for (const sx of [-1, 1]) for (let k = 0; k < K; k++) {
+      b.member(P(k, 0, sx), P(k + 1, 0, sx), 0.9, 4); b.member(P(k, 1, sx), P(k + 1, 1, sx), 0.7, 4);
+      if (k > 0) b.member(P(k, 0, sx), P(k, 1, sx), 0.5, 4);
+      b.member(P(k, 0, sx), P(k + 1, 1, sx), 0.4, 4);
+    }
+  }
+  return b.result();
+}
+
+// The Forth Road Bridge: a suspension bridge, 2,512 m long with its approach viaducts, the main span 1,006 m, the
+// towers 156 m; the side spans (408 m) to the anchorages, the deck 33 m wide on its stiffening truss about 50 m clear
+// [EST], the approach viaducts' piers every 100 m [EST]; grey. Cables and a handful of hangers as thin lines.
+export function forthroad(brg = -5, geo = {}) {
+  const b = new Builder(0.75).frame(0, 0, brg);
+  const g = { s: 503, n0: -1256, n1: 1256, h0: 30, h1: 30, ...geo };
+  const S = g.s, A = S + 408, H = 156, DECK = 50, D = 7, HW = 16.5, TX = 17;
+  const top = rampTop(g, A, DECK + D);
+  b.set(PLAIN([0.46, 0.48, 0.48], 0.25, { glow: [0.10, 0.10, 0.12] }));
+  deckAlong(b, top, g.n0, g.n1, HW, D, 100, [-A, A, -S, S]);
+  b.set(PLAIN(CONCRETE, 0.1));
+  piersAlong(b, g, top, D, A, 100, 9, 3);
+  for (const s of [-1, 1]) box(b, 0, s * A, 0, DECK + D + 2, 20, 14);           // the anchorages
+  const grey = PLAIN([0.52, 0.54, 0.54], 0.25, { glow: [0.14, 0.14, 0.16] });
+  for (const n of [-S, S]) {
+    b.set(PLAIN(CONCRETE, 0.1)); box(b, 0, n, 0, 10, TX + 8, 9); b.set(grey);
+    for (const sx of [-1, 1]) b.loft([at(shift(chamferRect(3.2, 4.5, 0.8), sx * TX, n), 10), at(shift(chamferRect(2.4, 3.4, 0.6), sx * TX, n), H)]);
+    for (const y of [DECK - 4, 105, H - 7]) box(b, 0, n, y, y + 4, TX - 2, 2.2, 0, { capBottom: true });
+    for (const sx of [-1, 1]) { b.light([sx * TX, H, n], 1); b.light([sx * (TX + 3), 105, n], 0); }
+  }
+  const tp = H - 2, low = DECK + D + 2;
+  const cy = (n) => { const a = Math.abs(n); return a <= S ? low + (tp - low) * (a / S) ** 2 : lerp(tp, DECK + D, (a - S) / (A - S)) - 8 * Math.sin(Math.PI * (a - S) / (A - S)); };
+  const ns = [];
+  for (let k = 0; k <= 16; k++) ns.push(lerp(-S, S, k / 16));
+  for (let k = 1; k <= 4; k++) { ns.push(S + (A - S) * k / 4); ns.push(-S - (A - S) * k / 4); }
+  ns.sort((p, q) => p - q);
+  b.set(PLAIN([0.40, 0.42, 0.42], 0.35));
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i + 1 < ns.length; i++) b.member([sx * TX, cy(ns[i]), ns[i]], [sx * TX, cy(ns[i + 1]), ns[i + 1]], 0.6, 3);
+    for (const n of ns) if (Math.abs(Math.abs(n) - S) > 1 && Math.abs(n) < A - 1 && cy(n) - DECK - D > 2) b.member([sx * TX, cy(n), n], [sx * TX, DECK + D, n], 0.2, 3);
+  }
+  return b.result();
+}
+
+// The Queensferry Crossing (2017): cable-stayed, about 2.7 km long, three single towers 207 m in the deck's middle,
+// two main spans of 650 m; the stays in a central plane, crossing over at the middle of each main span; the cable-
+// stayed part about 2,070 m [EST], the deck about 40 m wide [EST] and about 50 m clear [EST], the approach viaducts'
+// piers every 115 m [EST]; the deck down to the ground read at its ends.
+export function queensferry(brg = 20, geo = {}) {
+  const b = new Builder(0.77).frame(0, 0, brg);
+  const g = { s: 650, n0: -1350, n1: 1350, h0: 30, h1: 30, ...geo };
+  const S = g.s, M = S + 385, H = 207, CLEAR = 50, D = 5, HW = 20;
+  const top = rampTop(g, M, CLEAR + D);
+  b.set(PLAIN([0.50, 0.51, 0.51], 0.25, { glow: [0.10, 0.10, 0.12] }));
+  deckAlong(b, top, g.n0, g.n1, HW, D, 100, [-M, M, -S, S, 0]);
+  b.set(PLAIN(CONCRETE, 0.1));
+  piersAlong(b, g, top, D, S, 115, 8, 3);
+  const tower = PLAIN([0.64, 0.64, 0.62], 0.12, { glow: [0.18, 0.18, 0.21] });
+  for (const Tn of [-S, 0, S]) {
+    b.set(tower);
+    b.loft([at(shift(chamferRect(5, 9, 1.5), 0, Tn), 0), at(shift(chamferRect(3.6, 6.5, 1.2), 0, Tn), CLEAR), at(shift(chamferRect(2.6, 4.2, 0.8), 0, Tn), H)]);
+    b.light([0, H, Tn], 1);
+    for (const y of [150, 100]) for (const sx of [-1, 1]) b.light([sx * 3.4, y, Tn], 0);
+    b.set(PLAIN([0.72, 0.72, 0.70], 0.4));
+    for (let k = 0; k < 8; k++) {
+      const y = lerp(105, H - 8, k / 7), t = (k + 1) / 8;
+      for (const dir of [-1, 1]) {
+        const reach = Tn === 0 || dir * Math.sign(Tn) < 0 ? 400 : M - S - 30;
+        const n = Tn + dir * reach * t;
+        b.member([0, y, Tn], [1.5 * (k % 2 ? 1 : -1), top(n), n], 0.35, 3);
+      }
+    }
+  }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Edinburgh
+
+// Edinburgh Castle on its rock: the crag rising about 80 m above the streets round it (the article; the summit 130 m
+// above the sea), cliffs to the south, west and north, the castle's walls along the top and its low stone buildings:
+// the palace and the great hall round the summit's square, the long barracks, the half-moon battery over the
+// esplanade, the little chapel. The game's 250 m ground smooths the crag away, so the model brings its own: 70 m of
+// rock [EST] from the lowest ground round it, the buildings 6 to 20 m above it; their plans [EST].
+export function edinburghcastle(brg = 0) {
+  const b = new Builder(0.79).frame(0, 0, brg);
+  const ROCK = 70;
+  b.set(PLAIN(BASALT, 0.05));
+  const r0 = shift(superellipse(130, 95, 2.4, 16), 5, 0), r1 = shift(superellipse(112, 74, 2.6, 16), 0, 2), r2 = shift(superellipse(100, 62, 3, 16), -2, 2);
+  b.loft([at(r0, 0), at(r1, ROCK * 0.55), at(r2, ROCK)], { capTop: true });
+  const stone = GLASS([0.36, 0.34, 0.30], 4.0, 4.5, 0.0, 0.12, { glow: flood(0.8) });
+  b.set(stone);
+  strip(b, resample(superellipse(97, 59, 3, 16), 24), ROCK, ROCK + 6);           // the curtain walls
+  const R = ROCK;
+  box(b, 10, -10, R, R + 18, 28, 9);                        // the palace and great hall's range
+  box(b, 25, 12, R, R + 14, 9, 16);                         // the palace's east range
+  box(b, -40, -38, R, R + 16, 34, 8);                       // the barracks on the south-west
+  box(b, -45, 20, R, R + 12, 22, 10);                       // the hospital and stores
+  box(b, -5, 30, R, R + 10, 18, 7);                         // the north range
+  box(b, -18, 5, R + 6, R + 20, 3.5, 2.5);                  // the chapel on the summit
+  profile(b, 70, -5, [[R, 22], [R + 18, 22]], 12, true);    // the half-moon battery
+  box(b, 30, -10, R + 18, R + 20, 1.5, 1.5);
+  b.set(PLAIN(SLATE, 0.2));
+  gable(b, 10, -10, R + 18, R + 20, 28, 9, true);
+  gable(b, -40, -38, R + 16, R + 19, 34, 8, true);
+  gable(b, -45, 20, R + 12, R + 15, 22, 10, true);
+  b.light([10, R + 20, -10], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Santiago de Compostela
+
+// Santiago de Compostela Cathedral: about 100 m long (local x, east) and 70 m across the transept; the west front's
+// twin towers about 74 m [EST] over the Baroque facade; the Romanesque nave and aisles behind (their heights [EST]),
+// the crossing's lantern tower; the clock tower over the south-east corner, rising to 75 m (the article); granite.
+export function santiago(brg = 0) {
+  const b = new Builder(0.81).frame(0, 0, brg);
+  const granite = GLASS([0.58, 0.54, 0.44], 6.0, 4.0, 0.0, 0.1, { glow: flood(1.0) });
+  b.set(granite);
+  box(b, -2, 0, 0, 16, 40, 16);                             // the aisles
+  box(b, -2, 0, 16, 25, 40, 7);                             // the nave
+  box(b, 12, 0, 0, 25, 8, 35);                              // the transept
+  profile(b, 40, 0, [[0, 15], [16, 15], [16, 8], [24, 8]], 10, false);   // the ambulatory and apse
+  b.set(PLAIN([0.46, 0.43, 0.36], 0.1, { glow: flood(0.4) }));
+  gable(b, -2, 0, 25, 32, 40, 7, true);
+  gable(b, 12, 0, 25, 32, 8, 35);
+  b.set(granite);
+  profile(b, 12, 0, [[25, 8], [42, 8], [44, 5.5], [48, 1.5]], 8);         // the crossing's lantern
+  // the west front: the facade between the towers, the two towers
+  box(b, -46, 0, 0, 40, 5, 9);
+  b.loft([at([[5, -9], [5, 9], [-5, 9], [-5, -9]].map(([x, n]) => [x - 46, n]), 40), at([[5, -3], [5, 3], [-5, 3], [-5, -3]].map(([x, n]) => [x - 46, n]), 48)]);
+  for (const s of [-1, 1]) {
+    const tn = s * 14.5;
+    box(b, -46, tn, 0, 42, 6, 6);
+    box(b, -46, tn, 42, 56, 4.6, 4.6);
+    profile(b, -46, tn, [[56, 3.8], [64, 3.4], [66, 2.6], [70, 1.6], [74, 0.2]], 8);
+  }
+  // the clock tower
+  const CX = 28, CN = -28;
+  box(b, CX, CN, 0, 44, 6.5, 6.5);
+  b.loft([at(shift(circle(6.2, 8, Math.PI / 8), CX, CN), 44), at(shift(circle(5.2, 8, Math.PI / 8), CX, CN), 58), at(shift(circle(4, 8, Math.PI / 8), CX, CN), 66)], { capTop: false });
+  profile(b, CX, CN, [[66, 4], [70, 3], [72, 1.2], [75, 0.2]], 8);
+  b.light([CX, 75, CN], 0);
+  return b.result();
+}
+
+Object.assign(EUROPE_MODELS, { koelnerdom, rheinturm, zizkov, stvitus, jetdeau, forthbridge, forthroad, queensferry, edinburghcastle, santiago });

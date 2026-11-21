@@ -51,7 +51,7 @@ try {
       const p = f.sim.state.pos;
       return { ok: r.ok, id: r.id, pos: [p.x, p.y, p.z], t: f.sim.state.t, version: document.querySelector('[data-version]').textContent, hasRegion: 'region' in (f.scenarios.entry(r.id) || {}) };
     });
-    check('a scenario saved by the pushed build', oldSave.ok && /v0\.6\.4|v0\.7\.0/.test(oldSave.version), `${oldSave.version}; at ${oldSave.pos.map((v) => v.toFixed(1)).join(', ')}`);
+    check('a scenario saved by the pushed build', oldSave.ok && /v0\.6\.4|v0\.7\.[01]/.test(oldSave.version), `${oldSave.version}; at ${oldSave.pos.map((v) => v.toFixed(1)).join(', ')}`);
     await page.close();
 
     const now = await ctx.newPage(); watch(now);

@@ -45,6 +45,16 @@ if bc.EU_BATCH != 'A':   # v0.7.1, batch B: the merged view (rt.WORK/merged: eve
         'vienna': (47.95, 48.4, 16.0, 16.8),
         'toulouse-pyrenees': (42.6, 43.8, 0.4, 2.2),
     }
+if bc.EU_BATCH == 'C':   # v0.7.2, batch C's crops
+    PFX = 'v072'
+    CROPS = {
+        'forth-clyde': (55.6, 56.3, -4.9, -2.7),
+        'prague': (49.7, 50.5, 13.6, 15.0),
+        'geneva-montblanc': (45.75, 46.55, 5.9, 7.1),
+        'nice': (43.45, 43.9, 6.8, 7.7),
+        'nantes-loire': (47.0, 47.45, -2.6, -1.4),
+        'galicia-rias': (42.1, 43.8, -9.4, -7.9),
+    }
 
 
 def read(d, name):

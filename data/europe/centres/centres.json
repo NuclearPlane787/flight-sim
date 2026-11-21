@@ -506,6 +506,258 @@
    "maxHeightM": 200.5,
    "minKeepHeightM": 9.0,
    "bytes": 42695
+  },
+  {
+   "id": "duesseldorf",
+   "name": "Duesseldorf",
+   "file": "duesseldorf.bin.gz",
+   "origin": [
+    192726,
+    469399
+   ],
+   "box": [
+    191615,
+    468238,
+    193837,
+    470560
+   ],
+   "latlon": [
+    51.21066,
+    6.75744,
+    51.23234,
+    6.79057
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 3571,
+   "vertices": 23004,
+   "maxHeightM": 194.4,
+   "minKeepHeightM": 9.0,
+   "bytes": 69707
+  },
+  {
+   "id": "cologne",
+   "name": "Cologne",
+   "file": "cologne.bin.gz",
+   "origin": [
+    206472,
+    438514
+   ],
+   "box": [
+    205424,
+    437630,
+    207520,
+    439398
+   ],
+   "latlon": [
+    50.92966,
+    6.93954,
+    50.94634,
+    6.97046
+   ],
+   "cols": 5,
+   "rows": 4,
+   "count": 3022,
+   "vertices": 17790,
+   "maxHeightM": 157.4,
+   "minKeepHeightM": 9.0,
+   "bytes": 54870
+  },
+  {
+   "id": "prague",
+   "name": "Prague",
+   "file": "prague.bin.gz",
+   "origin": [
+    738011,
+    389315
+   ],
+   "box": [
+    736637,
+    388439,
+    739385,
+    390191
+   ],
+   "latlon": [
+    50.0765,
+    14.39171,
+    50.0955,
+    14.43328
+   ],
+   "cols": 6,
+   "rows": 4,
+   "count": 2209,
+   "vertices": 17565,
+   "maxHeightM": 99.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 57901
+  },
+  {
+   "id": "geneva",
+   "name": "Geneva",
+   "file": "geneva.bin.gz",
+   "origin": [
+    164382,
+    -85378
+   ],
+   "box": [
+    163349,
+    -86480,
+    165415,
+    -84276
+   ],
+   "latlon": [
+    46.19475,
+    6.13461,
+    46.21525,
+    6.16239
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 3341,
+   "vertices": 18615,
+   "maxHeightM": 60.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 57358
+  },
+  {
+   "id": "nice",
+   "name": "Nice",
+   "file": "nice.bin.gz",
+   "origin": [
+    261821,
+    -358604
+   ],
+   "box": [
+    260422,
+    -359431,
+    263220,
+    -357777
+   ],
+   "latlon": [
+    43.68948,
+    7.2546,
+    43.70552,
+    7.29039
+   ],
+   "cols": 6,
+   "rows": 4,
+   "count": 3317,
+   "vertices": 21118,
+   "maxHeightM": 39.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 67789
+  },
+  {
+   "id": "edinburgh",
+   "name": "Edinburgh",
+   "file": "edinburgh.bin.gz",
+   "origin": [
+    -450884,
+    1012701
+   ],
+   "box": [
+    -451916,
+    1011976,
+    -449852,
+    1013426
+   ],
+   "latlon": [
+    55.94421,
+    -3.20591,
+    55.95879,
+    -3.17108
+   ],
+   "cols": 5,
+   "rows": 3,
+   "count": 1958,
+   "vertices": 12631,
+   "maxHeightM": 61.1,
+   "minKeepHeightM": 9.0,
+   "bytes": 40735
+  },
+  {
+   "id": "glasgow",
+   "name": "Glasgow",
+   "file": "glasgow.bin.gz",
+   "origin": [
+    -518558,
+    1009066
+   ],
+   "box": [
+    -519434,
+    1008398,
+    -517682,
+    1009734
+   ],
+   "latlon": [
+    55.85325,
+    -4.26895,
+    55.86676,
+    -4.23905
+   ],
+   "cols": 4,
+   "rows": 3,
+   "count": 1082,
+   "vertices": 7364,
+   "maxHeightM": 71.9,
+   "minKeepHeightM": 9.0,
+   "bytes": 24307
+  },
+  {
+   "id": "nantes",
+   "name": "Nantes",
+   "file": "nantes.bin.gz",
+   "origin": [
+    -416874,
+    38351
+   ],
+   "box": [
+    -417848,
+    37526,
+    -415900,
+    39176
+   ],
+   "latlon": [
+    47.20641,
+    -1.56872,
+    47.22259,
+    -1.5413
+   ],
+   "cols": 4,
+   "rows": 4,
+   "count": 2718,
+   "vertices": 19963,
+   "maxHeightM": 120.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 63607
+  },
+  {
+   "id": "santiago",
+   "name": "Santiago de Compostela",
+   "file": "santiago.bin.gz",
+   "origin": [
+    -1013998,
+    -373320
+   ],
+   "box": [
+    -1014840,
+    -374192,
+    -1013156,
+    -372448
+   ],
+   "latlon": [
+    42.87099,
+    -8.55645,
+    42.88901,
+    -8.53256
+   ],
+   "cols": 4,
+   "rows": 4,
+   "count": 3066,
+   "vertices": 16741,
+   "maxHeightM": 58.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 51475
   }
  ]
 }

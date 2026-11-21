@@ -101,6 +101,12 @@ export function profileAt(r, s, elev = 0) {
   return ax.e1;
 }
 
+// v0.7.2: the longer runway's own level where a shorter one crosses it, where the straight line between its ends is
+// far from the truth: { ICAO: { 'the longer': ['the shorter', level in m] } }. Prague's 06/24 falls 12.8 m in its first
+// 1.5 km and 1 m in the rest: the straight line stood 7.2 m above 12's published threshold (353.6 m, 46 m from 06/24's
+// centreline, 24 m from its edge), which left 12/30 a 7 m ramp in its first 19 m. The level is 12's threshold's [EST].
+export const CROSSING_LEVEL = { LKPR: { '06/24': ['12/30', 353.6] } };
+
 // Ranks, knots and cuts for an airport's runways (once; the airport keeps them). A runway
 // bends to one longer runway at most: a second crossing is left as it was, with a warning.
 export function runwayCrossings(airport) {
@@ -111,6 +117,17 @@ export function runwayCrossings(airport) {
   const order = rws.slice().sort((p, q) => (ax.get(p).len - ax.get(q).len) || ((p.widthM || 45) - (q.widthM || 45))
     || String(p.id).localeCompare(String(q.id)));
   order.forEach((r, i) => { r.rank = i; r.knots = []; r.cutBy = []; });
+  // (v0.7.2) A longer runway whose real surface isn't the straight line between its ends where a shorter one crosses it
+  // (CROSSING_LEVEL): one knot at the crossing, at the level given. The shorter then bends to that as to any other.
+  const lv = CROSSING_LEVEL[airport.icao];
+  if (lv) for (const P of order) {
+    const set = lv[P.id], S = set && order.find((r) => r.id === set[0]);
+    if (!S) continue;
+    const a = ax.get(P), b = ax.get(S), den = a.ux * b.uy - a.uy * b.ux;
+    if (Math.abs(den) < 0.05) continue;
+    const s = ((b.p0.x - a.p0.x) * b.uy - (b.p0.y - a.p0.y) * b.ux) / den;
+    if (s > 1 && s < a.len - 1) P.knots.push([s, set[1]]);
+  }
   for (const S of order.slice().reverse()) {      // the longer ones first: their profiles are final
     for (const P of order) {
       if (P.rank <= S.rank) continue;

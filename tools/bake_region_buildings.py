@@ -115,6 +115,14 @@ EU_SOURCES = {
     'portugal': 'osm/portugal-261121.osm.pbf',
     'denmark': 'osm/denmark-261121.osm.pbf',
     'greater-manchester': 'osm/greater-manchester-261121.osm.pbf',
+    # v0.7.2 (Geneva from 'switzerland' above)
+    'duesseldorf-regbez': 'osm/duesseldorf-regbez-261121.osm.pbf',
+    'koeln-regbez': 'osm/koeln-regbez-261121.osm.pbf',
+    'czech-republic': 'osm/czech-republic-261121.osm.pbf',
+    'provence-alpes-cote-d-azur': 'osm/provence-alpes-cote-d-azur-261121.osm.pbf',
+    'scotland': 'osm/scotland-261121.osm.pbf',
+    'pays-de-la-loire': 'osm/pays-de-la-loire-261121.osm.pbf',
+    'galicia': 'osm/galicia-261121.osm.pbf',
 }
 EU_CENTRES = {
     # the City, Westminster and the South Bank, east to Canary Wharf (one box: the river's bend between is thin)
@@ -154,6 +162,25 @@ EU_CENTRES = {
     'copenhagen': ('Copenhagen', 'denmark', (12.562, 55.668, 12.600, 55.690), (55.679, 12.580, 3.0)),
     # the city centre: the town hall and Deansgate's towers
     'manchester': ('Manchester', 'greater-manchester', (-2.258, 53.470, -2.228, 53.488), (53.479, -2.245, 3.0)),
+    # v0.7.2 (briefs/V0-7-2.md part 4): nine more tight cores, held to EU_CORE_VERTS
+    # the Altstadt and Carlstadt along the Rhine to the Medienhafen's edge (the Rheinturm inside)
+    'duesseldorf': ('Duesseldorf', 'duesseldorf-regbez', (6.758, 51.211, 6.790, 51.232), (51.222, 6.774, 3.0)),
+    # the old town round the cathedral and the Hohenzollern Bridge's west end, to the Neumarkt
+    'cologne': ('Cologne', 'koeln-regbez', (6.940, 50.930, 6.970, 50.946), (50.938, 6.955, 3.0)),
+    # the Old Town and Mala Strana across the Vltava, with the castle's hill
+    'prague': ('Prague', 'czech-republic', (14.393, 50.078, 14.432, 50.094), (50.086, 14.413, 3.0)),
+    # both banks round the lake's end: the old town and Paquis
+    'geneva': ('Geneva', 'switzerland', (6.135, 46.195, 6.162, 46.215), (46.205, 6.148, 3.0)),
+    # the old town, the Promenade's east end and the port
+    'nice': ('Nice', 'provence-alpes-cote-d-azur', (7.255, 43.690, 7.290, 43.705), (43.697, 7.274, 3.0)),
+    # the Old Town along the Royal Mile and the New Town to Queen Street
+    'edinburgh': ('Edinburgh', 'scotland', (-3.205, 55.945, -3.172, 55.958), (55.951, -3.190, 3.0)),
+    # the centre's grid, George Square to the Clyde
+    'glasgow': ('Glasgow', 'scotland', (-4.268, 55.854, -4.240, 55.866), (55.860, -4.254, 3.0)),
+    # the centre round the chateau and the Ile Feydeau
+    'nantes': ('Nantes', 'pays-de-la-loire', (-1.568, 47.207, -1.542, 47.222), (47.214, -1.555, 3.0)),
+    # the old town round the cathedral
+    'santiago': ('Santiago de Compostela', 'galicia', (-8.555, 42.872, -8.534, 42.888), (42.880, -8.545, 2.0)),
 }
 EU_MAX_COUNT = 40000
 EU_MAX_VERTS = 271578
@@ -164,11 +191,15 @@ EU_MIN_THR = 9.0
 EU_EST_FLOORS = {'london': 4, 'paris': 5, 'frankfurt': 4, 'madrid': 5, 'zurich': 4, 'amsterdam': 4, 'munich': 4,
                  'barcelona': 5, 'rome': 4,
                  'toulouse': 4, 'berlin': 5, 'milan': 5, 'vienna': 5, 'brussels': 4, 'dublin': 4, 'lisbon': 4,
-                 'copenhagen': 5, 'manchester': 4}
+                 'copenhagen': 5, 'manchester': 4,
+                 'duesseldorf': 4, 'cologne': 4, 'prague': 5, 'geneva': 5, 'nice': 5, 'edinburgh': 4, 'glasgow': 4,
+                 'nantes': 4, 'santiago': 3}
 # v0.7.1: the new nine's own vertex budget (Zurich's size: 45,747 vertices built to 122,830 triangles, so about
 # 55,000 vertices is about 150,000 triangles). Last night's nine keep EU_MAX_VERTS.
 EU_CORE_VERTS = {c: 55000 for c in ('toulouse', 'berlin', 'milan', 'vienna', 'brussels', 'dublin', 'lisbon',
-                                    'copenhagen', 'manchester')}
+                                    'copenhagen', 'manchester',
+                                    'duesseldorf', 'cologne', 'prague', 'geneva', 'nice', 'edinburgh', 'glasgow',
+                                    'nantes', 'santiago')}
 if EUROPE:
     SOURCES, CENTRES = EU_SOURCES, EU_CENTRES
 

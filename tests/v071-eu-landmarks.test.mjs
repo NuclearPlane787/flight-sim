@@ -23,11 +23,11 @@ if (inRegion('europe', import.meta.url)) {
   const count = (L, p, f) => { let k = 0; for (let i = 0; i < p.count; i++) { const [lx, ln] = local(L, p.getX(i), p.getZ(i)); if (f(lx, p.getY(i), ln)) k++; } return k; };
 
   test("v0.7.1's list: after v0.7.0's twenty-eight, in the brief's order, each in its city's box with a country, a source and its own model", () => {
-    assert.equal(EUROPE_LANDMARKS.length, 28 + NEW.length);
-    assert.deepEqual(EUROPE_LANDMARKS.slice(28).map((l) => l.id), NEW);
+    assert.ok(EUROPE_LANDMARKS.length >= 28 + NEW.length);     // v0.7.2's follow (tests/v072-eu-landmarks.test.mjs)
+    assert.deepEqual(EUROPE_LANDMARKS.slice(28, 28 + NEW.length).map((l) => l.id), NEW);
     assert.equal(LANDMARKS.length, 30);
     const ids = new Set();
-    for (const L of EUROPE_LANDMARKS.slice(28)) {
+    for (const L of EUROPE_LANDMARKS.slice(28, 28 + NEW.length)) {
       assert.ok(!ids.has(L.id)); ids.add(L.id);
       assert.equal(L.region, 'europe');
       assert.equal(landmarkOn(L), true);
@@ -49,7 +49,7 @@ if (inRegion('europe', import.meta.url)) {
   test('every new model: whole triangles, finite, unit normals, base at 0, top at heightM +- 1 %, inside its footprint; under 4,000 each and 20,000 in all; lights', () => {
     let total = 0;
     const counts = {};
-    for (const L of EUROPE_LANDMARKS.slice(28)) {
+    for (const L of EUROPE_LANDMARKS.slice(28, 28 + NEW.length)) {
       const { geometry: g, lights } = buildModel(L);
       const p = g.getAttribute('position'), n = g.getAttribute('normal');
       assert.equal(p.count % 3, 0);
@@ -189,6 +189,6 @@ if (inRegion('europe', import.meta.url)) {
     const { LANDMARKS, EUROPE_LANDMARKS, REGION_LANDMARKS, landmarkOn } = await import('../src/world/landmarks.js');
     assert.equal(REGION_LANDMARKS, LANDMARKS);
     assert.equal(LANDMARKS.length, 30);
-    for (const L of EUROPE_LANDMARKS.slice(28)) assert.equal(landmarkOn(L), false, L.id);
+    for (const L of EUROPE_LANDMARKS.slice(28, 28 + NEW.length)) assert.equal(landmarkOn(L), false, L.id);
   });
 }

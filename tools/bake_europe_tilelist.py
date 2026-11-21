@@ -114,7 +114,8 @@ def main():
         rect = (rx.min(), ry.min(), rx.max(), ry.max())
         union = t_ne | t_osm
         b, outside_rect, outside_outline = [], [], []
-        for s in sorted(union - set(rt.EU_BATCH_A), key=key):
+        earlier = set(t for b in rt.BATCHES[:rt._k] for t in b[3])   # v0.7.2: every earlier batch (A for B; A, B for C)
+        for s in sorted(union - earlier, key=key):
             ti, tj = key(s)
             g = sbox(ti * SPAN, tj * SPAN, (ti + 1) * SPAN, (tj + 1) * SPAN)
             if not g.intersects(sbox(*rect)):
@@ -124,7 +125,8 @@ def main():
             else:
                 b.append(s)
         res.update(union=len(union), batch_b=b, batch_b_n=len(b), outside_rect=outside_rect,
-                   outside_outline=outside_outline, a_not_union=sorted(set(rt.EU_BATCH_A) - union, key=key))
+                   outside_outline=outside_outline, a_not_union=sorted(set(rt.EU_BATCH_A) - union, key=key),
+                   earlier_not_union=sorted(earlier - union, key=key))
     print(json.dumps(res, indent=1))
     with open(os.path.join(rt.WORK, 'tilelist-check.json'), 'w') as f:
         json.dump(res, f, indent=1)

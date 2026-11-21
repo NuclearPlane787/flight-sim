@@ -278,6 +278,44 @@ if bc.EUROPE:
     FIELD_RUNWAYS = FIELD_RUNWAYS | {'LOWW', 'EBBR', 'EIDW'}
     FIELD_PAVEMENT = FIELD_PAVEMENT | {'LOWW', 'EBBR', 'EIDW'}
 
+# v0.7.2, Duesseldorf, Cologne Bonn, Prague, Geneva and Nice, pending (airports subagent A; staged with FS_PATCH_OUT=
+# /tmp/flight-sim/v072/airports/patches-a): Duesseldorf ~30 x 22 km (05/23's finals ~15 km out each way, 053 deg true;
+# east to 7.01 E so GLO-30 N51 E007 is read beside N51 E006), Cologne Bonn ~31 x 30 km (13/31's finals at 137 deg and
+# 06/24's at 064 deg; GLO-30 N50 and N51, E006 and E007), Prague ~35 x 23 km (06/24's and 12/30's finals; GLO-30 N49 and
+# N50, E013 and E014), Geneva ~29 x 29 km (04/22's finals between the Jura and the Saleve, the lake's south-west end;
+# GLO-30 N46 E005 and N46 E006), Nice ~25 x 24 km (04's finals over the sea, 22's up the coast; GLO-30 N43 E007). Each
+# flattened to its runways' own profiles between the pavement's ends. Coast: bake_region_patches.py coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EDDL', 'EDDK', 'LKPR', 'LSGG', 'LFMN']
+    PATCHES.update({
+        'duesseldorf': (6.55, 51.19, 7.01, 51.39),
+        'cologne-bonn': (6.92, 50.74, 7.36, 51.01),
+        'prague': (13.99, 49.99, 14.48, 50.20),
+        'geneva': (5.92, 46.11, 6.30, 46.37),
+        'nice': (7.06, 43.55, 7.37, 43.77),
+    })
+    COAST += ['EDDL', 'EDDK', 'LKPR', 'LSGG', 'LFMN']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EDDL', 'EDDK', 'LKPR', 'LSGG', 'LFMN'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EDDL', 'EDDK', 'LKPR', 'LSGG', 'LFMN'}
+
+# v0.7.2, Edinburgh, Glasgow, Nantes and Santiago, pending (airports subagent B; staged with FS_PATCH_OUT=
+# /tmp/flight-sim/v072/airports/b/patches): Edinburgh ~31 x 22 km (06/24's finals at 059 deg; the Firth of Forth to the
+# north; GLO-30 N55 and N56 W004), Glasgow ~29 x 24 km (05/23's finals at 046 deg beside the Clyde; GLO-30 N55 W005),
+# Nantes ~26 x 31 km (03/21's finals at 027 deg; Lac de Grand-Lieu to the south-west; GLO-30 N46 and N47 W002),
+# Santiago ~30 x 32 km (17/35's finals at 166 deg; GLO-30 N42 and N43 W009). Each flattened to its runway's own profile
+# between the pavement's ends. Coast: bake_region_patches.py coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EGPH', 'EGPF', 'LFRS', 'LEST']
+    PATCHES.update({
+        'edinburgh': (-3.62, 55.85, -3.12, 56.05),
+        'glasgow': (-4.66, 55.76, -4.20, 55.965),    # (its grid's north-east corner stays south of 56 N: N56 is not read)
+        'nantes': (-1.78, 47.02, -1.44, 47.30),
+        'santiago': (-8.60, 42.75, -8.23, 43.04),
+    })
+    COAST += ['EGPH', 'EGPF', 'LFRS', 'LEST']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EGPH', 'EGPF', 'LFRS', 'LEST'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EGPH', 'EGPF', 'LFRS', 'LEST'}
+
 
 def field_plane(icao, x0, y0, cell, nx, ny):
     """The plane through the runway ends (x, y, elevM) of data/airports/<icao>.json, at the grid's cell centres."""

@@ -279,6 +279,58 @@ for (const L of EUROPE_LANDMARKS) {
   const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
   L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
 }
+// v0.7.2 (briefs/V0-7-2.md part 4): the next cities' landmarks, appended in the brief's order. Figures read on
+// 2026-11-21 from each Wikipedia article (its infobox, text and coordinates); [EST] marks what is estimated. The three
+// Forth bridges are `kind: 'bridge'` as v0.7.1's: based at the sea (y 0), their `pylons` (the outer two towers) and
+// `ends` worked out from a centre, a true bearing and the article's lengths, the ends checked against the installed
+// 250 m ground (both on land); the bearings and the centres [EST].
+EUROPE_LANDMARKS.push(
+  // Cologne and Düsseldorf
+  EU({ id: 'koelnerdom', city: 'cologne', country: 'DE', lat: 50.94139, lon: 6.95833, heightM: 157.4, footprintM: 100, brg: -2,
+    source: 'Wikipedia "Cologne Cathedral" (read 2026-11-21, with its coordinates): the spires 157.4 m, 144.5 m long, 86.25 m wide; the nave\'s, aisles\' and roof\'s heights, the towers\' stages and the axis [EST]' }),
+  EU({ id: 'rheinturm', city: 'dusseldorf', country: 'DE', lat: 51.21778, lon: 6.76167, heightM: 240.5, footprintM: 15, brg: 0,
+    source: 'Wikipedia "Rheinturm" (read 2026-11-21, with its coordinates): 240.5 m, the revolving restaurant at 172.5 m and the observation deck at 168 m; the shaft\'s and pod\'s sizes [EST]' }),
+  // Prague
+  EU({ id: 'zizkov', city: 'prague', country: 'CZ', lat: 50.08083, lon: 14.45139, heightM: 216, footprintM: 18, brg: -8,
+    source: 'Wikipedia "Žižkov Television Tower" (read 2026-11-21, with its coordinates): 216 m, three tubes of steel filled with concrete on a triangle, nine pods and three decks, one tube higher than the others; the pods\' and decks\' heights, the tubes\' sizes [EST]' }),
+  EU({ id: 'stvitus', city: 'prague', country: 'CZ', lat: 50.0908, lon: 14.4006, heightM: 102.8, footprintM: 148, brg: -8,
+    source: 'Wikipedia "St. Vitus Cathedral" (read 2026-11-21, with its coordinates): 124 x 60 m, the main tower 102.8 m (about 97 m the brief\'s), the front towers 82 m, the vault 33.2 m; "Prague Castle" (read 2026-11-21: about 570 m long, no coordinates given): the castle\'s ranges, the terrace and the axis [EST]' }),
+  // Geneva
+  EU({ id: 'jetdeau', city: 'geneva', country: 'CH', lat: 46.20722, lon: 6.15611, heightM: 140, footprintM: 151, brg: -22,
+    parts: [[0, 0, 12]],
+    source: 'Wikipedia "Jet d\'Eau" (read 2026-11-21, with its coordinates): reached by a stone jetty from the left bank, 500 litres a second jetted to 150 m (140 m the brief\'s and the commonly quoted figure, used); the jetty\'s length and bearing (towards the shore, 150 m) and the lean [EST]' }),
+  // the Forth, west of Edinburgh (east to west)
+  EU({ id: 'forthbridge', city: 'edinburgh', country: 'GB', kind: 'bridge', lat: 56.0004, lon: -3.3886, heightM: 110, footprintM: 1370,
+    pylons: [[55.995605, -3.386303], [56.005195, -3.390898]], ends: [[55.988586, -3.382941], [56.010016, -3.393209]],
+    source: 'Wikipedia "Forth Bridge" (read 2026-11-21, with its coordinates): 8,094 ft (2,467 m), two main spans of 1,700 ft, the cantilever towers 361 ft (110 m) above high water, 120 ft wide at the piers and 32 ft at the centre; the arms 680 ft and the suspended girders 350 ft [from memory]; the deck\'s height, the approach spans, the true bearing (-15 degrees) and the split of the length [EST]' }),
+  EU({ id: 'forthroad', city: 'edinburgh', country: 'GB', kind: 'bridge', lat: 56.00168, lon: -3.40406, heightM: 156, footprintM: 1265,
+    pylons: [[55.997174, -3.403355], [56.006186, -3.404765]], ends: [[55.990428, -3.4023], [56.012932, -3.405821]],
+    source: 'Wikipedia "Forth Road Bridge" (read 2026-11-21, with its coordinates): 2,512 m, main span 1,006 m, towers 156 m, 33 m wide; the side spans 408 m [from memory]; the deck\'s clearance, the true bearing (-5 degrees) and the ends [EST]' }),
+  EU({ id: 'queensferry', city: 'edinburgh', country: 'GB', kind: 'bridge', lat: 56.002065, lon: -3.41405, heightM: 207, footprintM: 1360,
+    pylons: [[55.996572, -3.417625], [56.007558, -3.410474]], ends: [[55.990656, -3.421474], [56.013473, -3.406622]],
+    source: 'Wikipedia "Queensferry Crossing" (read 2026-11-21: 56.0046 N 3.4124 W): 2,700 m, three towers 207 m, the main spans 650 m; the cable-stayed part, the deck\'s width and clearance, the true bearing (20 degrees) and the centre (about 300 m south of the article\'s point, where the game\'s ground puts both ends on land) [EST]' }),
+  EU({ id: 'edinburghcastle', city: 'edinburgh', country: 'GB', lat: 55.94861, lon: -3.20083, heightM: 90, footprintM: 136, brg: 5,
+    source: 'Wikipedia "Edinburgh Castle" (read 2026-11-21, with its coordinates): on Castle Rock, its summit 130 m above sea level, cliffs to the south, west and north rising 80 m above the land round it; the model\'s own rock 70 m [EST], the buildings\' plans and heights [EST]' }),
+  // Santiago de Compostela
+  EU({ id: 'santiago', city: 'santiago', country: 'ES', lat: 42.88056, lon: -8.54444, heightM: 75, footprintM: 57, brg: 9,
+    source: 'Wikipedia "Santiago de Compostela Cathedral" (read 2026-11-21, with its coordinates): 100 m long, 70 m wide, 75 m at most (the clock tower rises to 75 m); the west towers 74 m, the nave\'s heights and the axis [EST]' }),
+);
+Object.assign(EUROPE_CITY_BOXES, {
+  cologne: [50.88, 6.85, 51.00, 7.05], dusseldorf: [51.15, 6.70, 51.30, 6.85], prague: [50.00, 14.30, 50.15, 14.55],
+  geneva: [46.15, 6.05, 46.26, 6.20], edinburgh: [55.90, -3.45, 56.03, -3.10], santiago: [42.84, -8.60, 42.92, -8.50],
+});
+// v0.7.2's map positions and bridges' axes, parts and decks, as the loops above (for the entries after the forty-three).
+for (const L of EUROPE_LANDMARKS.slice(43)) {
+  const [x, y] = toMap(L.lat, L.lon); L.x = x; L.y = y;
+  if (L.kind !== 'bridge') continue;
+  const P = L.pylons.map(([la, lo]) => toMap(la, lo));
+  const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
+  L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
+  L.parts = P.map(([px, py]) => [px - L.x, py - L.y, PYLON_R]);
+  L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
+  const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
+  L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
+}
 // The page's region's list: what the runtime builds and the real centres leave out (East Asia's: LANDMARKS itself).
 export const REGION_LANDMARKS = REGION_ID === 'europe' ? EUROPE_LANDMARKS : LANDMARKS;
 
