@@ -4,6 +4,24 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.7.3 · 2026-11-22 · Innsbruck, Gibraltar, Hamburg, Venice, Marseille, Lyon, Porto and Naples
+
+- **The last eight of Europe's thirty-seven airports, sixty airports in all:**
+  - **Innsbruck** (LOWI): one runway, 08/26, 2.0 km, in the Inn valley at 580 m with peaks over 2,200 m on both sides. **You land on 26 straight in; 08 is circling-only,** because a straight final to it runs into the mountains, as its real approaches say. Eight stands.
+  - **Gibraltar** (LXGB): 09/27, 1.8 km, the sea at both ends and the Rock beside it; Africa across the Strait. Central European time. Nine stands.
+  - **Hamburg** (EDDH): two crossing runways of 3.3 and 3.7 km; no take-offs from 15 and no landings on 33, as its rules say. 89 stands.
+  - **Venice** (LIPZ): 04R/22L, 3.3 km, on the lagoon's shore, with its second runway a standby. 60 stands.
+  - **Marseille** (LFML): two runways beside the Étang de Berre, 3.5 and 2.4 km. 99 stands.
+  - **Lyon** (LFLL): two parallel runways of 4.0 and 2.7 km. 76 stands.
+  - **Porto** (LPPR): 17/35, 3.5 km, near the coast. 44 stands.
+  - **Naples** (LIRN): 06/24, 2.6 km, in the city, with Vesuvius 13 km away. 43 stands.
+
+  Innsbruck, Hamburg, Marseille and Lyon are from their countries' AIPs. **Gibraltar's, Venice's, Porto's and Naples's lights, ILS and thresholds are estimates:** their AIPs couldn't be read.
+- **Europe's ground reaches them.** 250 m terrain now also covers Andalusia, the Strait and Morocco's north, northern Portugal, the plain behind Venice and Campania (219 tiles of 128 km, 201 before), with the finer ground cover within 100 km of each new airport; closer ground round Innsbruck along 45 km of its valley, round the whole Rock and its bay, and round Naples as far as Vesuvius.
+- **Six more real city centres** from OpenStreetMap's buildings: Hamburg between the Alster and the Elbe, the whole of Venice's old city on its islands, Marseille round the Vieux-Port, Lyon between its two rivers, Porto's Ribeira with Gaia across the Douro, and Naples's old centre down to the port. Thirty-three in Europe.
+- **Eight more landmarks,** lit at night: Hamburg's Elbphilharmonie on the Elbe and its TV tower; St Mark's Campanile with the basilica's domes beside it; Notre-Dame de la Garde above Marseille's old port; Fourvière's basilica and its metal tower above Lyon; the Dom Luís I Bridge's iron arch over the Douro; and the Bergisel ski jump above Innsbruck. Sixty-one in Europe. Vesuvius and the Rock of Gibraltar are the terrain itself.
+- **Taxiing after landing at Venice** leaves the main runway ahead and runs along the second runway, which serves as its taxiway there.
+- **East Asia is unchanged:** the same picture pixel for pixel, the same flights.
 ## v0.7.2 · 2026-11-21 · Düsseldorf, Cologne Bonn, Prague, Geneva, Nice, Edinburgh, Glasgow, Nantes and Santiago
 
 - **Nine more airports in Europe, twenty-nine there and fifty-two in all,** each with its runways, lights, ILS, taxiways and signs, stands with their own numbers, jet bridges, parked traffic and taxi routes out and in:

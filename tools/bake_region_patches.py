@@ -316,6 +316,43 @@ if bc.EUROPE:
     FIELD_RUNWAYS = FIELD_RUNWAYS | {'EGPH', 'EGPF', 'LFRS', 'LEST'}
     FIELD_PAVEMENT = FIELD_PAVEMENT | {'EGPH', 'EGPF', 'LFRS', 'LEST'}
 
+# v0.7.3, Lyon, Marseille, Hamburg and Innsbruck, pending (airports subagent A; staged with FS_PATCH_OUT=
+# /tmp/flight-sim/v073/airports/patches): Lyon ~21 x 33 km (17/35's finals at 175 deg, ~15 km out each way; GLO-30 N45 E004
+# and N45 E005), Marseille ~29 x 27 km (13/31's finals at 134 deg, the Etang de Berre to the west; GLO-30 N43 E005),
+# Hamburg ~33 x 32 km (05/23's finals at 052 deg and 15/33's at 152 deg; GLO-30 N53 E009 and N53 E010), Innsbruck ~45 x
+# 24 km along the Inn valley (08/26 at 080 deg: about 21 km beyond 08's end to the west and 20 km beyond 26's to the east,
+# the valley's walls to 47.13 N and 47.39 N; GLO-30 N47 E011 alone). Each flattened to its runways' own profiles between
+# the pavement's ends. Coast: bake_region_patches.py coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LFLL', 'LFML', 'EDDH', 'LOWI']
+    PATCHES.update({
+        'lyon': (4.96, 45.58, 5.22, 45.88),
+        'marseille': (5.05, 43.32, 5.40, 43.56),
+        'hamburg': (9.75, 53.50, 10.22, 53.77),
+        'innsbruck': (11.06, 47.17, 11.63, 47.35),
+    })
+    COAST += ['LFLL', 'LFML', 'EDDH', 'LOWI']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LFLL', 'LFML', 'EDDH', 'LOWI'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LFLL', 'LFML', 'EDDH', 'LOWI'}
+
+# v0.7.3, Gibraltar, Venice, Porto and Naples, pending (airports subagent B; staged with FS_PATCH_OUT=
+# /tmp/flight-sim/v073/airports/b/patches): Gibraltar ~24 x 20 km, the whole Rock and the bay with Algeciras across it
+# (09/27's finals at 088 deg: over the bay to the west, the sea east of the Rock; GLO-30 N36 W006 alone), Venice ~31 x 29 km
+# over the lagoon (04/22's finals at 042 deg; GLO-30 N45 E012), Porto ~28 x 31 km by the coast (17/35's finals at 173 deg;
+# GLO-30 N41 W009), Naples ~35 x 30 km taking in Vesuvius ~13 km south-east (06/24's finals at 058 deg; GLO-30 N40 and
+# N41 E014). Each flattened to its runways' own profiles between the pavement's ends. Coast: bake_region_patches.py coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LXGB', 'LIPZ', 'LPPR', 'LIRN']
+    PATCHES.update({
+        'gibraltar': (-5.50, 36.06, -5.26, 36.22),
+        'venice': (12.17, 45.39, 12.54, 45.63),
+        'porto': (-8.82, 41.12, -8.54, 41.38),
+        'naples': (14.12, 40.75, 14.50, 41.005),   # (its box past 41 N: dem_tiles() reads N41 E014, where the grid's north corners lie)
+    })
+    COAST += ['LXGB', 'LIPZ', 'LPPR', 'LIRN']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LXGB', 'LIPZ', 'LPPR', 'LIRN'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LXGB', 'LIPZ', 'LPPR', 'LIRN'}
+
 
 def field_plane(icao, x0, y0, cell, nx, ny):
     """The plane through the runway ends (x, y, elevM) of data/airports/<icao>.json, at the grid's cell centres."""
@@ -423,6 +460,13 @@ def patch_name(pid):
     return os.path.join(OUT, f'patch-{pid}.i16.gz')
 
 
+
+# v0.7.3: land inside a box of the map (metres) never below a floor. Venice's old city: GLO-30 reads the islands at about
+# the lagoon's level with noise either side (the patch had them at -0.5 m in the middle, 67 % of the city's cells below
+# 0 m, a few to -6.75 m), so the city stood in a pit below its own water. The islands' land is raised to 1 m (the real
+# pavements stand about 1 m over the lagoon); the lagoon itself (sea, exactly 0) and everything outside the box are as baked.
+LAND_FLOOR = {'venice': ((640500.0, -141500.0, 650500.0, -134500.0), 1.0)}
+
 def cmd_patch(pid, force):
     path = patch_name(pid)
     meta = path.replace('.i16.gz', '.json')
@@ -479,6 +523,14 @@ def cmd_patch(pid, force):
         bx = poly.bounds
         if bx[0] < x0 + nx * cell and bx[2] > x0 and bx[1] < y0 + ny * cell and bx[3] > y0:
             flat.append(icao)
+    lf = LAND_FLOOR.get(pid)
+    if lf:
+        (bx0, by0, bx1, by1), floor = lf
+        xs = x0 + (np.arange(nx) + 0.5) * cell; ys = y0 + (np.arange(ny) + 0.5) * cell
+        inbox = ((ys >= by0) & (ys <= by1))[:, None] & ((xs >= bx0) & (xs <= bx1))[None, :]
+        low = inbox & (sea_sd > 0) & (h < floor)   # (sea_sd > 0 is land, inland water with it)
+        log(pid, 'LAND_FLOOR: %d land cells in the box raised to %.2f m (lowest was %.2f m)' % (int(low.sum()), floor, float(h[low].min()) if low.any() else float('nan')))
+        h = np.where(low, floor, h)
     os.makedirs(OUT, exist_ok=True)
     bc.write_gz(path, bc.height_to_i16_land(h, sea_sd > 0) if bc.EUROPE else bc.height_to_i16(h))
     np.save(os.path.join(OUT, f'patch-{pid}.sea.npy'), (sea_sd > 0))  # for the quick-look

@@ -5977,3 +5977,379 @@ What it found good: the finals over believable country, the stands' numbers, the
 
 - **What v0.7.3 can still be tonight.** v0.7.2 took 3 h 20 min from its start to its write-up. With the final hand-over at 00:40, a push now leaves v0.7.3 about 1 h 45 min: enough for batch D and perhaps its first airports through the whole check, not for the eight. So: when the push lands I start v0.7.3 from its brief as told, in its priority order, and at 00:40 hand over whatever has passed its checks (the rest pending behind `airportsPending`, where it harms nothing), as `briefs/V0-7-1.md`'s stop rule says.
 - **If the push lands after 23:40,** an hour is too short to bake, install and prove batch D and check even one airport on it before the hand-over: I then copy the brief in, log "v0.7.3 not started: no time", and go to the final hand-over with the tree exactly as pushed.
+
+## 2026-11-21, 23:10 KST: v0.7.2 pushed; v0.7.3 started (Claude Code)
+
+`date`: Sat Nov 21 23:07 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'", 100 %, charged. `GIT_OPTIONAL_LOCKS=0 git log --oneline -1`: `106a09a v0.7.2` (pushed at 23:03); `python3 tools/build-log.py`: "Wrote data/log.js: 98 entries". The brief copied from `Claude outputs/flight-sim/V0-7-3.md` to `briefs/V0-7-3.md` and read whole. (`V0-7-4.md` and `V0-7-5.md` exist there too: not mine, below.)
+
+### Shane's word at 23:07, which changes the evening's end
+
+> "Stop when you finish v0.7.3, don't wait for my push. I will start a new session for v0.7.4 onwards. I can give you until 3:00am for v0.7.3."
+
+So: **the stop is 03:00 KST, Sunday 22 November** (in place of 01:15); I start the final hand-over at **02:25**, so that the Mac is lid-closeable by 03:00 whatever state v0.7.3 is in. When v0.7.3 is written up I tell him, stop everything of the run's, and end: no waiting for the push, and v0.7.4 is not mine to start. The 22:56 entry's plan for a short v0.7.3 is overtaken: with nearly four hours it is the whole version, all eight airports.
+
+### The plan (the brief's parts; v0.7.2 took 3 h 20 min)
+
+| When | What | Who |
+|---|---|---|
+| 23:07 to about 23:50 | Batch D into staging: the rule over the thirty-seven, about 17 tiles with Morocco's north, the 31 m cover, the proofs, the install tree | Opus subagent (brief `/tmp/flight-sim/v073/brief-bake.md`, batch C's with the names changed) |
+| 23:08 to 00:20 | Lyon, Marseille, Hamburg, Innsbruck baked pending (they stand on installed tiles; three of their extracts are on disk) | Opus subagent (`brief-airports-a.md`) |
+| from about 23:50 | Install batch D; Europe's views before and after; then Gibraltar, Venice, Porto and Naples baked pending (they need batch D's tiles and the extracts now downloading) | me; then a second airports subagent |
+| from about 00:00 | Chrome: each airport's whole check as it arrives (two at once; frame rates alone, in one block) | me |
+| 00:30 to 01:30 | The six centres; the seven landmarks; the rules (Gibraltar's zone, the airports' transition altitudes, `CIRCLING_ONLY` for Innsbruck as its finals say) | subagents, me |
+| 01:30 to 02:15 | The flights (Madrid to Gibraltar end to end, Munich to Innsbruck, a final to each), East Asia's sixteen views, the suite, the two reviews, the documents | me, subagents |
+| 02:25 | The final hand-over, lid-closeable by 03:00 | me |
+
+### Started
+
+- A frozen copy of the pushed v0.7.2 for the comparisons (`/tmp/flight-sim/v073/base/GameDump`, APFS clones, taken at 23:07 before any edit: version 0.7.2, 29 listed, none pending, 201 tiles); the server's `/base/` points at it (`/base071/` is the pushed v0.7.1, `/base064/` v0.6.4). The server itself (port 8014) starts when Chrome is first needed.
+- Geofabrik's extracts for the four airports that have none on disk, downloading with a generic client (`/tmp/flight-sim/v073/dl-gf.sh`, PIDs in `/tmp/flight-sim/pids`, log `/tmp/flight-sim/v073/logs/v073-dl-geofabrik.log`): `hamburg`, `andalucia` (for Gibraltar), `nord-est` (Venice), `sud` (Naples). On disk already: `austria`, `rhone-alpes`, `provence-alpes-cote-d-azur`, `portugal`.
+
+### Decisions made in the run (v0.7.3)
+
+- **The airports are baked in two groups by what they need, not strictly in the brief's order:** Lyon, Marseille, Hamburg and Innsbruck first (installed tiles, extracts on disk or small), Gibraltar, Venice, Porto and Naples after batch D is installed. Within the first group Innsbruck is last, so that its valley patch, its special approaches and its finals' terrain check have the subagent's remaining time undivided.
+- **The scripts and the lock are v0.7.2's** (`/tmp/flight-sim/v071/excl.py` with its priority for a bake over waiting browser checks; `gk.sh`, `g.sh`, `aps.sh`, `exblock.sh`, `fixed.sh`, `eufixed.sh` copied to `/tmp/flight-sim/v073/`). A batch of finals is three legs, not four (v0.7.2's fourth leg met the 15-minute cap), and Heathrow to Edinburgh's lesson stands: a short leg's end-to-end flight gets a cruise level it can reach.
+- **For every airport with crossing runways** (Hamburg), `tests/v072-eu-crossings.test.mjs` runs before Chrome.
+
+## 2026-11-21, 23:40 KST: v0.7.3 checkpoint 1: batch D baked, proved and installed (219 tiles); the first four airports baked; Lyon and Marseille in Chrome (Claude Code)
+
+`date`: Sat Nov 21 23:37 KST 2026; "Now drawing from 'AC Power'"; the sweep to follow at the next checkpoint (the guard's slots are the checks'). Out, both Opus: the first airports subagent (Lyon, Marseille, Hamburg, Innsbruck: all four registered pending by 23:36; its report still to come, hard stop 00:20) and the second (Gibraltar, Venice, Porto, Naples: from 23:37, hard stop 00:35). Chrome: Lyon's and Marseille's chains, then Europe's views before and after batch D. My server on 8014 is up again (PID in `/tmp/flight-sim/pids`).
+
+**Shane at 23:16:** "I have to do some work on my computer so I will have to open google. Don't run commands that close my google tabs; only yours." Mine are headless under their own profile and are only ever stopped by their own PIDs; his Chrome (PID 81183 at 23:16) is not touched. His use of the Mac may show in a frame-rate reading: any that dips is read again.
+
+### Batch D (the bake subagent, 23:07 to 23:22: 15 minutes; notes `/tmp/flight-sim/v073/bake-notes.md`)
+
+- **18 tiles:** the planning's 17 and `1_6` (land within 200 km of Hamburg in Natural Earth's 1:10 m and OSM, not in the 1:50 m). Northern Portugal added none (Porto's were in the 17). `-8_-11` (Morocco's Atlantic side) lies wholly outside the region's outline: logged, not baked. `EU_BATCH_D` in `tools/bake_region_tiles.py`.
+- **Sources fetched:** 8 WorldCover tiles; GLO-90 N33 W004 to W007, and then N32 W002 to W006 and N33 W002, W003 (two tiles' heights had waited for them: re-baked, and all 18 covers re-baked before the compose read them). Five cells answered 404 (sea). Its note: the chain's check for a waiting height greps "waits" where the tool prints "waiting", so it never fires (batch C's had the same blind check and no waits); `ROADMAP.md`.
+- **Steps under the lock and the guard:** the tile list 13 s (2.55 GB), heights 9 s, water 41 s (3.53 GB), cover 2 s, the 31 m cover 144 s (0.98 GB), compose 3 s, seal 4 s, the 1 km level 1 s, urban 3 s, coast 360 s (2.74 GB).
+- **Seams:** the 250 m level, 219 tiles, 740 pairs, 2,382,528 values, **0 differ** (the first pass found 7 at new `6_-2`, where the cell's owner lies outside the region: `fixseams.py` rewrote 4 border cells, the old tile's value winning); the 1 km level, 110 pairs, 373,920 values, **0 differ**.
+- **Old cores: all 201 identical by SHA-256 of each layer's core;** 189 old tiles byte-identical, 12 changed at their borders only (36 files). The 977 installed 31 m sub-files unchanged by hash; 238 new (1,215 in all).
+- **Encoding:** 2,495,467 new land cells, none at 0 m, no sea cell off 0 m; 24,117 below 0 m (the Po delta and Venice's shore, to −6 m).
+- **Weak, its own:** 12 land cells down to −121 m in `-7_-8` (inland Iberia: a pit in GLO-90, perhaps a mine; not checked); a strip below 0 m on the Volturno's coast north of Naples, not verified; three of its overviews written and not looked at.
+
+### Installed (mine, 23:36, under the lock between two Chrome checks)
+
+`python3 tools/install-region.py europe /tmp/flight-sim/v073/install/europe /tmp/flight-sim/v073/install/europe.sha256` (the dry run had passed for the subagent): "359 staged files checked against the list; 358 to install (44.2 MB): 292 new, 0 already there with the same bytes, 66 replaced"; "installed into data/europe; manifest: l0 219 tiles (219 covered), l1 30 tiles (36 covered); airports listed 29, pending 4". **`data/` 492 MB, Europe 293 MB** (`du -sm`; 459 and 260 before: +33 MB; the brief said about 490). `tests/v070-eu-terrain.test.mjs` takes 219 covered tiles, seven of batch D's by name, and the 250 m data's rectangle three rows further south (tiles −10..8 by −11..9): 4 of 4.
+
+### The lists (mine)
+
+`src/world/regions.js`'s `AIRPORT_INDEX` and `rules-europe.js`'s `EUROPE_AIRPORT_ORDER` have the eight (each after its country's earlier ones, Gibraltar last); `tests/v070-regions.test.mjs` counts 37 in Europe (7 of 7 both ways). Gibraltar's rule was there since v0.7.0 (`GI`: `Europe/Gibraltar`, CET and CEST, hPa and feet, 6,000 ft `[EST]`; its own code in the country raster), and Morocco's (`MA`: `Africa/Casablanca`). The stills script has the eight's approach ends and v0.7.3's views (`europe-showpieces-073`: Innsbruck's valley from both finals, the Rock from both finals, Africa across the Strait, Vesuvius from Naples's finals, Venice from 3,000 and 1,500 ft; `europe-centres-073`).
+
+### Chrome so far (`/tmp/flight-sim/v073/out/ap/`)
+
+Lyon: day 13 of 13, night 13 of 13, taxi-in from 35L and 17R 3 of 3. Marseille: day 13 of 13. (Lyon's night and Marseille's day each hung at the browser's close after their last line and were stopped by the check's hang watch, exit 143, as three runs did in v0.7.2; all thirteen lines of each are PASS.)
+
+## 2026-11-22, 00:05 KST: v0.7.3 checkpoint 2: Lyon, Marseille, Hamburg and Innsbruck baked; Europe's views unchanged away from batch D; Marseille listed (Claude Code)
+
+`cp.sh`: Sun Nov 22 00:01 KST 2026; "Now drawing from 'AC Power'", 100 %, charged; the sweep clean. Out, both Opus: the second airports subagent (Gibraltar, Venice, Porto, Naples: all four registered pending at 00:01, still testing; hard stop 00:35) and the centres (from 00:02, hard stop 00:40). Chrome: Hamburg's night and taxi-in, Innsbruck's chain from stand R4, Lyon's day again.
+
+### Airports 30, 32, 34 and 35 (the first airports subagent, 23:08 to 23:55; notes `/tmp/flight-sim/v073/airports/<ICAO>-sources.md`)
+
+| | Lyon LFLL | Marseille LFML | Hamburg EDDH | Innsbruck LOWI |
+|---|---|---|---|---|
+| Its values | France's SIA | France's SIA | Germany's DFS (pages as images) | Austro Control's eAIP |
+| Runways (after the scale; all match the AIP) | 17L/35R 2,670 m, 17R/35L 4,000 m | 13L/31R 3,500 m, 13R/31L 2,370 m; displaced 13L 340 m, 31R 660 m, 31L 105 m | 05/23 3,250 m, 15/33 3,666 m, crossing; displaced 05 298 m, 23 156 m, 33 446 m | 08/26 2,000 m; 08 displaced 60 m |
+| ILS and lights | 35R and 35L CAT III (ALSF-II 900 m, TDZ), 17L CAT I, 17R none | 13L CAT III, 31R CAT I with a 4° path, 13R CAT I, 31L none; PAPI 4.0° on both 31 ends | 23 CAT III with TDZ, 05 and 15 CAT I, 33 none; approach lights' lengths `[EST]` | none (the localizer to 26 is 3.5° off the centreline: both ends non-precision); 26 a 600 m light system; PAPI 3.5° |
+| Transition altitude | 5,000 ft (AD 2.20 20.2) | 5,000 ft (AD 2.20) | 5,000 ft (AD 2.17: Germany's) | AD 2.17: "no transition altitude is determined. Departing aircraft shall consider 10000 FT AMSL as transition altitude" (Austria's) |
+| Stands (gates) | 76 (18); B61 left out (no route to a runway) | 99 (15), from OSM's 255 positions | 89 (9) | **8, placed by the bake** (`STAND_POINTS`, `[EST]`: OSM maps none on the main apron), no gate, none for a widebody |
+| Patch (30 m) | `lyon` 685 × 1,112 | `marseille` 953 × 898 (the Étang de Berre is inland water in the game: no coast patch) | `hamburg` 1,110 × 1,078 | **`innsbruck` 1,483 × 793: 44.5 by 23.8 km along the valley, about 20 km beyond each end** |
+
+- **Runway use, as read.** Lyon, AD 2.22: "RWYs 35R/17L preferentially for LDGs. RWYs 35L/17R preferentially for TKOFs." (a preference: no entry). Marseille, AD 2.21: a night preference for 13 to land and 31 to take off; "Take-off RWY 31L prohibited when the crosswind component … is greater than 12 kt on wet RWY" (no entry). **Hamburg, AD 2.20 2.2: "Take-offs from RWY 15 and landings on RWY 33 are permitted only if required for reasons of air traffic safety": `ONE_WAY.EDDH = { 15: 'landing', 33: 'takeoff' }`** (mine; 33 has no ILS). Innsbruck, AD 2.22: only 26 has a straight-in instrument final (LOC/DME East at 3.77°, RNP E); 08 is reached "either straight-in to RWY 26 … or on to a right-hand traffic circuit to RWY 08", or by a visual segment.
+- **Innsbruck's finals against the terrain** (the suite's check: a 3° line from 15 nm, 60 m clear): **26 is clear for the whole 15 nm (lowest 119 m over the ground, 1 nm out). 08's line meets the mountains 4.8 nm out (1,044 m under the ground at 8.3 nm; clear only inside 4.6 nm): `CIRCLING_ONLY.LOWI = ['08']`** (mine; the suite's new option `circlingFinals` passes only with it, and `lowFinals` is not used). So no final start, Skip to final or final line is offered to 08: it is circled from 26's approach.
+- **Hamburg's crossing:** 05/23 crosses 15/33 only; `tests/v072-eu-crossings.test.mjs` with all eight pending in it: 2 of 2, the steepest still Dublin's 2.57 %.
+- **Marseille: no taxiway reaches 13R's end but along the runway** (237 m of it, allowed by end in its config). Hamburg's taxiways meet 15 23 m in from its end. Innsbruck: landing on 08, no exit lies ahead from 90 % along (logged in its config).
+- **Its tests:** Lyon, Marseille, Hamburg 11 of 11 each; Innsbruck 10 of 11 until my table entry, 11 of 11 with it. v0.7.0 to v0.7.2's Europe files 376 of 376; East Asia's airport files 169 of 169; RJCC and EGLL bake byte-identical.
+- **Weak, its own:** Innsbruck's stands; AD 2.12's true bearings at Lyon and Marseille disagree with their own threshold coordinates (0.4° at Marseille), so the bearings are the coordinates'; no `AIP_STANDS` entries (code E from the geometry); Hamburg's approach lights' lengths.
+- **Mine after it (00:02):** `runways.js` (`CIRCLING_ONLY`, `ONE_WAY`), `rules-europe.js` (Lyon's and Marseille's 5,000 ft; Hamburg and Innsbruck take their countries'), `tests/v062-finals.test.mjs` and `tests/v070-one-way.test.mjs` (the two pinned tables, with Hamburg's four cases). The four's files, the one-way, lists and crossings files: all pass.
+
+### Europe's earlier views against the tree with batch D in
+
+`eufixed.sh 1` (23:37 to 23:53, the pushed v0.7.2 and the tree, `--total 2400`; `out/eufixed/1.txt`; pictures `v073-ea1-*`, `v073-eb1-*`): **25 of 26 views at max diff 0; Madrid's final max 1 at one pixel** (two of its old tiles' borders changed against batch D's). Nothing else moved.
+
+### Chrome (`/tmp/flight-sim/v073/out/ap/`; on mains: "Now drawing from 'AC Power'" before and after the alone-block)
+
+| # | Airport | Day | Night | Taxi-in | Stand, day / night fps (triangles) | Final, day / night fps (triangles) | State |
+|---|---|---|---|---|---|---|---|
+| 35 | LFLL Lyon | 13/13 (on the file before B61 was dropped, 23:29: flown again, queued) | 13/13 | 35L, 17R: 3/3 | B10: 60.0 / 60.1 (646k) | 60.0 / 60.0 (571k) | pending its day run again |
+| 34 | LFML Marseille | 13/13 | 13/13 | 13L, 31R: 3/3 | 1A: 60.1 / 60.1 (745k) | 60.0 / 60.0 (610k) | **listed 00:02** |
+| 32 | EDDH Hamburg | 13/13 | running | | | | |
+
+Worst frame 16.8 ms in each figure.
+
+### Decisions made in the run (v0.7.3), more
+
+- **Hamburg's 15 and 33 are one-way in the game** from its AIP's standing restriction (above), as Barcelona's 20 is; Lyon's and Marseille's preferences are not.
+- **Innsbruck's `[EST]` stands stay** (eight along the main apron where OSM maps none): the alternative is an airport with no stand. `ROADMAP.md`.
+- **Geofabrik's paths:** my first list's four downloads answered 404 (the files now sit a folder deeper: `europe/italy/nord-est/nord-est-latest.osm.pbf`); corrected at 23:09 from Geofabrik's own index pages, all in by 23:11 (the first subagent had fetched Hamburg's itself by then).
+
+## 2026-11-22, 00:18 KST: v0.7.3 checkpoint 3: all eight airports baked; the six centres installed (thirty-three); Lyon and Hamburg listed (Claude Code)
+
+`cp.sh`: Sun Nov 22 00:13 KST 2026; "Now drawing from 'AC Power'", 100 %, charged; the sweep clean. Out: the landmarks (Opus, from 00:12, hard stop 01:00). Chrome: Innsbruck's, Venice's, Naples's, Gibraltar's and Porto's chains, the centres' and the showpieces' pictures.
+
+### Airports 31, 33, 36 and 37 (the second airports subagent, 23:37 to 00:11; notes `/tmp/flight-sim/v073/airports/<ICAO>-sources.md`, `COMMON-B2.md`)
+
+**Every published value of these four is `[EST]`:** the UK's Military AIP site gave no connection, Portugal's answered 503 again (tried once), Italy's asks for a login (not tried). Values from OurAirports, OSM's threshold nodes and general knowledge; transition altitudes are their countries' (Gibraltar 6,000 ft, Italy 6,000 ft, Portugal 4,000 ft, each `[EST]` already).
+
+| | Gibraltar LXGB | Venice LIPZ | Porto LPPR | Naples LIRN |
+|---|---|---|---|---|
+| Runways (after the scale) | 09/27 1,759 m (OSM's pavement 1,755 m; OurAirports' 6,000 ft is longer than the pavement and not used); displaced 132 and 97 m | 04R/22L 3,300 m, 04L/22R 2,780 m; 04L displaced 94 m | 17/35 3,480 m; displaced 297 and 151 m | 06/24 2,628 m; displaced 398 and 196 m |
+| ILS and lights `[EST]` | none; PAPI 3° | 04R CAT III (ALSF-II, TDZ); 22L a 420 m system, no ILS; 04L/22R nothing | 17 CAT III (ALSF-II, TDZ), 35 CAT I | 24 CAT I; 06 none |
+| Stands (gates); 787 / 777 | 9 (3); 3 / 2 | 60 (8); 46 / 42 | 44 (3); about 40 / 40 | 43 (0); 37 / 29 |
+| Patch (30 m) and coast (10 m) | `gibraltar` 792 × 679 (24 by 20 km: the whole Rock, the bay, Algeciras); coast patch | `venice` 1,044 × 979; coast patch (it just touches the Adriatic; the lagoon is inland water) | `porto` 924 × 1,072; coast patch | `naples` 1,179 × 1,073 (35 by 32 km, Vesuvius in it; its first bake left 40,098 cells unread at the north corners: the box moved and baked again with none); coast patch |
+| Finals, lowest over the ground | 09 and 27: 115 m, 1 nm out | 113 to 115 m | 124 and 142 m | 06: 107 m at 1.3 nm; 24: 144 m |
+
+- **Known and logged in their configs:** Gibraltar: no taxiway to 09's end (the routes back-track 1,178 m along the runway), 09's hold 25 m from the centreline, landing on 27 no exit ahead from 45 % along; Winston Churchill Avenue's old crossing is about 980 m from 09's end (not baked as a road; no barriers). Venice: 22R's nearest hold 688 m from its end, routes to 22L run about 560 m along the runway. Naples's 06 reads 053.9° magnetic against its number (6.1° off: its test's own tolerance).
+- **Venice's 04L/22R is a standby runway in the game, `[EST]`** (`ONE_WAY.LIPZ`, mine: it serves as the main runway's taxiway).
+- **Loud, the subagent's: the game's country raster reads Spain at Gibraltar's airport** (2 km cells; the test allows `GI` or `ES`). In the game that changes nothing a player sees: Spain's and Gibraltar's rules are the same zone offsets (CET and CEST), hPa and feet, and 6,000 ft; the setup's group and the airport's clock go by the ICAO prefix (`LX`: Gibraltar, `Europe/Gibraltar`). `ROADMAP.md`.
+- **Its tests:** 43 of 44; the one, Porto's "S10 → 17: a route".
+
+### Porto's 17 had no taxi route from any stand: mended (`src/ground/taxi.js`, mine)
+
+`holdForRoute()` takes the holds within 700 m of a runway's pavement end. Porto's pavement runs 297 m before 17's displaced threshold, and the last taxiways (E5, G) join 760 and 835 m from the pavement's end (460 and 540 m from the threshold), so no hold qualified and `routeFromStand()` returned nothing for all 44 stands. **`HOLD_REACH_M = { LPPR: { 17: 900 } }`** (a per-end reach where 700 m isn't enough; the graph now carries its airport's ICAO); no other airport has an entry, so nothing else changes. **17: 44 of 44 stands have a route (1,651 to 3,404 m); 35: 44 of 44. Porto's file 11 of 11.** A take-off from 17 by the routes begins at E5's or G's intersection, with 2,700 m ahead.
+
+### The six centres (Opus, 00:02 to 00:11) and their install (mine, 00:13)
+
+| id | Buildings | Vertices | Tallest (m) | KB | Triangles | Heights estimated |
+|---|---|---|---|---|---|---|
+| hamburg | 3,125 | 21,017 | 147 | 67 | 56,731 | 31 % |
+| venice | 4,482 | 38,181 | 75 | 123 | 105,493 | 47 % |
+| marseille | 4,769 | 26,049 | 70 | 81 | 68,575 | 49 % |
+| lyon | 5,268 | 36,286 | 49 | 112 | 98,257 | 51 % |
+| porto | 2,854 | 16,044 | 70 | 49 | 42,358 | 63 % |
+| naples | 3,714 | 27,262 | 101 | 83 | 74,338 | 89 % |
+
+All under the 55,000-vertex cap at the 9 m keep height. **Venice is the whole old city:** all six sestieri with Giudecca and San Giorgio, nothing left out (Murano and the Lido are outside its box). Weak: Naples's heights are nearly all estimates (flat five-storey blocks); Porto's too. Zurich re-baked into scratch is byte-identical. **Installed:** `SHA256SUMS` checked, the index's first twenty-seven entries equal to the installed ones, six `.bin.gz` and the new `centres.json` copied (34 files; the old index kept in `/tmp/flight-sim/v073/centres/centres.v072.json`); `centres.js`'s `COUNTRY` gained the six's looks (Hamburg brick; Lyon stone under grey; Venice, Marseille, Porto and Naples plaster under terracotta). `tests/v073-eu-centres.test.mjs` and v0.7.2's: 4 of 4; East Asia's `centres.test.mjs` 9 of 9.
+
+### Chrome (all on mains)
+
+| # | Airport | Day | Night | Taxi-in | Stand, day / night fps (triangles) | Final, day / night fps (triangles) | State |
+|---|---|---|---|---|---|---|---|
+| 35 | LFLL Lyon | 13/13, and 13/13 again on its final file (00:13) | 13/13 | 35L, 17R: 3/3 | B10: 60.0 / 60.1 (646k) | 60.0 / 60.0 (571k) | **listed 00:17** |
+| 34 | LFML Marseille | 13/13 | 13/13 | 13L, 31R: 3/3 | 1A: 60.1 / 60.1 (745k) | 60.0 / 60.0 (610k) | listed 00:02 |
+| 32 | EDDH Hamburg | 13/13 | 13/13 | 23, 15: 3/3 | 01A: 60.0 / 60.1 (908k) | 60.0 / 60.0 (787k) | **listed 00:13** |
+
+**Innsbruck's first chain didn't run:** `tests/browser-v060-airports.mjs` picked its landing end from "the longest runway with an ILS", and Innsbruck has none (the script stopped before its first check). The script now falls back to the longest runway with an end that is landed on straight in (not standby, not circling-only); Innsbruck's chain runs again with stand R4, departure and arrival 26. Its taxi-in passed meanwhile (26 to stand R2 via A; 08 to R6 via B, A: 3 of 3), and its final holds 60.0 fps by day and night (564k).
+
+## 2026-11-22, 00:42 KST: v0.7.3 checkpoint 4: the eight landmarks; the code review and its fixes; the documents drafted (Claude Code)
+
+`cp.sh`: Sun Nov 22 00:34 KST 2026; "Now drawing from 'AC Power'", 100 %, charged; the sweep clean. No subagent out. Chrome: the night runs of Venice, Naples, Gibraltar and Innsbruck, Porto's chain, the pictures (centres, showpieces, landmarks), the finals; Venice's patch waits for the lock.
+
+### The landmarks (Opus, 00:12 to 00:34; `src/world/landmarks.js`, `landmark-models.js`, `tests/v073-eu-landmarks.test.mjs`; notes `/tmp/flight-sim/v073/landmarks/notes.md`)
+
+Eight entries after the fifty-three (**sixty-one in Europe**), **4,668 triangles in all, none over 944**; figures from each one's Wikipedia article read on 2026-11-22; bearings and inner sizes `[EST]`.
+
+| id | Where | Height (m) | Triangles | Notes |
+|---|---|---|---|---|
+| elbphil | Hamburg | 108 | 196 | the brick block with the glass body and its waved roof, on the Elbe's quay (coarse: the roof a fan) |
+| hht | Hamburg | 279.2 | 844 | the TV tower: a 204 m shaft, two pods |
+| campanile | Venice | 98.6 | 894 | St Mark's Campanile, with the basilica's mass and five domes beside it in the same model |
+| ndg | Marseille | 72.7 | 724 | Notre-Dame de la Garde on a fort base (its hill is 56 m in the 250 m grid, 162 m in life) |
+| fourviere | Lyon | 48 | 332 | the basilica's four towers |
+| fourvieretower | Lyon | 101 | 466 | the metal tower beside it (the brief's "if the budget allows") |
+| domluis | Porto | 45 | 944 | the two-deck iron arch, a `kind: 'bridge'`, the arch 172.5 m, the upper deck 395 m |
+| bergisel | Innsbruck | 50 | 268 | the ski jump's tower, pod and in-run |
+
+- **Nothing existing edited:** its proof (`/tmp/flight-sim/v073/landmarks/proof.mjs`) built every existing landmark from the frozen v0.7.2 and from the tree in each region: 91 builds a region, no difference. Two older tests touched (the six new cities in a table; v0.7.2's slices bounded).
+- **The whole suite with them, through the lock and the guard (00:30): 1,430 of 1,430.**
+- **Weak, its own:** the Dom Luís I Bridge's arch feet and lower deck are under the ground where there is only 250 m terrain (no gorge in it: 19 m at mid-bridge), and Porto's 30 m patch has the banks at the bridge's ends at 2 to 10 m (60 to 75 m in life); the take-off of the Bergisel jump may stand up to 20 m over the slope; all bearings estimated.
+- **It found Venice's 30 m patch putting St Mark's Square at −1 m.** Measured (mine): over the old city the patch's median was −0.5 m, 67 % of its cells below 0 m, the lowest −6.75 m (GLO-30 reads the islands at about the lagoon's level, with noise): the city stood in a pit below its own water. **Mended in the bake:** `tools/bake_region_patches.py`'s `LAND_FLOOR` (land inside a box of the map never below a floor: Venice's islands' land raised to 1 m; the lagoon and everything outside the box as baked); the patch baked again under the lock, compared cell by cell (no cell outside the box changed, the sea's cells the same) and installed. (Result in the next checkpoint.)
+
+### The code review (Opus, read-only, 00:25 to 00:34: the diff against the pushed v0.7.2 but the landmarks' files, the eight's data and tests)
+
+No confirmed bug. Two likely faults, both in the taxi code, both mended:
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | LIKELY: landing on Venice's 04R (its CAT III runway) past 60 % of its length, the taxi-in turned back 500 m along 04R to an exit behind. The exits ahead (H, J) lead off along 04L/22R, which the route planner counted as a back-track along a runway. | **`RUNWAY_AS_TAXIWAY = { LIPZ: ['04L/22R'] }` in `src/ground/gate-flow.js`:** a standby runway that is the main one's taxiway doesn't count against an exit (`alongRunwayM()`'s new third argument). From 60, 75 and 90 % the route now leaves ahead by H or J and runs along 04L/22R; Venice's config says so. No other airport has an entry. |
+| 2 | LIKELY, minor: Porto 17's stop-bar lights stood at an unused stub, because `holdingPointFor()` kept its own 700 m. | It takes `HOLD_REACH_M` too (one line). |
+| 3 | QUESTION: Innsbruck's final to 26 is the game's 3° line down the centreline; the published approach is the LOC/DME East at 3.77°, 3.5° off the centreline. | Left: the game has one kind of final. It clears the terrain by 119 m at least; `ROADMAP.md`. |
+| 4 | QUESTION: Innsbruck's config allowed 0 to 8 widebody stands. | Pinned to 0 and 0 (measured). |
+| 5 | QUESTION: Lyon's new 60 km disc meets Geneva's (97 km apart): between 48.5 and 60 km from Geneva on Lyon's side the game now reads 5,000 ft where v0.7.2 read Geneva's 7,000 ft `[EST]`. | Left (the nearer airport wins, and that country is France: 5,000 ft is right there); `ROADMAP.md`. |
+| 6 | QUESTION, minor: Gibraltar 09's hold is 25 m from the centreline (OSM's). | Left; logged in its config. |
+
+Checked and fine by it: `HOLD_REACH_M`'s key and every graph's `icao`; Innsbruck's `circleFrom()` (26) and no code that assumes an ILS runway; Hamburg's crossing (two knots, no warning) and its one-way ends against the AIP's words; Venice's standby pair as Gatwick's; **Gibraltar's coast patch: land under both thresholds (76 and 190 m from the sea), the pavement's ends (24 and 94 m) and all nine stands**; Naples's 06 geometry (true 058.1°: only the number is odd); the order tables 37 = 37. East Asia changed by accident: nothing found. Europe's twenty-nine: nothing but finding 5. Determinism, the repository's rules: nothing found (no names on the eight's buildings). Not reached by it: the last four's tool entries line by line, the notes against each config field.
+
+After the fixes: v0.7.3's files with the one-way and crossings files 103 of 104 (the one, the landmarks' check of St Mark's Square, waits for Venice's patch); East Asia's airport files 169 of 169.
+
+### The documents (Opus, read and write only, 00:15 to 00:20)
+
+`README.md`, `PLAN.md` ("Europe's airports 30 to 37 (v0.7.3)"), `ROADMAP.md`, `AGENTS.md`, `HANDOFF.md` (its first section rewritten for v0.7.4 from the Cowork session's `V0-7-4.md`, for a session starting cold), drafted from this log up to checkpoint 3 with 32 markers where it had no fact yet; I fill those at the end.
+
+## 2026-11-22, 01:18 KST: v0.7.3 checkpoint 5: Venice's islands raised; every final landed; the showpieces', centres' and landmarks' pictures (Claude Code)
+
+`cp.sh`: Sun Nov 22 01:14 KST 2026; "Now drawing from 'AC Power'", 100 %, charged; the sweep clean. Out: the pictures-only reviewer (Opus, read-only, from 01:13; hard stop 01:40). Chrome: Naples's and Porto's night runs, three taxi-ins, the last five's alone-blocks, Venice's and Innsbruck's views again, then Madrid to Gibraltar alone, East Asia's sixteen views and the regions check.
+
+### Venice's patch with `LAND_FLOOR` (under the lock, 01:02; `/tmp/flight-sim/v073/venice-fix/run.sh`, `out/venice-fix.txt`)
+
+"venice LAND_FLOOR … land cells in the box raised to 1.00 m"; the comparison with the installed patch: **63,722 cells changed, none outside the box, the lowest land in the box now 1.0 m, every sea cell still sea**; then installed (the old file kept as `/tmp/flight-sim/v073/venice-fix/patch-venice.before.i16.gz`). Venice's file and the landmarks' (St Mark's Square on land): 21 of 21. **My first try had the land test inverted** (it raised the sea's cells): my comparison's assertion caught it before anything was installed, and the tool's line now says which way the mask reads. Known of the mend: the lagoon's own water inside the box (inland water in the game) sits at 1 m too, so there is a step of up to 1 m in the lagoon's surface at the box's edge; `ROADMAP.md`.
+
+### The finals (`/tmp/flight-sim/v073/out/eu/flight-finals-a.txt`, `-b`, `-c`; three legs a batch, two Chromes, `&pending=1`)
+
+| Leg | Result |
+|---|---|
+| Munich 26R to **Innsbruck 26** (the brief's: down the valley to the only straight-in end) | landed, B, 83 |
+| Frankfurt 25C to Hamburg 23 | A, 91 |
+| Geneva 22 to Venice 04R | A, 92 |
+| Nice 04L to Marseille 13L | A, 90 |
+| Charles de Gaulle 26R to Lyon 35R | B, 85 |
+| Madrid 36L to Porto 17 | A, 91 |
+| Nice 04L to Naples 24 | A, 93 |
+| Madrid 36L to Gibraltar 27 | B, 83 |
+
+10 of 10, 10 of 10 and 7 of 7 checks; no missing tile, no console error. Every new airport has been landed at.
+
+### Chrome so far (all on mains)
+
+| # | Airport | Day | Night | Taxi-in | State |
+|---|---|---|---|---|---|
+| 30 | LOWI Innsbruck (stand R4, departure and arrival 26) | 13/13 | 13/13 | 26, 08: 3/3 (again queued on the final code) | its alone-block to come |
+| 31 | LXGB Gibraltar (stand 1, 27 both ways) | 13/13 | 13/13 | 27, 09: 3/3 | alone-block queued |
+| 33 | LIPZ Venice | 13/13 | 13/13 | 04R (to stand 324 via F, K, U, M, Q, the exit 37 m ahead), 22L: 3/3, on the mended taxi-in | alone-block queued |
+| 36 | LPPR Porto | 13/13 (a take-off from 17 by the route to its hold) | running | | |
+| 37 | LIRN Naples | 13/13 | running | | |
+
+(Venice's and Innsbruck's day runs each hung at the browser's close after their thirteenth PASS: stopped by the hang watch.)
+
+### The pictures looked at so far (sheets in `/tmp/flight-sim/v073/out/pics/`)
+
+- **Lyon, Marseille and Hamburg at the gate and on final by day and night, on the runway, at the hold, taxiing, landed** (`ap-lfll.png`, `ap-lfml.png`, `ap-eddh.png`): Lyon's glass terminal and 35L's final over the villages east of the city; Marseille's piers, 13L's displaced-threshold arrows, the final over the towns with the Étang de Berre beyond; Hamburg's long terminal with its bridges, 23's final over woods and fields. Markings, lights, stand numbers all there; no name on a building.
+- **Innsbruck's valley from the final to 26** (`s1-a.png`): the Inn winding down a flat floor between steep walls, snow and rock above the tree line on the north side, the town and the field ahead; by night the valley's lights between black mountains. (My view "from the west" stood inside a mountainside: the camera, not the game; taken again from 7,500 ft over the valley.)
+- **The Rock from the finals to 09 and to 27, Africa across the Strait, the Strait from 10,000 ft:** the Rock standing out of the sea at the end of its low neck from both sides, its east face pale; from north of it, the Rock, the open Strait and Morocco's coast on the horizon; from 10,000 ft the bay with Algeciras's moles, the Rock, and the Rif beyond the water.
+- **Vesuvius** from the final to 06 (ahead to the right, over the city), and from 3,000 ft over the bay's north shore (the cone with Somma's rim, the bay, the Sorrento peninsula); the final to 24 looks the other way, over the plain to the sea and its islands.
+- **Venice from 1,500 ft** (before its ground was raised; again queued): the whole old city as one fish-shaped mass of small terracotta roofs on its islands, Giudecca before it, the lagoon's islets round it.
+- **The centres from 3,000 ft** (`c1-a.png`): Hamburg on the Elbe's arms with the Alster, Marseille round its bay, Lyon between its rivers, Porto on the Douro's last bend, Naples along its shore under the hills. **Pale, near-white strips of ground at Lyon** (along the Rhône's bank and by the port to the south): WorldCover's "bare" ground (class 6, drawn as bare-or-snow) where it is quays and yards. It is the ground shader's colour for that class everywhere (v0.7.2's "pale smear on Arthur's Seat" is the same); `ROADMAP.md`.
+- **From FL350:** the Strait with both coasts; Campania with the Apennines' bare ridges; **Galicia's south edge to Porto: no pale wedges** (v0.7.2's line of them is gone: batch D covers northern Portugal).
+- **The landmarks** (`l1-a.png`, `c1-b.png`): Hamburg's TV tower clear over the city, the Elbphilharmonie small across the harbour by day and lit at the water's edge by night; St Mark's Campanile with the basilica's domes across the Bacino, lit at night; Notre-Dame de la Garde on its hill over the roofs, lit; Fourvière on its wooded hill over the Saône; **the Dom Luís I Bridge: an arch with its deck across the Douro between the two towns, bank to bank, lit at night**; the Bergisel jump too small to judge from its camera point (the reviewer's to say).
+
+## 2026-11-22, 01:55 KST: v0.7.3 ready to push (Claude Code)
+
+`cp.sh`: Sun Nov 22 01:53 KST 2026; "Now drawing from 'AC Power'", 100 %, charged; the sweep clean ("nothing above 50% CPU for more than 5 min"); the guard's slots empty.
+
+### The last five through the whole check, all on mains ("Now drawing from 'AC Power'" before and after each alone-block, `out/exblock-power.txt`)
+
+| # | Airport | Day | Night | Taxi-in | Stand, day / night fps (triangles) | Final, day / night fps (triangles) | Listed |
+|---|---|---|---|---|---|---|---|
+| 30 | LOWI Innsbruck (stand R4; 26 both ways) | 13/13 | 13/13 | 26, 08: 3/3 | R1: 60.1 / 60.1 (862k) | 60.0 / 60.0 (564k) | 01:51 |
+| 31 | LXGB Gibraltar (stand 1; 27 both ways) | 13/13 | 13/13 | 27 (to stand 1 along 09/27 and A), 09: 3/3 | 1: 60.1 / 60.1 (599k) | 60.0 / 60.0 (393k) | 01:36 |
+| 33 | LIPZ Venice | 13/13 | 13/13 | 04R, 22L: 3/3 | 322: 60.1 / 60.0 (711k) | 60.0 / 60.0 (447k) | 01:51 |
+| 36 | LPPR Porto | 13/13 | 13/13 | 17, 35: 3/3 | S11: 60.1 / 60.1 (865k) | 60.0 / 60.0 (650k) | 01:36 |
+| 37 | LIRN Naples | 13/13 | 13/13 | 24, 06: 3/3 | SC1: 60.1 / 60.0 (882k) | 60.0 / 60.0 (568k) | 01:51 |
+
+Worst frame 16.8 ms in every figure. (Lyon, Marseille and Hamburg: checkpoint 3.) **`promote-airport.py`'s last line, 01:51: "listed 37 airports, 37 patches, 12 coasts; pending left None []".** Europe's files run directly with all thirty-seven listed: **483 of 483.**
+
+- **The stand frame-rate script had the airports script's fault** (`tests/browser-v060-stand-fps.mjs` picked "the ILS runway"; Innsbruck and Gibraltar have none): mended the same way at 01:25, and the two read alone again (above).
+- Shane was using the Mac through these readings (23:16 on); none dipped.
+
+### The flights
+
+- **Madrid 36L to Gibraltar 27, end to end, alone ("Now drawing from 'AC Power'" before and after): 12 of 12 at FL300.** Lift-off at 170 kt, 16× (**5,400 frames, median 16.7 ms, p99 16.8 ms, worst 16.8 ms, none over 25 ms**), no missing tile (96 resident, 126 loaded), the cruise level reached, the prediction over the new terrain in 65 ms, the jump 0.00 m off, skip to final 14.9 nm out at 4,836 ft, landed B, 81 (long: 258 m past the aiming point on the 1,759 m runway), no console error.
+- **The first try stopped in the climb, 2 of 3: the script's fault at a high field.** Madrid is 2,000 ft up: the aircraft passed 1,500 ft above the runway at 178 kt, the script cleaned up at once (the clean lowest speed is 197 kt), and the autopilot's low-speed protection disconnected it ("autopilot off: protection, 178 kt, 3,949 ft, VLS 197"). `tests/browser-v060-flight.mjs` now keeps flaps 1 below 205 kt until the autopilot has 215 kt ("a slow climb-out: flaps 1 kept to 215 kt" in its output); at a low field it does what it did.
+- The finals: checkpoint 5 (all eight landed; Munich to Innsbruck 26 among them).
+
+### The last checks
+
+- **East Asia's sixteen views against the pushed v0.7.2, `--total 2400` (`fixed.sh 1 base/ ""`, 01:31 to 01:39; `out/fixed/1.txt`; pictures `v073-fa1-*`, `v073-fb1-*`): sixteen of sixteen at max diff 0.** (No source file changed after it but `src/version.js`, at 01:36.)
+- **The whole suite through the lock and the guard (01:52, 67 s): 1,430 tests, 1,430 pass,** 0 failed, 0 skipped, at version 0.7.3 with all thirty-seven listed. (1,419 at v0.7.2.)
+- **The regions check** (`/base/` the pushed v0.7.2, its label check widened to it; `out/eu/regions.txt`, pictures `v073-regions-*`): **21 of 21.**
+- **Europe's earlier views:** checkpoint 2 (25 of 26 at max 0, one pixel at Madrid).
+
+### The pictures-only review (Opus, 01:13 to 01:27)
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The Bergisel ski jump doesn't read as one: a small tower at the slope's foot, no in-run. | Left in, said plainly: `ROADMAP.md`, `Updates.md` names it only as the jump above Innsbruck. A better model is the next session's. |
+| 2 | Flat near-white patches at Lyon (and behind Fourvière). | WorldCover's bare ground drawn as bare-or-snow (checkpoint 5); `ROADMAP.md`. |
+| 3 | At Naples's gate a parked A321's tail stands over the taxiway behind. | OSM's short stands; `ROADMAP.md`. |
+| 4 | Innsbruck's valley "from the west" is a slope seen close up. | My camera (it stood in a mountainside); taken again from 7,500 ft, and that one stands beside a ridge too (`v073-s3-eu-lowi-valley-08.png`: the valley's floor beyond a shoulder). The brief's view, from the final to 26, is good. |
+| 5 | The Elbphilharmonie reads only partly; a block in the Elbe. | The model is coarse (its subagent said so); `ROADMAP.md`. |
+| 6 | Notre-Dame de la Garde has no hill. | 56 m in the 250 m terrain; `ROADMAP.md`. |
+| 7 | The Rock looks low and soft from the finals. | From 4 to 5 nm at 1,500 ft it is small; closer pictures (the airport's own final and landing) show its face. Left. |
+| 8, 9 | Storey-high lit squares on terminals at night; blank sign backs; an apron's edge at Gibraltar. | Minor; `ROADMAP.md`. |
+
+What it found good: Innsbruck's valley by day and night, Vesuvius from both finals, Venice's islands above the lagoon, the Campanile ("excellent"), the TV tower, the Dom Luís I Bridge bank to bank, Fourvière; night lighting right everywhere; no real name or logo anywhere.
+
+### The last five's pictures, looked at (`out/pics/ap-lowi.png`, `ap-lxgb.png`, `ap-lipz.png`, `ap-lppr.png`, `ap-lirn.png`; Venice again `s2.png`)
+
+Innsbruck: the terminal and its apron, 26's final over the town with the Nordkette's wall to the right, the runway between the mountains. Gibraltar: the apron under the town's blocks, 27's final over the bay with the Rock's north face left of the runway, the landing with the sea and a sand shore at the runway's end. Venice: the terminal's piers, 04R's final over the lagoon to the shore; **on its raised ground the old city from 1,500 and 3,000 ft stands on its islands above the water**, the Lido before it (a faint paler patch in the lagoon marks the box's edge). Porto: the long terminal, 17's displaced threshold with its arrows, the final over the towns north of the city. Naples: a small apron by a low block (the short stand), 24's final over the city's courtyards.
+
+### The definition of done
+
+| Item | Evidence |
+|---|---|
+| Thirty-seven airports listed in Europe; nothing pending | above: "listed 37 airports, 37 patches, 12 coasts; pending left None []" |
+| Batch D: seams, old cores, sizes | checkpoint 1: seams 0, 201 of 201 old cores; **`data/` 495 MB, Europe 296 MB** (`du -sm`, 01:53; the brief said about 490) |
+| East Asia's sixteen views at max diff 0 against the pushed v0.7.2 | above |
+| Europe's earlier views unchanged away from batch D | checkpoint 2 |
+| Each new airport through the whole check on mains | checkpoint 3 and above |
+| Innsbruck's finals clear of the terrain, or circling-only | checkpoint 2: 26 clear by 119 m at least; 08 circling-only (`CIRCLING_ONLY.LOWI`) |
+| The flights | above and checkpoint 5 |
+| The unit suite | above: 1,430 of 1,430 |
+| The pictures looked at | checkpoints 3 and 5 and above: each airport at the gate and on final by day and night; the landmarks; Innsbruck's valley from its final; the Rock from both finals and Africa across the Strait; Vesuvius from Naples's final; Venice from 3,000 ft |
+| Two reviews | checkpoint 4 (the code: two likely faults, mended) and above (the pictures) |
+| Lid-closeable | below |
+
+### Written up
+
+`src/version.js` (0.7.3, CL#261122); `Updates.md` (the v0.7.3 entry); `README.md`, `PLAN.md`, `ROADMAP.md` (row 13: Europe's 37 in; "Found while building v0.7.3"), `AGENTS.md`, `HANDOFF.md` (its first section for v0.7.4, for a session starting cold) drafted by the documents subagent and finished by me (its 31 markers filled by `/tmp/flight-sim/v073/fill.py` from `facts.json`, none left); the hub's blurb in GameDump's `data/games.js` (one phrase of the flight-sim entry: "Sixty airports", Munich to Innsbruck, Madrid to Gibraltar, Venice). **Changed outside the brief's list:** `src/ground/taxi.js` (`HOLD_REACH_M`), `src/ground/gate-flow.js` (`RUNWAY_AS_TAXIWAY`), `tools/bake_region_patches.py` (`LAND_FLOOR`), three test scripts (`browser-v060-airports.mjs`, `browser-v060-stand-fps.mjs`, `browser-v060-flight.mjs`).
+
+### Decisions made in the run (v0.7.3), the last
+
+- **No barriers at Gibraltar's road crossing** (the brief's "if time allows"): not done; `ROADMAP.md`.
+- **The Bergisel jump stays in though it reads poorly:** its test passes and it harms nothing; said in the documents as weak.
+- **Lyon's day check was flown twice** (once on the file before a stand was dropped); the later one counts.
+- **Not done, and said:** `AIP_STANDS` entries for the eight (code E by geometry); the patch for Porto's gorge and Marseille's hill; a better view of Innsbruck from the west.
+
+### Lid-closeable (01:55)
+
+- My server on 8014 (PID 75688) stopped by PID; `lsof -i :8014` empty.
+- `pgrep -fl "Google Chrome"`: only Shane's own (PID 81183), untouched all night; no headless Chrome of mine.
+- No loop, download, lock holder or check script of the run's left (`pgrep -fl "until |while \[|dl-gf|curl |aps.sh|q-last|q-final|excl.py|serve.py"` empty); the guard's slots empty; the sweep clean. No subagent out.
+- The scratch is in `/tmp/flight-sim/v073/` (it does not outlast a restart; the documents say so).
+
+**For Shane: `sh tools/push.sh v0.7.3` from `games/flight-sim/`, then `python3 tools/build-log.py` from GameDump's root.** As he said at 23:07, the run ends here: no waiting for the push, and v0.7.4 is a new session's (its brief is `Claude outputs/flight-sim/V0-7-4.md`; `HANDOFF.md`'s first section is written for it).
+
+## 2026-11-22, 01:56 KST: FINAL HAND-OVER of the evening's run (v0.7.1 to v0.7.3) (Claude Code)
+
+This is the final hand-over that `briefs/V0-7-1.md`'s stop rule asks for ("the hand-over written, nothing of the run's running, the game pushable"). The run ends with it.
+
+**Read at the hand-over:** `date`: Sun Nov 22 01:55:22 KST 2026. `pmset -g batt`: Now drawing from 'AC Power'  -InternalBattery-0 (id=22872163)	100%; charged; 0:00 remaining present: true . `cpu-guard.py --sweep`: "cpu-guard sweep: nothing above 50% CPU for more than 5 min". `cpu-guard.py --status`: "  no slots in use". `GIT_OPTIONAL_LOCKS=0 git log` (newest first): 106a09a v0.7.2;4bf6daf v0.7.1;1c90489 v0.7.0;
+
+### The stop, as Shane moved it
+
+The brief's stop was lid-closeable by 01:15 with the hand-over from 00:40. **Shane, in the session at 23:07 on 21 November:** "Stop when you finish v0.7.3, don't wait for my push. I will start a new session for v0.7.4 onwards. I can give you until 3:00am for v0.7.3." So the stop became 03:00, the run ends when v0.7.3 is written up, and v0.7.4 and v0.7.5 are not this run's. v0.7.3 was written up at 01:55; this hand-over is at 01:56, an hour before his limit.
+
+### Each version's state
+
+| Version | State | Evidence |
+|---|---|---|
+| v0.7.1 (Europe's airports 12 to 20) | **done, verified, written up, pushed** (17:52 on 21 November; `4bf6daf v0.7.1`, after Shane gave the title its `v`) | "2026-11-21, 17:30 KST: v0.7.1 ready to push" and the 18:00 entry (its frame rates read again on mains) |
+| v0.7.2 (airports 21 to 29) | **done, verified, written up, pushed** (23:03; `106a09a v0.7.2`) | "2026-11-21, 21:15 KST: v0.7.2 ready to push" |
+| v0.7.3 (airports 30 to 37: all of Update 7's thirty-seven) | **done, verified, written up; NOT pushed: it waits for Shane** (`sh tools/push.sh v0.7.3` from `games/flight-sim/`, then `python3 tools/build-log.py` from GameDump's root). It is the whole version: thirty-seven listed, nothing pending, nothing moved to a later version's list. | "2026-11-22, 01:55 KST: v0.7.3 ready to push" (its definition-of-done table) |
+| v0.7.4 | **not started, by Shane's word above.** Its brief exists: `Claude outputs/flight-sim/V0-7-4.md` ("the cockpit, the map's lines, and seven fixes"). | `HANDOFF.md`'s first section is written for the session that takes it, starting cold |
+| v0.7.5 | **not started.** Its brief exists: `Claude outputs/flight-sim/V0-7-5.md`. | the same |
+
+### The game as it stands in the tree (pushable)
+
+- `src/version.js`: 0.7.3, CL#261122. Sixty airports: twenty-three in East Asia, thirty-seven in Europe; `data/europe/manifest.json` lists 37 airports, 37 patches, 12 coast patches, 219 tiles, and has no pending list. `data/` 495 MB, Europe 296 MB.
+- The unit suite: 1,430 of 1,430 (01:52). Europe's files directly: 483 of 483. East Asia's sixteen views against the pushed v0.7.2: max diff 0 on all sixteen.
+- Every document is at v0.7.3 with no marker left (`README.md`, `PLAN.md`, `ROADMAP.md`, `AGENTS.md`, `HANDOFF.md`, `Updates.md`); the hub's blurb in GameDump's `data/games.js` says sixty airports.
+- **Until Shane pushes v0.7.3 the repository's head is v0.7.2** and the tree holds v0.7.3 unpushed: the next session checks `GIT_OPTIONAL_LOCKS=0 git log --oneline -1` first, as `HANDOFF.md` says, and starts v0.7.4 only on a pushed v0.7.3.
+
+### What is open (each in `ROADMAP.md`'s "Found while building v0.7.3")
+
+The Bergisel ski jump reads as a small tower; the Elbphilharmonie is coarse; bare ground in towns draws near-white (Lyon); Naples's short gate stands; Innsbruck's final is the centreline's 3° line, not the published offset approach; Venice's lagoon has a faint edge where its raised box ends; no barriers at Gibraltar's road crossing; Gibraltar's, Venice's, Porto's and Naples's published values are all estimates; a headless Chrome that hangs at its close holds its slot until its time cap.
+
+### Nothing of the run's is running (checked at this hand-over)
+
+- My server on port 8014: stopped by its PID at 01:53; listeners on 8014 now: 0.
+- Headless Chromes: 0. Shane's own Chrome was never touched (he asked at 23:16 that only mine be closed: mine were only ever stopped by their own PIDs or ended by themselves).
+- Processes of the run's (`serve.py`, `excl.py`, the browser scripts, the downloads, the bakes, my queue scripts): 0. No subagent is out: the nine launched for v0.7.3 (the bake, two for airports, the centres, the landmarks, the documents, two reviewers) and the earlier versions' have all reported.
+- The guard: no slots in use; the sweep clean.
+- **One leftover found by the hand-over's own proof and stopped (01:56):** PID 68186, `node /tmp/flight-sim/v071/landmarks/probe3.mjs`, a terrain probe of v0.7.1's landmarks subagent started at 14:28:44 on 21 November. It had sat asleep ever since (0.09 s of CPU in 11 h 27 min, waiting on tiles that never came), orphaned under launchd, and none of my earlier lists matched it: they looked for the run's scripts by name, not for everything running out of `/tmp/flight-sim`. Stopped by its PID. **So the two earlier entries' "nothing of the run's left" (21:15 and 01:55) were each wrong by this one idle process.** The check that found it, for the next session: `ps -Ao pid,lstart,command | grep -E "/tmp/flight-sim|flight-sim/tests|flight-sim/tools"`.
+- Left on disk outside the repository, harmless: the scratch under `/tmp/flight-sim/` (v071, v072, v073: scripts, briefs, logs, the frozen pushed trees; gone at a restart), and the pictures in `Claude outputs/flight-sim/` (`v071-*`, `v072-*`, `v073-*`).
+
+**The Mac is lid-closeable now.**
+
+## 2026-11-22, 02:34 KST: the run ended, by Shane's answer (Claude Code)
+
+The session's stop goal (written for the brief's five versions and its 01:15 stop) kept firing after the final hand-over, since Shane's 23:07 message had replaced both. Asked how to close it out, **Shane chose "End here"**: he clears the goal himself, I do nothing more, and v0.7.3 stays ready in the tree for him to push when he likes. Nothing was started after the hand-over; nothing of the run's is running.

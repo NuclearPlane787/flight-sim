@@ -48,11 +48,11 @@ STAGING = '/tmp/flight-sim/v063/bake'
 MANIFEST, DIRS = bc.MANIFEST, None
 if bc.EUROPE:
     EXTENT = (-1377000, -1330000, 1422000, 1425000)
-    STAGING = {'A': '/tmp/flight-sim/v070/bake', 'C': '/tmp/flight-sim/v072/bake'}.get(bc.EU_BATCH, '/tmp/flight-sim/v071/bake')
+    STAGING = {'A': '/tmp/flight-sim/v070/bake', 'C': '/tmp/flight-sim/v072/bake', 'D': '/tmp/flight-sim/v073/bake'}.get(bc.EU_BATCH, '/tmp/flight-sim/v071/bake')
     MANIFEST = os.path.join(STAGING, 'manifest.json')
     DIRS = {'terrain/r0/': os.path.join(STAGING, 'l0'), 'terrain/r1/': os.path.join(STAGING, 'l1')}
     if bc.EU_BATCH != 'A':   # v0.7.1: every batch's sealed tiles, merged (bake_europe_manifest.py --merge)
-        _w = '/tmp/flight-sim/v072/work' if bc.EU_BATCH == 'C' else '/tmp/flight-sim/v071/work'
+        _w = {'C': '/tmp/flight-sim/v072/work', 'D': '/tmp/flight-sim/v073/work'}.get(bc.EU_BATCH, '/tmp/flight-sim/v071/work')
         DIRS = {'terrain/r0/': _w + '/merged/l0', 'terrain/r1/': _w + '/merged/l1'}
 
 

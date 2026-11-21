@@ -213,7 +213,8 @@ const EU_DAY = Date.UTC(2026, 10, 19, 12, 0), EU_NIGHT = Date.UTC(2026, 10, 19, 
 // Each of Europe's airports from 1,000 ft on its final (with ?pending=1 until it is listed).
 const EU_FINALS = { EGLL: '27R', LFPG: '26L', EDDF: '25C', LEMD: '32L', LSZH: '14', EGKK: '26L', LFPO: '25', EHAM: '18R', EDDM: '26R', LEBL: '24R', LIRF: '16R',
   LFBO: '14R', EDDB: '24L', LIMC: '35R', LOWW: '29', EBBR: '25L', EIDW: '28L', LPPT: '02', EKCH: '22L', EGCC: '23R',   // v0.7.1: Toulouse to Manchester
-  EDDL: '23L', EDDK: '31R', LKPR: '24', LSGG: '22', LFMN: '04L', EGPH: '24', EGPF: '23', LFRS: '03', LEST: '17' };   // v0.7.2: Düsseldorf to Santiago
+  EDDL: '23L', EDDK: '31R', LKPR: '24', LSGG: '22', LFMN: '04L', EGPH: '24', EGPF: '23', LFRS: '03', LEST: '17',     // v0.7.2: Düsseldorf to Santiago
+  LOWI: '26', LXGB: '09', EDDH: '23', LIPZ: '04R', LFML: '31R', LFLL: '35R', LPPR: '17', LIRN: '24' };                // v0.7.3: Innsbruck to Naples
 for (const [icao, end] of Object.entries(EU_FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_NIGHT };
@@ -294,6 +295,32 @@ SHOTS['eu-fl350-galicia'] = { q: 'lat=42.2&lon=-8.2&alt=35000&hdg=350&pitch=-12'
 SHOTS['eu-fl350-bohemia'] = { q: 'lat=49.4&lon=13.6&alt=35000&hdg=40&pitch=-12', ms: EU_DAY };              // Bohemia to Prague (batch C)
 GROUPS['europe-centres-072'] = Object.keys(EU_CENTRES_072).map((k) => `eu-centre-${k}-3000-day`).concat(['prague', 'edinburgh', 'cologne'].map((k) => `eu-centre-${k}-3000-night`),
   ['eu-3000-edinburgh-forth', 'eu-3000-edinburgh-forth-night', 'eu-3000-geneva-lake', 'eu-3000-geneva-lake-night', 'eu-fl350-scotland', 'eu-fl350-galicia', 'eu-fl350-bohemia']);
+// v0.7.3: the showpieces' views (the brief's list) and the six centres from 3,000 ft.
+SHOTS['eu-lowi-valley-26'] = { q: 'app=LOWI:26&ft=3000&pitch=-6', ms: EU_DAY };                           // the Inn valley from the final to 26, the peaks on both sides
+SHOTS['eu-lowi-valley-08'] = { q: 'lat=47.262&lon=11.08&alt=7500&hdg=82&pitch=-9', ms: EU_DAY };                            // and from the west along the valley, towards 08 (08 is circling-only: no final to stand on)
+SHOTS['eu-lowi-valley-26-night'] = { q: 'app=LOWI:26&ft=3000&pitch=-6', ms: EU_NIGHT };
+SHOTS['eu-lxgb-rock-09'] = { q: 'app=LXGB:09&ft=1500&pitch=-5', ms: EU_DAY };                             // the Rock from the final to 09, over the bay
+SHOTS['eu-lxgb-rock-27'] = { q: 'app=LXGB:27&ft=1500&pitch=-5', ms: EU_DAY };                             // and from the final to 27, over the sea east of it
+SHOTS['eu-lxgb-rock-09-night'] = { q: 'app=LXGB:09&ft=1500&pitch=-5', ms: EU_NIGHT };
+SHOTS['eu-lxgb-africa'] = { q: look(36.20, -5.35, 3000, 180, -5), ms: EU_DAY };                           // from north of the Rock: the Rock, the Strait and Morocco's coast beyond
+SHOTS['eu-lxgb-strait-10000'] = { q: 'lat=36.25&lon=-5.45&alt=10000&hdg=190&pitch=-10', ms: EU_DAY };      // the bay, the Rock, the Strait, Jebel Musa and the Rif
+SHOTS['eu-lirn-vesuvius-24'] = { q: 'app=LIRN:24&ft=2000&pitch=-4', ms: EU_DAY };                         // Naples's final to 24
+SHOTS['eu-lirn-vesuvius-06'] = { q: 'app=LIRN:06&ft=2000&pitch=-4', ms: EU_DAY };                         // and to 06: Vesuvius ahead to the right
+SHOTS['eu-3000-naples-vesuvius'] = { q: look(40.86, 14.20, 3000, 105, -8), ms: EU_DAY };                  // from over the bay's north shore: the city, the airport, Vesuvius
+SHOTS['eu-3000-venice'] = { q: look(45.405, 12.375, 3000, 320, -14), ms: EU_DAY };                        // Venice on its islands from the south-east, the mainland beyond
+SHOTS['eu-3000-venice-night'] = { q: look(45.405, 12.375, 3000, 320, -14), ms: EU_NIGHT };
+SHOTS['eu-1500-venice'] = { q: look(45.425, 12.355, 1500, 320, -16), ms: EU_DAY };
+const EU_CENTRES_073 = { hamburg: [53.530, 10.020, 320], venice: [45.415, 12.365, 320], marseille: [43.270, 5.395, 340], lyon: [45.735, 4.850, 340], porto: [41.125, -8.595, 330], naples: [40.825, 14.275, 330] };
+for (const [k, [la, lo, h]] of Object.entries(EU_CENTRES_073)) {
+  SHOTS[`eu-centre-${k}-3000-day`] = { q: look(la, lo, 3000, h, -14), ms: EU_DAY };
+  SHOTS[`eu-centre-${k}-3000-night`] = { q: look(la, lo, 3000, h, -14), ms: EU_NIGHT };
+}
+SHOTS['eu-fl350-strait'] = { q: 'lat=37.3&lon=-5.0&alt=35000&hdg=190&pitch=-12', ms: EU_DAY };              // Andalusia, the Strait and Morocco (batch D)
+SHOTS['eu-fl350-naples'] = { q: 'lat=41.9&lon=13.6&alt=35000&hdg=150&pitch=-12', ms: EU_DAY };              // Lazio to the Bay of Naples (batch D)
+SHOTS['eu-fl350-porto'] = { q: 'lat=42.6&lon=-8.3&alt=35000&hdg=185&pitch=-12', ms: EU_DAY };               // Galicia's south edge to Porto (batch D: the pale wedges of v0.7.2 should be gone)
+GROUPS['europe-showpieces-073'] = ['eu-lowi-valley-26', 'eu-lowi-valley-08', 'eu-lowi-valley-26-night', 'eu-lxgb-rock-09', 'eu-lxgb-rock-27', 'eu-lxgb-rock-09-night', 'eu-lxgb-africa', 'eu-lxgb-strait-10000',
+  'eu-lirn-vesuvius-24', 'eu-lirn-vesuvius-06', 'eu-3000-naples-vesuvius', 'eu-3000-venice', 'eu-3000-venice-night', 'eu-1500-venice'];
+GROUPS['europe-centres-073'] = Object.keys(EU_CENTRES_073).map((k) => `eu-centre-${k}-3000-day`).concat(['hamburg', 'venice', 'naples'].map((k) => `eu-centre-${k}-3000-night`), ['eu-fl350-strait', 'eu-fl350-naples', 'eu-fl350-porto']);
 GROUPS['europe-centres'] = Object.keys(EU_CENTRES).map((k) => `eu-centre-${k}-3000-day`).concat(['london', 'paris', 'barcelona'].map((k) => `eu-centre-${k}-3000-night`));
 GROUPS['europe-centres-all'] = Object.keys(SHOTS).filter((n) => n.startsWith('eu-centre-'));
 // Part 6: Europe's landmarks close (a ground point, the model's height and the heading to look along, as its
@@ -334,6 +361,14 @@ SHOTS['eu-forth-bridges-3000'] = { q: look(55.975, -3.33, 3000, 300, -14), ms: E
 SHOTS['eu-lkpr-crossing'] = { q: look(50.1068, 14.2478, 500, 40, -22), ms: EU_DAY };                         // Prague: 12's end where 06/24 crosses it (CROSSING_LEVEL), from the south-west
 SHOTS['eu-lkpr-crossing-12'] = { q: look(50.1068, 14.2478, 250, 127, -14), ms: EU_DAY };                    // and along 12/30 from before 12's end
 GROUPS['europe-landmarks-072'] = Object.keys(EU_LANDMARKS_072).flatMap((k) => [`eu-landmark-${k}-day`]).concat(['koelnerdom', 'jetdeau', 'forthbridge', 'queensferry', 'edinburghcastle', 'zizkov'].map((k) => `eu-landmark-${k}-night`), ['eu-forth-bridges-3000', 'eu-lkpr-crossing', 'eu-lkpr-crossing-12']);
+// v0.7.3: eight more, each from its subagent's camera point (at the point, as v0.7.2's), by day and by night.
+const EU_LANDMARKS_073 = { elbphil: [53.538829, 9.968091, 60, 75], hht: [53.555267, 9.983402, 120, 330], campanile: [45.425313, 12.335684, 60, 15], ndg: [43.294851, 5.372292, 120, 185],
+  fourviere: [45.762499, 4.835391, 200, 270], domluis: [41.138611, -8.621161, 80, 82], bergisel: [47.258783, 11.399170, 120, 180] };
+for (const [k, [la, lo, hM, h]] of Object.entries(EU_LANDMARKS_073)) {
+  const [cx, cy] = toMap(la, lo), q = `x=${cx.toFixed(1)}&y=${cy.toFixed(1)}&agl=${Math.round(hM / 0.3048)}&hdg=${h}&pitch=${k === 'fourviere' ? -4 : k === 'ndg' ? -2 : 2}&aglAt=${cx.toFixed(1)},${cy.toFixed(1)}`;
+  for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q, ms };
+}
+GROUPS['europe-landmarks-073'] = Object.keys(EU_LANDMARKS_073).map((k) => `eu-landmark-${k}-day`).concat(['elbphil', 'campanile', 'ndg', 'domluis'].map((k) => `eu-landmark-${k}-night`));
 // The low landmarks from above (in a level view the centre's blocks hide them, as the Sapporo TV Tower was hidden): the
 // camera 1,300 ft over the landmark's ground, looking down at it along its heading.
 for (const k of ['arc', 'colosseum', 'westminster', 'towerbridge', 'notredame', 'stpauls', 'grossmunster', 'primetower', 'sacrecoeur', 'frauenkirche']) {

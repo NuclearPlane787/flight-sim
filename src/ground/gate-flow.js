@@ -39,13 +39,20 @@ export function standList(airport, typeDef = null) {
 
 // The metres of a route that run along a runway: legs on a runway's pavement within 20 degrees of
 // its direction (crossing one squarely counts nothing).
-export function alongRunwayM(graph, points) {
+// (v0.7.3: `skip`, the ids of runways that serve as taxiways and so don't count: RUNWAY_AS_TAXIWAY)
+// v0.7.3 (the review): a standby runway that is the main runway's parallel taxiway. A taxi-in along it is no back-track,
+// so it isn't counted against an exit: Venice's 04L/22R (ONE_WAY.LIPZ; landings on 04R past 60 % were turned back
+// 500 m along 04R to an exit behind, because the exits ahead lead off along 04L/22R).
+const RUNWAY_AS_TAXIWAY = { LIPZ: ['04L/22R'] };
+
+export function alongRunwayM(graph, points, skip = null) {
   let m = 0;
   for (let k = 1; k < points.length; k++) {
     const [ax, ay] = points[k - 1], [bx, by] = points[k], L = Math.hypot(bx - ax, by - ay);
     if (L < 1) continue;
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
     for (const r of graph.rects) {
+      if (skip && skip.includes(r.id)) continue;
       const sa = (mx - r.ax) * r.ux + (my - r.ay) * r.uy, c = -(mx - r.ax) * r.uy + (my - r.ay) * r.ux;
       if (sa < 0 || sa > r.len || Math.abs(c) > r.half) continue;
       if (Math.abs(((bx - ax) * r.ux + (by - ay) * r.uy) / L) > 0.9397) m += L;
@@ -450,7 +457,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
         // map's graph allows it, at a cost) loses to one a little further on that doesn't.
         // v0.6.1: a rapid exit's own turn-off isn't counted (pastTurnOff), so it no longer loses to a
         // square exit for the shallow angle it leaves at.
-        const along = rule ? alongRunwayM(g, pastTurnOff(rect, r.points)) : 0;
+        const along = rule ? alongRunwayM(g, pastTurnOff(rect, r.points), RUNWAY_AS_TAXIWAY[ap.icao]) : 0;
         const total = ex.ahead + r.lengthM + (rule ? 5 * along : 0);
         if (!best || total < best.total) best = { total, along, ex, r, st };
       }

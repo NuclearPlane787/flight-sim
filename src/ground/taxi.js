@@ -34,6 +34,10 @@ const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'R
 // v0.7.0: every airport of a later region takes them too (Europe's codes begin E or L; Morocco's G).
 export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao) || /^[ELG]/.test(airport?.icao || '');
 const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
+// v0.7.3: how far down a runway from its pavement's end a hold still serves that end, where 700 m isn't enough. Porto's 17:
+// the pavement runs 297 m before the displaced threshold and the last taxiways (E5, G) join 760 and 835 m from its end
+// (460 and 540 m from the threshold), so no hold stood within 700 m and no stand had a route to 17.
+const HOLD_REACH_M = { LPPR: { 17: 900 } };
 const HOLD_STD_M = 90;        // the standard hold from a code 4 precision runway's centreline (Annex 14 Table 3-2)
 
 // ---- small geometry ----
@@ -196,7 +200,7 @@ export function buildTaxiGraph(airport, opts = {}) {
     }
   });
 
-  const graph = { nodes, edges, holds: [], runwayCrossings: [], rects };
+  const graph = { nodes, edges, holds: [], runwayCrossings: [], rects, icao: airport.icao || null };
   if (regionRules(airport)) graph.region = true;
 
   // 4. Holding positions: split the nearest edge and mark the new node.
@@ -478,7 +482,7 @@ function holdForRoute(graph, from, runwayEnd) {
   const along = (x, y) => (x - ox) * ux + (y - oy) * uy;
   const pos = (h) => { const s = along(h.x, h.y); return s >= 0 ? s : -0.5 * s; };
   const cands = graph.holds.filter((h) => h.runway === r.id && h.clM > r.half + 10 && h.clM < r.half + 200 &&
-    along(h.x, h.y) > -500 && along(h.x, h.y) < 700 && !graph.rects.some((q) => q !== r && insideRect(q, h.x, h.y)));
+    along(h.x, h.y) > -500 && along(h.x, h.y) < (HOLD_REACH_M[graph.icao]?.[runwayEnd.ident] ?? 700) && !graph.rects.some((q) => q !== r && insideRect(q, h.x, h.y)));
   if (!cands.length) return null;
   const nearest = Math.min(...cands.map(pos));
   const { d, prev, prevEdge } = dijkstraFrom(graph, from);
@@ -508,7 +512,7 @@ export function holdingPointFor(graph, runwayEnd) {
     const onOther = (x, y) => graph.rects.some(q => q !== r && insideRect(q, x, y));
     const score = (x, y) => { const s = along(x, y); return (s >= 0 ? s : -0.5 * s) + 0.2 * Math.abs(across(x, y)); };
     const ok = (x, y) => { const s = along(x, y), c = Math.abs(across(x, y));
-      return s > -500 && s < 700 && c > r.half && c < r.half + 200 && !onOther(x, y); };
+      return s > -500 && s < (HOLD_REACH_M[graph.icao]?.[runwayEnd.ident] ?? 700) && c > r.half && c < r.half + 200 && !onOther(x, y); };   // (v0.7.3, the review: the same reach as holdForRoute(), so Porto 17's stop bar is where its routes hold)
     let best = null;
     for (const h of graph.holds) {
       if (!ok(h.x, h.y)) continue;

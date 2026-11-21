@@ -2778,3 +2778,230 @@ export function santiago(brg = 0) {
 }
 
 Object.assign(EUROPE_MODELS, { koelnerdom, rheinturm, zizkov, stvitus, jetdeau, forthbridge, forthroad, queensferry, edinburghcastle, santiago });
+
+// ================================================================== v0.7.3: Europe's last landmarks (briefs/V0-7-3.md)
+// The same rules: our own massing from public figures, no logos, lettering or names. Added to EUROPE_MODELS below.
+// (Linear colours: a dark stone or brick about 0.12 to 0.3, so it doesn't draw as pale concrete in sunlight.)
+
+const HH_BRICK = [0.26, 0.12, 0.07], VEN_BRICK = [0.40, 0.19, 0.11], VERDIGRIS = [0.22, 0.38, 0.32], GILT = [0.72, 0.52, 0.16];
+const MARS_PALE = [0.50, 0.47, 0.40], MARS_GREEN = [0.16, 0.20, 0.17], LYON_WHITE = [0.56, 0.55, 0.51], IRON = [0.20, 0.21, 0.21];
+
+// ------------------------------------------------------------------ Hamburg
+
+// The Elbphilharmonie: 108 m at its western tip (the article; about 110 m the brief's). The brick warehouse below (eight
+// floors in the brick facade, about 37 m [EST]) on a plan narrowing to the point at the west (local -x), about 110 m long
+// [EST]; the glass body above it, the roof rising in waves to its peaks at the western tip; the plan's sizes and the
+// waves [EST]. Lit inside at night.
+export function elbphil(brg = 0) {
+  const b = new Builder(0.83).frame(0, 0, brg);
+  const plan = resample([[56, -21], [56, 19], [-40, 11], [-56, 2], [-54, -9], [-36, -18]], 28);
+  const BRICKTOP = 37;
+  b.set(GLASS(HH_BRICK, 4.6, 3.2, 0.25, 0.15, { glow: [0.10, 0.06, 0.04] }));
+  b.loft([at(plan, 0), at(plan, BRICKTOP)], { capTop: false });
+  // the roof's line round the edge: lowest in the east, its waves rising to the peaks at the western tip
+  const roof = ([x, n]) => {
+    const t = (56 - x) / 112;
+    const wave = 7 * Math.abs(Math.sin(t * Math.PI * 3.0 + n * 0.02));
+    return Math.min(78 + 18 * t * t + wave, 106);
+  };
+  const tip = plan.reduce((a, p) => (p[0] < a[0] ? p : a), plan[0]);
+  const top = plan.map((p) => [p[0], p === tip ? 108 : roof(p), p[1]]);
+  b.set(GLASS([0.30, 0.35, 0.40], 4.0, 3.0, 0.85, 0.35, { glow: [0.30, 0.27, 0.22] }));
+  b.loft([at(plan, BRICKTOP), at(plan, BRICKTOP + 2), top], { capTop: false });
+  // the roof: fanned from a ridge point over the middle, pale
+  b.set(PLAIN([0.60, 0.61, 0.60], 0.3, { glow: [0.08, 0.08, 0.09] }));
+  const cx = -6, cn = 0, cy = 92, c = b.T([cx, cy, cn]), below = b.T([cx, cy - 30, cn]);
+  for (let i = 0; i < top.length; i++) { const p = top[i], q = top[(i + 1) % top.length]; b.tri(b.T(p), b.T(q), c, below); }
+  b.light([tip[0], 108, tip[1]], 0);
+  return b.result();
+}
+
+// The Heinrich-Hertz-Turm: 279.2 m, a 204 m shaft of reinforced concrete and the steel mast above it (the article); the
+// two stacked pods (the restaurant and the platforms) at about 120 to 152 m and the shaft's taper [EST].
+export function hht() {
+  const b = new Builder(0.85);
+  tvTower(b, { H: 279.2, r0: 7.6, r1: 3.8, podY0: 118, pod: [[118, 3.8], [121, 9], [124, 12], [131, 12], [133, 8.5], [136, 5], [139, 9], [142, 11.5], [148, 11.5], [151, 8], [153, 3.8]],
+    shaftTop: 204, shaftR: 3.4, mastR: 1.7, bands: 6, foot: [[0, 12], [4, 11], [7, 7.6]] });
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Venice
+
+// St Mark's Campanile: 98.6 m. The square brick shaft 12 m a side and 50 m tall (the article), the arched belfry above it,
+// the attic (the cube), the green pyramid spire and the gilded vane on top (their heights [EST]); beside it to the north-
+// east the basilica as a low mass with its five domes on a Greek cross (its plan about 76 x 62 m, the domes about 43 m,
+// the placing [EST]).
+export function campanile(brg = 0) {
+  const b = new Builder(0.87).frame(0, 0, brg);
+  const H = 98.6;
+  b.set(GLASS(VEN_BRICK, 6.0, 3.0, 0.0, 0.06, { glow: flood(0.7) }));
+  box(b, 0, 0, 0, 50, 6, 6);
+  b.set(PLAIN([0.60, 0.57, 0.50], 0.1, { glow: flood(0.8) }));
+  box(b, 0, 0, 50, 52, 6.5, 6.5, 0, { capBottom: true });                   // the belfry's floor
+  for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) box(b, dx * 5.2, dn * 5.2, 52, 61, 1.1, 1.1, 0, { capTop: false });
+  box(b, 0, 0, 52, 61, 3.2, 3.2, 0, { capTop: false });                     // the bells' frame inside the arches
+  box(b, 0, 0, 61, 63, 6.5, 6.5, 0, { capBottom: true });                   // the cornice
+  b.set(PLAIN([0.58, 0.55, 0.48], 0.1, { glow: flood(0.6) }));
+  box(b, 0, 0, 63, 72, 5.6, 5.6);                                           // the attic
+  b.set(PLAIN(VERDIGRIS, 0.3, { glow: flood(0.3) }));
+  b.loft([at([[5.6, -5.6], [5.6, 5.6], [-5.6, 5.6], [-5.6, -5.6]], 72), at([[0.4, -0.4], [0.4, 0.4], [-0.4, 0.4], [-0.4, -0.4]], 94)]);
+  b.set(PLAIN(GILT, 0.6, { glow: flood(0.5) }));
+  profile(b, 0, 0, [[94, 0.4], [95, 1.1], [97, 0.8], [H, 0.15]], 6);
+  b.light([0, H, 0], 0);
+  // the basilica: the Greek cross under its five domes
+  const BX = 55, BN = 48;
+  b.set(GLASS([0.52, 0.48, 0.42], 7.0, 4.0, 0.0, 0.06, { glow: flood(0.6) }));
+  box(b, BX, BN, 0, 26, 38, 31);
+  box(b, BX - 40, BN, 0, 22, 4, 31);                                        // the west front's narthex
+  b.set(PLAIN([0.30, 0.31, 0.30], 0.35, { glow: flood(0.3) }));
+  for (const [dx, dn, r] of [[0, 0, 7], [-24, 0, 6.2], [24, 0, 6.2], [0, 22, 6.2], [0, -22, 6.2]]) {
+    cyl(b, BX + dx, BN + dn, 26, 30, r + 0.5, r + 0.5, 12);
+    domeAt(b, BX + dx, BN + dn, 30, r + 0.5, r === 7 ? 13 : 11, 12, 4);
+  }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Marseille
+
+// Notre-Dame de la Garde: on its limestone peak (162 m above the sea, the article; the hill the terrain's). The fort's
+// walls as a base [EST, 8 m]; the striped basilica of pale and green-grey stone, its nave and dome [EST]; the square bell
+// tower over the porch, 41 m (the article), its cylindrical belfry of 12.5 m and the gilded statue of 11.2 m (the
+// article) on top. The plan's sizes and the axis [EST].
+export function ndg(brg = 0) {
+  const b = new Builder(0.89).frame(0, 0, brg);
+  const F = 8;
+  b.set(PLAIN([0.30, 0.29, 0.26], 0.05, { glow: flood(0.4) }));
+  b.loft([at(chamferRect(42, 22, 8), 0), at(chamferRect(40, 20, 7), F)]);   // the fort's base
+  const pale = GLASS(MARS_PALE, 2.5, 4.0, 0.0, 0.06, { glow: flood(1.0) }), green = GLASS(MARS_GREEN, 2.5, 4.0, 0.0, 0.06, { glow: flood(0.6) });
+  const banded = (y0, y1, fn) => { let k = 0; for (let y = y0; y < y1 - 0.01; y += 2.5, k++) { b.set(k % 2 ? green : pale); fn(y, Math.min(y + 2.5, y1)); } };
+  // the nave (local x, the porch at the west, -x) and the choir's dome
+  banded(F, F + 18, (y0, y1) => box(b, 4, 0, y0, y1, 26, 9, 0, { capTop: y1 >= F + 18 }));
+  b.set(PLAIN([0.42, 0.40, 0.35], 0.15, { glow: flood(0.4) }));
+  gable(b, 4, 0, F + 18, F + 24, 26, 9, true);
+  banded(F, F + 25, (y0, y1) => cyl(b, 22, 0, y0, y1, 8, 8, 12, { capTop: false }));
+  b.set(pale);
+  domeAt(b, 22, 0, F + 25, 8, 8, 12, 4);
+  // the bell tower over the porch: 41 m above the church's floor
+  const TX = -27, TOP = F + 41;
+  banded(F, TOP - 4, (y0, y1) => box(b, TX, 0, y0, y1, 5.5, 5.5, 0, { capTop: false }));
+  b.set(pale);
+  box(b, TX, 0, TOP - 4, TOP, 6.2, 6.2);
+  b.set(PLAIN([0.55, 0.36, 0.30], 0.2, { glow: flood(0.8) }));           // the red granite belfry
+  cyl(b, TX, 0, TOP, TOP + 12.5, 3.6, 3.2, 12);
+  b.set(PLAIN(GILT, 0.7, { glow: [0.55, 0.42, 0.14] }));
+  const S = TOP + 12.5;
+  profile(b, TX, 0, [[S, 1.6], [S + 3, 1.9], [S + 6.5, 1.5], [S + 8.5, 1.0], [S + 9.6, 0.9], [S + 10.6, 0.6], [S + 11.2, 0.15]], 8);
+  b.light([TX, S + 11.2, 0], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Lyon
+
+// The Basilica of Notre-Dame de Fourvière: 86 m long and 35 m wide (the article), white stone; the four octagonal towers at
+// its corners about 48 m (the brief), their crenellated tops flat; the nave's and roof's heights, the apse and the axis
+// [EST]. (The metal tower beside it is left out.)
+export function fourviere(brg = 0) {
+  const b = new Builder(0.91).frame(0, 0, brg);
+  const white = GLASS(LYON_WHITE, 6.0, 4.5, 0.0, 0.06, { glow: flood(1.0) });
+  b.set(white);
+  box(b, 0, 0, 0, 26, 37, 15);                                                // the nave
+  profile(b, 37, 0, [[0, 12], [24, 12]], 12, false);                          // the apse (east, +x)
+  b.set(PLAIN([0.26, 0.27, 0.29], 0.2, { glow: flood(0.3) }));
+  gable(b, 0, 0, 26, 34, 37, 15, true);
+  profile(b, 37, 0, [[24, 12], [30, 0.6]], 12);
+  b.set(white);
+  box(b, -38, 0, 0, 30, 4, 11);                                               // the west front between the towers
+  for (const [dx, dn] of [[-36, 13], [-36, -13], [30, 13], [30, -13]]) {
+    const oct = (r) => shift(circle(r, 8, Math.PI / 8), dx, dn);
+    b.loft([at(oct(6.5), 0), at(oct(6.0), 40), at(oct(6.8), 41.5), at(oct(6.8), 48)], { capTop: true });
+  }
+  for (const [dx, dn] of [[-36, 13], [-36, -13], [30, 13], [30, -13]]) b.light([dx, 48, dn], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Porto
+
+// The Dom Luís I Bridge (1886): a two-deck iron arch over the Douro, the arch 172.5 m across (the article), the upper deck
+// 395.25 m long (the article) about 45 m above the river (the brief; the article's 70 m unsourced), the lower deck at the
+// quays (about 10 m [EST]) between the arch's feet. The arch as two inclined ribs of an upper and a lower chord with a few
+// diagonals [EST its depth], posts up to the upper deck, hangers down to the lower; the granite pillars at the arch's feet
+// and the iron piers on the slopes [EST]; the upper deck down to the ground read at its ends.
+export function domluis(brg = -10, geo = {}) {
+  const b = new Builder(0.93).frame(0, 0, brg);
+  const g = { s: 86.25, n0: -197.6, n1: 197.6, h0: 30, h1: 30, ...geo };
+  const S = g.s, DY = 45, LOW = 10, M = 120;
+  const top = rampTop(g, M, DY);
+  b.set(PLAIN(IRON, 0.25, { glow: [0.08, 0.08, 0.09] }));
+  deckAlong(b, top, g.n0, g.n1, 4, 3.5, 30, [-M, M, -S, S, 0]);
+  deckAlong(b, () => LOW, -S - 14, S + 14, 4, 2.5, 50, [-S, S]);
+  // the arch: the upper chord meets the upper deck at the crown, the lower chord 9 m under it there, both from the feet
+  const ARCH0 = 2, K = 8;
+  const up = (n) => ARCH0 + (DY - 3.5 - ARCH0) * (1 - (n / S) ** 2);
+  const lo = (n) => ARCH0 + (DY - 12.5 - ARCH0) * (1 - (n / S) ** 2);
+  const wx = (y) => lerp(13, 5, (y - ARCH0) / (DY - ARCH0));
+  for (const sx of [-1, 1]) {
+    for (let k = 0; k < K; k++) {
+      const na = lerp(-S, S, k / K), nb = lerp(-S, S, (k + 1) / K);
+      b.member([sx * wx(up(na)), up(na), na], [sx * wx(up(nb)), up(nb), nb], 1.1, 4);
+      b.member([sx * wx(lo(na)), lo(na), na], [sx * wx(lo(nb)), lo(nb), nb], 1.1, 4);
+      if (k > 0) b.member([sx * wx(lo(na)), lo(na), na], [sx * wx(up(na)), up(na), na], 0.5, 4);
+      b.member([sx * wx(lo(na)), lo(na), na], [sx * wx(up(nb)), up(nb), nb], 0.4, 4);
+    }
+  }
+  for (let k = 1; k < K; k += 2) { const n = lerp(-S, S, k / K); b.member([-wx(up(n)), up(n), n], [wx(up(n)), up(n), n], 0.5, 4); }
+  // posts from the arch up to the upper deck, hangers from it down to the lower deck
+  for (const n of [-64, -43, -22, 22, 43, 64]) for (const sx of [-1, 1]) {
+    if (DY - 3.5 - up(n) > 1) b.member([sx * wx(up(n)), up(n), n], [sx * 4, DY - 3.5, n], 0.45, 4);
+    if (Math.abs(n) > 40 && lo(n) > LOW + 1) b.member([sx * wx(lo(n)), lo(n), n], [sx * 4, LOW, n], 0.35, 4);
+  }
+  // the granite pillars at the arch's feet, under both decks; the iron piers on the slopes
+  b.set(PLAIN([0.30, 0.29, 0.27], 0.05));
+  for (const s of [-1, 1]) box(b, 0, s * (S + 8), 0, DY - 3.5, 7, 6, 0, { capTop: false });
+  b.set(PLAIN(IRON, 0.25));
+  piersAlong(b, g, top, 3.5, S + 8, 34, 2.5, 2.5);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Innsbruck
+
+// The Bergisel ski jump: the concrete tower about 50 m (the brief) with the restaurant's pod on its top, cantilevered over
+// the in-run, and the in-run sloping down from it (local +n, north) to the take-off table about 95 m out [EST]; the landing
+// slope is the hill. The tower's and pod's sizes, the in-run's line and its supports [EST]. Lit at night.
+export function bergisel(brg = 0) {
+  const b = new Builder(0.95).frame(0, 0, brg);
+  const H = 50;
+  b.set(PLAIN([0.46, 0.46, 0.44], 0.1, { glow: [0.10, 0.10, 0.12] }));
+  b.loft([at(roundedRect(4.5, 4.5, 1.5, 2), 0), at(roundedRect(4.0, 4.0, 1.3, 2), 40)], { capTop: false });
+  // the pod: a curved shell reaching out over the in-run and back, glazed
+  b.set(GLASS([0.28, 0.31, 0.33], 4.0, 2.5, 0.7, 0.4, { glow: [0.30, 0.28, 0.24] }));
+  const pod = (s) => shift(superellipse(7 * s, 15 * s, 2.6, 16), 0, 4);
+  b.loft([at(pod(0.55), 40), at(pod(1), 43), at(pod(1), 47.5), at(pod(0.7), H)], { smooth: false });
+  // the in-run: from under the pod down to the take-off table
+  const runY = (n) => { const t = Math.min(Math.max((n - 10) / 85, 0), 1); return lerp(41, 3, Math.sin(t * Math.PI / 2) ** 1.4); };
+  b.set(PLAIN([0.56, 0.56, 0.54], 0.15, { glow: [0.14, 0.14, 0.16] }));
+  deckAlong(b, runY, 6, 95, 2.2, 1.6, 8);
+  b.set(PLAIN([0.40, 0.40, 0.38], 0.1));
+  for (const n of [28, 46, 64, 80]) { const y = runY(n) - 1.6; if (y > 1) box(b, 0, n, 0, y, 1.0, 1.0, 0, { capTop: false }); }
+  b.light([0, H, 4], 0);
+  return b.result();
+}
+
+// The metal tower of Fourvière (1894): 101 m with its antenna, 85.9 m before it (the article); a steel framework
+// on four legs like a small Eiffel Tower, its base and platforms' sizes [EST]. Grey; a light at the top.
+export function fourvieretower() {
+  const b = new Builder(0.97);
+  const H = 101, T = 85.9, w = (y) => lerp(8, 1.2, Math.pow(y / T, 0.8));
+  b.set(PLAIN([0.36, 0.37, 0.37], 0.25, { glow: [0.08, 0.08, 0.09] }));
+  const C = [[1, 1], [-1, 1], [-1, -1], [1, -1]], ys = [0, 14, 30, 48, 66, T];
+  for (let i = 0; i + 1 < ys.length; i++) for (const [cx, cn] of C) b.member([cx * w(ys[i]), ys[i], cn * w(ys[i])], [cx * w(ys[i + 1]), ys[i + 1], cn * w(ys[i + 1])], 0.7, 4);
+  for (let i = 1; i < ys.length - 1; i++) for (let k = 0; k < 4; k++) { const [ax, an] = C[k], [bx, bn] = C[(k + 1) % 4]; b.member([ax * w(ys[i]), ys[i], an * w(ys[i])], [bx * w(ys[i]), ys[i], bn * w(ys[i])], 0.4, 4); }
+  for (let i = 0; i + 1 < ys.length - 1; i++) for (let k = 0; k < 4; k++) { const [ax, an] = C[k], [bx, bn] = C[(k + 1) % 4]; b.member([ax * w(ys[i]), ys[i], an * w(ys[i])], [bx * w(ys[i + 1]), ys[i + 1], bn * w(ys[i + 1])], 0.3, 4); }
+  box(b, 0, 0, 14, 15.5, w(14) + 1.5, w(14) + 1.5, 0, { capBottom: true });   // the first platform
+  box(b, 0, 0, T - 1.5, T, 2.2, 2.2, 0, { capBottom: true });
+  b.set(PLAIN([0.60, 0.07, 0.04], 0.2));
+  cyl(b, 0, 0, T, H, 0.6, 0.2, 6);
+  b.light([0, H, 0], 0);
+  return b.result();
+}
+
+Object.assign(EUROPE_MODELS, { elbphil, hht, campanile, ndg, fourviere, fourvieretower, domluis, bergisel });

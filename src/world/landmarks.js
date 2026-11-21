@@ -331,6 +331,55 @@ for (const L of EUROPE_LANDMARKS.slice(43)) {
   const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
   L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
 }
+// v0.7.3: Europe's last landmarks, appended in the brief's order after the fifty-three. Figures read on 2026-11-22
+// from each Wikipedia article (its infobox, text and coordinates); [EST] marks what is estimated. The Dom Luís I Bridge
+// is `kind: 'bridge'` as the Forth's: based at 0 (the Douro at Porto is tidal: the pending 30 m patch reads the river
+// there at 0 m; the 250 m tiles have no water in the gorge), its `pylons` the arch's two feet and its `ends` the upper
+// deck's, worked out from the article's point, a true bearing (-10 degrees [EST]) and the article's lengths; both ends
+// read on land in the installed 250 m ground.
+EUROPE_LANDMARKS.push(
+  // Hamburg
+  EU({ id: 'elbphil', city: 'hamburg', country: 'DE', lat: 53.54139, lon: 9.98417, heightM: 108, footprintM: 62, brg: -20,
+    source: 'Wikipedia "Elbphilharmonie" (read 2026-11-22, with its coordinates): 108 m at its highest point on the western side (about 110 m the brief\'s), 26 floors, the first eight within the brick facade of the 1963 warehouse; the plan\'s sizes (about 112 m long), the brick\'s height (37 m), the roof\'s waves and the axis [EST]' }),
+  EU({ id: 'hht', city: 'hamburg', country: 'DE', lat: 53.563056, lon: 9.975833, heightM: 279.2, footprintM: 13, brg: 0,
+    source: 'Wikipedia "Heinrich Hertz Tower" (read 2026-11-22, with its coordinates): 279.2 m overall, a 204 m shaft of reinforced concrete and the mast above it; the two pods\' heights (about 120 to 152 m) and sizes, the shaft\'s taper [EST]' }),
+  // Venice
+  EU({ id: 'campanile', city: 'venice', country: 'IT', lat: 45.4340, lon: 12.3390, heightM: 98.6, footprintM: 124, brg: 0,
+    parts: [[0, 0, 10], [54, 48, 44]],
+    source: 'Wikipedia "St Mark\'s Campanile" (read 2026-11-22, with its coordinates): 98.6 m, the square brick shaft 12 m a side and 50 m tall, the belfry, the attic and the pyramidal spire with the golden vane; the belfry\'s, attic\'s and spire\'s heights, the basilica\'s place (54 m east, 48 m north), plan (76 x 62 m) and domes (about 43 m) [EST]' }),
+  // Marseille
+  EU({ id: 'ndg', city: 'marseille', country: 'FR', lat: 43.2841, lon: 5.3710, heightM: 72.7, footprintM: 46, brg: 0,
+    source: 'Wikipedia "Notre-Dame de la Garde" (read 2026-11-22, with its coordinates): on a limestone peak 162 m above the sea; the square bell tower 41 m, its cylindrical belfry 12.5 m, the statue 11.2 m (the model 72.7 m from its fort base); the fort base (8 m), the nave, the dome, the plan and the axis [EST]' }),
+  // Lyon
+  EU({ id: 'fourviere', city: 'lyon', country: 'FR', lat: 45.7625, lon: 4.8225, heightM: 48, footprintM: 50, brg: -135,
+    source: 'Wikipedia "Basilica of Notre-Dame de Fourvière" (read 2026-11-22, with its coordinates): 86 m long, 35 m wide, white marble; the four octagonal corner towers about 48 m (the brief; no height in the article) [EST], the nave\'s and roof\'s heights, the apse and the axis (the front to the south-east) [EST]' }),
+  EU({ id: 'fourvieretower', city: 'lyon', country: 'FR', lat: 45.763769, lon: 4.822267, heightM: 101, footprintM: 12, brg: 0,
+    source: 'Wikipedia "Metallic tower of Fourvière" (read 2026-11-22, with its coordinates): a steel framework tower, 101 m with the antenna, 85.9 m before it; the base\'s and platforms\' sizes [EST]' }),
+  // Porto
+  EU({ id: 'domluis', city: 'porto', country: 'PT', kind: 'bridge', lat: 41.139863, lon: -8.609336, heightM: 45, footprintM: 200,
+    pylons: [[41.139099, -8.609157], [41.140627, -8.609515]], ends: [[41.138113, -8.608926], [41.141613, -8.609746]],
+    source: 'Wikipedia "Dom Luís I Bridge" (read 2026-11-22, with its coordinates): a two-deck iron arch, the arch 172.5 m across, the upper deck 395.25 m long, the lower deck 172 m; the upper deck about 45 m above the river (the brief; the article\'s 70 m is unsourced), the lower deck\'s height (10 m), the arch\'s depth, the piers and the true bearing (-10 degrees) [EST]' }),
+  // Innsbruck
+  EU({ id: 'bergisel', city: 'innsbruck', country: 'AT', lat: 47.24889, lon: 11.39917, heightM: 50, footprintM: 97, brg: 0,
+    parts: [[0, 0, 16]],
+    source: 'Wikipedia "Bergisel Ski Jump" (read 2026-11-22: its coordinates, the hill size HS128; no height given): the tower about 50 m (the brief) [EST], the pod\'s sizes, the in-run\'s line (north, about 95 m to the take-off) and its supports [EST]' }),
+);
+Object.assign(EUROPE_CITY_BOXES, {
+  hamburg: [53.50, 9.90, 53.62, 10.10], venice: [45.40, 12.28, 45.47, 12.39], marseille: [43.24, 5.32, 43.34, 5.42],
+  lyon: [45.72, 4.78, 45.80, 4.89], porto: [41.11, -8.66, 41.18, -8.56], innsbruck: [47.21, 11.34, 47.30, 11.45],
+});
+// v0.7.3's map positions and bridge's axis, parts and decks, as the loops above (for the entries after the fifty-three).
+for (const L of EUROPE_LANDMARKS.slice(53)) {
+  const [x, y] = toMap(L.lat, L.lon); L.x = x; L.y = y;
+  if (L.kind !== 'bridge') continue;
+  const P = L.pylons.map(([la, lo]) => toMap(la, lo));
+  const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
+  L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
+  L.parts = P.map(([px, py]) => [px - L.x, py - L.y, PYLON_R]);
+  L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
+  const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
+  L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
+}
 // The page's region's list: what the runtime builds and the real centres leave out (East Asia's: LANDMARKS itself).
 export const REGION_LANDMARKS = REGION_ID === 'europe' ? EUROPE_LANDMARKS : LANDMARKS;
 

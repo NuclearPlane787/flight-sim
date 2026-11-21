@@ -14,7 +14,7 @@ import { setPending, setGeoRules, terrainSpec, countryAt } from '../src/world/re
 
 import { createGeoRules } from '../src/world/geo-rules.js';
 import { convergence, greatCircle, scaleFactor } from '../src/world/frame.js';
-import { createAirports, pavementEnd, profileAt, runwayCrossings } from '../src/world/runways.js';
+import { createAirports, pavementEnd, profileAt, runwayCrossings, circlingOnly } from '../src/world/runways.js';
 import { buildTaxiGraph, routeFromStand, snapToGraph, standsFor, regionRules } from '../src/ground/taxi.js';
 import { standHeading, pointInPoly } from '../src/world/traffic-layout.js';
 import { typeById } from '../src/sim/types.js';
@@ -97,6 +97,8 @@ const withPending = async (fn) => { setPending(true); try { return await fn(); }
 //   crossingProfile: true (v0.6.4: two runways cross: the shorter's ground checked against runwayCrossings()'s profile),
 //   fieldSurface: 'runways' (v0.6.4: the field flattened to its runways' profiles, not a plane: FIELD_RUNWAYS),
 //   lowFinals: { ident: reason } (ends whose 3° final is known to pass under 60 m over the ground; logged, not hidden),
+//   circlingFinals: { ident: reason } (v0.7.3: ends whose straight 3° final hits the terrain: they must be in
+//     CIRCLING_ONLY (src/world/runways.js) for the check to pass; their clearance is logged, not asserted),
 //   standGround: { byStand: { ref: m }, reason } (v0.7.0: stands whose ground the game's runway crossing moves; logged),
 //   closeHolds: { ident: { m, reason } } (v0.7.0: an end whose hold OSM puts nearer the centreline than half + 12 m; logged),
 //   routes: [[a, b, nm]], countries: [...] }
@@ -380,6 +382,12 @@ export function airportSuite(cfg) {
       for (let d = NM; d <= 15 * NM; d += 100) {
         const clear = f.elevM + 15 + Math.tan(3 * DEG) * d - hf.heightAt(f.thrX - f.ux * d, f.thrY - f.uy * d);
         if (clear < worst) { worst = clear; at = d; }
+      }
+      const circ = cfg.circlingFinals?.[e.ident];
+      if (circ) {
+        console.log(`  ${ICAO} ${e.ident}: the 3° final ${worst.toFixed(0)} m over the ground at its lowest, ${(at / NM).toFixed(1)} nm out (circling only: ${circ})`);
+        assert.ok(circlingOnly(ICAO, e.ident), `${e.ident}: its straight-in final is ${worst.toFixed(0)} m over the ground ${(at / NM).toFixed(1)} nm out: it needs CIRCLING_ONLY`);
+        continue;
       }
       const low = cfg.lowFinals?.[e.ident];
       console.log(`  ${ICAO} ${e.ident}: the 3° final ${worst.toFixed(0)} m over the ground at its lowest, ${(at / NM).toFixed(1)} nm out${low ? ' (known: ' + low + ')' : ''}`);

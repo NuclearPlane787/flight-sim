@@ -175,7 +175,12 @@ try {
     await waitFor((s) => s.agl * FT > 1500, 120000, '1,500 ft');
     await shot(`${li + 1}b-climb-out`);
     await page.evaluate(() => { const f = window.__fs; f.input.lever = f.sim.type.family === 'boeing' ? f.input.lever : 25 / 45; window.__e2e.phase = 'idle'; });
+    // (v0.7.3: from a high field the aircraft is still slow here: Madrid, 2,000 ft up, passes 1,500 ft above the runway at
+    // 178 kt, under the clean 197 kt, and cleaning up at once tripped the autopilot's low-speed protection. Below 205 kt the
+    // flaps come up to 1 only, and the last notch once the autopilot has 215 kt.)
+    const slowHere = (await st()).ias * KT < 205;
     for (let k = 0; k < 8; k++) await page.keyboard.press('Minus');
+    if (slowHere) await page.keyboard.press('Equal');
     await page.evaluate((fl) => {
       const f = window.__fs, ap = f.ap;
       ap.setSpd(250); ap.setAlt(fl * 100);
@@ -184,6 +189,7 @@ try {
       ap.levelChange();
     }, opt.fl);
     await steer();
+    if (slowHere) { await waitFor((s) => s.ias * KT > 215, 120000, '215 kt with flaps 1', steer); await page.keyboard.press('Minus'); console.log('  (a slow climb-out: flaps 1 kept to 215 kt)'); }
     await waitFor((s) => s.ap && s.agl * FT > 3000, 180000, 'the AP climbing through 3,000 ft', steer);
     const ts = await page.evaluate((r) => window.__fs.setTimeScale(r), opt.rate);
     check(`${name}: ${opt.rate}x time compression`, ts === opt.rate, `rate ${ts}`);

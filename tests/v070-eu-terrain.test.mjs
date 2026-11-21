@@ -25,7 +25,7 @@ if (inRegion('europe', import.meta.url)) {
   const FT = 0.3048;
   const at = (la, lo) => toMap(la, lo);
 
-  test("Europe's manifest: its lattice from the frame's origin, the sea at 0, low land, the 201 tiles of batches A, B and C", { skip: !have }, () => {
+  test("Europe's manifest: its lattice from the frame's origin, the sea at 0, low land, the 219 tiles of batches A to D", { skip: !have }, () => {
     const m = manifest(), t = m.tilesRegion;
     assert.equal(m.lowLand, true); assert.equal(REGION.lowLand, true);          // the bake and the game agree on what a stored 0 means
     assert.equal(t.x0, 0); assert.equal(t.y0, 0);
@@ -33,7 +33,8 @@ if (inRegion('europe', import.meta.url)) {
     assert.equal(t.sea.h, 0);
     const [l0, l1] = t.levels;
     assert.equal(l0.cell, 250); assert.equal(l0.tile, 512); assert.equal(l0.border, 2);
-    assert.equal(l0.covered.length, 201);                                        // batch A's 93, v0.7.1's batch B (77) and v0.7.2's batch C (31)
+    assert.equal(l0.covered.length, 219);                                        // batch A's 93, v0.7.1's batch B (77), v0.7.2's batch C (31) and v0.7.3's batch D (18)
+    for (const n of ['-6_-11', '-7_-10', '-8_-9', '5_-2', '7_-5', '8_-6', '1_6']) assert.ok(l0.covered.includes(n), n);   // batch D: Morocco's north, the Strait, Porto, Venice, Naples, and one north of Hamburg
     for (const n of ['-6_9', '-4_8', '-8_-3', '0_-2', '2_5', '-4_0']) assert.ok(l0.covered.includes(n), n);   // batch C: the Hebrides, the Forth, Galicia, Nice's coast, Bohemia's west, Nantes
     for (const n of ['-7_-7', '-3_3', '0_0', '6_-3', '0_4']) assert.ok(l0.covered.includes(n), n);     // west and south of 47 N 4 E are negative
     for (const n of ['-6_6', '-10_-7', '5_5', '8_1', '4_8', '-2_-3', '6_1', '-3_-7']) assert.ok(l0.covered.includes(n), n);   // batch B: Dublin, Lisbon, Berlin, Vienna, Copenhagen, Toulouse, and the rule's two
@@ -43,7 +44,8 @@ if (inRegion('europe', import.meta.url)) {
     assert.equal(spec.region, true);
     // The map's rectangle is the outline's; the 250 m data's is its covered tiles'.
     assert.deepEqual(mapExtent(), { x0: -1377000, y0: -1306000, x1: 1259000, y1: 1425000 });
-    assert.deepEqual(fineExtent(), { x0: -10 * 128000, y0: -8 * 128000, x1: 9 * 128000, y1: 10 * 128000 });   // v0.7.1, with batch B: tiles -10..8 by -8..9 (batch A: -7..6 by -7..5); batch C lies inside it
+    assert.deepEqual(fineExtent(), { x0: -10 * 128000, y0: -11 * 128000, x1: 9 * 128000, y1: 10 * 128000 });   // v0.7.3, with batch D: three rows further south (Andalusia and Morocco's north)
+    //   // v0.7.1, with batch B: tiles -10..8 by -8..9 (batch A: -7..6 by -7..5); batch C lies inside it
     assert.ok(fineOutline().length > 40);
   });
 

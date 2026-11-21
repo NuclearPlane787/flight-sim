@@ -82,6 +82,10 @@ export const EUROPE_AIRPORT_TRANSITIONS = Object.freeze({
   EGPF: { at: [55.8719, -4.4331], taFt: 6000, tlFl: 70, note: 'UK AIP EGPF AD 2.17: 6,000 ft' },
   LFRS: { at: [47.1532, -1.6107], taFt: 5000, tlFl: 60, note: 'France AIP LFRS AD 2.20 20.2: "The transition altitude within NANTES TMA is 5000 ft"' },
   LEST: { at: [42.8963, -8.4151], taFt: 6000, tlFl: 70, note: 'Spain AIP LEST AD 2.17: "Transition altitude 1850 m / 6000 ft" (CTR SANTIAGO)' },
+  // v0.7.3 (Hamburg's AD 2.17 says Germany's 5,000 ft; Innsbruck's: "no transition altitude is determined. Departing aircraft shall
+  // consider 10000 FT AMSL as transition altitude": Austria's own)
+  LFLL: { at: [45.726, 5.0901], taFt: 5000, tlFl: 60, note: 'France AIP LFLL AD 2.20 20.2: 5,000 ft' },
+  LFML: { at: [43.4381, 5.2125], taFt: 5000, tlFl: 60, note: 'France AIP LFML AD 2.20: 5,000 ft' },
   LFMN: { at: [43.6584, 7.2159], taFt: 5000, tlFl: 60, note: 'France AIP LFMN AD 2.20: "The transition altitude in NICE TMA is 5000 ft."' },
   LSGG: { at: [46.2381, 6.1089], taFt: 7000, tlFl: 80, note: 'Switzerland: Geneva 7,000 ft [EST] (skyguide\'s eAIP asks for a login)' },
   LIMC: { at: [45.6306, 8.7281], taFt: 6000, tlFl: 70, note: 'Italy: Malpensa 6,000 ft [EST] (ENAV\'s eAIP asks for a login; from a public pilot briefing)' },
@@ -103,5 +107,6 @@ export const EUROPE_COUNTRY_ORDER = ['GB', 'FR', 'DE', 'ES', 'CH', 'NL', 'IT', '
 // The build order (briefs/V0-7-0.md's map): Heathrow to Fiumicino in v0.7.0.
 // v0.7.1: Toulouse to Manchester (airports 12 to 20), each after its country's earlier ones; the new countries after Italy.
 // v0.7.2: Düsseldorf to Santiago (airports 21 to 29), the same way; Czechia after Denmark.
-export const EUROPE_AIRPORT_ORDER = ['EGLL', 'EGKK', 'EGCC', 'EGPH', 'EGPF', 'LFPG', 'LFPO', 'LFBO', 'LFMN', 'LFRS', 'EDDF', 'EDDM', 'EDDB', 'EDDL', 'EDDK',
-  'LEMD', 'LEBL', 'LEST', 'LSZH', 'LSGG', 'EHAM', 'LIRF', 'LIMC', 'EIDW', 'LPPT', 'EBBR', 'LOWW', 'EKCH', 'LKPR'];
+// v0.7.3: Innsbruck to Naples (airports 30 to 37), the same way; Gibraltar last.
+export const EUROPE_AIRPORT_ORDER = ['EGLL', 'EGKK', 'EGCC', 'EGPH', 'EGPF', 'LFPG', 'LFPO', 'LFBO', 'LFMN', 'LFRS', 'LFML', 'LFLL', 'EDDF', 'EDDM', 'EDDB', 'EDDL', 'EDDK', 'EDDH',
+  'LEMD', 'LEBL', 'LEST', 'LSZH', 'LSGG', 'EHAM', 'LIRF', 'LIMC', 'LIPZ', 'LIRN', 'EIDW', 'LPPT', 'LPPR', 'EBBR', 'LOWW', 'LOWI', 'EKCH', 'LKPR', 'LXGB'];

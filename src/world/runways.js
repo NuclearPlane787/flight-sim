@@ -266,7 +266,11 @@ export function onPaved(index, x, y) {
 // v0.6.4: Wonsan's 33L and 33R too. A ridge stands south-south-east of the bay under their straight-in paths (33L's
 // 17 m under the ground 11.5 nm out, 33R's only 49 m clear at 9.9 nm; no approach to either is published anywhere
 // open, [EST]): they are flown by a circle from the approach to 15R, over the sea.
-export const CIRCLING_ONLY = { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'] };
+// v0.7.3: Innsbruck's 08. Its straight 3° line from 15 nm meets the mountains 4.8 nm out (1,044 m under the ground at
+// 8.3 nm; clear by 60 m only inside 4.6 nm), and Austro Control's AD 2.22 publishes no straight-in instrument final to
+// it: 08 is reached from the approach to 26 "on to a right-hand traffic circuit to RWY 08", or by a visual segment. 26's
+// line is clear for the whole 15 nm (lowest 119 m over the ground, 1 nm out).
+export const CIRCLING_ONLY = { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'], LOWI: ['08'] };
 export const circlingOnly = (icao, ident) => !!CIRCLING_ONLY[icao]?.includes(String(ident).toUpperCase());
 // The end a circling-only end is circled from (v0.6.4, the review): its runway's other end when that one has an
 // ILS (Gimhae's 18L from 36R), else the airport's first end with an ILS that isn't circling-only itself (Wonsan's
@@ -312,6 +316,12 @@ export const ONE_WAY = {
   // where a take-off from 19 would begin (a test take-off there ended in an engine strike on the spot). 19 is landed on
   // only until the game shapes a second crossing; 01 is used both ways.
   EBBR: { 19: 'landing' },
+  // v0.7.3, Hamburg (Germany's AIP, EDDH AD 2.20 2.2, read 2026-11-21: "Take-offs from RWY 15 and landings on RWY 33 are
+  // permitted only if required for reasons of air traffic safety"; 33 has no ILS).
+  EDDH: { 15: 'landing', 33: 'takeoff' },
+  // v0.7.3, Venice, [EST]: Italy's eAIP asks for a login. From general knowledge of its use: 04L/22R, 180 m beside the main
+  // runway, serves as its taxiway and is a runway only when 04R/22L is closed.
+  LIPZ: { '04L': 'standby', '22R': 'standby' },
 };
 export const runwayUse = (icao, ident) => ONE_WAY[icao]?.[String(ident).toUpperCase()] || null;
 export const canTakeOff = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'landing' && u !== 'closed'; };

@@ -758,6 +758,174 @@
    "maxHeightM": 58.0,
    "minKeepHeightM": 9.0,
    "bytes": 51475
+  },
+  {
+   "id": "hamburg",
+   "name": "Hamburg",
+   "file": "hamburg.bin.gz",
+   "origin": [
+    396100,
+    739194
+   ],
+   "box": [
+    394648,
+    737975,
+    397552,
+    740413
+   ],
+   "latlon": [
+    53.53707,
+    9.96474,
+    53.56092,
+    10.01126
+   ],
+   "cols": 6,
+   "rows": 5,
+   "count": 3125,
+   "vertices": 21017,
+   "maxHeightM": 147.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 68412
+  },
+  {
+   "id": "venice",
+   "name": "Venice",
+   "file": "venice.bin.gz",
+   "origin": [
+    645653,
+    -138004
+   ],
+   "box": [
+    643222,
+    -139264,
+    648084,
+    -136744
+   ],
+   "latlon": [
+    45.4238,
+    12.30363,
+    45.45119,
+    12.36937
+   ],
+   "cols": 10,
+   "rows": 6,
+   "count": 4482,
+   "vertices": 38181,
+   "maxHeightM": 75.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 126081
+  },
+  {
+   "id": "marseille",
+   "name": "Marseille",
+   "file": "marseille.bin.gz",
+   "origin": [
+    110532,
+    -407706
+   ],
+   "box": [
+    109444,
+    -408920,
+    111620,
+    -406492
+   ],
+   "latlon": [
+    43.28183,
+    5.35774,
+    43.30417,
+    5.38526
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 4769,
+   "vertices": 26049,
+   "maxHeightM": 70.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 82525
+  },
+  {
+   "id": "lyon",
+   "name": "Lyon",
+   "file": "lyon.bin.gz",
+   "origin": [
+    64220,
+    -136324
+   ],
+   "box": [
+    63024,
+    -137646,
+    65416,
+    -135002
+   ],
+   "latlon": [
+    45.74789,
+    4.81682,
+    45.77211,
+    4.84819
+   ],
+   "cols": 5,
+   "rows": 6,
+   "count": 5268,
+   "vertices": 36286,
+   "maxHeightM": 49.2,
+   "minKeepHeightM": 9.0,
+   "bytes": 114294
+  },
+  {
+   "id": "porto",
+   "name": "Porto",
+   "file": "porto.bin.gz",
+   "origin": [
+    -1049993,
+    -562072
+   ],
+   "box": [
+    -1050942,
+    -563000,
+    -1049044,
+    -561144
+   ],
+   "latlon": [
+    41.13185,
+    -8.62448,
+    41.15115,
+    -8.59853
+   ],
+   "cols": 4,
+   "rows": 4,
+   "count": 2854,
+   "vertices": 16044,
+   "maxHeightM": 70.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 49736
+  },
+  {
+   "id": "naples",
+   "name": "Naples",
+   "file": "naples.bin.gz",
+   "origin": [
+    859088,
+    -623126
+   ],
+   "box": [
+    858047,
+    -624333,
+    860129,
+    -621919
+   ],
+   "latlon": [
+    40.83296,
+    14.23835,
+    40.85704,
+    14.26665
+   ],
+   "cols": 5,
+   "rows": 5,
+   "count": 3714,
+   "vertices": 27262,
+   "maxHeightM": 101.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 85403
   }
  ]
 }
