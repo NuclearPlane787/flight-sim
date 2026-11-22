@@ -618,6 +618,22 @@ def patch_name(pid):
 LAND_FLOOR = {'venice': ((640500.0, -141500.0, 650500.0, -134500.0), 1.0)}
 LAND_FLOOR_FEATHER_M = 300.0     # (v0.7.4: see cmd_patch)
 
+# v0.7.7 (briefs/V0-7-7.md part 3, "The ground's data"). Two mends of single patches; FS_PATCH_PLAIN=1 bakes without
+# either (the proof that a patch's sources still give the installed bytes before its mend is judged).
+#   DEM_FLOOR: the raw heights, and the composed land, never below this (m). Schiphol's patch had GLO-30's radar noise at
+#     big buildings (-19.5 m under Amsterdam's stadium, 11 km east of the field, spread to 0.64 km2 by the built-up
+#     filter's local minimum, and clusters at -12 to -15 m in the city's south-east) and polder lakes drawn 2 m under
+#     banks at -5 to -6 m. The Netherlands' lowest land is -6.76 m (Zuidplaspolder): nothing real is under -7 m here.
+#   URBAN_KEEP: boxes (W, S, E, N in degrees) where the built-up filter is off, eased in over URBAN_KEEP_FEATHER_M outside.
+#     The filter blends built-up ground towards its lowest neighbour within about 500 m (a surface model reads rooftops),
+#     which on a built-up cliff top pulls the top down towards the river below it: Almada's cliff under Cristo Rei
+#     (Lisbon's patch) stood about 15 m low at the statue.
+DEM_FLOOR = {'schiphol': -7.0}
+URBAN_KEEP = {'lisbon': [(-9.1800, 38.6735, -9.1630, 38.6840)]}
+URBAN_KEEP_FEATHER_M = 300.0
+PATCH_PLAIN = os.environ.get('FS_PATCH_PLAIN') == '1'
+
+
 def cmd_patch(pid, force):
     path = patch_name(pid)
     meta = path.replace('.i16.gz', '.json')
@@ -634,6 +650,12 @@ def cmd_patch(pid, force):
     del tiles
     nan = int(np.isnan(dem).sum())
     log(pid, 'dem', 'nan cells', nan, 'range', float(np.nanmin(dem)), float(np.nanmax(dem)))
+    dem_floor = None if PATCH_PLAIN else DEM_FLOOR.get(pid)
+    if dem_floor is not None:      # v0.7.7: see DEM_FLOOR (NaN stays NaN)
+        under = dem < dem_floor
+        log(pid, 'DEM_FLOOR: %d raw cells under %.2f m raised to it (lowest was %.2f m)' % (int(under.sum()), dem_floor, float(np.nanmin(dem))))
+        dem = np.where(under, np.float32(dem_floor), dem).astype(dem.dtype)
+        del under
 
     lp = brw.LandPolys()
     land_geoms = lp.query(lon0 - 0.05, lat0 - 0.05, lon1 + 0.05, lat1 + 0.05)
@@ -660,6 +682,16 @@ def cmd_patch(pid, force):
     del lab
     water_sd = -bg.signed_distance(wat, cell)
     log(pid, 'urban mean %.3f, inland water cells %d' % (float(urban.mean()), int(wat.sum())))
+    for (kw, ks, ke, kn) in ([] if PATCH_PLAIN else URBAN_KEEP.get(pid, [])):      # v0.7.7: see URBAN_KEEP
+        cx, cy = bc.to_map(np.array([ks, ks, kn, kn]), np.array([kw, ke, kw, ke]))
+        bx0, bx1, by0, by1 = float(cx.min()), float(cx.max()), float(cy.min()), float(cy.max())
+        xs = x0 + (np.arange(nx) + 0.5) * cell; ys = y0 + (np.arange(ny) + 0.5) * cell
+        dx = np.maximum(np.maximum(bx0 - xs, xs - bx1), 0.0); dy = np.maximum(np.maximum(by0 - ys, ys - by1), 0.0)
+        wk = 1.0 - bg.smoothstep(0.0, URBAN_KEEP_FEATHER_M, np.hypot(dy[:, None], dx[None, :]))
+        log(pid, 'URBAN_KEEP: the built-up filter off over %d cells (%.0f to %.0f, %.0f to %.0f in map metres), eased over %d more'
+            % (int((wk >= 1).sum()), bx0, bx1, by0, by1, int(((wk > 0) & (wk < 1)).sum())))
+        urban = (urban * (1.0 - wk)).astype(np.float32)
+        del wk
     inland = wat                    # (v0.7.4: kept for LAND_FLOOR, which raises land only)
     del wat, land
 
@@ -693,6 +725,12 @@ def cmd_patch(pid, force):
             % (int(low.sum()), floor, int((low & (w >= 1)).sum()), float(h[low].min()) if low.any() else float('nan')))
         h = np.where(low, h + (floor - h) * w, h).astype(np.float32)
     del inland
+    if dem_floor is not None:      # v0.7.7: the composed land too (inland water is drawn 2 m under its banks)
+        under = (sea_sd > 0) & (h < dem_floor)
+        log(pid, 'DEM_FLOOR: %d composed land cells under %.2f m raised to it (lowest was %.2f m)'
+            % (int(under.sum()), dem_floor, float(h[under].min()) if under.any() else float('nan')))
+        h = np.where(under, np.float32(dem_floor), h).astype(np.float32)
+        del under
     os.makedirs(OUT, exist_ok=True)
     bc.write_gz(path, bc.height_to_i16_land(h, sea_sd > 0) if bc.EUROPE else bc.height_to_i16(h))
     np.save(os.path.join(OUT, f'patch-{pid}.sea.npy'), (sea_sd > 0))  # for the quick-look

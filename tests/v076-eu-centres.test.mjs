@@ -52,9 +52,27 @@ if (inRegion('europe', import.meta.url)) {
     assert.match(src, /zaragoza: 4,/, "Zaragoza takes the south's look (4) in COUNTRY");
   });
 
+  // v0.7.7 (towns): every centre baked again as FSB2, FSB1 with its courtyards appended, so a file's own bytes changed on
+  // purpose. An FSB2 file's outer part (the bytes after its magic up to the inner rings) is held instead to the pushed
+  // v0.7.6's file's bytes after its magic (gunzipped; SHA-256, first 16 hex digits); an FSB1 file to its gz hash as before.
+  const OUTER77 = {
+    london: '6734769fed8b6a0c', paris: '9cf64a720af473cd', frankfurt: '02f4c8df7fac9725', madrid: 'eb694d689c0483d6', zurich: '51091126b25cfc56',
+    amsterdam: 'e374bf973716d547', munich: 'd625f02fb1b97cc4', barcelona: 'c08dc22b0b7ca57b', rome: '2101c6e8768935d4', toulouse: '88cf84133d0416b8',
+    berlin: '012f5c5edae5ac2b', milan: '6f368703724e59bf', vienna: 'a1e4003b7146ffbf', brussels: 'f710437d1cee8383', dublin: '52ce23f7e447e7cf',
+    lisbon: 'da2f9bd1af63d271', copenhagen: '429c95b9876beef9', manchester: '1de0842595d85eda', duesseldorf: '74c232f50ac4d079', cologne: 'e27e80e168f40bbf',
+    prague: '9aef48e23b96e069', geneva: '3e90e5b9b56cacbb', nice: 'f2b82ccd2ec60755', edinburgh: 'edbb154427016c46', glasgow: 'cad742a58e534060',
+    nantes: '50ab0b7cda3fb42b', santiago: '692c6ffb0e83c2a0', hamburg: '56e72b3bf82db7d1', venice: '17b15157f15c3371', marseille: 'b5984601cc2ccf84',
+    lyon: '3991dbc37c8b7d13', porto: '7cb41af027cbcd94', naples: '8600eb5dc7c64b6d', zaragoza: '6c7ae2718895f5b2',
+  };
   test('v0.7.6: the thirty-three older centres byte-identical to the pushed v0.7.5', { skip: dir ? 'a staging folder' : false }, () => {
     for (const [id, h] of Object.entries(OLD)) {
-      const got = createHash('sha256').update(readFileSync(new URL(`${id}.bin.gz`, DATA))).digest('hex').slice(0, 16);
+      const gz = readFileSync(new URL(`${id}.bin.gz`, DATA)), raw = gunzipSync(gz);
+      if (raw.toString('latin1', 0, 4) === 'FSB2') {
+        const end = 12 + raw.readUInt32LE(4) * 8 + raw.readUInt32LE(8) * 4;
+        assert.equal(createHash('sha256').update(raw.subarray(4, end)).digest('hex').slice(0, 16), OUTER77[id], `${id}: the outer part`);
+        continue;
+      }
+      const got = createHash('sha256').update(gz).digest('hex').slice(0, 16);
       assert.equal(got, h, id);
     }
   });

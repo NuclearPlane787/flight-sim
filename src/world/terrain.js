@@ -13,6 +13,34 @@ import { dataUrl } from './regions.js';   // v0.7.0: the fine cover from the pag
 import { FINE_GLSL, createFineCover, setFineOrigin } from './finecover.js';
 import { GROUND_GLSL, euGroundGlsl } from './ground.js';
 import { REGION } from './regions.js';   // v0.7.1: Europe's fields (ground.js's euGroundGlsl())
+// v0.7.7 (country): Europe's countryside by the country raster (ground.js's FIELDS77, ?fields77=0; off, this file's
+// shader text is v0.7.6's).
+import { FIELDS77, euZoneData, EU_ZONE_FALLBACK } from './ground.js';
+import { geoRules, loadLocalRules } from './region.js';
+const EU77 = REGION.id === 'europe' && FIELDS77;
+import { TOWNS77, SUBURBS77, TOWNS77_UNIFORMS, TOWNS77_GLSL, SUBURB77_GLSL, GARDEN77_GLSL } from './cities.js';   // v0.7.7 towns (the towns subagent's): a town's river drawn from the 31 m cover; the suburbs' gardens
+const T77 = REGION.id === 'europe' && TOWNS77;
+const S77 = T77 && SUBURBS77;
+function euZoneTexture() {
+  const make = (z) => {
+    const t = new THREE.DataTexture(z.data, z.nx, z.ny, THREE.RGBAFormat, THREE.UnsignedByteType);
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.flipY = false; t.needsUpdate = true;
+    return t;
+  };
+  const tex = { value: make(EU_ZONE_FALLBACK) }, box = { value: new THREE.Vector4(...EU_ZONE_FALLBACK.box) };
+  const fill = (g) => {
+    if (!g || !g.countryValues || !g.countryHeader) return;
+    const z = euZoneData(g.countryHeader, g.countryValues);
+    tex.value.dispose();
+    tex.value = make(z);
+    box.value.set(...z.box);
+  };
+  const g = geoRules();
+  if (g) fill(g);
+  else loadLocalRules(dataUrl(import.meta.url, '../../')).then(fill, () => {});
+  return { uEuZone: tex, uEuZoneBox: box };
+}
 
 export const GRID = 128;          // quads per ring side
 export const LEVELS = 13;         // steps 2 m .. 8192 m; the outer ring reaches ~520 km
@@ -59,6 +87,8 @@ export function createTerrain(scene, uniforms, chunks) {
     uGridHalf: { value: GRID / 2 },
     uHighGround: { value: 0 },   // v0.6.0: 1 when the ground the GPU holds passes 2,100 m (rock and snow up there)
   };
+  if (EU77) Object.assign(extra, euZoneTexture());   // v0.7.7 (country)
+  if (S77) Object.assign(extra, TOWNS77_UNIFORMS);   // v0.7.7 suburbs (towns): the centres' boxes, shared with cities.js
   const mat = new THREE.ShaderMaterial({
     uniforms: Object.assign({}, uniforms, extra),
     vertexShader: /* glsl */ `
@@ -107,7 +137,7 @@ export function createTerrain(scene, uniforms, chunks) {
       ${chunks.WATER_GLSL}
       ${chunks.FIELDS_GLSL}
       ${GROUND ? FINE_GLSL + (REGION.id === 'europe' ? euGroundGlsl(GROUND_GLSL) : GROUND_GLSL) : ''}
-      ${chunks.AIRCRAFT_LIGHTS_GLSL || 'vec3 aircraftLights(vec3 p, vec3 n) { return vec3(0.0); }'}
+      ${chunks.AIRCRAFT_LIGHTS_GLSL || 'vec3 aircraftLights(vec3 p, vec3 n) { return vec3(0.0); }'}${GROUND && S77 ? TOWNS77_GLSL + SUBURB77_GLSL + GARDEN77_GLSL : ''}
       varying vec2 vMap;
       varying vec3 vRel;
       varying float vRawH, vPw, vZone;
@@ -193,7 +223,7 @@ export function createTerrain(scene, uniforms, chunks) {
         canopy *= 0.75 + 0.5 * mix(0.5, tex3 * 0.6 + tex2 * 0.4, near + detailFade * 0.5);
         // Fields and paddies (paddies on flat, low valley floors).
         float paddy = (1.0 - smoothstep(0.015, 0.04, slope)) * (1.0 - smoothstep(120.0, 350.0, vRawH));
-        ${GROUND ? 'float treeLine;\n        vec3 fields = fieldMosaic(gfp, paddy, m, glod, slope, vRawH, treeLine);' : 'vec3 fields = fieldColor(m, paddy, detailFade);'}${REGION.id === 'europe' ? '\n        // v0.7.1, Europe: the dry country\'s grass is straw, not green (ground.js\'s euZone(); East Asia\'s text has none of this).\n        float euGz = 0.0, euDz = 0.0;\n        euZone(m, euGz, euDz);\n        grass = mix(grass, vec3(0.150, 0.132, 0.075) * (0.80 + 0.4 * tex1), euDz * 0.8);' : ''}
+        ${GROUND ? 'float treeLine;\n        vec3 fields = fieldMosaic(gfp, paddy, m, glod, slope, vRawH, treeLine);' : 'vec3 fields = fieldColor(m, paddy, detailFade);'}${REGION.id === 'europe' ? '\n        // v0.7.1, Europe: the dry country\'s grass is straw, not green (ground.js\'s euZone(); East Asia\'s text has none of this).\n        float euGz = 0.0, euDz = 0.0;\n        euZone(m, euGz, euDz);\n        grass = mix(grass, vec3(0.150, 0.132, 0.075) * (0.80 + 0.4 * tex1), euDz * 0.8);' : ''}${EU77 ? '\n        // v0.7.7: in a polder\'s district the whole farmed ground is its strips, the land cover\'s grassland too (not bands of it).\n        farm = max(farm, euPol * (1.0 - urban) * (1.0 - smoothstep(0.86, 0.98, cov250.a)));' : ''}
         // Built-up ground: concrete and asphalt with a street grid.
         vec3 city = mix(vec3(0.085, 0.085, 0.083), vec3(0.14, 0.135, 0.125), tex2);
         city = mix(city, canopy * 1.2, 0.35 * smoothstep(0.45, 0.75, vnoise(m * 0.02 + 9.0)));   // parks and street trees
@@ -207,7 +237,7 @@ export function createTerrain(scene, uniforms, chunks) {
         alb = mix(alb, fields, farm);
         ${GROUND ? `// Grassland and scrub (the fine cover's): not a lawn. Patches of taller, darker growth and
         // scattered bushes over it, a paler dry sward between.
-        float rough = fineW * smoothstep(0.45, 0.65, fHi.x + wob * 0.3);
+        float rough = fineW * smoothstep(0.45, 0.65, fHi.x + wob * 0.3);${EU77 ? '\n        rough *= 1.0 - euPol;                                              // v0.7.7: a polder\'s grassland is its strips' : ''}
         if (rough > 0.0) {
           float clump = smoothstep(0.50, 0.68, vnoise(m * 0.028 + 3.0)) * 0.55 + smoothstep(0.62, 0.74, vnoise(m * 0.11 + 11.0)) * 0.35;
           vec3 sward = mix(vec3(0.105, 0.105, 0.052), vec3(0.085, 0.10, 0.045), vnoise(m * 0.006 + 1.0));${REGION.id === 'europe' ? '\n          sward = mix(sward, vec3(0.165, 0.145, 0.082), euDz * 0.8);' : ''}
@@ -223,7 +253,12 @@ export function createTerrain(scene, uniforms, chunks) {
           // v0.6.1: not one pale sheet (ground.js's bareGround). The graders' passes and the wheel tracks only on
           // flat ground well away from the water: a river's bars and a shore's flats are bare too, and nobody drives there.
           float made = (1.0 - smoothstep(0.03, 0.08, slope)) * smoothstep(150.0, 400.0, outside ? 0.0 : min(sea0, inl0));
-          alb = mix(alb, bareGround(gfp, glod, m, tex2, made), bare);
+          ${EU77 ? `// v0.7.7: WorldCover's class 6 is bare ground or snow. Below the snow line it is earth (darker and warmer than
+          // v0.7.6's pale sheet), and in a town the town's own ground (rail yards, building sites), not a white strip.
+          // The graders' lots and wheel tracks (bareGround()'s made) only in a town: not a 250 m grid across the Bardenas.
+          vec3 bg77 = bareGround(gfp, glod, m, tex2, made * smoothstep(0.05, 0.30, cov250.b)) * mix(vec3(0.80, 0.75, 0.66), vec3(1.0), smoothstep(1900.0, 2600.0, vRawH));
+          bg77 = mix(bg77, city, smoothstep(0.15, 0.55, cov250.b) * 0.75);
+          alb = mix(alb, bg77, bare);` : 'alb = mix(alb, bareGround(gfp, glod, m, tex2, made), bare);'}
         }
         alb = mix(alb, mix(vec3(0.07, 0.085, 0.045), vec3(0.11, 0.10, 0.05), tex1), fineW * smoothstep(0.4, 0.6, fHi.z + wob * 0.3));` : ''}
         ${GROUND ? 'canopy *= canopyCrowns(gfp, glod, normalize(vec2(uSunDir.x, -uSunDir.z) + 1e-4));' : ''}
@@ -236,10 +271,16 @@ export function createTerrain(scene, uniforms, chunks) {
         // Villages and the towns' edges: lots with yards and gardens, not one sheet of concrete.
         // (Everywhere but the densest centres: the suburbs' 250 m cells are nearly all built-up too.)
         float village = fineW * (1.0 - glassy) * (1.0 - smoothstep(0.80, 0.97, cov250.b));
-        if (village > 0.0) city = mix(city, villageGround(gfp, glod), village);` : ''}
+        if (village > 0.0) city = mix(city, villageGround(gfp, glod), village);${S77 ? `
+        // v0.7.7 suburbs (the towns subagent's block): gardens between the terraces cities.js draws (the same block rule).
+        if (urban > 0.0) { float g77; vec3 gc77 = garden77(m, glod, g77); if (g77 > 0.0) city = mix(city, gc77, g77); }` : ''}` : ''}
         alb = mix(alb, city, urban);
         alb = mix(alb, rock, smoothstep(0.55, 0.75, slope + 0.15 * (tex1 - 0.5)));
-        alb = mix(alb, mix(vec3(0.075, 0.095, 0.035), vec3(0.10, 0.11, 0.045), tex2), smoothstep(0.3, 0.9, vZone));
+        ${EU77 ? `// v0.7.7: an airfield's grass takes its place's tone (straw in the dry country, as the grass round it) and a soft,
+        // wandering edge instead of the flat zone's rectangle.
+        vec3 afg77 = mix(vec3(0.075, 0.095, 0.035), vec3(0.10, 0.11, 0.045), tex2);
+        afg77 = mix(afg77, vec3(0.150, 0.132, 0.075) * (0.85 + 0.3 * tex2), euDz * 0.8);
+        alb = mix(alb, afg77, smoothstep(0.35, 1.0, vZone + 0.25 * wob) * 0.85);` : 'alb = mix(alb, mix(vec3(0.075, 0.095, 0.035), vec3(0.10, 0.11, 0.045), tex2), smoothstep(0.3, 0.9, vZone));'}
         // Mountain tops above ~1,400 m: thinner, browner vegetation.
         alb = mix(alb, vec3(0.13, 0.10, 0.06), smoothstep(1300.0, 1800.0, vRawH) * 0.6);
         ${HIGH ? `        // v0.6.0: above anything in Korea (Hallasan 1,947 m): bare rock from about 2,300 m and
@@ -276,7 +317,14 @@ export function createTerrain(scene, uniforms, chunks) {
         float wSea = 1.0 - smoothstep(-aa, aa, sea);
         float aai = max(fwidth(inl), 0.5);
         float wInl = (1.0 - smoothstep(-aai, aai, inl)) * (1.0 - wSea);
-        ${GROUND ? '// Ponds, canals and reservoirs too small for the 250 m water field.\n        if (fineW > 0.0 && fLo.w > 0.0) wInl = max(wInl, fineW * smoothstep(0.44, 0.56, fineWater(gfp) + wob * 0.08) * (1.0 - wSea) * (1.0 - smoothstep(0.3, 0.9, vZone)));' : ''}
+        ${GROUND ? '// Ponds, canals and reservoirs too small for the 250 m water field.\n        if (fineW > 0.0 && fLo.w > 0.0) wInl = max(wInl, fineW * smoothstep(0.44, 0.56, fineWater(gfp) + wob * 0.08) * (1.0 - wSea) * (1.0 - smoothstep(0.3, 0.9, vZone)));' : ''}${GROUND && T77 ? `
+        // v0.7.7 towns (the towns subagent's block): in a town, a river or canal within 250 m of the 250 m field's bank takes
+        // its edge from the 31 m cover (too wide or soft-edged at 250 m: the Thames, the Main, the Ebro), the field's own
+        // water left where the cover has none of it only outside towns.
+        if (wInl > 0.0 && fineW > 0.0 && inl > -250.0) {
+          float tTown = fineW * smoothstep(0.20, 0.40, cov250.b) * (1.0 - smoothstep(0.3, 0.9, vZone));
+          if (tTown > 0.0) wInl = mix(wInl, smoothstep(0.42, 0.58, fineWater(gfp) + wob * 0.06) * (1.0 - wSea), tTown);
+        }` : ''}
         if (wSea + wInl > 0.001) {
           float depth = wSea > 0.0 ? clamp(-sea / 1500.0, 0.0, 1.0) : clamp(-inl / 150.0, 0.0, 1.0);
           vec3 wc = waterShade(m, rel, depth, wInl / max(wSea + wInl, 1e-3));

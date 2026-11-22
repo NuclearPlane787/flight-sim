@@ -29,7 +29,9 @@
    "vertices": 124097,
    "maxHeightM": 310.0,
    "minKeepHeightM": 9.0,
-   "bytes": 404886
+   "bytes": 409332,
+   "holes": 159,
+   "holeVertices": 1017
   },
   {
    "id": "paris",
@@ -57,7 +59,9 @@
    "vertices": 189863,
    "maxHeightM": 300.0,
    "minKeepHeightM": 17.0,
-   "bytes": 612109
+   "bytes": 643000,
+   "holes": 1126,
+   "holeVertices": 7700
   },
   {
    "id": "frankfurt",
@@ -85,7 +89,9 @@
    "vertices": 54289,
    "maxHeightM": 259.0,
    "minKeepHeightM": 9.0,
-   "bytes": 175700
+   "bytes": 177185,
+   "holes": 55,
+   "holeVertices": 337
   },
   {
    "id": "madrid",
@@ -113,7 +119,9 @@
    "vertices": 182063,
    "maxHeightM": 249.0,
    "minKeepHeightM": 9.0,
-   "bytes": 569730
+   "bytes": 580824,
+   "holes": 480,
+   "holeVertices": 2597
   },
   {
    "id": "zurich",
@@ -141,7 +149,9 @@
    "vertices": 45747,
    "maxHeightM": 126.0,
    "minKeepHeightM": 9.0,
-   "bytes": 150237
+   "bytes": 152180,
+   "holes": 63,
+   "holeVertices": 466
   },
   {
    "id": "amsterdam",
@@ -169,7 +179,9 @@
    "vertices": 97461,
    "maxHeightM": 83.0,
    "minKeepHeightM": 9.0,
-   "bytes": 308677
+   "bytes": 311233,
+   "holes": 71,
+   "holeVertices": 632
   },
   {
    "id": "munich",
@@ -197,7 +209,9 @@
    "vertices": 70805,
    "maxHeightM": 291.0,
    "minKeepHeightM": 9.0,
-   "bytes": 227648
+   "bytes": 231122,
+   "holes": 151,
+   "holeVertices": 816
   },
   {
    "id": "barcelona",
@@ -225,7 +239,9 @@
    "vertices": 207322,
    "maxHeightM": 170.0,
    "minKeepHeightM": 9.0,
-   "bytes": 636504
+   "bytes": 644030,
+   "holes": 235,
+   "holeVertices": 1785
   },
   {
    "id": "rome",
@@ -253,7 +269,9 @@
    "vertices": 104229,
    "maxHeightM": 134.0,
    "minKeepHeightM": 9.0,
-   "bytes": 342038
+   "bytes": 369786,
+   "holes": 1094,
+   "holeVertices": 6993
   },
   {
    "id": "toulouse",
@@ -281,7 +299,9 @@
    "vertices": 38630,
    "maxHeightM": 67.0,
    "minKeepHeightM": 9.0,
-   "bytes": 122436
+   "bytes": 126184,
+   "holes": 172,
+   "holeVertices": 947
   },
   {
    "id": "berlin",
@@ -309,7 +329,9 @@
    "vertices": 24051,
    "maxHeightM": 264.0,
    "minKeepHeightM": 9.0,
-   "bytes": 80349
+   "bytes": 85481,
+   "holes": 205,
+   "holeVertices": 1265
   },
   {
    "id": "milan",
@@ -337,7 +359,9 @@
    "vertices": 30364,
    "maxHeightM": 197.0,
    "minKeepHeightM": 9.0,
-   "bytes": 98275
+   "bytes": 108563,
+   "holes": 529,
+   "holeVertices": 2521
   },
   {
    "id": "vienna",
@@ -365,7 +389,9 @@
    "vertices": 26925,
    "maxHeightM": 138.0,
    "minKeepHeightM": 9.0,
-   "bytes": 87313
+   "bytes": 95391,
+   "holes": 374,
+   "holeVertices": 2050
   },
   {
    "id": "brussels",
@@ -393,7 +419,9 @@
    "vertices": 31751,
    "maxHeightM": 145.0,
    "minKeepHeightM": 9.0,
-   "bytes": 103376
+   "bytes": 105874,
+   "holes": 99,
+   "holeVertices": 621
   },
   {
    "id": "dublin",
@@ -421,7 +449,9 @@
    "vertices": 33054,
    "maxHeightM": 83.0,
    "minKeepHeightM": 9.0,
-   "bytes": 108252
+   "bytes": 110010,
+   "holes": 51,
+   "holeVertices": 445
   },
   {
    "id": "lisbon",
@@ -449,7 +479,9 @@
    "vertices": 35993,
    "maxHeightM": 60.0,
    "minKeepHeightM": 9.0,
-   "bytes": 113122
+   "bytes": 114782,
+   "holes": 76,
+   "holeVertices": 376
   },
   {
    "id": "copenhagen",
@@ -477,7 +509,9 @@
    "vertices": 22697,
    "maxHeightM": 105.6,
    "minKeepHeightM": 9.0,
-   "bytes": 73970
+   "bytes": 81816,
+   "holes": 209,
+   "holeVertices": 2111
   },
   {
    "id": "manchester",
@@ -505,7 +539,9 @@
    "vertices": 12686,
    "maxHeightM": 200.5,
    "minKeepHeightM": 9.0,
-   "bytes": 42695
+   "bytes": 43437,
+   "holes": 25,
+   "holeVertices": 188
   },
   {
    "id": "duesseldorf",
@@ -533,7 +569,9 @@
    "vertices": 23004,
    "maxHeightM": 194.4,
    "minKeepHeightM": 9.0,
-   "bytes": 69707
+   "bytes": 70404,
+   "holes": 27,
+   "holeVertices": 168
   },
   {
    "id": "cologne",
@@ -561,7 +599,9 @@
    "vertices": 17790,
    "maxHeightM": 157.4,
    "minKeepHeightM": 9.0,
-   "bytes": 54870
+   "bytes": 55186,
+   "holes": 19,
+   "holeVertices": 78
   },
   {
    "id": "prague",
@@ -589,7 +629,9 @@
    "vertices": 17565,
    "maxHeightM": 99.0,
    "minKeepHeightM": 9.0,
-   "bytes": 57901
+   "bytes": 62254,
+   "holes": 177,
+   "holeVertices": 1097
   },
   {
    "id": "geneva",
@@ -617,7 +659,9 @@
    "vertices": 18615,
    "maxHeightM": 60.0,
    "minKeepHeightM": 9.0,
-   "bytes": 57358
+   "bytes": 57603,
+   "holes": 12,
+   "holeVertices": 55
   },
   {
    "id": "nice",
@@ -645,7 +689,9 @@
    "vertices": 21118,
    "maxHeightM": 39.0,
    "minKeepHeightM": 9.0,
-   "bytes": 67789
+   "bytes": 68371,
+   "holes": 20,
+   "holeVertices": 141
   },
   {
    "id": "edinburgh",
@@ -673,7 +719,9 @@
    "vertices": 12631,
    "maxHeightM": 61.1,
    "minKeepHeightM": 9.0,
-   "bytes": 40735
+   "bytes": 41572,
+   "holes": 24,
+   "holeVertices": 224
   },
   {
    "id": "glasgow",
@@ -701,7 +749,9 @@
    "vertices": 7364,
    "maxHeightM": 71.9,
    "minKeepHeightM": 9.0,
-   "bytes": 24307
+   "bytes": 24942,
+   "holes": 27,
+   "holeVertices": 159
   },
   {
    "id": "nantes",
@@ -729,7 +779,9 @@
    "vertices": 19963,
    "maxHeightM": 120.0,
    "minKeepHeightM": 9.0,
-   "bytes": 63607
+   "bytes": 64829,
+   "holes": 48,
+   "holeVertices": 294
   },
   {
    "id": "santiago",
@@ -757,7 +809,9 @@
    "vertices": 16741,
    "maxHeightM": 58.0,
    "minKeepHeightM": 9.0,
-   "bytes": 51475
+   "bytes": 52291,
+   "holes": 40,
+   "holeVertices": 198
   },
   {
    "id": "hamburg",
@@ -785,7 +839,9 @@
    "vertices": 21017,
    "maxHeightM": 147.0,
    "minKeepHeightM": 9.0,
-   "bytes": 68412
+   "bytes": 70105,
+   "holes": 52,
+   "holeVertices": 420
   },
   {
    "id": "venice",
@@ -813,7 +869,9 @@
    "vertices": 38181,
    "maxHeightM": 75.0,
    "minKeepHeightM": 9.0,
-   "bytes": 126081
+   "bytes": 132455,
+   "holes": 253,
+   "holeVertices": 1618
   },
   {
    "id": "marseille",
@@ -841,7 +899,9 @@
    "vertices": 26049,
    "maxHeightM": 70.0,
    "minKeepHeightM": 9.0,
-   "bytes": 82525
+   "bytes": 83147,
+   "holes": 27,
+   "holeVertices": 143
   },
   {
    "id": "lyon",
@@ -869,7 +929,9 @@
    "vertices": 36286,
    "maxHeightM": 49.2,
    "minKeepHeightM": 9.0,
-   "bytes": 114294
+   "bytes": 117777,
+   "holes": 140,
+   "holeVertices": 851
   },
   {
    "id": "porto",
@@ -897,7 +959,9 @@
    "vertices": 16044,
    "maxHeightM": 70.0,
    "minKeepHeightM": 9.0,
-   "bytes": 49736
+   "bytes": 50364,
+   "holes": 30,
+   "holeVertices": 154
   },
   {
    "id": "naples",
@@ -925,7 +989,9 @@
    "vertices": 27262,
    "maxHeightM": 101.0,
    "minKeepHeightM": 9.0,
-   "bytes": 85403
+   "bytes": 91333,
+   "holes": 313,
+   "holeVertices": 1459
   },
   {
    "id": "zaragoza",
@@ -953,7 +1019,9 @@
    "vertices": 34680,
    "maxHeightM": 98.0,
    "minKeepHeightM": 9.0,
-   "bytes": 110920
+   "bytes": 113595,
+   "holes": 91,
+   "holeVertices": 688
   }
  ]
 }

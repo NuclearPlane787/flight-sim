@@ -613,6 +613,43 @@ for (const [k, [la, lo, H, fla, flo, D, hM]] of Object.entries(EU_LANDMARKS_076)
 }
 GROUPS['europe-centres-076'] = Object.keys(EU_CENTRES_076).flatMap((k) => [`eu-centre-${k}-3000-day`, `eu-centre-${k}-3000-night`]);
 GROUPS['europe-landmarks-076'] = Object.keys(EU_LANDMARKS_076).flatMap((k) => [`eu-landmark-${k}-day`, `eu-landmark-${k}-above-day`]).concat(['eu-landmark-pilar-night']);
+// v0.7.7 country (--q '&region=europe'; ?fields77=0 for v0.7.6's): the countryside by the country raster. Across the
+// Loire (the hedges' southern edge), across the Pyrenees at the Bidasoa (France, Spain), Kent, Calais (France: no longer
+// hedged), the Fens (no longer polders), Flevoland's polders from 3,000 ft, the Ebro's dry plain by Zaragoza.
+SHOTS['eu77-loire'] = { q: look(47.30, -0.55, 1500, 180, -14), ms: EU_DAY };
+SHOTS['eu77-bidasoa'] = { q: look(43.36, -1.70, 3000, 200, -14), ms: EU_DAY };
+SHOTS['eu77-kent'] = { q: look(51.22, 1.15, 1500, 300, -14), ms: EU_DAY };
+SHOTS['eu77-calais'] = { q: look(50.85, 1.90, 1500, 180, -14), ms: EU_DAY };
+SHOTS['eu77-fens'] = { q: look(52.55, 0.10, 1500, 0, -14), ms: EU_DAY };
+SHOTS['eu77-flevoland-3000'] = { q: look(52.50, 5.60, 3000, 30, -14), ms: EU_DAY };
+SHOTS['eu77-norfolk'] = { q: look(52.65, 1.55, 1500, 0, -14), ms: EU_DAY };          // East Anglia: hedged now (v0.7.1's line ended at 1.5 E)
+SHOTS['eu77-holland-10000'] = { q: look(52.30, 4.75, 10000, 30, -20), ms: EU_DAY };  // the polders' near and far share of strips (the fields' fade crosses the frame)
+SHOTS['eu77-bardenas'] ={ q: look(42.20, -1.45, 1500, 180, -14), ms: EU_DAY };      // the Bardenas Reales: WorldCover's bare ground below the snow line
+GROUPS['country-077'] = ['eu77-loire', 'eu77-bidasoa', 'eu77-kent', 'eu77-calais', 'eu77-fens', 'eu77-flevoland-3000', 'eu77-norfolk', 'eu77-bardenas',
+  'eu-fields-meath', 'eu-fields-normandy', 'eu-fields-alentejo', 'eu-3000-polders', 'eu-fields-polder-low', 'eu-bare-lyon-3000', 'LEZG-final'];
+// v0.7.7 towns (--q '&region=europe'; ?towns77=0 for v0.7.6's): Toulouse's southern suburbs looking north to the old
+// town, Zaragoza's north bank from the south across the Ebro, the Main below the Commerzbank Tower and the Thames by
+// Tower Bridge close up (1,000 ft), with the centres' existing views from 3,000 ft.
+SHOTS['towns77-toulouse-suburbs'] = { q: look(43.575, 1.440, 3000, 0, -14), ms: EU_DAY };
+SHOTS['towns77-zaragoza-north'] = { q: look(41.668, -0.880, 3000, 0, -14), ms: EU_DAY };
+SHOTS['towns77-main'] = { q: look(50.1065, 8.6745, 1000, 350, -18), ms: EU_DAY };
+SHOTS['towns77-thames'] = { q: look(51.5070, -0.0700, 1000, 280, -18), ms: EU_DAY };
+GROUPS['towns-077'] = ['frankfurt', 'london', 'paris', 'toulouse', 'zaragoza', 'munich', 'milan', 'lyon'].map((k) => `eu-centre-${k}-3000-day`)
+  .concat(['eu-3000-london', 'eu-3000-paris', 'eu-3000-nofine-dijon', 'towns77-toulouse-suburbs', 'towns77-zaragoza-north', 'towns77-main', 'towns77-thames', 'ground77-arena-1500', 'ground77-lucerne-3000']);   // (the last two: country's views, taken for the suburbs)
+// v0.7.7 lead (--q '&region=europe'): the ground's data. The IJsselmeer from 3,000 ft over Lelystad and from 300 ft at
+// the Houtribdijk's root (v0.7.6: 2 to 8 m under the sea; now -0.25 m), Loch Ness and Lake Lucerne from 3,000 ft (their
+// surfaces climbed the banks), Amsterdam's stadium from 1,500 ft (a pit to -19.5 m in Schiphol's patch), and Cristo Rei
+// on Almada's cliff from over the Tagus and with the 25 de Abril bridge from the east.
+SHOTS['ground77-ijsselmeer-3000'] = { q: look(52.56, 5.43, 3000, 350, -14), ms: EU_DAY };
+SHOTS['ground77-ijsselmeer-shore'] = { q: look(52.535, 5.425, 300, 320, -5), ms: EU_DAY };
+SHOTS['ground77-lochness-3000'] = { q: look(57.27, -4.50, 3000, 45, -14), ms: EU_DAY };
+SHOTS['ground77-lucerne-3000'] = { q: look(47.02, 8.42, 3000, 90, -14), ms: EU_DAY };
+SHOTS['ground77-arena-1500'] = { q: look(52.3143, 4.9419, 1500, 90, -14), ms: EU_DAY };
+SHOTS['ground77-cristorei-river'] = { q: look(38.67861, -9.17134, 400, 180, -4), ms: EU_DAY };
+SHOTS['ground77-cristorei-close'] = { q: look(38.67861, -9.17134, 250, 180, -6), ms: EU_DAY };      // 725 m north of it, over the river's south bank
+SHOTS['ground77-ponte25-east'] = { q: look(38.6885, -9.1772, 300, 262, -4), ms: EU_DAY };
+GROUPS['ground-077'] = ['ground77-ijsselmeer-3000', 'ground77-ijsselmeer-shore', 'ground77-lochness-3000', 'ground77-lucerne-3000',
+  'ground77-arena-1500', 'ground77-cristorei-river', 'ground77-ponte25-east', 'EHAM-final', 'eu-3000-polders'];
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {

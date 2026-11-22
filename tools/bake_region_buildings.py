@@ -20,6 +20,10 @@ The format (little-endian), <id>.bin.gz (gzip 9, mtime 0):
       the outer ring only, counter-clockwise, no repeated closing vertex, 3..255 vertices.
   Records sorted by 500 m cell (row-major from the box's south-west corner, by the mean of the stored vertices),
   then by height descending inside a cell.
+v0.7.7, FSB2 (FS_CENTRES_HOLES=1): the magic 'FSB2', then FSB1's bytes after its magic unchanged, then the inner rings:
+  u32 holeCount, u32 holeVertexCount; holeCount records of 8 bytes: u32 record index (ascending), u16 nVerts, u16 0;
+  then every inner ring's vertices in that order, i16 x, i16 y as above, clockwise, not closed, 3..255 vertices.
+  centres.json's entry gains holes and holeVertices.
 centres.json: { version, credit, cell, centres: [ { id, name, file, origin [x, y], box [x0, y0, x1, y1],
   latlon [S, W, N, E], cols, rows, count, vertices, maxHeightM, minKeepHeightM, bytes } ] } in map metres.
 """
@@ -51,6 +55,13 @@ LEVEL_M = 3.2
 KEEP_AREA = 2000.0        # m²: kept whatever its height
 MAX_COUNT = 60000
 EST_CAP = 60.0
+# v0.7.7 (briefs/V0-7-7.md part 1): FS_CENTRES_HOLES=1 writes 'FSB2', FSB1 with each record's inner rings (courtyards)
+# appended; the outer part (header counts, records, outer vertices) is byte for byte what FSB1 writes. Unset: FSB1 exactly
+# as before. A courtyard under HOLE_MIN_AREA m2 or narrower than HOLE_MIN_WIDTH m isn't worth its triangles.
+HOLES = os.environ.get('FS_CENTRES_HOLES') == '1'
+HOLE_MIN_AREA = 60.0
+HOLE_MIN_WIDTH = 6.0
+HOLE_WALL = 0.5           # m: a courtyard stays at least this far inside the stored (simplified) outer ring
 
 SOURCES = {
     'kanto': 'osm/kanto-261118.osm.pbf',
@@ -386,7 +397,14 @@ def load_features(cid, box):
                     continue
                 if not part and h is None and lv is None and area < 150:
                     continue
-                feats.append(dict(xy=xy, area=area, part=part, tags=p, h=h, lv=lv,
+                holes = []   # v0.7.7: the inner rings (courtyards), projected; written only with FS_CENTRES_HOLES=1
+                if HOLES:
+                    for hr in poly[1:]:
+                        hr = np.asarray(hr, dtype=np.float64)
+                        if len(hr) >= 4:
+                            hx, hy = to_map(hr[:, 1], hr[:, 0])
+                            holes.append(np.stack([hx, hy], axis=1))
+                feats.append(dict(xy=xy, area=area, part=part, tags=p, h=h, lv=lv, holes=holes,
                                   name=p.get('name:en') or p.get('name') or '',
                                   osm=f"{p.get('@type', '?')[0]}{p.get('@id', '?')}"))
     return feats
@@ -511,6 +529,62 @@ def simplify_ring(xy):
         tol *= 2
 
 
+def hole_rings(holes, q, ox, oy):
+    """v0.7.7: a record's inner rings for FSB2, matched to its stored outer ring q (0.5 m units from the origin):
+    each courtyard clipped HOLE_WALL inside that ring, ~1 m Douglas-Peucker, clockwise, quantized as the outer ring,
+    no closing vertex, 3..255 vertices; those under HOLE_MIN_AREA or narrower than HOLE_MIN_WIDTH left out."""
+    if not holes:
+        return []
+    outer = Polygon(q / 2.0)
+    if not outer.is_valid:
+        outer = outer.buffer(0)
+    inner = outer.buffer(-HOLE_WALL)
+    if inner.is_empty:
+        return []
+    out = []
+    for h in holes:
+        hp = Polygon(h - [ox, oy])
+        if not hp.is_valid:
+            hp = hp.buffer(0)
+        if hp.is_empty or hp.area < HOLE_MIN_AREA:
+            continue
+        g = hp.intersection(inner)
+        for piece in (g.geoms if hasattr(g, 'geoms') else [g]):
+            if piece.geom_type != 'Polygon' or piece.is_empty or piece.area < HOLE_MIN_AREA:
+                continue
+            piece = Polygon(piece.exterior)
+            mrr = piece.minimum_rotated_rectangle
+            if mrr.geom_type != 'Polygon':
+                continue
+            c = np.asarray(mrr.exterior.coords)
+            side = min(np.hypot(*(c[1] - c[0])), np.hypot(*(c[2] - c[1])))
+            if side < HOLE_MIN_WIDTH or 2 * piece.area / max(piece.length, 1e-6) < HOLE_MIN_WIDTH / 2:
+                continue
+            tol = 1.0
+            while True:
+                s = piece.simplify(tol, preserve_topology=True)
+                if s.is_empty or s.geom_type != 'Polygon' or s.area < HOLE_MIN_AREA:
+                    s = piece
+                s = orient(Polygon(s.exterior), -1.0)      # clockwise: the courtyard on the walls' right
+                ring = np.asarray(s.exterior.coords)[:-1]
+                if len(ring) <= 255:
+                    break
+                tol *= 2
+            hq = np.round(ring * 2).astype(np.int64)
+            keep = np.ones(len(hq), bool)
+            keep[1:] = np.any(hq[1:] != hq[:-1], axis=1)
+            hq = hq[keep]
+            if len(hq) > 1 and np.all(hq[0] == hq[-1]):
+                hq = hq[:-1]
+            if len(hq) < 3 or np.abs(hq).max() > 32767:
+                continue
+            x, y = hq[:, 0].astype(np.float64), hq[:, 1].astype(np.float64)
+            if np.dot(x, np.roll(y, -1)) - np.dot(np.roll(x, -1), y) >= 0:   # still clockwise after the rounding
+                continue
+            out.append(hq)
+    return out
+
+
 def bake_centre(cid):
     name = CENTRES[cid][0]
     origin, box = map_box(cid)
@@ -576,6 +650,16 @@ def bake_centre(cid):
     for r in recs:
         body.write(r[4].astype('<i2').tobytes())
     raw = head + body.getvalue()
+    n_holes = n_hole_verts = 0
+    if HOLES:   # v0.7.7: FSB2, the same bytes after the magic, then the inner rings by record
+        hrec, hverts = io.BytesIO(), io.BytesIO()
+        for k, r in enumerate(recs):
+            for hq in hole_rings(r[5].get('holes'), r[4], ox, oy):
+                hrec.write(struct.pack('<IHH', k, len(hq), 0))
+                hverts.write(hq.astype('<i2').tobytes())
+                n_holes += 1
+                n_hole_verts += len(hq)
+        raw = b'FSB2' + raw[4:] + struct.pack('<II', n_holes, n_hole_verts) + hrec.getvalue() + hverts.getvalue()
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, cid + '.bin.gz')
     bio = io.BytesIO()
@@ -606,12 +690,15 @@ def bake_centre(cid):
                  count=len(recs), vertices=sum(len(r[4]) for r in recs),
                  maxHeightM=round(float(hs.max()), 1) if len(hs) else 0, minKeepHeightM=thr,
                  bytes=os.path.getsize(path))
+    if HOLES:
+        entry['holes'], entry['holeVertices'] = n_holes, n_hole_verts
     report = dict(read=n_read, outlinesDropped=dropped, outlinesKeptWithParts=both,
                   parts=int(sum(1 for r in recs if r[5]['part'])), bands=band_counts, sources=src,
                   rawBytes=len(raw),
                   tallest=[dict(h=-r[1] / 10, est=bool(r[3] & 1), part=bool(r[3] & 2), name=r[5]['name'], osm=r[5].get('group', r[5]['osm']))
                            for r in top])
-    quicklook(cid, recs, origin, box)
+    if os.environ.get('FS_CENTRES_QUICKLOOK') != '0':   # v0.7.7: =0 skips the quick-look pictures
+        quicklook(cid, recs, origin, box)
     return entry, report
 
 

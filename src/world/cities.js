@@ -18,6 +18,7 @@ import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.
 import { coverReader } from './clipwindow.js';
 import { countryAt } from './region.js';
 import { REGION_ID } from './regions.js';
+import { FINE_GLSL, FINE_PX } from './finecover.js';   // v0.7.7 towns: the 31 m cover's water, in Europe's blended town only
 
 const BLOCK = 400;          // m
 const HALF = 20;            // blocks each side of the camera: ±8 km
@@ -165,6 +166,206 @@ const EU_ROOFS = /* glsl */ `
                 : ctry == 5 ? (rr < 0.7 ? mix(vec3(0.22, 0.10, 0.07), vec3(0.27, 0.13, 0.09), sh1) : vec3(0.12, 0.11, 0.11))
                 : (rr < 0.85 ? mix(vec3(0.27, 0.12, 0.07), vec3(0.33, 0.17, 0.10), sh1) : vec3(0.24, 0.23, 0.21));
         }`;
+// v0.7.7 (briefs/V0-7-7.md part 1, the towns): one switch for the part, on by default, read once at import from the
+// page's query (?towns77=0) or in node from FS_TOWNS77=0, as apron.js's lookSwitch(). Off, Europe's town is v0.7.6's
+// shader text character for character, and centres.js draws the courtyards roofed (it imports this switch).
+export function towns77Switch() {
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = /[?&]towns77=([01])\b/.exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env.FS_TOWNS77 === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const TOWNS77 = towns77Switch();
+export const TOWNS77_CENTRES = 4;      // the nearest ready centres' boxes the shader blends round
+// v0.7.7 towns: Europe's town (euVert()'s text) -> the blended one. Eight splices at anchors that must each occur once,
+// every one inside Europe's own branches (ctry >= 3): East Asia never compiles this.
+//  - the town round a real centre: towns77Dist() is the distance (m) from a block's centre to the nearest ready centre's
+//    box (0 inside); tFar rises from 0 within 500 m of it to 1 at 3 km and beyond (and where no centre is near);
+//  - perimeter blocks round courtyards only where it's dense enough, the threshold rising with tFar and wandering with a
+//    seeded noise of the position (vnoise: a function of the map position only), and then only a share of those blocks
+//    (a block hash under 0.85 near a centre, 0.30 far from one, wandering with the noise), so far from a centre (Dijon,
+//    the far bank at Zaragoza) most of the town is houses and small flats, with a block here and there;
+//  - each courtyard block's size by the block's hash and a second noise, its storeys falling by up to two with tFar;
+//  - the dense blocks that aren't courtyards near a centre mostly flats of three to eight floors; the flats thinning out
+//    with tFar: past the centre, low houses;
+//  - round a centre's box the generated town thins to about half over a band whose line wanders by +-250 m (so no
+//    straight edge where the real footprints stop), and inside the box, in the cells the real buildings don't take;
+//  - no generated building where the 31 m cover (finecover.js's water class) has water under its middle or either end;
+//  - the roofs' mix drifting by the first noise and with tFar (more of each mix's first tone further out).
+export const TOWNS77_GLSL = /* glsl */ `
+      // v0.7.7 towns: the nearest ready real centres' boxes, relative to the scene origin (x0, y0, x1, y1).
+      uniform vec4 uCtr[${TOWNS77_CENTRES}];
+      uniform float uCtrN;
+      float towns77Dist(vec2 p) {
+        float d = 1e6;
+        for (int k = 0; k < ${TOWNS77_CENTRES}; k++) {
+          if (float(k) >= uCtrN) break;
+          vec4 b = uCtr[k];
+          d = min(d, length(max(max(b.xy - p, p - b.zw), vec2(0.0))));
+        }
+        return d;
+      }
+`;
+// v0.7.7 towns, part 3 (the low suburbs) on a switch of its own: ?suburbs77=0 (node FS_SUBURBS77=0), on by default and
+// meaningful only with towns77 on. Off, towns77 keeps its blend round the centres, the block sizes and heights by place,
+// the roofs' drift and the river rule, and the town keeps v0.7.6's courtyard rule.
+export function suburbs77Switch() {
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = /[?&]suburbs77=([01])\b/.exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env.FS_SUBURBS77 === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const SUBURBS77 = TOWNS77 && suburbs77Switch();
+// The suburbs' rule as GLSL, shared by the town's vertex shader and the terrain's (its garden ground), so the two agree
+// block for block. Needs TOWNS77_GLSL, NOISE_GLSL's ihash() and vnoise(), uCover and natUv(). mcAbs: the 400 m block's
+// centre on the map; cRel: the same relative to the scene origin; thr0: the mix's courtyard threshold (v0.7.6's), used
+// for a village only: the suburbs' rule takes 0.5 everywhere, so the terrain's gardens (which don't know the block's
+// country) agree with the buildings in Britain too.
+//  - a village (the cover within 1.6 km round the block, four samples, under 0.22 on average) keeps v0.7.6's rule;
+//  - else courtyard blocks only above a threshold that rises with tFar (0 within 500 m of a ready centre's box, 1 at
+//    3 km and where none is near) and wanders with a noise of the position, and only for a hashed share of the blocks
+//    (0.85 near, 0.45 far);
+//  - the other built-up blocks, a hashed share rising with tFar, are filled with terraces (t77Block() == 1).
+export const SUBURB77_GLSL = /* glsl */ `
+      float t77Dense(vec2 mAbs) { return uHasCover > 0.5 ? texture(uCover, natUv(mAbs)).b : 0.0; }
+      bool t77Village(vec2 mcAbs) {
+        float a = t77Dense(mcAbs + vec2(1600.0, 0.0)) + t77Dense(mcAbs - vec2(1600.0, 0.0)) + t77Dense(mcAbs + vec2(0.0, 1600.0)) + t77Dense(mcAbs - vec2(0.0, 1600.0));
+        return a * 0.25 < 0.22;
+      }
+      int t77Block(ivec2 bc, vec2 mcAbs, vec2 cRel, float dense, float thr0) {   // 0 courtyards, 1 terraces, 2 the rest
+        float tFar = smoothstep(500.0, 3000.0, towns77Dist(cRel)), tN = vnoise(mcAbs * 0.0011);
+        if (t77Village(mcAbs)) return dense > thr0 ? 0 : 2;
+        if (dense > 0.5 + 0.16 * tFar + (tN - 0.5) * 0.16 && ihash(bc, 25u) < mix(0.85, 0.30, tFar) + (tN - 0.5) * 0.4) return 0;
+        if (!(dense > 0.3 && ihash(bc, 26u) < 0.55 + 0.3 * tFar)) return 2;
+        // (round 3) a terrace block with no terrace-able neighbour takes the neighbours' kind: no lone patch
+        int nb = 0;
+        for (int k = 0; k < 4; k++) {
+          ivec2 o = k == 0 ? ivec2(1, 0) : k == 1 ? ivec2(-1, 0) : k == 2 ? ivec2(0, 1) : ivec2(0, -1);
+          if (t77Dense(mcAbs + vec2(o) * 400.0) > 0.3 && ihash(bc + o, 26u) < 0.55 + 0.3 * tFar) nb++;
+        }
+        return nb > 0 ? 1 : 2;
+      }
+      // (round 3) a terrace quarter's own layout, by its hashes (the town and the terrain read the same): rows 3 to 6,
+      // across (most) or along the quarter, or none (a green); qi: the quarter (0 or 1 each way).
+      void t77Quarter(ivec2 bc, ivec2 qi, out int nRows, out bool turned, out bool green) {
+        ivec2 qk = bc * 2 + qi;
+        nRows = 3 + int(floor(ihash(qk, 28u) * 2.999));   // 3 to 5: a block's slots hold five rows a quarter (the code review's second look: with 6, the sixth was never drawn and the quarter stood lopsided)
+        turned = ihash(qk, 27u) < 0.28;
+        green = ihash(qk, 29u) < 0.10;
+      }
+`;
+// v0.7.7 suburbs: the uniforms of the nearest ready centres, one pair of objects shared by the town's material and the
+// terrain's (terrain.js puts them in its own uniforms with suburbs77 on), so both read the boxes cities.js sets.
+export const TOWNS77_UNIFORMS = { uCtr: { value: Array.from({ length: TOWNS77_CENTRES }, () => new THREE.Vector4()) }, uCtrN: { value: 0 } };
+// v0.7.7 suburbs: the terrain's ground under a block of terraces (t77Block() == 1): in each quarter, garden plots between
+// the five rows (lawn in several greens, a hedge between plots, a few trees' darker tones), the streets left to the
+// town's own ground. m: the map point; lod: metres a pixel. Returns the colour, and in w how much of it to take.
+export const GARDEN77_GLSL = /* glsl */ `
+      vec3 garden77(vec2 m, float lod, out float w) {
+        w = 0.0;
+        vec2 bcf = floor(m / 400.0), mc = (bcf + 0.5) * 400.0;
+        ivec2 bc = ivec2(bcf);
+        // (round 3b) only as far as the houses they belong to (drawn within 8 km and below 4,500 m): full to 6 km of true
+        // distance from the camera to the point, none by 7.8 km, a smooth function of distance only
+        float far = length(vec3(m - uOrigin - vec2(uCamPos.x, -uCamPos.z), max(uCamAgl, 0.0)));
+        if (far > 7800.0) return vec3(0.0);
+        float dn = t77Dense(mc);
+        int tb = t77Block(bc, mc, mc - uOrigin, dn, 0.5);
+        if (tb == 0 || (tb == 2 && (dn < 0.3 || t77Village(mc)))) return vec3(0.0);   // gardens under the terraces, and lighter under the other low blocks
+        float ang = (ihash(bc, 22u) - 0.5) * 1.0, ca = cos(ang), sa = sin(ang);
+        vec2 d = m - mc, q = vec2(ca * d.x + sa * d.y, -sa * d.x + ca * d.y);   // the block's own frame (cities.js's lp)
+        vec2 v = q - sign(q) * 95.0;                                           // from the quarter's middle
+        // (round 3) the gardens reach the street with a ragged hedge line, no pad; a turned quarter's plots run the other way
+        int nR = 5; bool turned = false, green = false;
+        if (tb == 1) t77Quarter(bc, ivec2(step(0.0, q)), nR, turned, green);
+        if (turned) v = v.yx;
+        float rag = (vnoise(m * 0.045) - 0.5) * 6.0;
+        float inside = (1.0 - smoothstep(84.0 + rag, 88.0 + rag, abs(v.x))) * (1.0 - smoothstep(84.0 - rag, 88.0 - rag, abs(v.y))) * (tb == 1 ? 1.0 : 0.6);
+        if (inside <= 0.0) return vec3(0.0);
+        float pitch = 150.0 / float(nR);
+        // (the code review's second look) The rows stand at (k - (nR - 1) / 2) pitches: whole pitches for 3 or 5 rows, half pitches for 4.
+        // The plots' boundaries must fall midway between two rows either way, so an even count shifts the cells by half a pitch.
+        float vy = v.y + 0.5 * pitch * float(1 - nR % 2);
+        vec2 cell = floor(vec2(v.x / 8.0, (vy + 0.5 * pitch) / pitch)), f = vec2(fract(v.x / 8.0), fract((vy + 0.5 * pitch) / pitch));
+        if (green) { cell = floor(v / 24.0); f = fract(v / 24.0); }            // a green: a few big lawns
+        ivec2 pc = bc * 64 + ivec2(cell) + ivec2(sign(q) * 17.0);
+        float h0 = ihash(pc, 61u), h1 = ihash(pc, 62u);
+        vec3 lawn = mix(vec3(0.074, 0.104, 0.044), vec3(0.108, 0.126, 0.058), h0);
+        lawn = mix(lawn, vec3(0.120, 0.112, 0.085), step(0.82, h1));            // a patio, a shed's roof
+        lawn = mix(lawn, vec3(0.040, 0.060, 0.030), step(h1, 0.16) * (1.0 - smoothstep(0.25, 0.45, length(f - 0.5))));   // a tree
+        float hedge = 1.0 - smoothstep(0.06, 0.06 + lod / 8.0 + 0.04, min(f.x, 1.0 - f.x));
+        lawn = mix(lawn, vec3(0.045, 0.062, 0.032), hedge * 0.7);
+        vec3 avg = vec3(0.086, 0.106, 0.050);
+        w = inside * 0.92 * (1.0 - smoothstep(6000.0, 7800.0, far));
+        return mix(lawn, avg, smoothstep(3.0, 12.0, lod));
+      }
+`;
+export function towns77Vert(src, suburbs = SUBURBS77) {
+  const once = (a) => { const i = src.indexOf(a); if (i < 0 || src.indexOf(a, i + 1) >= 0) throw new Error('cities: towns77Vert anchor ' + JSON.stringify(a)); return i; };
+  // [anchor, replacement, part]: 2 the blend and the river (towns77), 3 the suburbs (suburbs77 too)
+  const R = [
+    ['      const float BLOCK = ', (a) => TOWNS77_GLSL + (suburbs ? SUBURB77_GLSL : '') + FINE_GLSL + a, 2],
+    ['          bool town = dense > (ctry == 3 ? 0.62 : 0.5);', () => `          float tD = towns77Dist(centre), tFar = smoothstep(500.0, 3000.0, tD);   // v0.7.7 towns
+          float tN = vnoise(mc * 0.0011), tN2 = vnoise(mc * 0.0031 + 17.0);
+          ${suburbs ? 'int tB = t77Block(bc, mc, centre, dense, ctry == 3 ? 0.62 : 0.5);   // v0.7.7 suburbs: 0 courtyards, 1 terraces, 2 the rest\n          bool town = tB == 0;' : 'bool town = dense > (ctry == 3 ? 0.62 : 0.5);'}`, 2],
+    ['              float bw = 118.0 + 30.0 * bh, bd = 13.0 + 3.0 * sh1;', () => '              float bw = (100.0 + 50.0 * bh) * (0.70 + 0.55 * tN2), bd = 12.0 + 5.0 * sh1;   // v0.7.7 towns', 2],
+    ['              size = vec3(bw, ((ctry == 3 ? 4.0 : 5.0) + floor(3.0 * sh3)) * 3.2, bd);', () => '              size = vec3(bw, max(3.0, (ctry == 3 ? 4.0 : 5.0) + floor(3.0 * sh3) - floor(2.0 * tFar + 1.2 * (tN2 - 0.5) + 0.5)) * 3.2, bd);   // v0.7.7 towns', 2],
+    ['        keep *= step(30.0, sea) * step(25.0, inl) * step(length(nn), 0.3) * step(zone, 0.001);', (a) => a + `
+        if (ctry > 2) {
+          // v0.7.7 towns: thinned round a real centre's box (a wandering band, no straight line), and off the 31 m water.
+          float tE = towns77Dist(centre) + (vnoise(mc * 0.0031 + 17.0) - 0.5) * 500.0;
+          keep *= step(ihash(${'sk'}, 37u), 0.45 + 0.55 * smoothstep(-150.0, 450.0, tE));
+          if (uFineOn > 0.5) {
+            vec2 fp = finePos(vec2(pc.x, -pc.y));
+            if (fineInside(fp) > 2.0) {
+              vec2 ax = vec2(cos(rot), sin(rot)) * (0.5 * size.x / ${FINE_PX.toFixed(2)});
+${suburbs ? '              int f0 = fineTexel(ivec2(floor(fp)) + uFineOrg), f1 = fineTexel(ivec2(floor(fp + ax)) + uFineOrg), f2 = fineTexel(ivec2(floor(fp - ax)) + uFineOrg);\n              if (f0 == 1 || f1 == 1 || f2 == 1 || (kind == 3.0 && (f0 == 2 || f1 == 2 || f2 == 2))) keep = 0.0;   // (suburbs: no house on water or in a wood)' : '              if (fineTexel(ivec2(floor(fp)) + uFineOrg) == 1 || fineTexel(ivec2(floor(fp + ax)) + uFineOrg) == 1 || fineTexel(ivec2(floor(fp - ax)) + uFineOrg) == 1) keep = 0.0;'}
+            }
+          }
+        }`, 2],
+    ['          bool sud = mc.y < -110000.0;', (a) => `          rr = clamp(rr + 0.35 * (vnoise(mc * 0.0011) - 0.5) - 0.12 * smoothstep(500.0, 3000.0, towns77Dist(centre)), 0.0, 0.999);   // v0.7.7 towns
+${suburbs ? '          if (kind == 3.0) { float rn = clamp(vnoise(mc * 0.0009 + 5.0) * 1.2 - 0.1 + (rr - 0.5) * 0.08, 0.0, 0.999); rr = ctry == 5 || ctry == 6 ? rn * 0.75 : 0.3 + 0.7 * rn; }   // v0.7.7 suburbs: one tile family a neighbourhood, a little varied\n' : ''}` + a, 2],
+    ['          } else if (dense > 0.35 && sh2 > 0.5) {', () => '          } else if (dense > 0.35 + 0.2 * tFar && sh2 > 0.5 + 0.12 * tFar - 0.5 * max(dense - 0.5, 0.0) * (1.0 - tFar)) {   // v0.7.7 suburbs: flats in the dense blocks near a centre, fewer past it', 3],
+    ['            size = vec3(24.0 + 22.0 * sh0, (3.0 + floor(3.0 * sh3)) * 3.0, 12.0 + 4.0 * sh1);', () => '            size = vec3(24.0 + 22.0 * sh0, (3.0 + floor(3.0 * sh3) + (dense > 0.6 ? floor(3.0 * (1.0 - tFar) * sh0) : 0.0)) * 3.0, 12.0 + 4.0 * sh1);   // v0.7.7 suburbs: taller near a centre', 3],
+    ['            size = vec3(seg * (1.0 + floor(1.9 * sh0)), (2.0 + step(0.75, sh3)) * 2.9, 9.0 + 3.0 * sh1);', () => `            seg = 7.0 + 2.5 * sh2;   // v0.7.7 suburbs: the houses in terraces of five to nine (four to six across), 9 to 11 m deep
+            size = vec3(seg * (sh1 > 0.6 ? 4.0 + floor(2.9 * sh0) : 5.0 + floor(4.9 * sh0)), (2.0 + step(0.75, sh3)) * 2.9, 9.0 + 2.0 * sh1);`, 3],
+    ['          if (town) {', () => `          if (tB == 1) {
+            // v0.7.7 suburbs: a block of terraces: in each of its four quarters five terraces across it, 31 m apart (9 to 11 m
+            // of houses and a garden's depth behind), each one instance with its ridge along the row (the shader's vSeg).
+            int qd = si < 16 ? si / 4 : si - 16, tr = si < 16 ? si % 4 : 4;
+            ivec2 qi = ivec2(qd % 2, qd / 2);
+            vec2 qc = (vec2(qi) - 0.5) * 190.0;
+            int nR; bool turned, green;
+            t77Quarter(bc, qi, nR, turned, green);
+            float pitch = 150.0 / float(nR);                   // (round 3) 3 to 5 rows: the gardens 20 to 40 m deep
+            kind = 3.0; seg = 6.5 + 2.5 * sh2;
+            float len = (140.0 + 20.0 * bh) * (sh2 < 0.3 ? 0.40 + 0.25 * sh1 : 0.75 + 0.25 * sh1);   // some rows broken short
+            vec2 o = vec2((sh0 - 0.5) * (150.0 - len) * 0.9, (float(tr) - 0.5 * float(nR - 1)) * pitch);
+            lp = qc + (turned ? vec2(o.y, o.x) : o);
+            if (turned) rot += 1.5708;
+            size = vec3(len, (2.0 + step(0.7, sh3)) * 2.9, 9.0 + 2.0 * sh1);
+            if (tr >= nR || green) size = vec3(0.0);           // the quarter's rows past its count, or a green
+            sh3 *= 0.5;
+          } else if (town) {`, 3],
+    ['        vApt = kind == 0.0 || kind == 6.0 ? 1.0 : 0.0;', (a) => `        if (ctry > 2) {   // v0.7.7 suburbs (round 3): within 600 m of a real centre's box, its paler roofs and walls
+          float tP = 1.0 - smoothstep(0.0, 600.0, towns77Dist(centre) + (vnoise(mc * 0.0031 + 17.0) - 0.5) * 300.0);
+          vRoof = mix(vRoof, vec3(0.23, 0.23, 0.225) * (0.9 + 0.2 * sh1), 0.55 * tP);
+          vTint = mix(vTint, vec3(0.40, 0.39, 0.36) * (0.92 + 0.16 * sh2), 0.35 * tP);
+        }
+` + a, 3],
+    ['          if (!town && bh < 0.3 && si >= 18) {', () => '          if (!town && tB != 1 && bh < 0.3 && si >= 18) {', 3],
+  ];
+  const use = R.filter((e) => e[2] === 2 || suburbs);
+  for (const [a] of use) once(a);
+  for (const [a, f] of use) { const b = f(a); src = src.replace(a, () => b); }
+  return src;
+}
 // East Asia's vertex shader text -> Europe's: four splices at anchors that must each occur exactly once.
 export function euVert(src) {
   const once = (a) => { const i = src.indexOf(a); if (i < 0 || src.indexOf(a, i + 1) >= 0) throw new Error('cities: euVert anchor ' + JSON.stringify(a)); return i; };
@@ -515,6 +716,14 @@ export function createCities(scene, uniforms, chunks) {
       }`,
   });
   if (REGION_ID === 'europe') mat.vertexShader = euVert(mat.vertexShader);   // v0.7.0: before its first compile
+  // v0.7.7 towns: Europe's town blended round the real centres (towns77Vert()); off, v0.7.6's text and uniforms.
+  const T77 = REGION_ID === 'europe' && TOWNS77;
+  if (T77) {
+    mat.vertexShader = towns77Vert(mat.vertexShader);
+    u.uCtr = TOWNS77_UNIFORMS.uCtr;
+    u.uCtrN = TOWNS77_UNIFORMS.uCtrN;
+  }
+  let ctrBoxes = null, ctrList = [], ctrOx = NaN, ctrOy = NaN, ctrGX = NaN, ctrGY = NaN, ctrMV = -1;
   const mesh = new THREE.Group();          // (still `mesh` to its users: hiding it hides the cities)
   mesh.name = 'cities';
   tiles.forEach((T, t) => {
@@ -531,15 +740,37 @@ export function createCities(scene, uniforms, chunks) {
     mesh,
     // The real centres' mask: at(x, y) true where a block is left out; version() rises when it changes.
     setMask(at, version) { maskAt = at || null; maskVersion = version || null; maskVer = version ? version() : 0; gridX = NaN; },
+    // v0.7.7 towns: fn() -> the ready real centres' boxes (centres.js's boxes()); read when the grid or the mask moves.
+    setCentreBoxes(fn) { ctrBoxes = fn || null; gridX = NaN; },
+    towns77: T77,
     // frustum (v0.6.1): the view's THREE.Frustum in scene coordinates; without one every tile is drawn.
     update(camMap, origin, agl, frustum = null) {
       const on = agl < CITY_MAX_AGL;
       mesh.visible = on;
-      if (!on) return { instances: 0, tris: 0, drawCalls: 0 };
       const cx = Math.floor(camMap.x / BLOCK), cy = Math.floor(camMap.y / BLOCK);
+      if (T77) {
+        // v0.7.7 towns: the nearest ready centres (the terrain's gardens read them at every height too), listed again only
+        // when the camera's block or the centres' mask moves, and set relative to the origin only when it moves.
+        const mv = maskVersion ? maskVersion() : 0;
+        if (cx !== ctrGX || cy !== ctrGY || mv !== ctrMV) {
+          ctrGX = cx; ctrGY = cy; ctrMV = mv;
+          const px = (cx + 0.5) * BLOCK, py = (cy + 0.5) * BLOCK;
+          const d = (b) => Math.hypot(Math.max(b[0] - px, 0, px - b[2]), Math.max(b[1] - py, 0, py - b[3]));
+          ctrList = (ctrBoxes ? ctrBoxes() : []).map((b) => [d(b), b]).filter((e) => e[0] < 20000).sort((a, b) => a[0] - b[0]).slice(0, TOWNS77_CENTRES).map((e) => e[1]);
+          ctrOx = NaN;
+        }
+        if (origin.x !== ctrOx || origin.y !== ctrOy) {
+          ctrOx = origin.x; ctrOy = origin.y;
+          ctrList.forEach((b, k) => u.uCtr.value[k].set(b[0] - origin.x, b[1] - origin.y, b[2] - origin.x, b[3] - origin.y));
+          u.uCtrN.value = ctrList.length;
+        }
+      }
+      if (!on) return { instances: 0, tris: 0, drawCalls: 0 };
       if (cov && cov.version() !== coverVer) { coverVer = cov.version(); blockCache.clear(); gridX = NaN; }
       if (maskVersion && maskVersion() !== maskVer) { maskVer = maskVersion(); gridX = NaN; }
-      if (cx !== gridX || cy !== gridY) { gridX = cx; gridY = cy; fill(cx, cy); }
+      if (cx !== gridX || cy !== gridY) {
+        gridX = cx; gridY = cy; fill(cx, cy);
+      }
       u.uGridCell.value.set(cx, cy);
       u.uGridBase.value.set(cx * BLOCK - origin.x, cy * BLOCK - origin.y);
       // Each tile's box in the scene (x east, z south; the buildings stand within ~230 m of their

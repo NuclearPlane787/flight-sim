@@ -113,6 +113,7 @@ export function createGeoRules({ magvar, country, krmask = null }) {
     hasKrMask: K !== null,
     magvarHeader: magvar.header,
     countryHeader: country.header,
+    countryValues: C.v,          // v0.7.7 (country): the raw raster, for the ground shader's zones (ground.js's euZoneData())
   };
 }
 

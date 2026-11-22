@@ -31,8 +31,15 @@ import * as THREE from '../../vendor/three.module.js';
 import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { toMap } from './frame.js';
 import { REGION_ID } from './regions.js';
-import { CITY_MAX_AGL } from './cities.js';
+import { CITY_MAX_AGL, towns77Switch, TOWNS77 } from './cities.js';
 import { CELL_M, AVIATION_M, loadAndBuild } from './centres-worker.js';
+
+// v0.7.7 (briefs/V0-7-7.md part 1, the towns): one switch for the part, on by default, read once at import from the
+// page's query (?towns77=0) or in node from FS_TOWNS77=0, as apron.js's lookSwitch(). Off, the game draws what the pushed
+// v0.7.6 drew: the centres' courtyards roofed (FSB2 read as FSB1), and cities.js's town as before.
+// (towns77Switch() and TOWNS77 live in cities.js, which this module imports, so neither module imports the other's switch
+// in a cycle.)
+export { towns77Switch, TOWNS77 };
 
 export const LOAD_M = 60000;           // load a centre within this of its box
 export const RELEASE_M = 120000;       // release it beyond this
@@ -462,7 +469,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
   }
   function startJob(c) {
     const job = ++jobSeq;
-    const msg = { job, url: base + 'centres/' + c.info.file, info: c.info, exclude: exclude || [], runways: runRunways(c.info) };
+    const msg = { job, url: base + 'centres/' + c.info.file, info: c.info, exclude: exclude || [], runways: runRunways(c.info), holes: TOWNS77 };
     c.state = 'building'; c.job = job; c.t0 = performance.now();
     inFlight = { job, id: c.info.id };
     const w = getWorker();
@@ -581,7 +588,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
       }
       // Done: keep only what the frames need (the GPU has the rest), and the mask is on.
       c.meta = { tallTop: r.tall.top, tallEnd: r.tall.end, chunkStart: L.chunkStart, chunkCols: L.chunkCols, chunkRows: L.chunkRows, chunkM: L.chunkM, mask: r.mask, masked: r.masked, kept: r.kept };
-      c.timing = { id: c.info.id, ...r.ms, bytes: r.bytes, toResultMs: c.tResult - c.t0, stagingMs: performance.now() - c.tResult, totalMs: performance.now() - c.t0, tallTris: r.tall.tris, lowTris: r.low.tris, buildings: r.kept, lights: n, masked: r.masked, cells: c.info.cols * c.info.rows, skipped: r.skipped };
+      c.timing = { id: c.info.id, ...r.ms, bytes: r.bytes, toResultMs: c.tResult - c.t0, stagingMs: performance.now() - c.tResult, totalMs: performance.now() - c.t0, tallTris: r.tall.tris, lowTris: r.low.tris, buildings: r.kept, lights: n, masked: r.masked, cells: c.info.cols * c.info.rows, skipped: r.skipped, holes: r.holes };
       log.push(c.timing);
       c.res = null;
       c.state = 'ready';
@@ -710,6 +717,8 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
   return {
     stats, group, centres, log, ready: Promise.all([indexP, landmarksP]),
     update, maskAt, maskVersion: () => maskVer, dispose,
+    // v0.7.7 towns: the ready centres' boxes [x0, y0, x1, y1] (map metres), for cities.js's blend round them.
+    boxes: () => [...centres.values()].filter((c) => c.state === 'ready').map((c) => c.info.box),
     AVIATION_M,
   };
 }

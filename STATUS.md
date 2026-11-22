@@ -7348,3 +7348,410 @@ It confirmed what was promised for the aurora (strong at Sapporo and Vladivostok
 - The scratch is `/tmp/flight-sim/v076/` (the frozen pushed v0.7.5, the lock and scripts, the subagents' briefs and reports, the checks' output, the contact sheets; gone at a restart). 348 pictures `v076-*` and `v060-flight-v076-*` are in `Claude outputs/flight-sim/`. Three OSM extracts were added to `reference/raw/osm/` (git-ignored): `aragon-261122`, `england-east-261122`, `england-south-west-261122`.
 - No path with a user's name in `src/`, `tools/` or `tests/` (grep: none).
 - **The subagents of v0.7.6, all Opus, four at once at most:** `bake`, `apa`, `apb`, `apc`, `city`, `docs`, the code reviewer and the pictures reviewer; all reported, none running.
+
+## 2026-11-22, 21:55 KST: v0.7.6 pushed; v0.7.7 started (Claude Code, a new session; `briefs/V0-7-7.md`)
+
+`date`: Sun Nov 22 21:49:20 KST 2026; `pmset -g batt`: "Now drawing from 'Battery Power'", 90 %, discharging. The game's head: `ef223dc v0.7.6` (committed 21:31:30). `python3 tools/build-log.py`: 102 entries. The brief copied from `Claude outputs/flight-sim/V0-7-7.md` to `briefs/V0-7-7.md` (the only file newer than the push). The stop: ready to push by 02:00 KST on Monday 23 November, the write-up from 01:15.
+
+- **The scratch, `/tmp/flight-sim/v077/`:** a frozen copy of the pushed v0.7.6 (`base/GameDump/games/flight-sim/`, APFS clones of everything but `reference/` and `.git`, taken at 21:50 before any edit; `src/` compared equal); the lock, the guard's wrappers and the hang watch (`excl.py`, `g.sh`, `gk.sh`, v0.7.6's with the paths changed: on battery one Chrome and no frame-rate check, on mains two); `rules.md` and the two briefs (`brief-towns.md`, `brief-country.md`); the server on 8014 (the tree, and `/base/` the pushed copy), PID in `/tmp/flight-sim/pids`.
+- **The Chrome processes running before the run are Shane's** (29 PIDs from 71709 to 89147 noted at 21:50): none is the run's.
+- **Two Opus subagents, from 21:53:** `towns` (part 1; stop 00:30) and `country` (part 2; stop 00:15), each with one switch (`?towns77=0`, `?fields77=0`) and its own files. The lead takes part 3 (the ground's data), part 4, the installs, the comparisons, the frame rates and the reviews.
+- **Part 4 (ROADMAP, at the start), 22:14:** the v0.7.7 row rewritten to the brief (the earlier look-pass plan kept after "As first planned, before the split"), a v0.7.8 row added after it, and sixteen findings in "Found while building v0.7.0" to "… v0.7.6" marked with the version that takes each (six to v0.7.7, ten to v0.7.8).
+
+## 2026-11-22, 22:15 KST: v0.7.7 checkpoint 1: the ground's data baked, proved and installed (lakes at their own level, Schiphol's patch, Cristo Rei's cliff); the centres with their courtyards installed; mains back (Claude Code)
+
+`date`: Sun Nov 22 22:14:00 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'" (charging since about 21:58: the run began on battery at 90 %, and the lock has let two Chromes run since). Subagents out: `towns`, `country`. Running: part 3's before-and-after stills, and each subagent's own stills, in turn at the lock.
+
+### Part 3, the lakes (`tools/bake_region_lakes.py`, new)
+
+- **What was measured first, on v0.7.6's tiles** (`lead/probe.py`; water cells within 30 cells of a point in each lake): the bake drew every inland water cell "2 m under its nearest bank", so a lake wasn't flat and wasn't at its level. The IJsselmeer −2.75 to 0.75 m, the Markermeer −5.25 to −1.75 m, **Loch Ness 19 to 484 m (median 50 m), Lake Lucerne 412 to 620 m, Lago Maggiore 192 to 287 m, Garda 63 to 112 m, Geneva 367 to 393 m**: a mountain lake's surface climbed its banks.
+- **The level's source is the elevation model itself:** GLO-90 is hydro-flattened, and the batches' staged raw heights (`raw-h/`, still in `/tmp/flight-sim/v070` to `v076`, 229 files) hold each lake flat at its level: the IJsselmeer and the Markermeer 0.00 m, Geneva 368.0, Constance 394.0, Garda 64.5, Lough Neagh 10.5, Loch Ness 16.0, Maggiore 193.0, Lucerne 433.5, Zurich 404.5, Bolsena 304.5. **No OSM `ele` tag was read** (the brief's first source): the model's own flattened surface is the same kind of fact, already on disk for every lake at once. Within 4 m of each lake's mapped level (Geneva 4 m low, the rest within 2 m).
+- **The rule** (the tool's header has it in full): a water cell is flat when two or more of its four neighbours are water and none differs by more than 0.06 m in the raw heights; flat cells in groups of six or more are a lake's surface and take their own raw height; other water cells of the same body take the nearest such cell's level within 4 cells (1 km), eased back to the installed height by 12 cells (so a river leaving a lake has no step); water with no flat surface near it (rivers, ponds) is left exactly as installed. **The floor:** a water cell never stores 0 (the sea): a level that rounds to 0 is stored as −1 step, −0.25 m, which is where the IJsselmeer and the Markermeer come out (mapped −0.2 m NAP).
+- **The bake** (22 s through the guard; `out/lead/lakes-bake.txt`): **173 of 224 tiles' cores change, in 270,185 water cells (16,887 km²); 175 files written** (two for their borders alone). Only `.h.i16.gz` files: no water byte, no cover byte, no manifest key, and the 1 km level untouched (it never had inland water).
+- **Sealed and proved as the batches were:** seams, `tools/bake_europe_seams.py` on the staged tiles over the installed ones before the install and on `data/europe/terrain/r0/` after it: **760 pairs, 2,438,784 cells compared, 0 differing**, both times. Unchanged files by hash, the tool's `--check` against the frozen v0.7.6: **672 pushed files, 497 equal by SHA-256, 175 differ, no new file, 0 faults** (in every changed tile's core only water cells differ, and no water cell stores 0). Installed by `tools/install-region.py` (175 replaced, each copy checked); the manifest equal to the pushed one. `r0/` 137,688 → 137,532 KB.
+- **The named lakes after:** IJsselmeer −0.25 m flat; Markermeer −0.25 (one polder water at −4.5 in the window: the Oostvaardersplassen's side, its own level); Geneva 368.0; Constance 394.0; Garda 64.5; Lough Neagh 10.5; Loch Ness 16.0; Maggiore 193.0; Lucerne 433.5; Zurich 404.5; Bolsena 304.5.
+
+### Part 3, Schiphol's patch and Cristo Rei's cliff (`tools/bake_region_patches.py`: `DEM_FLOOR`, `URBAN_KEEP`, `FS_PATCH_PLAIN`)
+
+- **First the proof that the sources still give the installed bytes:** each patch baked with `FS_PATCH_PLAIN=1` (neither mend) is **bit-identical to the installed file**, Schiphol's and Lisbon's both (`lead/patchcmp.py`). So what differs after is the mend and nothing else.
+- **Schiphol, `DEM_FLOOR = {'schiphol': -7.0}`:** the raw heights (704 cells, lowest −19.57 m) and then the composed land (458 cells, lowest −8.95 m: polder lakes 2 m under their banks) never under −7 m. The patch's lowest was −19.50 m and is −7.00; cells under −7 m 8,914 → 0; 48,223 cells change (3.1 %), none falls, the largest rise 12.5 m. **The field itself: no cell inside the airfield's boundary changes;** within 300 m of it 827 cells by at most 1.0 m; under the six runways' centrelines and 5 km of each final at most 1.5 m (`lead/patchcmp3.py`).
+- **Cristo Rei: the finding was not what ROADMAP said.** The statue is inside Lisbon's 30 m patch, and v0.7.6's ground under it was **87 m, not 31 m** (the lowest of the nine points `baseHeight()` takes; the centre 95 m, the hilltop 107 m); the 31 m was read at the first coordinates, 600 m south (the stills' aim point still has them). So no new patch was needed. What was wrong: the built-up filter (ground blended towards its lowest neighbour within about 500 m) pulls a built-up cliff top down towards the river. **`URBAN_KEEP = {'lisbon': [(-9.1800, 38.6735, -9.1630, 38.6840)]}`** turns the filter off over the cliff (2,530 cells, eased over 300 m outside). 2,672 cells change, all within 2.2 km × 1.4 km at the statue, none falls; the nearest to a runway end of Lisbon's is 9.2 km off. **The ground under the statue 87.5 → 114.9 m** (the plateau 110 to 112 m, the Tagus 0 m 300 m north).
+- **Installed with the centres at 22:01** (`lead/install2.sh`, `tools/install-region.py`: 37 files replaced, each checked; the manifest equal to the pushed one).
+- **`tests/v077-ground-data.test.mjs`, 5 of 5:** the eleven lakes flat at their levels; no water cell at 0; three tiles' land and sea equal to v0.7.6's by hash with the water masked; Schiphol's patch no lower than −7 m with the field as it was; the ground under Cristo Rei and the river beside it.
+- **Pictures:** `ground-077` in the stills (the IJsselmeer from 3,000 ft and at its shore, Loch Ness, Lake Lucerne, Amsterdam's stadium, Cristo Rei from the river, the bridge from the east, Schiphol's final, the polders), the pushed tree against this one: running.
+
+### Part 1's first piece, from `towns` (22:00): the 34 centres with their courtyards
+
+- Staged in `/tmp/flight-sim/v077/towns/install/centres/`, format `FSB2` (the outer records as `FSB1`'s, then a section of inner rings). **Its proof, run again by the lead before the install:** `towns/cmp.py`, "bad 0 of 34": each file's outer part is byte for byte the installed `FSB1`'s. 6,474 courtyards. `data/europe/centres/` 5.38 → 5.55 MB. Installed by the lead at 22:01. `data/` 519 MB, Europe 314 MB.
+
+### Decisions made in the run (v0.7.7)
+
+1. **The lakes' levels come from the elevation model's flattened surfaces, not from OSM's `ele` tags** (above): one source for every lake, already staged, and it needs no download.
+2. **The lake rule is a post-process of the installed tiles' water cells, not a recomposition of the tiles from their layers:** a recomposition would have to reproduce 224 tiles' land bit for bit before its one change could be judged; this way no land cell can move, and the tool asserts it.
+3. **The whole of Europe's lakes, not the IJsselmeer alone:** the measurement found the fault general and worst in the mountains. 173 tiles change, in water cells only.
+4. **Part 3 has no switch on the page's address:** it is data, and a switch would ship v0.7.6's tiles a second time (52 MB). Its before and after are the pushed tree at `/base/` against this one, and its proof is by hash and by cell (above). Logged against the brief's "every change sits behind a switch", which names the look changes.
+5. **Rivers and ponds keep v0.7.6's rule** (2 m under the bank): the elevation model flattens only what it maps as a water body, and a rule for mixed cells would be a guess.
+6. **No dike is drawn round a lake that stands above its polder** (the IJsselmeer at −0.25 m beside Flevoland at −4 m): the shore is one 250 m cell of slope, as the real dike is a bank.
+7. **Schiphol's floor is applied to the raw heights before the built-up filter as well as to the result,** so the filter no longer spreads a pit's depth round it.
+8. **Cristo Rei gets no patch of its own** (the brief's make): Lisbon's patch already covers it; the mend is the filter's exemption there.
+9. **The patches keep their own inland water** (30 m, from WorldCover, 2 m under banks that are 30 m away, so it doesn't climb); only Schiphol's and Lisbon's patches were baked again.
+10. **The towns' rivers come from the 31 m land cover, not from an OSM river mask** (`towns`, 22:14, accepted by the lead): the cover is data the game ships, it has the Main and the Thames, and no new bake or file is needed. What it can't do (towns outside the 31 m cover) is to be logged in its report.
+11. **The centres' install was the lead's, on the subagent's staged files and proof** (the brief's rule kept).
+
+## 2026-11-22, 22:27 KST: v0.7.7 checkpoint 2: part 3's pictures looked at; the subagents' first states; what the lead told each (Claude Code)
+
+`date`: Sun Nov 22 22:25:17 KST 2026; on mains ("Now drawing from 'AC Power'"). Subagents out: `towns`, `country`. Running: the pushed tree's standard views (`lead/stills-a.sh`: East Asia's sixteen, Europe's twenty-six, `--total 2400`), one browser slot.
+
+- **Part 3's pictures, the pushed v0.7.6 (`v077-ga-*`) beside the tree (`v077-gc-*`), looked at by the lead** (`out/lead/ground-sheet1.png` to `-sheet3.png`; the tree's side also has the two subagents' looks as they stood at 22:16 to 22:24, so the pixel differences of 2 to 62 % say nothing about the data alone):
+  - **The IJsselmeer** from 3,000 ft over Lelystad and from 300 ft at its shore: the same water, the same shore line; nothing reads as sunk or raised (its surface went from about −2 m to −0.25 m).
+  - **Loch Ness and Lake Lucerne** from 3,000 ft: the same from this height, the shore lines a touch cleaner at Lucerne's far arm; no wall, no step where the level eases back to the old rule.
+  - **Amsterdam's stadium** from 1,500 ft: no pit visible before or after (as v0.7.0 found); the patch's numbers are the evidence.
+  - **Cristo Rei** from 725 m north over the river's bank (`ground77-cristorei-close`): before, the statue stood half sunk behind the cliff's edge; after, it stands on the plateau at the cliff top, its whole pedestal in view. From 1.7 km over the river and from the east with the 25 de Abril bridge: the cliff and the bridge as before.
+  - **Schiphol's final:** the runway and the field as before.
+- **Seen in those pictures and sent to the subagents (22:22, 22:26):** to `towns`, Amsterdam's south-east from 1,500 ft reads as flat grey ground peppered with small dark boxes where the pushed tree has a town under pink roofs (the low suburbs as first drawn); to `country`, the polder strips on Schiphol's final stop at a dead-straight diagonal edge and are far brighter and more saturated than the land round them.
+- **`country`, 22:20:** all five pieces in the tree behind `?fields77=0`; its unit test 5 of 5; the suite 1,714 of 1,714. **`towns`, 22:14:** pieces 1 to 3 coded, piece 4 from the 31 m cover (decision 10).
+- **The older tests on the new ground:** `v070-eu-terrain`, `region-terrain`, `v062-finals`, `v071-eu-landmarks`, `v070-regions`: all pass. (`v062-finals` run directly with `FS_REGION=europe` fails at Nice's 22L, in the pushed tree too: it is East Asia's test.)
+
+## 2026-11-22, 22:55 KST: v0.7.7 checkpoint 3: part 2 (the countryside) in, from `country`; the pushed tree's standard views taken; the code review started (Claude Code)
+
+`date`: Sun Nov 22 22:53:12 KST 2026; on mains. Subagents out: `towns` (stop 00:30), the `code` reviewer (from 22:53, stop 23:50; parts 2 and 3 and the courtyards first, the rest of the towns as it stands). Running: East Asia's sixteen from the tree against the pushed set (an early look).
+
+### From the `country` subagent (21:53 to 22:55; Opus): part 2, behind `?fields77=0` (node `FS_FIELDS77=0`), on by default
+
+- **All five pieces in.** `src/world/ground.js`: `euGroundGlsl(src, fields77 = FIELDS77)` (switched off it returns v0.7.6's text), `FIELDS77`, `EU_ZONE_GROUPS`, `EU_ZONE_BLUR`, `euZoneData(header, values)` (a four-channel texture from the country raster: R the UK and Ireland, G France and Monaco, B Spain, Portugal, Andorra and Gibraltar, A the Netherlands; each channel blurred by two 3-cell box passes, about 10 km wide), `EU_ZONE_FALLBACK` (one texel: v0.7.1's rule everywhere if the raster can't load), `EU_HEDGE_FAR`, `EU_POLDER77`, `paletteAverage()`, `fields77Glsl()`. `src/world/terrain.js`, all behind `EU77 = europe && FIELDS77`: `euZoneTexture()` with the uniforms `uEuZone` and `uEuZoneBox`, the polders' grassland as strips, bare ground's tint (`bg77`), the airfield grass's tone (`afg77`). One line in `src/world/geo-rules.js` (`countryValues`).
+  1. **Fields by country:** the British Isles hedged; France as v0.7.1's rule without its British line (Normandy and Brittany hedged, the south dry, the Basque coast hedged); Iberia dry but for v0.7.1's Atlantic north; the other countries v0.7.1's rule, Italy's north and south as they were; the edge softened by the blurred texture and ±1 km of noise.
+  2. **The polders:** only where the Netherlands' weight allows; a strip's direction from a slow noise field, not 8 km cells; a polder's grassland drawn as strips, fading out over about 250 m inside a district's edge along a wandering line; the palette muted to the grass's tone with 4 % brown parcels (after the lead's note of 22:26).
+  3. **Bare ground** darker and warmer below 1,900 to 2,600 m, and the town's ground in a town.
+  4. **The hedged far colour** ×1.15 (the far band at Normandy rose from 94,115,100 to 99,121,102 against 102 to 106 near).
+  5. **Airfield grass** in the dry country's straw tone, its edge softer and wobbled.
+- **Tests:** `tests/v077-country-fields.test.mjs`, 5 of 5 in both regions (Europe switched off: the vertex and fragment shader's SHA-256 equal the frozen v0.7.6's built the same way; East Asia equal with the switch on or off; `euGroundGlsl(…, false)` equal; the zone texture right at ten cities, soft at borders, never over one), with `tests/v077-country-hash.mjs`. `tests/v071-eu-fields.test.mjs` unchanged and passing. **Its suite: 1,723 of 1,723** (`out/country/suite2.txt`, 22:46).
+- **Pictures, `v077-country-off-*` and `v077-country-on-*`** (both on this tree with `&towns77=0`, so the new lakes cancel out), twenty-three views; about 35 minutes of browser time. **Looked at by the lead** (`out/lead/country-sheet1.png`, `-sheet2.png`): Schiphol's final (no straight edge; faint strips in the grass's tone), the polders from 3,000 ft, Flevoland from 3,000 ft (v0.7.6: bright strips turning 90° at straight lines; now muted strips turning a little from district to district), the Fens and Norfolk (polder strips and big open fields became small hedged fields with dark hedges), the Bardenas (a pale grey-white sheet became brown earth), Zaragoza's final (pale blotches became earth and straw).
+- **Its two flags:** the Fens and East Anglia are hedged pasture now, by the brief's "the British Isles", where the real Fens are big open arable land: to ROADMAP (an open zone inside Great Britain); and Lyon shows no near-white strips either way (v0.7.4 closed that on evidence: they aren't class 6), so the bare-ground tint is shown at the Bardenas instead.
+- **Weak, as it said:** item 4 rests on row means in one view; a polder's grassland near a district's edge draws as plain grass; item 3 is shown at one place. The Fens, the German and Danish marsh coasts and the Po delta lose their polder strips (polders are the Netherlands' alone now).
+
+### The pushed v0.7.6's standard views (`lead/stills-a.sh`, 22:26 to 22:45)
+
+`v077-eaa1-*` (East Asia's sixteen) and `v077-eua1-*` (Europe's twenty-six), `--total 2400`: 16 of 16 and 26 of 26 written. The tree's side follows when both looks are final.
+
+### Decisions made in the run (v0.7.7), continued
+
+12. **The Fens stay hedged in this version** (the brief's list as written); the open zone inside Great Britain is logged for later.
+13. **The code review runs in two looks:** the finished parts now, the towns' last files when `towns` has reported.
+
+## 2026-11-22, 22:57 KST: v0.7.7 checkpoint 4: part 1 (the towns) reported by `towns`: three pieces in, the low suburbs sent back for a second round; East Asia's sixteen at max diff 0 (Claude Code)
+
+`date`: Sun Nov 22 22:56:31 KST 2026; on mains. Subagents out: `towns` again (the second round, from 22:58, stop 00:15), the `code` reviewer (stop 23:50). Running: Europe's twenty-six with both switches off against the pushed set (`lead/eu-off.sh e1`).
+
+### East Asia, early (`lead/ea-early.sh e1`, 22:46 to 22:53; `--total 2400`)
+
+**All sixteen standard views at max diff 0 against the pushed v0.7.6** (`out/fixed/ea-e1.txt`; `v077-eaa1-*` against `v077-eace1-*`), on the tree as it stood at 22:53 with both looks in. To be taken again on the final tree.
+
+### From the `towns` subagent (21:53 to 22:55; Opus): part 1, behind `?towns77=0` (node `FS_TOWNS77=0`), on by default
+
+- **Piece 1, courtyards: in** (installed at 22:01, checkpoint 1). `tools/bake_region_buildings.py`: `FS_CENTRES_HOLES=1` writes `FSB2` (FSB1's bytes after the magic unchanged, then u32 holeCount, u32 holeVertexCount, 8-byte records of u32 record, u16 nVerts, u16 0, then the clockwise i16 vertices); `hole_rings()` (each courtyard clipped 0.5 m inside the stored outer ring, simplified to about 1 m; under 60 m² or narrower than 6 m dropped); `HOLES`, `HOLE_MIN_AREA`, `HOLE_MIN_WIDTH`, `HOLE_WALL`; `FS_CENTRES_QUICKLOOK=0`; `centres.json` gains `holes` and `holeVertices`. Baked again from the saved v0.7.0 to v0.7.6 exports with no osmium pass; the outer records reproduced exactly for all 34. `src/world/centres-worker.js`: `MAGIC2`, `parseCentre(buf, { holes })` (without `holes`, FSB1's exact result), `parseHoles()`, `triangulateHoles()` (three's earcut, an area check that falls back to the closed roof), `buildCentre(…, { holes })`, walls on each inner ring in `emitTier()`. `src/world/centres.js`: the job carries `holes: TOWNS77`; `boxes()`. **6,473 of 6,474 courtyards drawn; triangles +2.9 % over the 34** (in the stills London 936k → 939k, Paris 1,407k → 1,431k, Frankfurt 1,054k → 1,055k: Paris and Frankfurt were over a million before).
+- **Piece 2, no ring at the edge: in.** `src/world/cities.js`: `towns77Switch()`, `TOWNS77`, `TOWNS77_CENTRES = 4`, `TOWNS77_GLSL` (`uCtr[4]`, `uCtrN`, `towns77Dist()`), `towns77Vert(src)` (eleven splices, each at an anchor that must occur once, all in Europe's branches: courtyard blocks only above a cover threshold that rises with the distance from a centre's box, for a hashed share of blocks that falls from 0.85 to 0.45, both wandering with a position-only noise; block size by hash and noise, storeys falling with distance; flats taller near a centre; the generated town thinned to about half in a band round the box whose line wanders ±250 m; roof tones drifting with the noise), `setCentreBoxes(fn)`; the nearest boxes listed again only when the grid or the mask moves. One line in `src/world/world.js`.
+- **Piece 3, low suburbs: in the tree, and not good enough yet** (below).
+- **Piece 4, rivers clear of blocks: in, from the 31 m cover** (decision 10): no generated building whose middle or either end is on the cover's water; in a town, within 250 m of the 250 m field's bank, the river takes its edge from `fineWater()` (a marked block in `src/world/terrain.js`, Europe and the switch only). Its count in node (`tests/v077-towns-watercount.mjs`, a probe; it leaves out the slope and runway tests, so estimates): buildings with their middle on cover water within 8 km of **Frankfurt 48 → 0** (of 11,383 and 11,636), **London 47 → 0** (21,877; 22,388), **Zaragoza 26 → 0** (8,955; 8,939). **Where the cover can't help:** towns outside the 31 m cover (Dijon), rivers narrower than one or two cells, and far views, where the fine edge fades (Paris's Seine near Issy is as blobby from 3,000 ft as before).
+- **Tests:** `tests/v077-towns-courtyards.test.mjs` (5: switched off, all 34 centres build exactly v0.7.6's buffers by SHA-256 from the frozen copy built by its own worker; East Asia's 20 unchanged with it on; the courtyards within budgets; a synthetic courtyard's roof area and inward walls; the switch) and `tests/v077-towns-blend.test.mjs` (4: switched off, Europe's town shader text is v0.7.6's, vert `e35ff25fc1fd5e04`, frag `7c5a9d8d96864193`; East Asia's the same on or off; the anchors). `tests/v076-eu-centres.test.mjs` changed on purpose: an `FSB2` file is held by its outer part's SHA-256 (`OUTER77`, pinned from v0.7.6), an `FSB1` file by its gz hash as before. **Its suite: 1,723 of 1,723** (`out/towns/suite1.txt`, 22:54).
+- **Its browser time ran out at about 42 of 45 minutes,** which is why it stopped early.
+
+### The towns' pictures, looked at by the lead (`out/lead/towns-sheet1.png` to `-sheet3.png`; `v077-towns-base-*` the pushed tree, `-final-*` and `-sub1-*` this one)
+
+- **The Main below the towers:** the pink block standing in the river is gone, and two big red blocks at the frame's foot are flats now. **The Thames by Tower Bridge:** no block in the river before or after; the same.
+- **Zaragoza's north bank:** much as before, a little more varied. **Frankfurt from 3,000 ft:** the same but for thin red outlines in the south-west.
+- **The low suburbs read worse, as the subagent itself said:** Toulouse's lower left, Dijon's foreground, Amsterdam's south-east and London's outskirts are hollow rectangles of tiny houses round empty grey middles (they read as fenced car parks), on flat tarmac-grey ground; Lucerne's lakeside village lost its pink roofs to grey specks.
+
+### Decisions made in the run (v0.7.7), continued
+
+14. **The low suburbs go back to `towns` for a second round** (22:58, a fresh 40 minutes of browser time on mains, stop 00:15) rather than to the pictures reader as they are: filled blocks of terraced rows instead of outlines, garden green in the suburb's ground (the terrain shader, behind the switch), roofs large enough to read, villages keeping their roofs. **Piece 3 gets its own switch, `?suburbs77=0`,** so that it can be turned off alone if the reader still marks it worse, with the courtyards, the edge blend and the river rule left on.
+
+## 2026-11-22, 23:14 KST: v0.7.7 checkpoint 5: the code review (ten findings) and what each got; the lakes baked again with a limit at a dam's foot; the switches-off proof's method (Claude Code)
+
+`date`: Sun Nov 22 23:13:00 KST 2026; on mains. Subagents out: `towns` (the second round, stop 00:15). Running: Europe's twenty-six from the pushed code on the tree's terrain (`lead/eu-a2.sh`).
+
+### The code review (`code`, Opus, 22:53 to 23:08; a fresh reader of the diff against the frozen v0.7.6; `brief-review-code.md`)
+
+It read parts 2 and 3 and the courtyards whole, and the towns' last files as they stood (`cities.js` at 23:05, `terrain.js` at 23:00, `world.js` at 22:03, `finecover.js` unchanged from the pushed tree). **Anything in `cities.js` or `terrain.js` after those times had no reviewer.**
+
+| # | Finding | How sure | What it got |
+|---|---|---|---|
+| 1 | `tools/bake_region_lakes.py`: water below a dam is lifted to the reservoir's level (the 250 m mask joins them): 140 changed cells stood more than 5 m above both their raw height and v0.7.6's, 17 more than 10 m (the Zújar dams 31 m, the Möhne dam 30 m, Gabčíkovo 16 m, the Thames by the Staines reservoirs 13 m, the Biesbosch 7 m) | certain | **mended and baked again** (below) |
+| 2 | `cities.js` `update()` returns above 4,500 m before it refreshes the centre boxes the terrain's gardens use; only the 4 nearest centres within 20 km are listed, so a farther town's gardens change when its centre enters the list | likely | sent to `towns` (23:10), in its second round |
+| 3 | `garden77` uses a cover threshold of 0.5 where the buildings use 0.62 in Britain and Ireland | certain | sent to `towns` |
+| 4 | the polders' share of grassland drawn as strips differs near and far (`ground.js`, `terrain.js`) | possible | **mended by `country`** (23:10 to 23:13, below) |
+| 5 | `euZoneData()` runs on the main thread when the terrain is made (137 ms, a 7.7 MB texture); a fallback texel if the rules aren't loaded | minor | no mend: `country` read `main.js`: the rules load under "Loading terrain and airports…" before `createWorld()`, so the texture is built once behind the loading screen and the fallback is never drawn first |
+| 6 | the towns pop as data arrives: a building on cover-water stands until its 31 m sub-tile loads; the blend applies once the centre is ready; new per-vertex and per-pixel work | minor | sent to `towns`; the frame rates are the lead's |
+| 7 | `centres-worker.js`: a courtyard ring of 2 vertices or zero area would be drawn as a fin (the bake never writes one) | certain, not visible | sent to `towns` |
+| 8 | the lake tool's docstring said "the nearest plateau of the same body" where the code takes the nearest plateau and drops the cell if it is another body's (49 cells left as installed) | certain | the docstring says what the code does |
+| 9 | the lake tool with `--tiles` in pieces would seal against stale cores | certain, no effect on what shipped | the tool refuses a staging folder that isn't empty |
+| 10 | no test pins Europe's terrain text with `towns77=0` alone; `V077.suburbsOff` is pinned from the tree | small | the reviewer checked the combinations by hand (both off: v0.7.6's hash `c0b83a67…`); `towns` to say so in its test's comment |
+
+**Found sound, by its own recomputation from the frozen copy:** the two switches (the same code as `lookSwitch`; `holes: TOWNS77` reaches the worker; no uniform added when a switch is off); every pinned hash (the terrain's and the towns' shader texts for both regions, four centres' builds and outer parts, the three tiles' land); `FSB2`'s header, offsets, counts and winding; the country raster's orientation, filtering and box; the lake tool's mosaic, wrap, flat test, easing, floor and seal; `DEM_FLOOR`, `URBAN_KEEP` and `FS_PATCH_PLAIN` touching Schiphol's and Lisbon's patches alone; no path with a user's name in `src`, `tools` or `tests`.
+
+### Finding 1 mended: `LIFT_MAX = 5.0` in `tools/bake_region_lakes.py`, and the lakes baked again (23:10 to 23:13, `lead/lakes2.sh`, `lakes2b.sh`)
+
+- **The rule's addition:** a water cell that isn't a plateau's is never given a level more than 5 m above its own raw height; it is left as installed. 5 m still lets a polder lake's mixed shore cells take the lake's level.
+- **First the 175 tiles put back as pushed** (by `tools/install-region.py` from the frozen copy), so that the tool read v0.7.6's tiles: **all 672 `r0` files equal the pushed v0.7.6's by SHA-256** before the bake.
+- **The bake:** 173 tiles' cores change in **269,975 water cells (16,873 km²)**, 210 fewer than the first bake; 175 files written. The eleven named lakes exactly as in checkpoint 1.
+- **Proved as before:** seams on the staged tiles over the installed ones, and on `data/europe/terrain/r0/` after the install: 760 pairs, 2,438,784 cells, **0 differing**, both times; `--check` against the frozen v0.7.6: **672 files, 497 equal by SHA-256, 175 differ in water cells only, 0 faults**; the manifest as pushed. `r0/` 137,532 KB.
+- **The reviewer's own probe on the new tiles** (`review-code/dam3.py`, with Europe's environment): changed water cells more than 5 m above both their raw height and v0.7.6's: **0** (140 before); more than 10 m: 0 (17).
+- **`tests/v077-ground-data.test.mjs`, 6 of 6:** a new test holds five dams' foot cells (Zújar, Möhne, Gabčíkovo, Staines, the Biesbosch) to v0.7.6's stored heights (the first bake had them 8 to 13 m higher).
+- The first bake's pictures (checkpoint 2) stand: none looks at a dam.
+
+### Finding 4 mended by `country` (its second round, 23:10 to 23:13)
+
+- The mismatch was its own edge fade of 22:28 (strips fading out inside a district's edge), which applied near the camera only: near, about a third of a polder's grassland drew as strips; far, all of it. **The mend:** the fade narrowed to 150 m (its mean 0.584 over the district lattice, by a Monte Carlo of the shader's own formula, 400,000 points, `country/efade.mjs`), and the far path `euPol = euP * 0.584` (`EU_POLDER_EDGE_MEAN`). `tests/v077-country-fields.test.mjs` checks both lines; Europe 8 of 8 with `v071-eu-fields`, East Asia 7 of 7; the switch-off hashes still v0.7.6's. Pictures: `v077-country-on2-eu77-holland-10000.png` (a new view, 10,000 ft over the polders by Schiphol, the fade crossing the frame: no band) and `v077-country-on2-EHAM-final.png`. No before picture for this mend: the evidence is the computed means and the two views.
+
+### The switches-off proof's method (decision 15)
+
+Europe's twenty-six from the tree with `&towns77=0&fields77=0` against the pushed tree (`lead/eu-off.sh e1`, 22:53 to 23:02): **11 at max diff 0, 15 differing by 0.0002 to 0.97 % of pixels**, which is part 3's data showing (no switch) and can't be told from a leaking switch that way. So a third root serves **the pushed v0.7.6's code on this tree's terrain** (`/base2/`: the frozen `src/`, the tree's `data/` but the pushed `centres/`, since v0.7.6's reader knows only `FSB1`), and the switches-off tree must equal it pixel for pixel. **A first, partial run (the first bake's data): thirteen of thirteen views at max diff 0** (London by day and night, the Thames, Paris twice, Zurich by day and night, the Alps, Barcelona, Rome, both polder views, Dijon), before the lead stopped it for the lakes' second bake. It is running again on the final data.
+
+### Decisions made in the run (v0.7.7), continued
+
+15. **Switched off, the tree is compared with the pushed code on the new terrain** (above), not with the pushed tree: part 3 has no switch.
+16. **A dam's foot keeps v0.7.6's rule** (`LIFT_MAX`, 5 m): the reservoir above it is flat at its level, the river below is left as installed.
+
+## 2026-11-22, 23:18 KST: v0.7.7 checkpoint 6: the towns' second round in (filled terraces, gardens, `?suburbs77=0`); the final queue and the pictures-only review started (Claude Code)
+
+`date`: Sun Nov 22 23:15:24 KST 2026; on mains. Subagents out: `docs` (the write-up's drafts, from 23:15, stop 01:10) and the `pictures` reviewer (from 23:17, stop 00:10). Running: `lead/final.sh f1` (East Asia's sixteen and Europe's twenty-six from the final tree, switched off and on, the ground's views again, then the frame rates alone, then the suite), and the pushed code on the final terrain (`lead/eu-a2.sh`).
+
+### From `towns`, its second round (22:58 to 23:15; about 10 of its 40 browser minutes)
+
+- **Piece 3 has its own switch:** `?suburbs77=0` (node `FS_SUBURBS77=0`; `suburbs77Switch()`, `SUBURBS77` in `src/world/cities.js`), on by default and meaningful only with `towns77` on. Off, pieces 2 and 4 stay (the blend round the centres, block size and height by place, the roof drift, the river rule) with v0.7.6's courtyard rule. `towns77Vert(src, suburbs)` tags each splice as piece 2's or piece 3's.
+- **`SUBURB77_GLSL`, shared by the town's shader and the terrain's** so the two agree block for block: `t77Dense()`, `t77Village()` (the cover averaged at four points 1.6 km round a block under 0.22 is a village, which keeps v0.7.6's rule: Lucerne's village is as it was), `t77Block()` (0 courtyards, 1 terraces, 2 the rest; the courtyard share falls from 0.85 near a centre to 0.30 far from one).
+- **Filled terrace blocks,** no outline-only block: each quarter of a block has five terraces across it, 31 m apart; a terrace is one instance, 9 to 11 m deep and 110 to 160 m long, its ridge along the row, shaded as houses every 6.5 to 9 m, in the mix's tile colour varied by noise: about a fifth of the block under roofs. Loose rows elsewhere are 5 to 9 houses.
+- **Gardens in the ground** (`GARDEN77_GLSL`, `garden77()`; one line in the terrain shader after `villageGround`, in the towns' marked block, empty text with either switch off): under terrace blocks, plots between the rows (lawn in several greens, a hedge every 8 m, the odd patio or tree), the streets grey; a lighter version under the other low blocks; none under courtyard or village blocks. `TOWNS77_UNIFORMS`: one pair of uniform objects for both materials.
+- **The code review's four findings in its files** (checkpoint 5's table): 2, the stale boxes: mended (the centre list and its origin refresh before the 4,500 m early return, only when the camera's block or the mask moves; gardens fade out between 14 and 17 km from the camera, inside the 20 km within which centres are listed, so none is decided without its centre); 3, Britain's threshold: mended (0.5 everywhere for the suburbs' rule; the mix's 0.62 kept for villages); 6, the pops as data arrives and the per-vertex cost: left, the lead's frame rates decide; 7, degenerate rings: mended in `centres-worker.js` (rings under 3 vertices or 1 m² skipped; the courtyard test gains the case).
+- **Tests:** `tests/v077-towns-blend.test.mjs` 6 (with `towns77=0` Europe's text is v0.7.6's, `e35ff25fc1fd5e04`, East Asia's unchanged either way; with `suburbs77=0` the hash `d22a1954d2a73e14`, pinned from this tree and so only a change detector, with the blend's splices present and the suburbs' absent), `tests/v077-towns-courtyards.test.mjs` 6. **Its suite: 1,727 of 1,727** (`out/towns/suite2.txt`, 23:14).
+- **Cost:** the same instances and triangles as v0.7.6 at the same views (the rows reuse a block's 20 slots); the courtyards' +3k at London, +24k at Paris, +1k at Frankfurt as before. No per-frame CPU work.
+- **Its pairs** (`v077-towns-base-*` or `v077-ga-*` against `v077-towns-final2-*`; its sheets `v077-towns-pairs-*.png`), and its own marks: Zaragoza's north bank, Milan, Lyon better; Toulouse's suburbs and centre, Dijon, Frankfurt slightly better or the same; the arena, Lucerne, Munich, London twice, Paris the same. Ten of the twelve were taken at 23:07, just before the two mends (which touch Britain's threshold and gardens beyond 14 km); London's two after.
+- **Weak, as it said:** the gardens are faint from 3,000 ft and hardly show at Dijon (outside the 31 m cover, the ground there is the 250 m town colour); courtyard blocks thinned by the edge band can read as broken outlines (London's foreground).
+
+### Looked at by the lead (`v077-towns-pairs-suburbs.png`)
+
+Toulouse's lower left and Dijon's foreground are fields of tile-roofed terraces in rows where round 1 had hollow outlines; Amsterdam's south-east is rows of red roofs with the old blocks among them; Lucerne's village is the pushed tree's. To the lead's eye no pair is worse now; the pictures-only reader decides.
+
+### The terrain shader's diff, read by the lead (63 changed lines against the frozen v0.7.6)
+
+Every added line sits behind `EU77` (Europe and `fields77`), `T77` (Europe and `towns77`) or `S77` (and `suburbs77`), in a template that gives the old line when off; the switch-off text is pinned by hash in both subagents' tests. This is the lead's look at what the code reviewer couldn't see (`terrain.js` after 23:00); `cities.js` after 23:05 (the second round's shared GLSL) had no fresh reader but its own tests and the pixel comparisons.
+
+### Decisions made in the run (v0.7.7), continued
+
+17. **The low suburbs go to the pictures-only reader as they are now,** on by default; `?suburbs77=0` is the way out if it marks them worse, or if they cost the 60 fps.
+18. **The pictures-only review started before the final tree's standard views were all taken** (they arrive while it reads the towns' and the countryside's pairs), to leave time for its findings.
+
+## 2026-11-22, 23:23 KST: v0.7.7 checkpoint 7: the pictures-only review's first half (the towns and the countryside: keep, no view worse); a third towns round in a working copy (Claude Code)
+
+`date`: Sun Nov 22 23:20:42 KST 2026; on mains. Subagents out: `docs` (stop 01:10), `towns` (a third round, in a copy, stop 00:00). Running: `lead/final.sh f1` on the tree as it stands (round 2), and `lead/eu-a2.sh`.
+
+### The pictures-only reader (`pictures`, Opus, 23:17 to 23:21; before beside after, no code, no document; `brief-review-pictures.md`)
+
+It handed back early, with the towns' and the countryside's pairs judged; the ground's retaken pictures and the standard views hadn't arrived (0 of 26). It is resumed for those when they have.
+
+| Group | Its marks, pair by pair | Its verdict | Its mark |
+|---|---|---|---|
+| **The towns** (15 pairs) | **Better: 9** (Toulouse's suburbs and centre, Dijon, Frankfurt, Lyon, Milan, Munich, Amsterdam's south-east, the Main), **the same: 6** (Zaragoza's north bank, London twice, Paris, Lucerne's village, the Thames), **worse: none** | keep | 6.5 of 10 |
+| **The countryside** (24 views) | **Better: 8** (Schiphol's final, Zaragoza's final, both polder views and the low polder view, the Bardenas, the Fens, Norfolk), **the same: 15**, **worse: none**; Holland from 10,000 ft (no before): no band where near gives way to far | keep | 7 of 10 |
+
+**What it named in the after pictures, most serious first, and what each gets:**
+1. **A polder strip seam with no road** (`country-on-eu-fields-polder-low`: a straight horizontal line at x 900 to 1440, y 465 to 485, the ditches offset and turned across it; `country-on-eu-1000-polders`: the strips change direction at about x 700 to 830, y 570, with a flat-cut edge to the strip heads). Those two were taken before `country`'s second mend of 23:13; to be looked at again on the final tree's own pictures before anything is decided.
+2. **The towns read as one terrace block repeated** (Dijon, Lyon, Toulouse; "better than the repeated courtyard block, but still a stamped pattern"; in London the lone patches "look like allotments or solar farms"). **To `towns`, its third round.**
+3. **Towns read as bare grey ground from a distance** (Holland from 10,000 ft; behind Munich's and Milan's centres): beyond the generated town's reach, as in v0.7.6; to ROADMAP unless the third round finds otherwise.
+4. **Dead-straight lines across bare ground** (the Bardenas, near Zaragoza's final): in the before pictures too; to ROADMAP.
+5. **The hard edge of London's real centre** on the left of `eu-3000-london`, as before. To `towns`, if quick.
+6. **Terraces among trees and against ponds** (Amsterdam's south-east). To `towns`.
+- "No generated building stands in a river in any after picture I saw: Frankfurt, Thames, Munich, Toulouse and Paris are clean." At Munich the blocks that stood over the Isar are gone.
+- **It couldn't judge:** the courtyards (too small from 3,000 ft), the airfield grass at Zaragoza (too far), bare ground at Lyon (all town), a border by latitude (no view straddles one but the Bidasoa, which shows none), Ireland's fields (Meath is mostly unbroken green, as before).
+
+### Decisions made in the run (v0.7.7), continued
+
+19. **Both looks stay on by default** on the reader's marks so far (no view worse in either group); the ground's and the standard views' marks are still to come.
+20. **A third towns round, in a working copy** (`/tmp/flight-sim/v077/t3/`, a clone of the tree at 23:20 served at `/t3/`, its `data/` the tree's): the reader's findings 2, 5 and 6, with a stop at 00:00. **The tree stays as round 2 left it while it is measured,** so that the final comparisons, frame rates and suite of `final.sh f1` are whole evidence for round 2. Round 3 is copied in only if its pairs are better than round 2's and its tests pass; then the queue runs again. Round 2's seven changed files are kept in `/tmp/flight-sim/v077/backup-round2/`.
+
+## 2026-11-22, 23:48 KST: v0.7.7 checkpoint 8: the comparisons on the tree as round 2 left it: East Asia sixteen of sixteen, Europe switched off twenty-six of twenty-six; round 3 of both looks ready in the working copy (Claude Code)
+
+`date`: Sun Nov 22 23:47:20 KST 2026; on mains, 100 %, charged. Subagents out: the `pictures` reviewer again (its second half and round 3's pairs, from 23:47, due 00:05). `docs` handed back at 23:27 with its drafts in all six documents and its markers listed (it was to run to 01:10; the lead fills the markers). Running: the frame rates, alone (`lead/fps.sh`), then the suite.
+
+### `lead/final.sh f1` (23:16 to 23:46; `--total 2400`; `out/fixed/final-f1.txt`), on the tree with round 2 of the towns and round 2 of the countryside
+
+- **East Asia: all sixteen standard views at max diff 0 against the pushed v0.7.6** (`v077-eaa1-*` against `v077-eacf1-*`).
+- **Europe, both switches off (`&towns77=0&fields77=0`), against the pushed v0.7.6's code on this tree's terrain (`/base2/`): all twenty-six at max diff 0** (`v077-eua2-*` against `v077-eubf1-*`). So with the switches off the tree draws exactly what v0.7.6's code draws on the new ground: neither look leaks.
+- **Europe, switched off, against the pushed v0.7.6 itself** (`v077-eua1-*`: what part 3's data changes, which has no switch): **eleven at max diff 0** (Paris from 3,000 ft and FL350, Dijon, the south of London from FL350, Reims, Heathrow's final by day and night, Charles de Gaulle's, Frankfurt's, Fiumicino's, Gatwick's), two at one level in a handful of pixels (Barcelona, Munich's final), and **thirteen differing by 0.0002 to 0.97 % of pixels**: London by day 0.003 % and by night 0.0002 %, the Thames from 10,000 ft 0.07 %, Zurich by day 0.08 % and by night 0.04 %, the Alps from FL350 0.14 %, Rome 0.03 %, the polders from 3,000 ft 0.97 % and from 1,000 ft 0.33 %, Biscay to Madrid 0.01 %, Vienna 0.0006 %, Madrid's final 0.0005 %, Schiphol's final 0.38 %: water levels (the Thames's tideway and its reservoirs, the Zürichsee, the Alpine lakes, the Tiber's lakes, the Dutch waters, the Danube's basins, Madrid's reservoirs) and Schiphol's patch.
+- **Europe, the two looks on against off:** every view but Vienna from FL350 changes: the towns' views by 13 to 40 % of pixels (London 19 %, Paris 21 %, Dijon 40 %, Heathrow's final 33 %, Madrid's final 20 %), the polders 28 and 51 %, the far views by the fields' far colour (Paris from FL350 16 %, the south of London from FL350 13 %), the Alps and Frankfurt's final under 1 %.
+- **Triangles, Europe's views, the pushed tree → this one:** unchanged in twenty-two; London 936k → 939k, Paris 1,332k → 1,355k, Barcelona 552k → 555k (the courtyards). Over a million before and after: Paris from 3,000 ft and Frankfurt's final (1,068k).
+- **The ground's views again on this tree** (`v077-gc-*`, 23:42 to 23:47), for the reader.
+
+### Round 3, both in the working copy (`/tmp/flight-sim/v077/t3/`), neither in the tree yet
+
+- **`towns` (23:21 to 23:43; `cities.js` and one comment in its blend test):** `t77Quarter()` (each quarter of a terrace block by its own hashes: 3 to 6 rows, rows across the quarter in most and along it in about 28 %, about 10 % left as a green; the town's shader and the terrain's gardens call the same function); about 30 % of rows broken short and each set somewhere different along its street; one tile family a neighbourhood (a position-only noise at about 1.1 km) with a small variation a row, slate only where the country's mix has it; gardens to the street's edge with a ragged hedge line, no pad; a terrace block with no terrace-able neighbour takes its neighbours' kind; no house where the 31 m cover says tree; within 600 m of a real centre's box generated roofs and walls take paler tones (hardly visible: London's edge is unchanged, as it said). Proofs in the copy: `towns77=0` still `e35ff25fc1fd5e04`, `suburbs77=0` still `d22a1954d2a73e14`; its suite 1,727 of 1,727 (`out/towns/suite-t3.txt`, 23:42); the same instances and triangles; up to 4 more cover samples a vertex (the neighbour check). Its three-way sheets, `v077-towns-t3-pairs-a.png` and `-b.png`: by its own marks better than round 2 at Dijon, the arena and Lyon, slightly at Toulouse, the same at London. **Looked at by the lead: Dijon, Lyon and Amsterdam's south-east are greener and less stamped; London the same.**
+- **Its answer on the grey towns far off:** the generated town reaches ±8 km round the camera and not above 4,500 m; beyond, only the terrain's urban ground: as in v0.7.6. To ROADMAP.
+- **`country` (23:29 to 23:47; `ground.js`, one line of `terrain.js`, its test and hash helper):** the reader's seam is **a polder row's head, not a district's edge** (each 600 m row of strips has its own sideways shift, so the next row's ditches start out of line, and nothing was drawn between): a cross-ditch at every row's head (`euDy`), each ditch weighted by its own share of the pixel instead of widened into a dark band (`euDw`: the reader's "dark blurry smears" were the ditches in the middle distance), and `bareGround()`'s graders' lots and wheel tracks drawn only in a town (`made * smoothstep(0.05, 0.30, cov250.b)`: the dead-straight grid across the Bardenas, in v0.7.6 too). By its own marks: the smears gone and the Bardenas better; the seam about the same (softer, still a change of tone between rows); the strips a little fainter in the middle distance. Tests in the copy: Europe 8 of 8, East Asia 5 of 5, the switch-off hashes still v0.7.6's. **Looked at by the lead (`out/lead/country-sheet4.png`): the same reading.**
+- **The copy differs from the tree in exactly six files** (`diff -rq` of `src/` and `tests/`): `src/world/cities.js`, `ground.js`, `terrain.js` (one line and its comment), `tests/v077-towns-blend.test.mjs`, `v077-country-fields.test.mjs`, `v077-country-hash.mjs`.
+
+### Decisions made in the run (v0.7.7), continued
+
+21. **Round 3 goes to the pictures-only reader three ways** (the pushed tree, round 2, round 3) before it is copied in; if it says keep, `lead/merge3.sh` copies the six files and the whole queue runs again on the final tree (`lead/final2.sh f2`); if not, round 2 ships on `final.sh f1`'s evidence.
+
+## 2026-11-22, 23:50 KST: v0.7.7 checkpoint 9: round 2's frame rates (60 fps everywhere, alone on mains) and suite (1,727 of 1,727); the pictures-only review's second half: keep round 3 of both looks, the ground 8 of 10, one standard view worse (Claude Code)
+
+`date`: Sun Nov 22 23:49:55 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'", 100 %, charged. Subagents out: `towns` (one last mend in the copy, the gardens' reach, stop 00:08). Nothing else running: `final.sh f1` ended at 23:49.
+
+### The frame rates, each alone on the GPU and the CPU, on mains (`lead/fps.sh`, the lock's `ex`, 23:46 to 23:48; `out/fps/summary.txt`), on the tree with round 2
+
+| Where | Day | Night | Triangles |
+|---|---|---|---|
+| Heathrow, stand 216 | 60.0 fps, worst frame 16.8 ms | 60.1 fps, 16.8 ms | 938k |
+| Heathrow's final | 60.0 fps, 16.8 ms | 60.0 fps, 16.8 ms | 841k |
+| Frankfurt, stand A1 | 60.0 fps, 16.8 ms | 60.1 fps, 16.8 ms | 1,088k |
+| Frankfurt's final | 60.0 fps, 16.8 ms | 60.0 fps, 16.8 ms | 1,068k |
+| Over Paris from 3,000 ft (`eu-3000-paris`) | 60.0 fps, 16.8 ms | | 1,355k |
+| Paris's centre from 3,000 ft | 60.0 fps, 16.8 ms | | 1,431k |
+| London from 3,000 ft | 60.0 fps, 16.8 ms | | 939k |
+| Frankfurt's centre from 3,000 ft | 60.0 fps, 16.8 ms | | 1,055k |
+
+The new per-vertex and per-pixel work of the towns (the code review's finding 6) costs no frame at any of them. **The million-triangle aim:** Paris (1,332k before), Frankfurt's stand and final and its centre were over it in v0.7.6 and still are; the courtyards add 23k at Paris and 1k to 3k elsewhere; no view crosses the line because of v0.7.7.
+
+### The unit suite, through the lock and the guard (`out/fixed/suite-f1.txt`, 23:49): **tests 1,727, pass 1,727, fail 0** (1,704 in v0.7.6; +23 in four new files: `v077-ground-data` 6, `v077-country-fields` 5, `v077-towns-courtyards` 6, `v077-towns-blend` 6)
+
+### The pictures-only reader's second half (`pictures`, 23:47 to 23:50)
+
+- **A. Round 3 three ways (the pushed tree, round 2, round 3):** the towns: better than round 2 at Dijon ("no longer reads as one stamp"), Toulouse's suburbs (slightly), London ("brick-red roofs in rows … read as London terraces rather than allotments or solar farms") and Amsterdam's south-east (the rows among the trees gone), the same at Lyon; better than the pushed tree at all five. The countryside: better than round 2 at the low polder view ("the horizontal seam … is gone; the strips now run through"), the polders from 1,000 ft (slightly: the smears mostly gone) and the Bardenas (the grid gone), the same at Schiphol's final (the strips a touch fainter); better than the pushed tree at all four. **"Towns: keep round 3. Countryside: keep round 3. Neither has a view where round 3 is worse than round 2."** Marks: towns 7 of 10 (6.5 for round 2), countryside 7.5 (7).
+- **B. The ground:** Cristo Rei from the river and close up **better** ("stands on an open grassy hilltop on top of the cliff, with its base visible. It does not float or sink"); Lake Lucerne the same to slightly better (more of the cliff's foot above the water); the IJsselmeer twice, Loch Ness and the bridge the same; "nothing else moved that I can see". **Keep; 8 of 10.** It couldn't confirm a level change of metres from the air.
+- **C. Europe's twenty-six standard views (round 2's state):** better: Heathrow's final ("streets of terraces, which reads much more like west London"), Schiphol's final, both polder views, Dijon; the same: nineteen, the three night views among them ("on the approaches, nothing in the runway, its lights or its immediate surroundings changed for the worse, day or night"); **worse: one, Paris from FL350**: "the grey suburbs south of the Seine … are now covered by a mosaic of pale green squares in a regular lattice: the terrace garden plots seen from above". **Keep but for that view; 7 of 10.**
+- **Its findings left in the after pictures:** the garden lattice from high up (**being mended:** the gardens' reach cut to the houses' own, 6 to 7.8 km of true distance, by `towns` in the copy); the polders' strip heads still ending along a flat line with no road at the 1,000 ft view, a faint straight-edged darker rectangle and an untextured patch in the low view (to ROADMAP); terrace rows loose in farmland short of Madrid's runway, and Madrid's outskirts all terraces where the real ones are flats (to ROADMAP); London's real centre's hard edge, as before; two or three rows touching a pond at the arena; cities grey from 10,000 ft and up, as before.
+
+### Decisions made in the run (v0.7.7), continued
+
+22. **Round 3 of both looks is kept** on the reader's marks (no view worse than round 2, every view better than the pushed tree) and goes into the tree with the gardens' last mend; then the whole queue runs again on that tree.
+23. **The one view the reader marked worse is mended, not switched off:** the fault is plain (gardens drawn where no house is), the mend is a fade, and the reader's own fix. It looks at that view again before the write-up; if it is still worse, `suburbs77` goes off by default.
+
+## 2026-11-22, 23:55 KST: v0.7.7 checkpoint 10: round 3 of both looks in the tree, with the gardens' reach mended; the whole queue running again; the code reviewer's second look started (Claude Code)
+
+`date`: Sun Nov 22 23:53:04 KST 2026; on mains, 100 %. Subagents out: the `code` reviewer again (what changed since its reads: `cities.js` after 23:05, `terrain.js` after 23:00, `ground.js` after 23:13, the worker's mend, the lake tool's limit; due 00:15). Running: `lead/final2.sh f2` (the comparisons, the frame rates alone, the suite, all on the final tree).
+
+- **The gardens' reach, from `towns` (23:52 to 23:53, in the copy):** `garden77()` fades by the true distance from the camera to the ground point (the horizontal distance with the camera's height above the ground, `uCamAgl`, as the third side): full to 6 km, nothing at 7.8 km, in place of 14 to 17 km of ground distance. So above about 7.8 km of height no garden is drawn, and from 3,000 ft they end about where the houses end (the generated town reaches ±8 km). Its pictures (`v077-towns-t3b-*`, sheet `v077-towns-t3b-sheet.png`): **Paris from FL350: no lattice, the south of the Seine plain speckled grey again** (0.30 % of pixels over 2 levels against the pushed tree, 0.03 % over 16); the south of London from FL350: none; Dijon and Lyon from 3,000 ft: gardens still clear in the near and middle ground. Its tests in the copy 16 of 16 in Europe, 12 of 12 in East Asia; `towns77=0` still `e35ff25fc1fd5e04`, `suburbs77=0` still `d22a1954d2a73e14`.
+- **Copied into the tree at 23:52 by `lead/merge3.sh`:** the six files of checkpoint 8 (`src/world/cities.js`, `ground.js`, `terrain.js`; `tests/v077-towns-blend.test.mjs`, `v077-country-fields.test.mjs`, `v077-country-hash.mjs`), after checking that the tree's three source files were still round 2's (equal to the backup) and that the copy differed from the tree in those six and no others. After it `diff -rq` of the copy's `src/` and `tests/` against the tree's is empty. Round 2's are kept in `/tmp/flight-sim/v077/backup-round2/`.
+- **The version's tests on the merged tree:** East Asia's process 25 of 25 (`v077-*` and `v071-eu-fields`), Europe's 35 of 35 (those with `v070-eu-cities` and `v076-eu-centres`).
+- **For ROADMAP, from `towns`' last report:** Spain's suburbs should lean to flats, not terraces (Madrid's final); loose house rows in farmland short of Madrid's runway (the lone-patch rule covers terrace blocks only); rows touching a pond's edge (the cover test looks at a row's middle and ends, not its sides); London's real centre's hard edge; towns grey beyond the generated town's ±8 km.
+
+### Decisions made in the run (v0.7.7), continued
+
+24. **A second look by the code reviewer at the files that changed after its reads,** now that nobody edits them: round 3 had only its authors' tests and the pictures.
+
+## 2026-11-22, 23:59 KST: v0.7.7 checkpoint 11: the code reviewer's second look (two small faults in the terrace quarters, mended by the lead); the queue started again on the final tree (Claude Code)
+
+`date`: Sun Nov 22 23:57:35 KST 2026; on mains, 100 %. No subagent out. Running: `lead/final2.sh f2`, started again at 23:58 on the tree as mended below (its first start, at 23:54, was stopped by the lead at 23:56 with its three browser runs, by PID; no headless Chrome left).
+
+### The code reviewer's second look (`code`, 23:53 to 23:57): the files as copied in at 23:52
+
+| # | Finding | How sure | What it got |
+|---|---|---|---|
+| 1 | `cities.js` `t77Quarter()`: a quarter is given 3 to 6 rows, but a block's slots hold five a quarter: with 6 (a quarter of the time) the sixth was never drawn, the quarter stood lopsided, and the terrain laid out plots for six | certain | **mended by the lead:** 3 to 5 rows (`* 2.999`) |
+| 2 | `garden77()`: the plots' row boundaries fell at half pitches, which is midway between rows for 3 or 5 rows but under a row of houses for 4 or 6 | certain, small | **mended by the lead:** an even count shifts the plots by half a pitch (`vy`) |
+| 3 | the gardens don't know what the town left out (a house dropped in a wood or on water, the thinned band round a centre, a real centre's mask): plots can show where no house stands | possible, low | to ROADMAP |
+| 4 | the lone-block rule's four more cover samples a vertex, and per urban pixel within 7.8 km | for the frame rates | `final2.sh f2` takes them |
+
+**Found sound:** both switches by its own hashes (the town's text with `towns77=0` is v0.7.6's `e35ff25fc1fd5e04`, with `suburbs77=0` the pinned `d22a1954d2a73e14`; the terrain's text with both off v0.7.6's `c0b83a67…`, East Asia's with all on v0.7.6's `f67e6fb5…`); everything of round 3 inside the suburbs' ternaries; its first findings 2 and 3 as mended (the list and origin refreshed at every height; one threshold; the town and the gardens calling `t77Block` and `t77Quarter` with the same arguments); the uniforms the terrain reads (`uOrigin`, `uCamPos`, `uCamAgl` set by `world.js` every frame; `uCtr`, `uCtrN` the shared pair, set by `cities.update()` every frame); no division by zero; the countryside's three new pieces behind `fields77`; the worker's mend (its probe: a 2-vertex and a zero-area ring draw nothing now); the lake tool's limit (its `dam3.py`: 0 cells) and its refusal of a staging folder that isn't empty; the tests changed since (honest). 38 of 38 run directly.
+
+### The lead's two mends (`src/world/cities.js`, 23:56; three lines)
+
+- `nRows = 3 + int(floor(ihash(qk, 28u) * 2.999))`, and `float vy = v.y + 0.5 * pitch * float(1 - nR % 2)` in the plots' cells; both inside the suburbs' GLSL, so the switch-off texts can't move: the towns' tests 12 of 12 in East Asia's process and 16 of 16 in Europe's (with `v070-eu-cities`), the pinned hashes among them.
+- **In Chrome before the long queue** (`v077-lead-mend-*`, 23:57): Dijon and Lyon from 3,000 ft draw (no shader error), 60.0 fps in passing, the same triangles (645k, 618k); beside round 3's pictures (`out/lead/mend-sheet.png`) the same towns, the rows a touch more even.
+- These three lines had no reader but the lead; the pixel comparisons and the frame rates of `f2` are taken on them.
+
+## 2026-11-23, 00:23 KST: v0.7.7 checkpoint 12: the whole queue on the final tree: East Asia sixteen of sixteen, Europe switched off twenty-six of twenty-six, 60 fps alone on mains, 1,727 of 1,727; the reader's last look: keep, no view worse (Claude Code)
+
+`date`: Mon Nov 23 00:20:32 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'", 100 %, charged. No subagent out. Nothing running.
+
+### `lead/final2.sh f2` (23:58 to 00:20; `--total 2400`; `out/fixed/final-f2.txt`), on the final tree: round 3 of both looks, the gardens' reach, the lead's two mends
+
+- **East Asia: all sixteen standard views at max diff 0 against the pushed v0.7.6** (`v077-eaa1-*` against `v077-eacf2-*`).
+- **Europe, both switches off, against the pushed v0.7.6's code on this tree's terrain: all twenty-six at max diff 0** (`v077-eua2-*`, taken at 23:14 to 23:26 on the final data, against `v077-eubf2-*`).
+- **Europe, switched off, against the pushed v0.7.6 itself: eleven at max diff 0, fifteen differing,** the same fifteen by the same shares as on round 2's tree (checkpoint 8: thirteen where the lakes' levels and Schiphol's patch show, 0.0002 to 0.97 % of pixels; Barcelona and Munich's final by one level in a few pixels).
+- **Europe, the looks on against off: all twenty-six differ** (Vienna from FL350 by two levels in a few pixels).
+- **Triangles:** as checkpoint 8 (London 936k → 939k, Paris 1,332k → 1,355k, Barcelona 552k → 555k; the other twenty-two unchanged).
+- **The ground's views** taken again on the final tree (`v077-gc-*`, 00:10 to 00:17).
+
+### The frame rates on the final tree, each alone, on mains (`out/fps/summary-f2.txt`, 00:17 to 00:19; "Now drawing from 'AC Power'", 100 %, before and after)
+
+| Where | Day | Night | Triangles |
+|---|---|---|---|
+| Heathrow, stand 216 | 60.1 fps, worst frame 16.8 ms | 60.1 fps, 16.8 ms | 938k |
+| Heathrow's final | 60.0 fps, 16.8 ms | 60.0 fps, 16.8 ms | 841k |
+| Frankfurt, stand A1 | 60.0 fps, 16.8 ms | 60.1 fps, 16.8 ms | 1,088k |
+| Frankfurt's final | 60.0 fps, 16.8 ms | 60.0 fps, 16.8 ms | 1,068k |
+| Over Paris from 3,000 ft | 60.0 fps, 16.8 ms | | 1,355k |
+| Paris's centre from 3,000 ft | 60.0 fps, 16.8 ms | | 1,431k |
+| London from 3,000 ft | 60.0 fps, 16.8 ms | | 939k |
+| Frankfurt's centre from 3,000 ft | 60.0 fps, 16.8 ms | | 1,055k |
+
+Round 3's four more cover samples a vertex (the second code look's finding 4) cost no frame.
+
+### The unit suite: **tests 1,727, pass 1,727, fail 0**, twice: in the queue (`out/fixed/suite-f2.txt`, 00:20) and again after the version was bumped and the documents written (`out/fixed/suite-final.txt`, 00:22), through the lock and the guard
+
+### The pictures-only reader's last look (`pictures`, 00:18 to 00:19): the final tree's twenty-six (`v077-eucf2-*`) against the pushed tree's and against round 2's
+
+- **Paris from FL350: "the lattice is gone. The suburbs south of the Seine are plain speckled grey again … the SAME as before and BETTER than eucf1."** No lattice or tile pattern over any town in the other FL350 views or from 10,000 ft over Barcelona and Rome.
+- **Every airport final and every night view named one by one: none worse.** Heathrow's and Schiphol's finals better; Frankfurt's, Gatwick's, Madrid's, Charles de Gaulle's, Fiumicino's the same, Munich's slightly better; the three night views the same ("the runway, approach lights and terminal glow are identical to before").
+- **"No view is worse in eucf2 than in eucf1 … No view is worse than before." Keep; 7.5 of 10.**
+- **What it says still needs an apology** (to ROADMAP): the polders' strip heads ending along a flat line with no road in the 1,000 ft view; cities reading as grey bare ground from 10,000 ft and up, as before; "the regimented look of the terraces" from 3,000 ft.
+
+### The write-up
+
+- `src/version.js`: `0.7.7`, build `261123`, `Flight Sim v0.7.7 · CL#261123`.
+- The documents, drafted by the `docs` subagent in two passes (23:15 to 23:27 and 23:59 to 00:02, from these entries) and finished by the lead: `Updates.md` (the v0.7.7 entry), `ROADMAP.md` (the v0.7.7 row with what it holds, v0.7.8's row, "Found while building v0.7.7", the struck findings, the size), `AGENTS.md` (line 7, the `briefs/` row, the State bullet, Next), `HANDOFF.md` (its first section rewritten for v0.7.8, the versions table, "How the recent changes work"), `README.md`, `PLAN.md`. The final numbers went in by script from this checkpoint; no marker is left in any of the six (`grep -c "\[\["`: 0 in the five, and 0 in `HANDOFF.md` after its three hand-over lines). In `Updates.md` the lead changed one claim to what the pictures show: the generated town blends into a real centre "instead of stopping at a ring round it", and "a line can still show, as on the west side of London's".
+- The hub's blurb (`GameDump/data/games.js`): unchanged; it names no count or look that v0.7.7 moves.
+- `data/` 519 MB, Europe 314 MB of it (`du -sm`; 531,420 and 321,148 KB): to the megabyte what v0.7.6 was (the centres +0.16 MB, the tiles −0.16 MB).
+
+### Decisions made in the run (v0.7.7), continued
+
+25. **The suburbs stay on by default:** the one standard view marked worse is the same as v0.7.6's on the final tree, and no view of any group is worse than before by the reader's marks.
+26. **The frame rates were taken on round 2's tree and again on the final one,** since round 3 added shader work; both are logged.
+
+## 2026-11-23, 00:40 KST: v0.7.7 ready to push (Claude Code)
+
+`date`: Mon Nov 23 00:38:45 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'", 100 %, charged. The game shows `Flight Sim v0.7.7 · CL#261123`. **`sh tools/push.sh v0.7.7`**, from `games/flight-sim/`. The brief's stop was 02:00, the write-up from 01:15.
+
+### The definition of done (`briefs/V0-7-7.md`), item by item
+
+| Item | Result | Evidence |
+|---|---|---|
+| The three parts in, each with its switch, or moved whole to v0.7.8 | **all three in whole; nothing moved** | the towns behind `?towns77=0`, their low suburbs also behind `?suburbs77=0`; the countryside behind `?fields77=0`; the ground's data with no switch, being data (decision 4) |
+| The re-bakes: seams bit-identical, unchanged cores by hash, sizes | **done** | the lakes (checkpoint 5): 175 tile files, seams 0 differing over 760 pairs before and after the install, 497 of 672 pushed files equal by SHA-256 and the 175 differing in water cells only, the land of three tiles pinned by hash in the test; Schiphol's and Lisbon's patches bit-identical to the installed files without the mends (checkpoint 1); the 34 centres' outer records byte for byte the installed ones (`cmp.py`, "bad 0 of 34"); all by `tools/install-region.py`; `data/` 519 MB, Europe 314 MB, as v0.7.6 to the megabyte |
+| East Asia's sixteen views at max diff 0 against the pushed v0.7.6, `--total 2400` | **sixteen of sixteen** | checkpoint 12 (the final tree); also at 22:53 and on round 2's tree |
+| Europe's views changed only where these parts change them; with every switch off, max diff 0 | **twenty-six of twenty-six at max diff 0, switched off, against the pushed code on the new ground;** fifteen differ from the pushed tree itself, where part 3's data shows, each logged | checkpoints 8 and 12; decision 15 for the method |
+| Frame rates on mains and alone: 60 fps at Heathrow's and Frankfurt's stands and finals, and over Paris's centre | **60.0 to 60.1 fps, worst frame 16.8 ms, at all of them, by day and by night** | checkpoint 12 (the final tree), and checkpoint 9 (round 2's) |
+| The unit suite through the guard, its count logged | **1,727 of 1,727** | `out/fixed/suite-final.txt`, 00:22, after the version's bump |
+| The pictures looked at, before and after, at every place in the three checks | **done** | the towns: Frankfurt, London, Paris, Toulouse, Dijon, Zaragoza, Munich, Milan, Lyon from 3,000 ft, the Main and the Thames close up (checkpoints 4, 6, 8; the reader's marks in 7 and 9); the countryside: the Loire, the Bidasoa, Meath, Kent, Normandy, the Alentejo, Flevoland, Lyon, Zaragoza's final (checkpoint 3 and after); the ground: the IJsselmeer from 3,000 ft and at its shore, Schiphol's final, Cristo Rei and the bridge from the river (checkpoint 2) |
+| The two reviews | **done** | the code review in two looks (checkpoints 5 and 11: fourteen findings; every one that affects correctness mended); the pictures-only review in three sittings (checkpoints 7, 9, 12: no pair worse than before in any group on the final tree; towns 7, countryside 7.5, the ground 8, the standard views 7.5 of 10) |
+| ROADMAP at the start | **done** | 22:14 (the start entry) |
+| Written up by the stop, lid-closeable | this entry; "Lid-closeable", below | |
+
+### After checkpoint 12 (00:23 to 00:38): the real game at three airports whose ground changed
+
+`tools/check-airport.sh europe <ICAO> … day` through the lock (`lead/ap3.sh`; `out/ap/`): a gate start, pushback, taxi, take-off and a landing by the test pilot, in the game's own page, on the final tree.
+- **Schiphol (its patch floored): 13 of 13,** landed on 18R, A 90, no console errors.
+- **Lisbon (the cliff in its patch): 13 of 13,** landed on 02, A 91, no console errors.
+- **Geneva (the lake at 368 m beside it): 13 of 13,** landed on 04, B 87 (long: 268 m past the aiming point; within the test pilot's usual range at other airports, B 83 to A 92 in v0.7.2's log), no console errors.
+- Night runs, taxi-in and the other forty airports were not run again: no airport's file, runway or route changed, and no cell inside Schiphol's boundary (checkpoint 1).
+
+### What Shane should know
+
+1. **All three parts are in whole; nothing moved to v0.7.8.** Three switches on the page's address give v0.7.6's look back: `?towns77=0` (all of the towns' changes), `?suburbs77=0` (the low suburbs alone), `?fields77=0` (the countryside). The lakes, Schiphol's ground and Cristo Rei's cliff are data and have no switch.
+2. **The lakes were worse than the roadmap said, and the mend is wider than the brief's.** v0.7.6 drew every lake's surface 2 m under its nearest bank, cell by cell: Loch Ness climbed its banks from 19 m to 484 m, Lake Lucerne from 412 to 620 m. Every lake the elevation model maps flat now lies at that level (173 of Europe's 224 tiles changed, in water cells only); the IJsselmeer and the Markermeer are at −0.25 m. The levels come from the elevation model itself, not from OSM's `ele` tags as the brief suggested. From the air the difference is small in the pictures; it is the heights that were wrong.
+3. **Cristo Rei needed no new patch.** It was already inside Lisbon's 30 m patch, on 87 m of ground, not 31 m (the roadmap's figure was read 600 m south of it). The built-up filter was pulling the cliff top down; with it off there, the statue stands on 115 m with its whole pedestal in view.
+4. **The towns' rivers come from the 30 m land cover the game already ships, not from a new OSM river mask** (the brief's make): no generated building stands on mapped water (Frankfurt 48 → 0, London 47 → 0, Zaragoza 26 → 0 within 8 km), and nothing was added to `data/` for it. It can't help where there is no 30 m cover (Dijon) or from far off (the Seine by Issy is as blurred from 3,000 ft as before).
+5. **The low suburbs took three rounds.** The first drew hollow outlines of tiny houses on grey ground and read worse than v0.7.6; the second filled the blocks with terraced rows and gave the ground gardens; the third, built in a working copy after a pictures-only reader called them "one terrace block repeated", varies each quarter of a block. The reader's last marks: no view worse than v0.7.6, the towns 7 of 10. It still names "the regimented look of the terraces" from 3,000 ft, the hard edge on the west side of London's real centre (unchanged), and towns reading as grey ground beyond 8 km (as in v0.7.6). `?suburbs77=0` turns the suburbs off alone.
+6. **In the countryside, the Fens and East Anglia are small hedged fields now** (the brief's "the British Isles: hedged"), where the real Fens are big open arable land; an open zone inside Great Britain is in ROADMAP. The polders are the Netherlands' alone; their strips' heads still end along a flat line in one view from 1,000 ft.
+7. **The code review found one real fault in the lake rule** (water at a dam's foot lifted to the reservoir's level, 140 cells up to 31 m over their own ground), mended and baked again before anything else was measured on it; and its second look found two small faults in the suburbs' rows, mended by the lead in three lines that no one else read (checkpoint 11).
+8. **`data/` is 519 MB, Europe 314 MB of it:** unchanged to the megabyte.
+9. **The run began on battery** (90 % at 21:49) and was on mains from about 21:58, so the frame rates could be taken.
+
+### Lid-closeable
+
+- **`date`: Mon Nov 23 00:38:45 KST 2026; "Now drawing from 'AC Power'", 100 %, charged.** `cpu-guard.py --sweep`: nothing above 50 % CPU for more than five minutes; `--status`: no slots in use.
+- **Everything running out of `/tmp/flight-sim`, the game's `tests/` or its `tools/`, or headless: nothing,** at 00:38 (`ps -Ao pid,lstart,command | grep -E "/tmp/flight-sim|flight-sim/tests|flight-sim/tools|--headless|playwright"`: no line). No `until` wait loop (`pgrep -fl "until "`: none). The server on 8014 stopped by its PID (the first, 83694, at 00:22; the second, started for the three airports' runs, at 00:38); the port answers nothing. The Chrome processes still listed are Shane's own browser (thirty-one PIDs from 71709 to 89147, most of them the twenty-nine noted at 21:50): none was started or stopped by the run.
+- **One thing is left running on purpose:** a background command of the session's that reads `GIT_OPTIONAL_LOCKS=0 git log --oneline -1` once a minute and ends when the head is no longer `ef223dc`; then `python3 tools/build-log.py`, the brief for v0.7.8 copied in, and v0.7.8 starts. It reads only.
+- The scratch is `/tmp/flight-sim/v077/` (the frozen pushed v0.7.6 in `base/`, the pushed code on the new ground in `base2/`, the third round's working copy in `t3/`, round 2's files in `backup-round2/`, the lock and scripts, the briefs and the reviews' scratch, the checks' output and the contact sheets; gone at a restart). 432 pictures `v077-*` are in `Claude outputs/flight-sim/`.
+- No path with a user's name in `src/`, `tools/` or `tests/` (grep: none; the reviewer's too).
+- **The subagents of v0.7.7, all Opus, two at once at most:** `towns` (four sittings: 21:53 to 22:55, 22:58 to 23:15, 23:21 to 23:43 in the working copy, 23:52 to 23:53), `country` (three: 21:53 to 22:55, 23:10 to 23:13, 23:29 to 23:47), `code` (22:53 to 23:08, 23:53 to 23:57), `pictures` (23:17 to 23:21, 23:47 to 23:50, 00:18 to 00:19), `docs` (23:15 to 23:27, 23:59 to 00:02); all reported, none running. A subagent that waited on a watcher of its own was asked by the harness to hand back early (`pictures` at 23:19, `docs` at 23:27); each was resumed when what it waited for was there.

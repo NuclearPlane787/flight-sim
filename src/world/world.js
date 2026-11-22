@@ -74,6 +74,7 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
     const lmMask = lmMod?.landmarkBlockMask ? lmMod.landmarkBlockMask() : null;
     if (cities.setMask && lmMask) cities.setMask((x, y) => (centres ? centres.maskAt(x, y) : false) || lmMask(x, y), centres ? centres.maskVersion : null);
     else if (centres && cities.setMask) cities.setMask(centres.maskAt, centres.maskVersion);
+    if (centres && cities.towns77) cities.setCentreBoxes(centres.boxes);   // v0.7.7 towns: the blend round the real centres
   }
   let runways, aprons, traffic, cityLights, taxiLights, airportSet = null, streamView = null;
   {

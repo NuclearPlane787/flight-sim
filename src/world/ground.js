@@ -295,7 +295,7 @@ export function euConic() {
   return { rho0, lonK: 180 / Math.PI / n, rhoA: rho(46), degPerM: 10 / (rho(41) - rho(51)) };
 }
 
-export function euGroundGlsl(src) {
+export function euGroundGlsl(src, fields77 = FIELDS77) {
   const K = euConic();
   const splice = (text, anchor, add, where) => {
     const n = text.split(anchor).length - 1;
@@ -371,5 +371,128 @@ vec3 euField(int kind, float t, out float green) {
     + '  }\n', 'before');
   s = splice(s, '  return mix(avg, col * mix(vec3(1.0), tintM, 0.6) * 0.85, fade);\n',
     '  if (eu == 1) treeLine = max(treeLine, euHg * 0.7 * step(0.55, hv));   // trees in about half the hedges\n', 'before');
+  return fields77 ? fields77Glsl(s, splice) : s;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// v0.7.7 (country; briefs/V0-7-7.md part 2): the countryside by the country raster. Behind ?fields77=0 (node
+// FS_FIELDS77=0), on by default; off, euGroundGlsl() returns v0.7.6's text character for character (pinned by hash in
+// tests/v077-country-fields.test.mjs). On, on top of v0.7.1's splices:
+//   - euZone() takes each country's zone from a texture of the country raster (euZoneData(): a weight a channel for
+//     four groups, blurred over about 6 km and sampled bilinearly with a 1 km jitter, so a border is a soft edge and
+//     never a 2 km staircase): R the British Isles (hedged), G France (Normandy and Brittany hedged, the south dry, by
+//     v0.7.1's lines), B Iberia (dry but for v0.7.1's Atlantic north), A the Netherlands (where polders may be);
+//     every other country keeps v0.7.1's rule by latitude and longitude;
+//   - a polder's strips turn with a slow continuous field (no 8 km seam), and the polder's district says so to the
+//     terrain shader (euPol), which draws the land cover's grassland there as the polder's strips.
+function lookSwitch(q, env) {   // as apron.js's
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = new RegExp(`[?&]${q}=([01])\\b`).exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env[env] === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const FIELDS77 = lookSwitch('fields77', 'FS_FIELDS77');
+
+// The country raster's codes in each of the four groups (the raster's header names the codes).
+export const EU_ZONE_GROUPS = [['GB', 'IE'], ['FR', 'MC'], ['ES', 'PT', 'AD', 'GI'], ['NL']];
+export const EU_HEDGE_FAR = 1.15;
+// The mean of the polders' edge fade over the district lattice (1 km jittered sites; Monte Carlo of the shader's
+// smoothstep(0, 150, dEdge - 30 + 100 (n - 0.5)), 400,000 points: 0.584). Beyond the fields' fade, euPol is the zone's
+// polder weight times this, so the grassland drawn as strips is the same share near and far (the code review, 23:10).
+export const EU_POLDER_EDGE_MEAN = 0.584;
+// v0.7.7: the polders' palette, near the grass's own tone (v0.7.1's EU_PALETTE.polder was far greener than any ground
+// round it once the grassland drew as strips), the brown parcels 4 % of them.
+export const EU_POLDER77 = [[0.88, [0.095, 0.112, 0.048]], [0.96, [0.118, 0.124, 0.056]], [1, [0.16, 0.125, 0.07]]];
+export function paletteAverage(p, f) {
+  const a = [0, 0, 0];
+  let lo = 0;
+  for (const [hi, c] of p) { for (let k = 0; k < 3; k++) a[k] += (hi - lo) * c[k]; lo = hi; }
+  return a.map((v) => v * f);
+}   // the hedged kind's far colour against v0.7.1's (fields77Glsl())
+export const EU_ZONE_BLUR = 1;     // cells (2 km) of each of the two box passes: a triangle five cells wide
+// header: country.json; values: its byte-a-cell raster (south row first; byte & codeMask = the code, the sea taking
+// its nearest land's). Returns { data: RGBA bytes, nx, ny, box: [x0, y0, 1 / width m, 1 / height m] }.
+export function euZoneData(header, values) {
+  const { nx, ny } = header, n = nx * ny, mask = header.codeMask || 127;
+  const names = Array.isArray(header.codes) ? header.codes : [];
+  const group = new Int8Array(256).fill(-1);
+  EU_ZONE_GROUPS.forEach((g, k) => g.forEach((c) => { const i = names.indexOf(c); if (i >= 0) group[i] = k; }));
+  const data = new Uint8Array(n * 4);
+  const a = new Float32Array(n), b = new Float32Array(n);
+  const box = (src, dst, r) => {                          // along x, then along y (clamped at the edges)
+    for (let j = 0; j < ny; j++) {
+      const o = j * nx;
+      for (let i = 0; i < nx; i++) {
+        let s = 0;
+        for (let d = -r; d <= r; d++) s += src[o + Math.min(nx - 1, Math.max(0, i + d))];
+        dst[o + i] = s / (2 * r + 1);
+      }
+    }
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < ny; j++) {
+        let s = 0;
+        for (let d = -r; d <= r; d++) s += dst[Math.min(ny - 1, Math.max(0, j + d)) * nx + i];
+        src[j * nx + i] = s / (2 * r + 1);
+      }
+    }
+  };
+  for (let k = 0; k < 4; k++) {
+    for (let p = 0; p < n; p++) a[p] = group[values[p] & mask] === k ? 1 : 0;
+    box(a, b, EU_ZONE_BLUR);
+    box(a, b, EU_ZONE_BLUR);
+    for (let p = 0; p < n; p++) data[p * 4 + k] = Math.round(a[p] * 255);
+  }
+  return { data, nx, ny, box: [header.x0, header.y0, 1 / (nx * header.cell), 1 / (ny * header.cell)] };
+}
+// Without the raster (it failed to load): one texel, no named country and polders allowed: v0.7.1's rule everywhere.
+export const EU_ZONE_FALLBACK = { data: new Uint8Array([0, 0, 0, 255]), nx: 1, ny: 1, box: [0, 0, 0, 0] };
+
+function fields77Glsl(src, splice) {
+  let s = src;
+  s = splice(s, '// v0.7.1, Europe: how hedged and how dry the farm country is at map position mp (0..1 each).\n',
+    '// v0.7.7: the four groups\' weights from the country raster (ground.js\'s euZoneData()), and the last euZone()\'s\n'
+    + '// polder weight (the Netherlands) and polder flag of the pixel\'s district (for the terrain shader).\n'
+    + 'uniform sampler2D uEuZone;\nuniform vec4 uEuZoneBox;\nfloat euZoneP = 1.0;\nfloat euPol = 0.0;\n', 'before');
+  s = splice(s, '  hedge = max(gb, max(nw, atl));\n  float s1 = 1.0 - smoothstep(43.0, 43.6, lat);\n'
+    + '  float s2 = (1.0 - smoothstep(44.0, 44.6, lat)) * smoothstep(2.5, 3.1, lon);\n  dry = max(s1, s2) * (1.0 - atl);\n}\n',
+    '  float s1 = 1.0 - smoothstep(43.0, 43.6, lat);\n'
+    + '  float s2 = (1.0 - smoothstep(44.0, 44.6, lat)) * smoothstep(2.5, 3.1, lon);\n'
+    + '  // v0.7.7: by country, the border softened (a blurred raster, read bilinearly a jittered kilometre off).\n'
+    + '  vec2 jit = (vec2(vnoise(mp * 0.0005 + 21.0), vnoise(mp * 0.0005 + 27.0)) - 0.5) * 2000.0;\n'
+    + '  vec4 w = textureLod(uEuZone, (mp + jit - uEuZoneBox.xy) * uEuZoneBox.zw, 0.0);\n'
+    + '  float wO = max(1.0 - w.r - w.g - w.b, 0.0);           // a country not named: v0.7.1\'s rule\n'
+    + '  float dO = max(s1, s2) * (1.0 - atl);\n'
+    + '  hedge = w.r + w.g * max(nw, atl) + w.b * atl + wO * max(gb, max(nw, atl));   // France: v0.7.1\'s without the British line\n'
+    + '  dry = (w.g + wO) * dO + w.b * (1.0 - atl);\n'
+    + '  euZoneP = w.a;\n}\n', 'instead');
+  // The hedged kind's far colour (v0.7.1: 0.66 of its palette's mean, as every kind's) came out about 12 % darker than
+  // its fields just before they average out (eu-fields-normandy: rows of 102, 117, 90 against 87, 104, 87): a faint step.
+  // Its near look is 0.85 of the mean, less its hedges' and trees' share; EU_HEDGE_FAR raises the far one to meet it.
+  const hedgeAvg = v3(euFieldAverage('hedge')), hedgeFar = v3(euFieldAverage('hedge').map((v) => v * EU_HEDGE_FAR));
+  s = splice(s, `, ${hedgeAvg}, euH)`, `, ${hedgeFar}, euH)`, 'instead');
+  s = splice(s, '  float euP = (1.0 - euD) * (1.0 - smoothstep(0.4, 1.2, hgt));\n',
+    `  euP *= euZoneP;                                           // v0.7.7: polders in the Netherlands\n  euPol = euP * ${g1(EU_POLDER_EDGE_MEAN)};                   // (far: the near path's expected share, its edge fade included)\n`);
+  s = splice(s, '  euZone(m - dq, euSH, euSD);\n', '  float euSP = euZoneP;\n');
+  s = splice(s, '  else if (euGH < 0.8 && euGH != 0.0) eu = 3;\n', '  else if (euGH < 0.8 && euGH != 0.0 && ihash(did, 50u) < euSP) eu = 3;\n', 'instead');
+  // (the grassland's strips fade out over about 150 m inside the district's edge, along a wandering line, so a polder's
+  // pasture meets its neighbour's grass without a straight seam)
+  s = splice(s, '  float euHg = 0.0, euOl = 0.0;\n', '  euPol = mix(euPol, eu == 3 ? smoothstep(0.0, 150.0, dEdge - 30.0 + 100.0 * (vnoise(m * 0.006 + 41.0) - 0.5)) : 0.0, fade);\n');
+  // The polders' palette muted to the grass round them (the lead's review of Schiphol's final at 22:26: with the
+  // grassland drawn as strips, v0.7.1's bright green took the whole frame), and fewer brown parcels.
+  s = splice(s, `  else if (kind == 3) { c = ${pick(EU_PALETTE.polder, 't')}; green = step(t, 0.93); }\n`,
+    `  else if (kind == 3) { c = ${pick(EU_POLDER77, 't')}; green = step(t, 0.96); }\n`, 'instead');
+  s = splice(s, `, ${v3(euFieldAverage('polder'))}, euP)`, `, ${v3(paletteAverage(EU_POLDER77, 0.66 * EU_HEDGE_FAR))}, euP)`, 'instead');
+  // A cross-ditch where a row of strips ends (each row is shifted along, so without one its strips met the next row's
+  // at a bare straight seam: the pictures-only review, 23:29), and each ditch drawn at its own share of the pixel
+  // instead of widened by the antialiasing into a dark smear in the middle distance.
+  s = splice(s, '    col = mix(col, vec3(0.040, 0.058, 0.066), (1.0 - smoothstep(0.9, 0.9 + aa, euDx)) * (1.0 - smoothstep(6.0, 18.0, lod)) * 0.85);\n',
+    '    float euDy = min(ry, 1.0 - ry) * size.y;                // v0.7.7: the distance to the row\'s head\n'
+    + '    float euDw = min(1.0, 1.6 / (0.9 + aa));                  // v0.7.7: a ditch\'s own share of the pixel\n'
+    + '    col = mix(col, vec3(0.040, 0.058, 0.066), max(1.0 - smoothstep(0.9, 0.9 + aa, euDx), 1.0 - smoothstep(1.2, 1.2 + aa, euDy)) * euDw * (1.0 - smoothstep(6.0, 18.0, lod)) * 0.85);\n', 'instead');
+  s = splice(s, '  if (eu == 3) ang = floor(ihash(did >> 3, 47u) * 4.0) * 0.7854 + 0.2;   // a polder\'s strips all one way, over about 8 km\n',
+    '  if (eu == 3) ang = vnoise((m - dq) * 0.00003 + 17.0) * 3.14159;   // v0.7.7: a polder\'s strips turn slowly with the land, no seam\n', 'instead');
   return s;
 }
