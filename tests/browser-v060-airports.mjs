@@ -23,7 +23,7 @@ import { standList } from '../src/ground/gate-flow.js';
 import { standHeading } from '../src/world/traffic-layout.js';
 import { typeById } from '../src/sim/types.js';
 import { REGION } from '../src/world/regions.js';
-import { canTakeOff, canLand, runwayUse, circlingOnly } from '../src/world/runways.js';
+import { aipTakesOff, aipLands, runwayUse, circlingOnly } from '../src/world/runways.js';
 import { zoneMs, zoneOfIcao } from '../src/clock.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -58,7 +58,7 @@ if (!STAND || !DEP) {
   let best = null;
   for (const st of offered.filter((s) => s.gate).slice(0, 12)) for (const e of ends) {
     if (DEP && e.ident !== DEP) continue;
-    if (!DEP && !canTakeOff(ICAO, e.ident)) continue;   // v0.7.0: not from an end nothing takes off from (runways.js ONE_WAY: Frankfurt's 25R, Madrid's 32s and 18s)
+    if (!DEP && !aipTakesOff(ICAO, e.ident)) continue;   // v0.7.0: not from an end nothing takes off from (runways.js ONE_WAY: Frankfurt's 25R, Madrid's 32s and 18s)
     if (STAND && st.ref !== STAND) continue;
     const r = routeFromStand(buildTaxiGraph(ap), st, e);
     if (r && (!best || r.lengthM < best.len)) best = { st: st.ref, dep: e.ident, len: r.lengthM };
@@ -67,12 +67,12 @@ if (!STAND || !DEP) {
 }
 // The longest runway with an ILS; the end in the departure's direction if both have one.
 // (v0.7.3: an airport with no ILS at all, Innsbruck: the longest runway with an end that is landed on straight in)
-const straightIn = (e) => canLand(ICAO, e.ident) && runwayUse(ICAO, e.ident) !== 'standby' && !circlingOnly(ICAO, e.ident);
-const ilsRw = ap.runways.filter((r) => r.ends.some((e) => e.ils && canLand(ICAO, e.ident) && runwayUse(ICAO, e.ident) !== 'standby')).sort((p, q) => q.lengthM - p.lengthM)[0]   // (v0.7.0: an end that is landed on, and not a standby runway)
+const straightIn = (e) => aipLands(ICAO, e.ident) && runwayUse(ICAO, e.ident) !== 'standby' && !circlingOnly(ICAO, e.ident);
+const ilsRw = ap.runways.filter((r) => r.ends.some((e) => e.ils && aipLands(ICAO, e.ident) && runwayUse(ICAO, e.ident) !== 'standby')).sort((p, q) => q.lengthM - p.lengthM)[0]   // (v0.7.0: an end that is landed on, and not a standby runway)
   || ap.runways.filter((r) => r.ends.some(straightIn)).sort((p, q) => q.lengthM - p.lengthM)[0];
 const depEnd = ends.find((e) => e.ident === DEP);
 const ARR = process.env.ARR || (() => {
-  let cand = ilsRw.ends.filter((e) => e.ils && canLand(ICAO, e.ident));
+  let cand = ilsRw.ends.filter((e) => e.ils && aipLands(ICAO, e.ident));
   if (!cand.length) cand = ilsRw.ends.filter(straightIn);
   const same = cand.find((e) => Math.abs(((e.hdgGridDeg - depEnd.hdgGridDeg + 540) % 360) - 180) < 45);
   return (same || cand[0]).ident;

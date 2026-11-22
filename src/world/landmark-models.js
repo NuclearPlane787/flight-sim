@@ -3136,3 +3136,226 @@ export function fourvieretower() {
 }
 
 Object.assign(EUROPE_MODELS, { elbphil, hht, campanile, ndg, fourviere, fourvieretower, domluis, bergisel });
+
+// ================================================================== v0.7.5: Nagoya, Hiroshima, Miyajima, Osaka (East Asia)
+// briefs/V0-7-5.md part 6. Our own massing from public figures, [EST] where not published; no logos, lettering, names
+// or the shrine's plaque text on anything. Added to East Asia's MODELS (the list's entries in landmarks.js).
+
+const KEEP_WALL = [0.72, 0.72, 0.69], KEEP_ROOF = [0.10, 0.31, 0.23], KEEP_STONE = [0.19, 0.18, 0.16], KEEP_GOLD = [0.80, 0.62, 0.22];   // (darkened after the first stills: the shading lifts them)
+const KEEP_GLOW = [0.40, 0.38, 0.33];          // floodlit white plaster at night
+const rect4 = (hx, hn, x = 0, n = 0) => [[x + hx, n - hn], [x + hx, n + hn], [x - hx, n + hn], [x - hx, n - hn]];
+
+// A Japanese castle keep (tenshu) on its stone base (ishigaki), about local (cx, cn):
+//   base [hx0, hn0, hx1, hn1, h]: the stone base, battered on a concave curve from its foot to its top;
+//   tiers [[hx, hn, h, over, rise, dormers]]: each storey's walls, then its roof flaring out by `over` at the eaves and
+//   rising (concave) to the next storey's walls; dormers: 'x' (gables on the two x faces), 'n', 'xn' (all four);
+//   H the top (the ridge's gilded fish, if `fish`, reach it; else the ridge does). topWall: the last storey's colour.
+function castleKeep(b, cx, cn, { base, tiers, H, fish = true, topWall = null, glow = KEEP_GLOW }) {
+  const [hx0, hn0, hx1, hn1, hb] = base;
+  b.set(PLAIN(KEEP_STONE, 0.05, { glow: glow.map((v) => v * 0.45) }));
+  const ts = [0, 0.3, 0.6, 1];
+  b.loft(ts.map((t) => { const k = (1 - t) * (1 - t); return at(rect4(hx1 + (hx0 - hx1) * k, hn1 + (hn0 - hn1) * k, cx, cn), hb * t); }), { capTop: true });
+  const wall = PLAIN(KEEP_WALL, 0.08, { glow });
+  const roof = PLAIN(KEEP_ROOF, 0.2, { glow: glow.map((v) => v * 0.35) });
+  let y = hb;
+  tiers.forEach(([hx, hn, h, over, rise, dorm], i) => {
+    const last = i === tiers.length - 1;
+    b.set(last && topWall ? PLAIN(topWall, 0.15, { glow: glow.map((v) => v * 0.3) }) : wall);
+    b.loft([at(rect4(hx, hn, cx, cn), y), at(rect4(hx, hn, cx, cn), y + h)], { capTop: false });
+    y += h;
+    b.set(roof);
+    const ex = hx + over, en = hn + over;
+    if (!last) {
+      const [nx, nn] = tiers[i + 1];
+      // the soffit (body to eaves), the eaves' edge, the concave slope to the next storey
+      b.loft([at(rect4(hx, hn, cx, cn), y - 0.7), at(rect4(ex, en, cx, cn), y - 0.15), at(rect4(ex, en, cx, cn), y + 0.25),
+        at(rect4(lerp(ex, nx, 0.62), lerp(en, nn, 0.62), cx, cn), y + rise * 0.45), at(rect4(nx, nn, cx, cn), y + rise)], { capTop: false });
+      // the gables (chidori-hafu) on the slope's faces
+      const gy0 = y + 0.1, gy1 = y + rise + 1.4;
+      if (dorm && dorm.includes('n')) for (const s of [-1, 1]) gable(b, cx, cn + s * (hn + over * 0.35), gy0, gy1, Math.min(4.2, hx * 0.32), over * 0.7 + 0.6, false);
+      if (dorm && dorm.includes('x')) for (const s of [-1, 1]) gable(b, cx + s * (hx + over * 0.35), cn, gy0, gy1, over * 0.7 + 0.6, Math.min(4.2, hn * 0.32), true);
+      y += rise;
+    } else {
+      // the top roof: hipped to a ridge along the longer side; the ridge's gilded fish at its ends
+      const top = fish ? H - 2.2 : H;
+      const along = hx >= hn, rl = (along ? hx : hn) * 0.55;
+      const ridge = along ? rect4(rl, 0.35, cx, cn) : rect4(0.35, rl, cx, cn);
+      b.loft([at(rect4(hx, hn, cx, cn), y - 0.7), at(rect4(ex, en, cx, cn), y - 0.15), at(rect4(ex, en, cx, cn), y + 0.25),
+        at(rect4(lerp(ex, along ? rl : 0.35, 0.6), lerp(en, along ? 0.35 : rl, 0.6), cx, cn), lerp(y + 0.25, top, 0.55)), at(ridge, top)], { capTop: true });
+      if (fish) {
+        b.set(PLAIN(KEEP_GOLD, 0.6, { glow: [0.5, 0.38, 0.12] }));
+        for (const s of [-1, 1]) box(b, cx + (along ? s * (rl - 0.3) : 0), cn + (along ? 0 : s * (rl - 0.3)), top - 0.4, H, along ? 0.35 : 0.6, along ? 0.6 : 0.35);
+      }
+    }
+  });
+}
+
+// Nagoya Castle: the main keep (tenshu, rebuilt in concrete in 1959), 36.1 m on its 19.5 m stone base, 55.6 m in all;
+// five roofs of green copper over white plaster, the two gilded fish on the ridge. The stone base's foot is OSM's
+// outline (39.8 x 36.5 m, its grid bearing -11); the storeys' sizes and the gables [EST]. The small keep (shotenshu)
+// beside it to the south, joined by its walled stone bridge: OSM's outline (29.8 x 21.0 m), its heights [EST].
+export function nagoyacastle(brg = -11.2) {
+  const b = new Builder(0.58).frame(0, 0, brg);
+  castleKeep(b, 0, 0, {
+    base: [19.9, 18.25, 17.6, 16.0, 19.5], H: 55.6,
+    tiers: [[16.8, 15.2, 5.4, 2.4, 2.4, 'xn'], [14.2, 12.6, 4.6, 2.2, 2.2, 'x'], [11.6, 10.1, 4.2, 2.0, 2.0, 'n'],
+      [9.0, 7.8, 3.8, 1.9, 1.8, null], [7.0, 5.8, 3.7, 1.8, 0, null]],
+  });
+  // the small keep, 52.8 m away on the grid (OSM: 22.7 m east, 47.7 m south), its long side across
+  castleKeep(b, 13.0, -51.2, {
+    base: [14.9, 10.5, 13.6, 9.3, 12.5], H: 26, fish: false,
+    tiers: [[12.4, 8.2, 5.0, 2.0, 2.0, 'n'], [9.6, 6.0, 3.8, 1.8, 0, null]],
+  });
+  // the walled stone bridge between them (hashidai)
+  b.set(PLAIN(KEEP_STONE, 0.05, { glow: KEEP_GLOW.map((v) => v * 0.45) }));
+  b.member([3.5, 4.5, -16.5], [9.5, 4.5, -40.0], 4.6, 4, 0);
+  return b.result();
+}
+
+// Nagoya's TV tower (1954, the first in Japan): 180 m, a four-legged steel lattice, the enclosed deck at about 90 m and
+// the open balcony at about 100 m. The legs' spread is OSM's outline (47 x 48 m at grid bearing -11); the lattice's
+// taper above the deck, the antenna's share and the low building between the legs [EST]. Silver-grey, lit at night.
+export function nagoyatv(brg = -11) {
+  const b = new Builder(0.27).frame(0, 0, brg);
+  const H = 180, DECK = 90, LT = 140;
+  const w = (y) => (y <= DECK ? 3.8 + 18.2 * (1 - y / DECK) ** 1.55 : lerp(3.6, 1.5, (y - DECK - 13) / (LT - DECK - 13)));
+  const fn = (y) => { const h = w(y); return [[h, h], [-h, h], [-h, -h], [h, -h]]; };
+  const SILVER = [0.60, 0.61, 0.60];
+  const paint = PLAIN(SILVER, 0.35, { glow: [0.42, 0.46, 0.55] });
+  const shell = PLAIN(SILVER.map((v) => v * 0.72), 0.1, { glow: [0.22, 0.24, 0.30] });
+  const ys = [];
+  for (let y = 0; y < DECK - 4.5; y += Math.max(6.5, w(y) * 0.85)) ys.push(y);
+  ys.push(DECK - 3);
+  lattice(b, fn, ys, { rv: 1.1, rd: 0.4, rr: 0.45, sides: 4, cross: true, base: paint, shell: () => shell });
+  const ym = [];
+  for (let k = 0; k <= 6; k++) ym.push(lerp(DECK + 13, LT, k / 6));
+  lattice(b, fn, ym, { rv: 0.6, rd: 0.26, rr: 0.3, sides: 4, cross: true, base: paint, shell: () => shell });
+  // the deck (a glazed box round the lattice, about 90 m) and the open balcony above it (about 100 m)
+  b.set(GLASS([0.30, 0.32, 0.34], 3.5, 2.0, 0.6, 0.65, { glow: [0.45, 0.38, 0.26] }));
+  b.loft([at(chamferRect(8.4, 8.4, 1.4), DECK - 3), at(chamferRect(8.4, 8.4, 1.4), DECK + 4)]);
+  b.set(PLAIN([0.44, 0.45, 0.45], 0.2, { glow: [0.18, 0.18, 0.2] }));
+  b.loft([at(chamferRect(9.0, 9.0, 1.5), DECK + 4), at(chamferRect(9.0, 9.0, 1.5), DECK + 5)]);
+  b.loft([at(chamferRect(4.6, 4.6, 0.8), DECK + 5), at(chamferRect(4.6, 4.6, 0.8), DECK + 9.5)]);
+  b.loft([at(chamferRect(7.0, 7.0, 1.2), DECK + 9.5), at(chamferRect(7.0, 7.0, 1.2), DECK + 10.4)]);
+  b.loft([at(chamferRect(3.8, 3.8, 0.6), DECK + 10.4), at(chamferRect(3.8, 3.8, 0.6), DECK + 13)]);
+  // the antenna
+  b.set(paint);
+  b.loft([[LT, 1.6], [LT + 6, 1.1], [165, 0.7], [H, 0.22]].map(([y, r]) => at(circle(r, 8), y)), { smooth: true });
+  // the building between the legs [EST: four floors]
+  b.set(GLASS([0.42, 0.41, 0.38], 4.0, 3.0, 0.4, 0.4));
+  b.loft([at(chamferRect(13, 13, 2), 0), at(chamferRect(13, 13, 2), 14)]);
+  b.light([0, H, 0], 1);
+  for (const y of [LT, DECK + 10, 50]) ringLights(b, fn(y), y, 0);
+  return b.result();
+}
+
+// The great torii of Itsukushima Shrine (1875): 16.6 m (OSM height=16.591), standing in the sea off the shrine at
+// Miyajima, vermilion; the two main pillars, each braced by two smaller legs fore and aft (six legs), the tie beam, the
+// two top beams with their upturned ends (the top one about 24 m long: OSM's outline, 22.7 x 11.9 m, its long axis at
+// grid bearing 37.9). Based at the water's level (y 0, the sea; `atSea` in its entry). The pillars' girth and spacing,
+// the legs' places and the beams' heights [EST]; the plaque between the beams is a plain board.
+export function torii(brg = -52.1) {
+  const b = new Builder(0.81).frame(0, 0, brg);
+  const H = 16.6, PX = 5.45, SN = 4.6;
+  const VERM = PLAIN([0.78, 0.20, 0.08], 0.15, { glow: [0.55, 0.20, 0.08] });
+  const BLACK = PLAIN([0.07, 0.065, 0.06], 0.25, { glow: [0.05, 0.04, 0.03] });
+  b.set(VERM);
+  for (const s of [-1, 1]) {
+    cyl(b, s * PX, 0, 0, 14.2, 1.25, 1.0, 12);                                  // a main pillar
+    for (const t of [-1, 1]) {
+      cyl(b, s * PX, t * SN, 0, 8.6, 0.55, 0.5, 8);                            // its two legs
+      box(b, s * PX, t * SN * 0.55, 6.3, 6.9, 0.32, SN * 0.45);                 // the legs' ties to the pillar
+      box(b, s * PX, t * SN * 0.55, 8.0, 8.6, 0.32, SN * 0.45);
+      b.set(BLACK);
+      gable(b, s * PX, t * SN, 8.6, 9.3, 0.8, 0.8);                            // the legs' little roofs
+      b.set(VERM);
+    }
+    box(b, s * PX, 0, 8.0, 8.6, 0.35, SN, 0, { capBottom: true });               // the fore-and-aft beam over the legs
+  }
+  box(b, 0, 0, 10.4, 11.4, 8.4, 0.45, 0, { capBottom: true });                 // the tie beam (nuki)
+  box(b, 0, 0, 11.4, 13.6, 0.8, 0.3);                                           // the plain board between the beams
+  box(b, 0, 0, 13.6, 14.3, 10.6, 0.55, 0, { capBottom: true });                // the lower top beam (shimaki)
+  // the top beam (kasagi), its ends rising, with its black cap
+  const K = 12.1, yb = (x) => 14.3 + 1.0 * (Math.abs(x) / K) ** 2.5;
+  const xs = [-K, -9, -6, -3, 0, 3, 6, 9, K];
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const a = xs[i], c = xs[i + 1];
+    b.set(VERM);
+    b.member([a, yb(a) + 0.5, 0], [c, yb(c) + 0.5, 0], 0.78, 4, 0);
+    b.set(BLACK);
+    b.member([a, yb(a) + 1.15, 0], [c, yb(c) + 1.15, 0], 0.21, 4, 0);
+  }
+  // (member squares stand corner-up by half their width: the cap's top at the ends is H)
+  return b.result();
+}
+
+// The Hiroshima Peace Memorial (the Atomic Bomb Dome): the ruin of the Prefectural Industrial Promotion Hall (1915),
+// kept as it stood after 6 August 1945: about 25 m to the top of the bare steel frame of its dome, over a five-storey
+// central stair tower; the brick walls of the three-storey wings broken to uneven heights, the windows empty. Modelled
+// plainly, as the memorial it is. OSM's outline (46.3 x 31.6 m, long axis at grid bearing -11: local x here); the
+// wings' plan, the broken walls' heights and the dome's ellipse [EST].
+export function abombdome(brg = 79) {
+  const b = new Builder(0.33).frame(0, 0, brg);
+  const H = 25;
+  const BRICK_RUIN = [0.27, 0.22, 0.17], STEEL = [0.08, 0.075, 0.07];
+  const glow = [0.26, 0.22, 0.16];
+  // the walls: segments [x0, n0, x1, n1, top] 0.7 m thick, the openings as the facade's dark bays
+  b.set({ col: BRICK_RUIN, fac: [4.6, 2.9, 0.42, 0], spec: 0.04, glow });
+  const T = 0.35;
+  const seg = (x0, n0, x1, n1, top) => {
+    const L = Math.hypot(x1 - x0, n1 - n0), a = Math.atan2(n1 - n0, x1 - x0) * 180 / Math.PI;
+    box(b, (x0 + x1) / 2, (n0 + n1) / 2, 0, top, L / 2 + T, T, a);
+  };
+  const run = (x0, n0, x1, n1, tops) => {
+    const k = tops.length;
+    for (let i = 0; i < k; i++) seg(lerp(x0, x1, i / k), lerp(n0, n1, i / k), lerp(x0, x1, (i + 1) / k), lerp(n0, n1, (i + 1) / k), tops[i]);
+  };
+  // the front wing (three storeys), facing local +n, the tower at its middle
+  run(-22, 13, -6, 13, [14.5, 15.5, 13.0, 15.0]);
+  run(6, 13, 22, 13, [15.0, 12.5, 15.5, 14.0]);
+  run(-22, 4, -6, 4, [12.0, 9.5, 13.5, 11.0]);
+  run(6, 4, 22, 4, [11.5, 13.5, 8.5, 12.5]);
+  run(-22, 13, -22, -14, [14.0, 12.0, 9.0, 10.5, 7.5]);
+  run(22, 13, 22, -14, [13.5, 11.0, 12.5, 8.0, 9.5]);
+  // the side wings going back (lower, more broken) and the rear wall's stubs
+  run(-14, 4, -14, -14, [9.0, 7.0, 8.5]);
+  run(14, 4, 14, -14, [8.0, 9.5, 6.5]);
+  run(-22, -14, -14, -14, [8.0, 5.5]);
+  run(14, -14, 22, -14, [6.0, 8.5]);
+  run(-6, 4, -6, 13, [16.0]);
+  run(6, 4, 6, 13, [16.0]);
+  // the stair tower: an elongated octagon about 12 x 10 m, its walls to the drum at 18.5 m
+  const oct = superellipse(6.2, 5.2, 2, 8, Math.PI / 8).map(([x, n]) => [x, n + 8.5]);
+  b.set({ col: BRICK_RUIN.map((v) => v * 0.94), fac: [3.7, 2.4, 0.45, 0], spec: 0.04, glow });
+  for (let i = 0; i < 8; i++) { const [x0, n0] = oct[i], [x1, n1] = oct[(i + 1) % 8]; seg(x0, n0, x1, n1, 18.5); }
+  // the drum's ring and the dome's bare frame: an ellipsoid 5.9 x 4.9 m from 19 m to the crown ring at 24.4 m
+  b.set(PLAIN(STEEL, 0.2, { glow: [0.08, 0.07, 0.06] }));
+  const ring = (y, s) => superellipse(5.9 * s, 4.9 * s, 2, 16).map(([x, n]) => [x, y, n + 8.5]);
+  b.loft([at(superellipse(6.3, 5.3, 2, 16).map(([x, n]) => [x, n + 8.5]), 18.5), at(superellipse(6.3, 5.3, 2, 16).map(([x, n]) => [x, n + 8.5]), 19.0)]);
+  const lev = [0, 0.25, 0.5, 0.72, 0.9, 1].map((t) => [19.0 + 5.2 * Math.sin(t * Math.PI / 2), Math.max(Math.cos(t * Math.PI / 2), 0.16)]);
+  const R = lev.map(([y, s]) => ring(y, s));
+  for (let i = 0; i < 16; i++) for (let j = 0; j + 1 < R.length; j++) b.member(R[j][i], R[j + 1][i], 0.11, 4);
+  for (const j of [1, 3, 5]) for (let i = 0; i < 16; i++) b.member(R[j][i], R[j][(i + 1) % 16], 0.09, 4);
+  // the crown: a small ring and its stub to the top
+  b.member([0, 24.2, 8.5], [0, H, 8.5], 0.18, 4);
+  return b.result();
+}
+
+// Osaka Castle: the main tower (rebuilt in concrete in 1931): about 55 m with its stone base [the brief; the tower about
+// 41 m on a stone base of about 14 m, EST], five roofs of green copper over white walls, the top storey dark with gilded
+// trim, the gilded fish on the ridge. The stone base's foot is OSM's outline (41.8 x 37.7 m, grid bearing 1); the
+// storeys' sizes and the gables [EST].
+export function osakacastle(brg = 1) {
+  const b = new Builder(0.64).frame(0, 0, brg);
+  castleKeep(b, 0, 0, {
+    base: [18.85, 20.9, 17.0, 19.0, 13.5], H: 55, topWall: [0.13, 0.12, 0.11],
+    tiers: [[15.8, 17.6, 6.8, 2.3, 2.4, 'xn'], [13.0, 14.4, 5.6, 2.1, 2.3, 'xn'], [10.4, 11.4, 5.0, 2.0, 2.1, 'x'],
+      [8.0, 8.8, 4.4, 1.8, 2.0, 'n'], [6.4, 7.0, 4.6, 1.8, 0, null]],
+  });
+  // the top storey's gilded bands (y 44.1 to 48.7 there)
+  b.set(PLAIN(KEEP_GOLD, 0.6, { glow: [0.5, 0.38, 0.12] }));
+  for (const y of [45.2, 47.6]) b.loft([at(rect4(6.5, 7.1), y), at(rect4(6.5, 7.1), y + 0.35)], { capTop: false });
+  return b.result();
+}
+
+Object.assign(MODELS, { nagoyacastle, nagoyatv, torii, abombdome, osakacastle });

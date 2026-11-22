@@ -37,7 +37,7 @@ const airports = (await Promise.all(LIST.map(async (f) => (await fetch(DATA_URL 
   .map((a) => ({ ...a, runways: a.runways.map((r) => ({ ...r, ends: r.ends.map((e, j) => ({ ...e, hdgGridDeg: e.hdgGridDeg ?? Math.atan2(r.ends[1 - j].x - e.x, r.ends[1 - j].y - e.y) * 180 / Math.PI })) })) }));
 // v0.7.0: Europe's one-way and standby runways marked as the game marks them (runways.js's ONE_WAY: each end's `use`).
 // East Asia's list is left as it was, so its map pictures are v0.6.4's.
-if (REGION_ID !== 'east-asia') { const { runwayUse, canLand } = await import('../src/world/runways.js'); for (const a of airports) for (const r of a.runways) for (const e of r.ends) { const u = runwayUse(a.icao, e.ident); if (u) { e.use = u; if (!canLand(a.icao, e.ident)) e.ils = null; } } }
+if (REGION_ID !== 'east-asia') { const { runwayUse } = await import('../src/world/runways.js'); for (const a of airports) for (const r of a.runways) for (const e of r.ends) { const u = runwayUse(a.icao, e.ident); if (u) e.use = u; } }
 const coast = await (await fetch(DATA_URL + 'coast-region.json')).json();
 if (document.fonts?.load) await Promise.all(['400 16px B612', '700 16px B612'].map((f) => document.fonts.load(f))).catch(() => {});
 const t0 = performance.now();

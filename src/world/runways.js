@@ -347,7 +347,11 @@ export function onPaved(index, x, y) {
 // 8.3 nm; clear by 60 m only inside 4.6 nm), and Austro Control's AD 2.22 publishes no straight-in instrument final to
 // it: 08 is reached from the approach to 26 "on to a right-hand traffic circuit to RWY 08", or by a visual segment. 26's
 // line is clear for the whole 15 nm (lowest 119 m over the ground, 1 nm out).
-export const CIRCLING_ONLY = { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'], LOWI: ['08'] };
+// v0.7.5: Itami's 14R and 14L. Their straight 3° lines from 15 nm come over the Hokusetsu hills north-west of the field
+// (14R 33 m over the ground 4.7 nm out, 14L 47 m at 4.3 nm: under the 60 m the game asks), and AIP Japan gives them no
+// straight-in approach: RJOO AD 2.21 1.5 "For circling approach to Runway 14 ...", AD 2.22 "JET circling to West
+// only". They are flown by a circle from the approach to 32L, over the city. 32L and 32R clear by 119 m and 117 m.
+export const CIRCLING_ONLY = { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'], LOWI: ['08'], RJOO: ['14R', '14L'] };
 export const circlingOnly = (icao, ident) => !!CIRCLING_ONLY[icao]?.includes(String(ident).toUpperCase());
 // The end a circling-only end is circled from (v0.6.4, the review): its runway's other end when that one has an
 // ILS (Gimhae's 18L from 36R), else the airport's first end with an ILS that isn't circling-only itself (Wonsan's
@@ -363,9 +367,10 @@ export function circleFrom(airport, ident) {
 }
 
 // v0.7.0: runway ends used one way, from each AIP (briefs/V0-7-0.md's pitfall), as CIRCLING_ONLY is a table:
-//   'takeoff'  departures only (no approach to it: its ILS is cleared, no final start or Skip to final);
-//   'landing'  arrivals only (the setup doesn't offer it for a departure);
+//   'takeoff'  departures only in the AIP;
+//   'landing'  arrivals only in the AIP;
 //   'closed'   neither (the other end of a one-way runway);
+//   (v0.7.0 to v0.7.4 hid these ends from the lists they weren't used for; since v0.7.5 they are offered last, with a note)
 //   'standby'  usable both ways but only when the main runway is shut: listed last, never picked by default.
 // Frankfurt (AIP Germany, EDDF AD 2.13, read 2026-11-21: 07L/25R's TORA is "-", landings only; 18 has no LDA and
 // there is no row for 36: take-offs only, southward, and 36 never used). Madrid (AIP Spain, LEMD AD 2.12, read
@@ -396,17 +401,32 @@ export const ONE_WAY = {
   // v0.7.3, Venice, [EST]: Italy's eAIP asks for a login. From general knowledge of its use: 04L/22R, 180 m beside the main
   // runway, serves as its taxiway and is a runway only when 04R/22L is closed.
   LIPZ: { '04L': 'standby', '22R': 'standby' },
+  // v0.7.5, Cheongju (Korea's eAIP, RKTU AD 2.20 1.3: "It is mandatory for all airliners to use RWY 06L/24R except for
+  // emergency situations. Usage of RWY 06R/24L for airliners are also allowed when RWY 06L/24R is closed due to RWY
+  // maintenance ..."): the air force's runway is a standby here, offered after the civil one and never the default.
+  RKTU: { '06R': 'standby', '24L': 'standby' },
 };
 export const runwayUse = (icao, ident) => ONE_WAY[icao]?.[String(ident).toUpperCase()] || null;
-export const canTakeOff = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'landing' && u !== 'closed'; };
-export const canLand = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'takeoff' && u !== 'closed'; };
-const USE_NOTE = { takeoff: 'take-off only', landing: 'landing only', closed: 'not in use', standby: 'standby' };
+// v0.7.5 (Shane, 2026-11-22, of Barcelona's 20 missing from the map's Change the route: "I can't select all the
+// runways for landing"): the table no longer hides an end. Every end is offered for a take-off and for a landing in
+// every list, with a final and Skip to final if it isn't circling-only; the AIP's use stays as the default and as a
+// note. aipTakesOff() and aipLands() say what the AIP uses an end for (v0.7.0's canTakeOff() and canLand(), which
+// filtered the lists); useRank() orders a list: the ends the AIP uses that way, then a standby runway's, then the
+// ends it doesn't use that way (`what`: 'dep' or 'arr').
+export const aipTakesOff = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'landing' && u !== 'closed'; };
+export const aipLands = (icao, ident) => { const u = runwayUse(icao, ident); return u !== 'takeoff' && u !== 'closed'; };
+export const useRank = (icao, ident, what) => {
+  const u = runwayUse(icao, ident);
+  if (u === 'standby') return 1;
+  return (what === 'dep' ? aipTakesOff(icao, ident) : what === 'arr' ? aipLands(icao, ident) : u !== 'closed') ? 0 : 2;
+};
+const USE_NOTE = { takeoff: 'take-offs only in the AIP', landing: 'landings only in the AIP', closed: 'not in use in the AIP', standby: 'standby' };
 export const runwayUseNote = (icao, ident) => USE_NOTE[runwayUse(icao, ident)] || '';
 
 // Normalise and index a list of airport JSONs.
 export function createAirports(list, opts = {}) {
   const airports = list || [];
-  for (const a of airports) if (ONE_WAY[a.icao]) for (const r of a.runways || []) for (const e of r.ends) { const u = runwayUse(a.icao, e.ident); if (u) { e.use = u; if (!canLand(a.icao, e.ident)) e.ils = null; } }   // (v0.7.0: no ILS shown or tuned to an end nothing lands on)
+  for (const a of airports) if (ONE_WAY[a.icao]) for (const r of a.runways || []) for (const e of r.ends) { const u = runwayUse(a.icao, e.ident); if (u) e.use = u; }   // (v0.7.0 cleared the ILS of an end the AIP doesn't land on; v0.7.5 offers every end and shows the file's ILS: none of those ends has one in its file)
   for (const a of airports) for (const r of a.runways || []) for (const e of r.ends) if (circlingOnly(a.icao, e.ident)) { e.circling = true; e.ils = null; }   // (v0.6.4: no ILS shown or tuned to an end with no straight-in path: Wonsan 33L's was an estimate; Gimhae's two have none)
   const rects = runwayRects(airports);
   const byIcao = new Map(airports.map((a) => [a.icao, a]));

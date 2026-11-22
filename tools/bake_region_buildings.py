@@ -63,6 +63,7 @@ SOURCES = {
     'hokkaido': 'osm/hokkaido-261119.osm.pbf',                 # v0.6.4: Sapporo
     'tohoku': 'osm/tohoku-261119.osm.pbf',                     # v0.6.4: Sendai
     'chubu': 'osm/chubu-261119.osm.pbf',                       # v0.6.4: Niigata
+    'chugoku': 'osm/chugoku-261122.osm.pbf',                   # v0.7.5: Hiroshima
 }
 
 # id: (name, source, nominal box W, S, E, N, quick-look core: lat, lon, size km)
@@ -74,7 +75,9 @@ CENTRES = {
     'seoul': ('Seoul', 'korea', (126.890, 37.480, 127.130, 37.590), (37.512, 127.060, 8.0)),
     'songdo': ('Songdo', 'korea', (126.610, 37.365, 126.680, 37.415), (37.392, 126.640, 4.0)),
     'busan': ('Busan', 'korea', (129.040, 35.140, 129.185, 35.180), (35.162, 129.145, 5.0)),
-    'osaka': ('Osaka', 'kansai', (135.470, 34.635, 135.535, 34.710), (34.675, 135.505, 8.0)),
+    # (v0.7.5: widened north from 34.710 to 34.765 and to 135.465-135.540, to take in Itami's 32L final over
+    # Shin-Osaka, Juso and Toyonaka's south; v0.6.0 to v0.7.4 baked (135.470, 34.635, 135.535, 34.710).)
+    'osaka': ('Osaka', 'kansai', (135.465, 34.635, 135.540, 34.765), (34.675, 135.505, 8.0)),
     'fukuoka': ('Fukuoka', 'kyushu', (130.340, 33.570, 130.430, 33.605), (33.590, 130.395, 5.0)),
     # v0.6.3 (briefs/V0-6-3.md Part 5): Beijing from Financial Street to the CBD at Guomao, Tianjin along the Hai
     # River, Shenyang's centre, Dalian from Xinghai Bay to Zhongshan Square, Vladivostok round the Golden Horn.
@@ -89,6 +92,16 @@ CENTRES = {
     'sapporo': ('Sapporo', 'hokkaido', (141.320, 43.040, 141.380, 43.080), (43.062, 141.354, 4.0)),
     'sendai': ('Sendai', 'tohoku', (140.850, 38.240, 140.900, 38.280), (38.260, 140.878, 4.0)),
     'niigata': ('Niigata', 'chubu', (139.025, 37.900, 139.080, 37.935), (37.918, 139.052, 4.0)),
+    # v0.7.5 (briefs/V0-7-5.md part 6): Nagoya boxed tightly round the castle, Hisaya-odori's TV tower in Sakae and the
+    # station's towers; Hiroshima round the Peace Memorial Park, the castle and the station.
+    'nagoya': ('Nagoya', 'chubu', (136.875, 35.160, 136.915, 35.192), (35.176, 136.895, 4.0)),
+    'hiroshima': ('Hiroshima', 'chugoku', (132.445, 34.385, 132.482, 34.408), (34.396, 132.463, 4.0)),
+}
+# v0.7.5: published heights for towers whose OSM parts carry only levels (x 3.2 m reads far short for office floors of
+# about 4.5 m): by OSM way id, per centre (Wikipedia: Midland Square 247 m; JR Central Towers' office tower 245 m, its
+# hotel tower 226 m). Only the centres named here; every other centre bakes exactly as before.
+HEIGHT_FIX = {
+    'nagoya': {'w501414893': 247.0, 'w501412688': 245.0, 'w501412689': 226.0},
 }
 
 # v0.7.0 (briefs/V0-7-0.md Part 6): Europe's nine, in Europe's frame, chosen by FS_REGION=europe (bake_common.EUROPE).
@@ -498,6 +511,10 @@ def bake_centre(cid):
     n_read = len(feats)
     heights(feats)
     estimate(feats, box, EU_EST_FLOORS.get(cid) if EUROPE else None)
+    fix = {} if EUROPE else HEIGHT_FIX.get(cid, {})   # v0.7.5: empty for every centre baked before
+    for f in feats:
+        if f['osm'] in fix:
+            f['H'], f['src'] = fix[f['osm']], 'tag'
     feats, dropped, both = drop_outlines(feats)
 
     thr = 12.0

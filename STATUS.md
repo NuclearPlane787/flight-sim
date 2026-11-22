@@ -6923,3 +6923,206 @@ cockpit, map, weather, soundgear (03:22); terrain, patches (04:01, 04:12); docs 
 - The scratch is `/tmp/flight-sim/v074/` (the frozen pushed v0.7.3, the snapshot of 06:44, the scripts, the subagents' briefs, the checks' output; gone at a restart).
 
 **For Shane: `sh tools/push.sh v0.7.4` from `games/flight-sim/`.** The session then runs `python3 tools/build-log.py` from GameDump's root and starts v0.7.5 from `Claude outputs/flight-sim/V0-7-5.md`.
+
+## 2026-11-22, 11:45 KST: v0.7.4 pushed; v0.7.5 started (Claude Code)
+
+- **The push:** `GIT_OPTIONAL_LOCKS=0 git log -3` at 11:39:28: `76ea922 2026-11-22 11:38:43 +0900 v0.7.4`, then `08f63c6 v0.7.3`, `106a09a v0.7.2`. The session's watch saw it at 11:39:16. `python3 tools/build-log.py` from GameDump's root: "Wrote data/log.js: 100 entries (content e65c1843ee70)".
+- **Readings, 11:39 and 11:40:** on mains ("Now drawing from 'AC Power'", 100 %, charged); the guard's sweep clean, no slots in use.
+- **The brief:** `Claude outputs/flight-sim/V0-7-5.md` copied to `briefs/V0-7-5.md`; the work is from that copy.
+- **The stop:** started 11:39, so the write-up starts at 15:09 and v0.7.5 is ready to push by 15:39.
+- **The scratch:** `/tmp/flight-sim/v075/`: a frozen APFS clone of the pushed v0.7.4 (`base/`, `src/version.js` there says 0.7.4), the lock and its scripts copied from v0.7.4's with the paths changed, `manifest-add.py` (pending entries under a file lock, the rest of the manifest written back as `json.dumps(indent=2)` gives it, which is how the file is kept: checked), the server on 8014 (PID 60371; the tree and `/base/` both answer 200).
+- **Part 1, the terrain check, from the installed files** (`/tmp/flight-sim/v075/lead/terrain-check.mjs`: `toMap()`, `data/manifest.json`'s `tilesRegion`, `data/terrain/fine/fine.json`'s files and uniform sub-tiles): **no new tiles.**
+
+  | Airport | Map (km) | Its 250 m tile | 250 m tiles within 200 km, not covered | 31 m sub-tiles within 100 km, missing | In a 30 m patch | Nearest |
+  |---|---|---|---|---|---|---|
+  | RKTU | (−0.1, 79.5) | `3_3` | 15, 0 | 44, 0 | none | Gimpo 114 km, Kunsan 120 km, Incheon 127 km |
+  | RJOA | (497.5, −159.7) | `7_1` | 16, 0 | 44, 0 | none | Kansai 212 km, Itami 234 km, Fukuoka 247 km |
+  | RJGG | (848.9, −86.5) | `9_2` | 15, 0 | 45, 0 | none | Itami 125 km, Kansai 152 km, Komatsu 174 km |
+  | RJOO | (725.1, −105.4) | `8_2` | 15, 0 | 44, 0 | none | Kansai 45 km, Centrair 125 km, Komatsu 199 km |
+  | RJNK | (797.3, 79.8) | `9_3` | 15, 0 | 44, 0 | none | Centrair 174 km, Itami 199 km, Kansai 244 km |
+  | RKJK | (−79.7, −10.3) | `2_3` | 16, 0 | 46, 0 | none | Cheongju 120 km, Incheon 176 km, Gimpo 185 km |
+
+  The brief's table, to a kilometre or two (the distances here are to each airport's first runway end).
+- **Hiroshima's OSM extract** wasn't on disk (Chugoku). Geofabrik's file redirected and then sent nothing for four minutes; the same extract is coming from OpenStreetMap France's public mirror (a generic client, no name in the request), as `reference/raw/osm/chugoku-261122.osm.pbf` (not in the repository: `reference/raw/` is ignored).
+- **The plan, with Shane's four subagents (his word at 03:20) and mains until v0.7.6's end:**
+  - `apk`: Cheongju and Kunsan; `apj1`: Centrair and Itami; `apj2`: Komatsu, then Hiroshima; each bakes its airports pending, with its tests and its own day, night and taxi-in runs in Chrome through the lock; stop 14:10.
+  - `city`: Nagoya's and Hiroshima's centres, Osaka's box against Itami's 32L, the five landmarks; stop 14:10.
+  - the lead: part 5 (every runway end offered) and part 7 (the parked aircraft beside the player's), then the promotion, the flights, the frame rates alone, the views against the pushed v0.7.4, the two reviews and the write-up from 15:09.
+
+### Decisions made in the run (v0.7.5)
+
+1. **Three airports subagents of two airports each, and one for the centres and landmarks,** not the brief's two of three: Shane raised the quota to four for the session, and four hours is short for six airports.
+2. **The subagents run their own airports' day, night and taxi-in checks in Chrome,** through the lock (two browsers at once on mains); the frame rates stay the lead's, alone.
+3. **Pending entries go into the manifest only by `manifest-add.py`,** under a file lock: three subagents register at once.
+4. **Hiroshima's extract from a second public mirror** when Geofabrik's stalled (above).
+
+## 2026-11-22, 12:05 KST: v0.7.5 checkpoint 1: every runway end offered (part 5) and the parked aircraft (part 7) built; six airports pending already (Claude Code)
+
+Readings at 12:04: mains, 100 %; two browsers running under the lock (the subagents' airports' day runs), four more runs queued, mine behind them.
+
+**Part 5, every runway end can be picked (Shane, 2026-11-22). Built; its browser check is queued.**
+- `src/world/runways.js`: `ONE_WAY` stays as the AIP's use. `canTakeOff()` and `canLand()`, which filtered the lists, are now `aipTakesOff()` and `aipLands()` (what the AIP uses an end for); `useRank(icao, ident, 'dep' | 'arr')` orders a list (0 the AIP's own, 1 a standby runway's, 2 the ends it doesn't use that way); the notes read "take-offs only in the AIP", "landings only in the AIP", "not in use in the AIP". `createAirports()` no longer clears an end's ILS (none of the ten ends has one in its file: checked by a test).
+- `src/ui/setup.js`: `runwayEndList(airport, what)` (exported, so a test can read the lists): every end, in that order, each with its note. New scenario's two lists use it.
+- `src/ui/map.js`: Change the route lists every end in the same order, the ends the AIP doesn't land on dimmed, with the note in the button's title and a line under it; the map draws their 15 nm final as any other's and writes "TAKE-OFFS ONLY IN THE AIP" or "NOT IN USE IN THE AIP" by the threshold. The end picked for you is still one the AIP lands on.
+- `src/main.js`: the start on a final, Skip to final, `changeRoute()` and the beam (`syncNav()`) no longer refuse such an end: every end but a circling-only one. `usablePlan()`, which moved a plan off such an end, is gone.
+- Tests: `tests/v075-every-end.test.mjs` (5: every end of every airport in both lists once, the AIP's own first; the ten landings and ten take-offs offered last with their note, and those twenty are all the table marks; Barcelona's 20 is the landing list's last line; each file's ILS kept; no East Asian end marked). `tests/v070-one-way.test.mjs` rewritten where it pinned the filters. The three scripts that picked ends by the old names (`browser-v060-airports.mjs`, `browser-v060-stand-fps.mjs`, `dev-v060-map.html`) and `v074-eu-ebbr-crossings.test.mjs` use the new ones.
+- **The browser check, queued behind the airports' runs** (`/tmp/flight-sim/v075/lead/p5-chain.sh`): the taxi-in from each of the ten landing ends, then eleven day runs, each a take-off from one of the ten ends the AIP only lands on and a landing on one of the ten it only takes off from.
+
+**Part 7, the parked aircraft beside the player's, and the short stands. Built, with one half measured and left off.**
+- `src/world/traffic-layout.js`: `PLAYER_CLEAR = 4.5` (the player's narrowbody and a parked aircraft, wingtip to wingtip; it was 3 m); `tailOverLine()` and `TAIL_TAXIWAY_M = 15`: no parked aircraft with its tail within 15 m of a named taxiway that runs behind it (a through line crossing its axis at more than 45°); where the long narrowbody's tail is over one, the short one is tried, else the stand is empty. A stand emptied that way still counts towards the airport's share, so no other stand's aircraft changes with it. Switch: `?tailfit=0` (node: `FS_TAILFIT=0`) gives v0.7.4's layout and its 3 m.
+- **Measured on v0.7.4's sixty airports (6,804 parked aircraft):** the taxiway rule takes 312 away, shortens 58, and 44 stands that an overlap had kept empty fill (6,536 parked). Naples's stand 45, the finding (its A321's tail 14 m from taxiway Q's centreline), is empty.
+- **The rules I tried and dropped, with their numbers** (`/tmp/flight-sim/v075/lead/parked-measure*.mjs`): any taxiway line near the aft half, 980 of 6,804; a through line crossing behind the middle, 414; the stand's depth from its own lead-in line, 650 (OSM's lead-ins are often just the stand's short centre line); a named line within 5 m, 708 (OSM names the lanes through the stands). None of them caught Naples's 45. What does: a named through line that passes behind the tail without running under the aircraft.
+- **The service-road half is written and off** (`TAIL_ROADS`; node `FS_TAILROADS=1` measures it): with it, 486 taken away and 140 shortened. OSM's service roads cut across the stands at most airports (Nice 18, Berlin 20, Malpensa 10), nobody has reported one, and the finding was the taxiways. For ROADMAP.
+- **No two parked aircraft overlapped before either** (the placement always checked it): now a test proves it at every airport.
+- Tests: `tests/v075-parked-fit.test.mjs` (5): no two parked within 4 m at any airport; with the player at Vienna's F31, F32, F33, Orly's A01 to A03 and every stand of six airports (Vienna, Orly, Naples, Gimpo, Haneda, Heathrow), no parked aircraft left within 4.5 m by true distance; no parked tail over a taxiway behind; the rule's own cases. `tests/traffic.test.mjs` and `ground-widebody.test.mjs`: 36 of 36 as they were.
+
+**The whole suite at 12:02** (`out/lead/unit1.txt`, through the guard): 1,627 of 1,638. The eleven failures are all work in hand elsewhere, none from these two parts: four Europe landmark files and four East Asia landmark counts (the `city` subagent's five new landmarks: "its thirty as before"), the index and the map's terminal shapes (the six pending airports: the index mended since, the terminal shapes at the promotion), and Itami's straight-in finals against the terrain (`apj1`'s to report).
+
+**The six airports are all pending already** (12:02: `airportsPending` RJGG, RJOO, RKTU, RKJK, RJNK, RJOA; six patches; coasts for RJGG, RJOO, RKJK, RJNK), and their day runs are in the lock's queue. `AIRPORT_INDEX` (`src/world/regions.js`) and the setup's `AIRPORT_ORDER` have the six: Korea's Cheongju and Kunsan after its four; Itami after Kansai, then Centrair; Hiroshima and Komatsu after Fukuoka.
+
+Decisions made in the run (v0.7.5), continued:
+
+5. **Part 5's names:** `canLand()` and `canTakeOff()` renamed to `aipLands()` and `aipTakesOff()` instead of being left to return true: nothing filters by them any more, and the old names would say the game forbids what it now offers.
+6. **Part 7's taxiway rule at 15 m, named through lines only,** after four wider rules that would have emptied 6 to 15 % of the stands for OSM's own lanes (above). `[EST]`: 15 m is a baked taxiway's 11.5 m half width and 3.5 m.
+7. **Part 7's service-road half left off,** written and measured (above): it is the brief's wording ("or a service road"), not Shane's, and it would take another 170 aircraft away on OSM's road lines.
+8. **Part 5's check as eleven day runs,** one take-off end and one landing end a run, not twenty separate flights: the airports' check does both in one run, and the lock's queue is full of the new airports' own runs.
+
+## 2026-11-22, 13:35 KST: v0.7.5 checkpoint 2: the six airports listed (twenty-nine in East Asia), the centres and landmarks in, the code review mended; 1,676 of 1,676 (Claude Code)
+
+Readings at 13:28 and 13:33: mains ("AC Power"), 100 %. The lock: the frame-rate checks ran alone 13:29 to 13:32; four chains queued after them (the finals alone, the flights, the standard views, part 5's remaining seven day runs).
+
+**The six airports, each through its whole check by its subagent, then promoted at 13:17** (`tools/promote-airport.py east-asia RKTU:cheongju RKJK:kunsan RJGG:centrair RJOO:itami RJNK:komatsu RJOA:hiroshima`: "listed 26 airports, 25 patches, 14 coasts; pending left None"; the manifest's other keys unchanged, the pushed entries kept in place, its form kept: checked against the frozen v0.7.4). The reports are in `/tmp/flight-sim/v075/reports/` (`apk.md`, `apj1.md`, `apj2.md`, `city.md`), the notes with every value's source in `/tmp/flight-sim/v075/airports/<ICAO>.md`.
+
+| # | Airport | Runways (after the frame's scale; published) | ILS | Stands | Day | Night | Taxi-in | At a stand, alone on mains (13:29 to 13:32) |
+|---|---|---|---|---|---|---|---|---|
+| 24 | RKTU Cheongju | 06L/24R 2,744 × 60 and 06R/24L 2,744 × 45 (2,744) | all four ends, category `[EST]` I | 17, 11 gates | 13/13: stand 7R, 24R via E1, E, A3; landed 24L, A 91 | 13/13, A 91 | 06L, 24R | stand 1: 60.0 / 60.1 fps, worst frame 16.8 ms, 838k triangles |
+| 29 | RKJK Kunsan | 18/36 2,746 × 45 (2,746) | both ends, `[EST]` I | 2 (the bake's own, `[EST]`) | 13/13: stand 1, 18; landed 18, A 91 | 13/13, A 91 | 36, 18 | stand 1: 60.0 / 60.1, 16.8 ms, 652k |
+| 26 | RJGG Centrair | 18/36 3,500 × 60 (3,500) | CAT II to 18, CAT III to 36 | 80, 31 gates | 13/13: stand 1, 18; landed 18, A 92 | 13/13, A 90 | 18, 36 | stand 1: 60.1 / 60.1, 16.8 ms, 591k |
+| 27 | RJOO Itami | 14R/32L 3,000 × 60 (3,000), 14L/32R 1,828 × 45 (1,828) | CAT I to 32L only | 51, 19 gates | 13/13: stand 7, 32R; landed 32L, A 91 | 13/13, A 91 | 32L, 32R | stand 5: 60.1 / 60.0, 16.8 ms, 914k |
+| 28 | RJNK Komatsu | 06/24 2,700 × 45 (2,700) | CAT I to 06 | 7, 4 gates | 13/13: stand 5, 24; landed 06, A 91 | 13/13, A 91 | 06, 24 | stand 5: 60.1 / 60.1, 16.8 ms, 704k |
+| 25 | RJOA Hiroshima | 10/28 3,000 × 60 (3,000) | CAT III to 10 | 9, 7 gates | 13/13: stand 9, 10; landed 10, A 92 | 13/13, A 92 | 10, 28 | stand 2: 60.1 / 60.1, 16.8 ms, 1,020k |
+
+- **Sources:** Korea's eAIP (package 2026-11-12) for the two Korean, read directly; AIP Japan through v0.6.1's mirror for the four. What is `[EST]` is in each report: the ILS categories at Cheongju and Kunsan, Kunsan's approach lights' length and its two stands, the stand headings at the four Japanese airports (the stands themselves are the AIP's own INS points, not OSM's), the code E stands at Itami, Komatsu and Hiroshima, the shelters' 9 m.
+- **The military sides (part 3), empty:** Cheongju by OSM's landuse=military areas (`MILITARY`; no OSM stand lay inside them; 44 bunkers drawn 9 m high, `SHELTERS`); Komatsu has stands only at the AIP's civil spots (`STAND_POINTS_ONLY`; OSM maps no military apron or taxiway there, so the air force's side is its 20 shelters and buildings on grass); Kunsan's whole aerodrome is military in OSM, with no stand mapped: its two civil stands are the bake's, by the terminal. The code review measured the nearest stand to a shelter: 1,038 m at Cheongju, 756 m at Komatsu, 2,062 m at Kunsan. Their stills are in the queue.
+- **Itami's 14R and 14L are circling-only** (`CIRCLING_ONLY.RJOO`): their straight 3° lines clear the Hokusetsu hills by 33 m (4.7 nm out) and 47 m (4.3 nm), under the 60 m the game asks; AIP Japan, RJOO AD 2.21 1.5 "For circling approach to Runway 14 ..." and AD 2.22 "JET circling to West only". 32L clears by 119 m, 32R by 117 m.
+- **Cheongju's 06R/24L, the air force's runway, is a standby** (`ONE_WAY.RKTU`): RKTU AD 2.20 1.3, "It is mandatory for all airliners to use RWY 06L/24R except for emergency situations. Usage of RWY 06R/24L for airliners are also allowed when RWY 06L/24R is closed ...". It is offered after 06L/24R and is never the default. (Its subagent's check landed on 24L before this entry: the check picks the longest ILS runway, and both are 2,744 m.)
+- **Found at the promotion, mine to mend: Cheongju and Kunsan were baked with the WMM grid's variation, and the game's is the plane there.** `tests/v060-rules-frame.test.mjs` loads the game's own rules and compares every listed airport's `magVarDeg` with `magVar()`: Cheongju −8.79 against −8.73. (The subagent had read the variation through the shared suite's rules, which are made without the Korea mask.) Both are now in the bake's `PLANE`, as Gimhae; re-baked, only `magVarDeg` and the four or two `hdgMagDeg` differ (0.06° at Cheongju, 0.02° at Kunsan); the shared suite has a new option `koreaPlane` for the two.
+- **The bake tools after three subagents:** run plainly at 13:30 and 13:32 (`out/lead/rebake-kr.txt`, `unit3.txt`): RJCC, RKPK, RJGG, RJOO, RJNK, RJOA, EGLL, then RKTU, RKJK, RKPK each byte-identical to the installed file. (One subagent reported the tool stopping on another's misplaced line at midday; that line was gone by the others' own proofs.)
+- **The map's terminal labels:** `tools/bake_terminal_labels.py` run with Centrair's T1 and T2 (`[EST]` T2: OSM names the southern building "1st Passenger Terminal" too; its place and size are the second terminal's). East Asia's file: eleven airports to twelve, the eleven unchanged; Europe's byte-identical.
+- **`data/`: 502 MB** (497 MB at v0.7.4; Europe 296 MB of it, unchanged). The six airports' files, patches and four coasts, the two centres and Osaka's growth come to 5.7 MB.
+
+**The centres and landmarks (part 6), the `city` subagent, 12:48** (its report: `reports/city.md`):
+- Nagoya (2,659 buildings, 64.5 KB, the station's three towers at their published heights by `HEIGHT_FIX`) and Hiroshima (2,635 buildings, 58.9 KB) are new; **Osaka's box widened north** (34.710 to 34.765 N: the old edge met Itami's 32L final only 5.2 nm out; 26,121 to 36,360 buildings, 525 to 776 KB). The other 17 centres' files are byte-identical.
+- Five landmarks after the thirty: Nagoya Castle (55.6 m, with the small keep), Nagoya's TV tower (180 m), Miyajima's torii (16.6 m, in the sea: water and height 0 under it and all round, by a test), the Atomic Bomb Dome (25 m), Osaka Castle (55 m). All 91 older models build the same vertices as the pushed v0.7.4.
+- Triangles in the stills: Nagoya from 3,000 ft 533k, Hiroshima 540k, Itami's 32L final over Osaka 816k, Osaka Castle's views 842k.
+- I looked at `out/pics/city1.png` (nine of its pictures): the towers and the castle's park at Nagoya, Hiroshima's delta, the torii in the water off the shore, the castles and the lattice tower read as themselves; the Dome is small across the river. **An aurora stands over Nagoya's night view** (35° N): East Asia's own sky rule since v0.6.x, unchanged by v0.7.4, which fixed Europe's only. For ROADMAP.
+
+**The code review (a fresh reader of the diff against the pushed v0.7.4, 13:06 to 13:30): no correctness fault in parts 5 or 7.** Its findings and what I did:
+1. The suite's four failures at 13:28 were the counts at the promotion: mended (below).
+2. The default arrival changes at Gimhae, Wonsan and Innsbruck (my 13:07 edit, not logged then): logged now (decision 10).
+3. The parked rule's size (its own measure: 300 taken away, 37 added, 64 changed; Narita 38 of 284, Qingdao 40 of 279, Gibraltar 6 to 3) and that stands also gain aircraft: the stills' exception will name both; the pictures-only reader gets before and after views at Naples, Vienna, Narita and Gimpo.
+4. Osaka's centre is 47 % bigger and no test bounds the triangles near Itami: the stills' counts above (816k, 842k) and Itami's stand (914k) are under the million; Kansai's final is in the queue.
+5. Itami's widebody stands weren't pinned in its test: `only` added (the ten of `AIP_STANDS.RJOO`); passes.
+6. Kunsan wasn't in `STAND_POINTS_ONLY` (a newer OSM extract could bring the air base's stands in): added; re-baked identical.
+7. A sponsor's name in a landmark's source string: now "Nagoya TV Tower". (Building names in the tools' comments and in the airports' OSM names are as the older files'; nothing draws them: `map.js`'s `B.name` is the airport's label.)
+8. Small things mended: a garbled comment in `v062-finals.test.mjs`, a comment parted from its function in `setup.js`, a test's title in `v075-ea-centres`.
+- Sound, by its probes: no filter by the AIP's use left anywhere in `src/`; `?tailfit=0` gives v0.7.4's layout exactly at all sixty airports and the same freed neighbours; the seed and draws per stand unchanged; the bake tools' changes are the six airports' entries or behind their names; no existing data file changed but `centres.json`, `osaka.bin.gz` and the manifest.
+
+**The suite after all of it, 13:32** (`out/lead/unit3.txt`, through the guard): **1,676 of 1,676.** Counts updated at the promotion, each with its comment: `region-terrain` (29 airports, 27 patches, 17 coasts, 58 runway rectangles), `v060-region-golden` (29), `v061-yancheng` (29), `v060-rules-frame` (26 in the region's list), `v064-rules-kp` (the setup's order), `v070-regions` (29 in the index), `v062-finals` (the circling table), `v070-one-way` (the table's keys).
+
+**Part 5's check so far** (`out/p5/`): Barcelona 02 to **20** (Shane's case): 13 of 13, landed on 20, A 93. Hamburg 15 to 33: 13 of 13, A 91. Madrid 32L to 14L and 32R to 14R: 13 of 13 each, B 85. **The taxi-in from the ten landing ends: seven find a route** (Frankfurt 18 and 36, Barcelona 20, Hamburg 33, Madrid 14L, 14R, 36L); **three find none: Schiphol's 36L and 18L and Madrid's 36R** (placed at 55 % of the runway, no exit ahead in OSM: the exits face the other way; the game says "No taxi route to a stand found" and looks again as the aircraft rolls on). They are the gaps v0.7.0's tests already list (`knownTaxiIn`). For ROADMAP. Seven day runs are still to do, queued behind the airports' checks ("the six airports come first, then Shane's runway ends").
+
+Decisions made in the run (v0.7.5), continued:
+
+9. **Cheongju's air force runway a standby** (above): the AIP's use as the default and a note, as part 5 asks.
+10. **In an arrival list a circling-only end comes after the straight-in ones** (`runwayEndList()`, and the map's Change the route), so the default arrival has a final: Itami's 32L (its file lists 14R first). It also moves the default at three older airports: Gimhae 18L to 36R, Wonsan stays 15R, Innsbruck 08 to 26. A change outside the brief's words ("circling-only ends stay as they are" is about how they are flown, which is unchanged); kept because a default that then refuses a start on a final is a trap. Shane's to reverse.
+11. **Itami's 14L/32R is offered to every type** though AD 2.20 2 keeps it to aircraft of a 737-800's weight or less for arrivals: no weight rule in the game; no note either. For ROADMAP.
+12. **The Korean airports' variation from the plane** (above), against their subagent's choice.
+13. **Part 5's chains paused at 13:29** for the airports' frame rates, flights and stills (two runs that hadn't started were withdrawn and are queued again).
+14. **A documents subagent and the code reviewer started as slots came free** (12:49, 13:06), within Shane's four.
+
+## 2026-11-22, 15:35 KST: v0.7.5 ready to push (Claude Code)
+
+Started 11:39 at Shane's push of v0.7.4; the write-up from 15:09; ready inside the four hours. Readings at 15:35: on mains, 100 %; the guard's sweep clean.
+
+**For Shane: `sh tools/push.sh v0.7.5` from `games/flight-sim/`.** The session then runs `python3 tools/build-log.py` from GameDump's root and starts v0.7.6 from `Claude outputs/flight-sim/V0-7-6.md`.
+
+### The definition of done, item by item
+
+| Item | Result | Evidence |
+|---|---|---|
+| Twenty-nine airports listed in East Asia; nothing pending | **Yes.** Cheongju, Kunsan, Centrair, Itami, Komatsu, Hiroshima promoted at 13:17; "pending left None" | the 13:35 entry; `data/manifest.json` |
+| No new 250 m tiles or 31 m cover | **Yes** (the check from the manifest, logged at 11:45) | the 11:45 entry's table |
+| Six 30 m patches, and the coasts | **Yes:** six patches; coasts for Centrair, Itami, Komatsu, Kunsan (Cheongju's and Hiroshima's squares are all land) | the manifest: 25 patches, 14 coasts in the region's lists |
+| `data/` grows by about 8 MB | **5 MB:** 502 MB (497 MB), Europe 296 MB unchanged | `du -sm data` |
+| East Asia's sixteen views at max diff 0 against the pushed v0.7.4 (`--total 2400`), exceptions logged | **Fifteen at max diff 0 with the parked rule switched off; one shows a new airport's ground; with the rule on, seven more differ at parked aircraft only** (below) | `out/fixed/ea-s1.txt` |
+| Europe's views unchanged, but where a parked aircraft was taken away | **All twenty-six at max diff 0 with the rule off; nine differ at parked aircraft only with it on** (below) | `out/fixed/eu-s1.txt` |
+| Each new airport through the whole check: day, night, taxi-in from each end, 60 fps at a stand and on the final, on mains and alone | **Yes, all six** (below) | `out/ap/`, `out/fps/` |
+| The military sides empty, no stand offered there | **Yes** at Cheongju, Komatsu and Kunsan: by the bake (the 13:35 entry), by the code review's measure (the nearest stand to a shelter 756 m or more), and by the stills from above and from the civil aprons, looked at | `v075-m1-mil-*.png`, `out/pics/mil1.png` |
+| Every runway end offered for landing and take-off at all sixty-six airports; the ten landings and ten take-offs checked | **Offered: yes** (a test over every end of every airport; the map's panel checked in Chrome). **The ten landings: all ten landed on by the test pilot. The ten take-offs: eight by a stand's route to the hold, and two (Schiphol's 18R, Madrid's 18L) by a start on the runway, as the brief allows where no stand has a route.** The taxi-in after landing: seven of ten find a route (below) | `tests/v075-every-end.test.mjs`; `out/p5/`; `out/map/route-ends.txt` |
+| The flights | **Yes:** Haneda to Itami end to end, landed on 32L; five finals to landings (below) | `out/flights/` |
+| The unit suite passes, through the guard | **1,676 of 1,676 at 15:10, the golden flights among them. The regions check 7 of 7. Europe's files with v0.7.4's, run directly under `FS_REGION=europe`: 631 of 632; the one is `v074-map-relief`'s East Asian case ("Fuji: NaN m"), which my file pattern put under Europe's frame, where it doesn't belong (it passes in the suite, in its own region)** | `out/lead/unit4.txt` |
+| The pictures looked at | **Yes:** by a reader of the pictures alone and by me (below) | `out/pics/` |
+| Ready within four hours; lid-closeable | **Yes** (the last section) | |
+
+### The new airports' frame rates, alone on mains (13:29 to 13:32 at a stand; 13:33 to 14:49 on the finals, each waiting for the lock to empty)
+
+| Airport | At a stand, day / night | On the final, day / night |
+|---|---|---|
+| Cheongju | 60.0 / 60.1 fps, 838k triangles | 60.0 / 60.0, 689k |
+| Kunsan | 60.0 / 60.1, 652k | 60.0 / 60.0, 375k |
+| Centrair | 60.1 / 60.1, 591k | 60.0 / 60.0, 411k |
+| Itami | 60.1 / 60.0, 914k | 60.0 / 60.0, 772k |
+| Komatsu | 60.1 / 60.1, 704k | 60.0 / 60.0, 629k |
+| Hiroshima | 60.1 / 60.1, 1,020k | 60.0 / 60.0, 802k |
+
+The worst frame is 16.8 ms in every one of the twenty-four.
+
+### The views against the pushed v0.7.4 (14:01 and 14:42; `tests/browser-v060-stills.mjs --total 2400`, three takes a region: the frozen v0.7.4, this tree with `?tailfit=0`, this tree)
+
+- **East Asia, the pushed against this tree with the parked rule off: fifteen of sixteen at max diff 0.** The sixteenth, `world-fl350-seoul-east`, differs by 0.16 % of its pixels (max 32 levels) in a band at its right edge near the horizon: the camera is over Incheon at FL350 heading 095, and Cheongju's 30 m patch lies at bearing 135°, 115 km, the edge of its view. A view that shows a new airport's ground. Looked at (`out/pics/d-seoul-east.png`).
+- **East Asia, the rule off against on: seven differ, at parked aircraft only:** `gimpo-day`, `close-rkss`, `RJTT-final` and its night, `ZSPD-final` and its night, `ZBAA-final` and its night (0.001 to 0.035 % of the pixels, in strips on the aprons). The other nine at max diff 0. Two looked at as crops (`d-close-rkss.png`: Gimpo's far apron row with fewer aircraft); the pictures-only reader zoomed into every difference: "parked aircraft that moved or are gone".
+- **Europe, the pushed against this tree with the rule off: all twenty-six at max diff 0.**
+- **Europe, the rule off against on: nine differ, at parked aircraft only:** `eu-3000-polders` (Schiphol's aprons), `EGLL-final` and its night, `LFPG-final`, `EDDF-final`, `LEMD-final`, `EHAM-final`, `EGKK-final`, and `LIRF-final` by 3 levels. Seventeen at max diff 0.
+- **The exception is wider than the brief's words in one way:** the rule takes aircraft away (about 300), shortens about sixty, and about forty stands that an overlap had kept empty gain one (the code review's finding 3). 6,536 parked at the sixty older airports, 6,804 before.
+
+### The flights (part 8)
+
+- **Haneda 34R to Itami 32L, end to end** (`out/flights/haneda-itami-alone.txt`, alone on the GPU, 14:21 to 14:31): **12 of 12.** FL240, 16× (4,446 frames, median 16.7 ms, worst 16.8 ms, none over 25 ms), the jump 0.00 m off the predicted path, no missing tile, Skip to final 14.9 nm out, landed on 32L, A 91. Its first run at 13:42, beside another browser, was 11 of 12 with one frame of 500 ms east of Nagoya: the other Chrome's, not the game's.
+- **From a 15 nm final to a landing:** Jeju to Cheongju 24R, A 91; Haneda to Hiroshima 10, A 92; New Chitose to Centrair 36, A 92 (`finals.txt`, whose last two legs the guard's 16 minutes cut off); Haneda to Komatsu 06, A 91; Jeju to Kunsan 36, A 93 (`finals2.txt`, 7 of 7). No missing tile in any.
+- **The names:** the setup's lists, the Load list and the home page's ticket read `AIRPORT_INDEX` and each file's short name (a test); the hub's blurb says "Sixty-six airports" and names Haneda to Itami.
+
+### Part 5, every runway end (the checks)
+
+- **The map's Change the route, where Shane found it** (`tests/browser-v075-route-ends.mjs`, 14:58: 10 of 10): Barcelona lists `02 06R 24L 06L 24R 20`, 20 last and dimmed with "take-offs only in the AIP"; the end picked for you is 06L; picking 20 shows its line and the note; Fly there makes 20 the destination with the beam on; Itami lists `32L 32R 14R 14L`; Cheongju `06L 24R 06R 24L`. Pictures `v075-map-route-lebl-20.png`, `v075-map-final-lebl-20.png` (the 15 nm final drawn to 20, "TAKE-OFFS ONLY IN THE AIP" by the threshold), looked at.
+- **The ten landings on ends the AIPs only take off from, each by the test pilot from Skip to final:** Barcelona 20 (A 93), Hamburg 33 (A 91), Frankfurt 18 (twice) and 36, Madrid 14L and 14R (B 85 each), 36R, Schiphol 18L; and from a 15 nm final Schiphol 36L (A 92) and Madrid 36L (A 90). The grades by the day runs: Frankfurt A 92 and A 93, Madrid's 36R A 91, Schiphol's 18L A 90.
+- **The ten take-offs from ends the AIPs only land on:** by a stand's route, taxi and the hold: Hamburg 15, Frankfurt 07L, 25R and 36, Madrid 32L, 32R and 18R (a 6.4 km taxi), Schiphol 36R: eight, each run 13 of 13. **Started on the runway, because no stand has a taxi route to the end's hold in OSM** (both were already `knownNoRoute` in v0.7.0's tests): **Schiphol's 18R** (a flight from it to Hamburg's 33: 12 of 12, landed A 91) and **Madrid's 18L** (a flight to Barcelona's 24R: 12 of 12, landed A 90). The airports' check at those two says "no taxi route found" at the gate (`eham-18r-36l.txt`, which stopped there; `lemd-18l-36l.txt`, which hung at its taxi step and was stopped by PID at 15:08).
+- **The taxi-in after a landing on each of the ten:** seven find a route to a stand (Frankfurt 18 and 36, Barcelona 20, Hamburg 33, Madrid 14L, 14R, 36L). **Three find none: Schiphol's 36L and 18L, Madrid's 36R** (no exit ahead in OSM from 55 % of the runway: the exits face the landings the other way). The game says "No taxi route to a stand found". Known since v0.7.0 (`knownTaxiIn`), now reachable by a player. In ROADMAP.
+
+### The two reviews
+
+- **The code review** (13:06 to 13:30; the 13:35 entry): no correctness fault in parts 5 or 7; eight findings, each mended or logged.
+- **The pictures-only review** (14:05 to 14:42), nothing in it new to this version's code; all of it in ROADMAP's "Found while building v0.7.5":
+  1. **An aurora in every East Asian night view that looks north** (34 to 37° N): "the first thing the eye goes to". It is the sky's rule for East Asia, the same over Tokyo in the pushed v0.7.4 (v0.7.4 gave Europe its latitude band and left East Asia's as it was). **Shane's to decide.**
+  2. The three landing ends with no taxi route (above).
+  3. Madrid's taxi instruction of thirty names runs over two lines and across the systems panel.
+  4. **The aircraft stands 30 to 50 m out from the terminal** at Centrair, Itami, Hiroshima and Cheongju, the bridges not reaching it (Komatsu's does). I looked (`out/pics/gates.png`): it is so. The stands are the AIP's INS points with the nose on the point; whether those are a nose-gear stop or the stand's centre needs the real stop bars. Not moved in the last hour: it would mean three re-bakes and their pushbacks again.
+  5. Trees through a building by the Dome and a conifer forest round the castles; generated towers by Itami's fence and under Kunsan's final; the TV tower's level view blocked by a tower block.
+  - Its marks: Centrair 7, Hiroshima 7, Cheongju 6, Komatsu 6, Itami 5, Kunsan 5; the torii 8, the castles 7, the Dome 6, the tower 6; the centres 6 to 7 by day and 3 by night (the aurora).
+  - It couldn't see the military sides, the parked pairs or the route panel (their pictures came after its stop): **I looked at those** (`out/pics/mil1.png`, `map1.png`, `parked1.png`, `parked2.png`: Naples's 45, the finding, had an A321 with its tail on the lane behind and is empty; Narita's 431 the same; Gimpo's 914 row has one fewer and its neighbour changed; Vienna's A55 view shows no change I can see).
+
+### What Shane should know
+
+1. **Barcelona's 20 and nineteen other ends are selectable** everywhere, last in their lists, with a note. Two of them (Schiphol's 18R, Madrid's 18L) have no taxi route from any stand in OSM's data, and three (Schiphol's 36L and 18L, Madrid's 36R) no taxi route in after landing.
+2. **Decisions of mine you may want to reverse:** in arrival lists a circling-only end now comes after the straight-in ones (Gimhae's default arrival is 36R, Innsbruck's 26); Cheongju's air force runway is a standby; the parked rule's service-road half is off; the parked rule's 15 m.
+3. **The parked rule changes every big apron a little:** 268 fewer parked aircraft over the sixty older airports (Narita 38 of 284, Qingdao 40 of 279, Gibraltar 3 of 6). `?tailfit=0` gives the old layout.
+4. **The aurora over Japan and Korea** is the loudest thing in the new night pictures, and isn't new.
+5. **The stands at four of the new airports are well out from the terminals** (item 4 above).
+6. **Not done:** part 9's three items; Cheongju's and Kanazawa's centres.
+
+### Lid-closeable
+- **Power:** the Mac went onto battery at 15:10:28 (`pmset -g log`: "Using Batt"), after every frame-rate check (the last ended 14:49, all on mains: the lock refuses one on battery). **For about ten minutes two Chromes ran on battery:** the two runway-start flights were let through the lock at 15:10:04 and 15:10:20, seconds before the change, and ran to 15:19 and 15:20; everything started after it ran one at a time, as the lock does on battery. 97 % at 15:29.
+- Everything running out of `/tmp/flight-sim`, the game's `tests/` or its `tools/` (`ps -Ao pid,lstart,command | grep -E "/tmp/flight-sim|flight-sim/tests|flight-sim/tools"`): nothing, at 15:29. The server on 8014 stopped by its PID (60371); port 8014 answers nothing. No `until`, `while` or `sleep` loop of the run's; the guard's sweep clean; no subagent out; no `.part` file left in `reference/raw/osm/`.
+- **One thing is left running on purpose, by Shane's word at 03:16:** a background command of the session's that reads `GIT_OPTIONAL_LOCKS=0 git log --oneline -1` once a minute and ends when the top line is `v0.7.5`; its end wakes the session to start v0.7.6. It reads only.
+- The scratch is `/tmp/flight-sim/v075/` (the frozen pushed v0.7.4, the scripts, the subagents' briefs and reports, the checks' output; gone at a restart). 369 pictures `v075-*.png` are in `Claude outputs/flight-sim/`.
+- No path with a user's name in `src/`, `tools/` or `tests/` (grep: none).

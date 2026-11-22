@@ -14,9 +14,13 @@ const BRIEF = {
   citic: 528, cctv: 234, russky: 321, zolotoy: 226, cctvtower: 405, tjtower: 415, lntower: 305,
   // v0.6.4 (briefs/V0-6-4.md, "Centres and landmarks")
   ryugyong: 330, juche: 170, sapporotv: 147, daikannon: 100,
+  // v0.7.5 (briefs/V0-7-5.md part 6; tests/v075-ea-landmarks.test.mjs checks them further)
+  nagoyacastle: 55, nagoyatv: 180, torii: 16.6, abombdome: 25, osakacastle: 55,
 };
+// (v0.7.5: the five new ones appended at the end, East Asia's thirty unchanged and in their order.)
 const ORDER = ['lotte', 'b63', 'nseoul', 'parc1', 'shtower', 'swfc', 'jinmao', 'pearl', 'skytree', 'tokyotower', 'azabudai', 'tmg', 'ylmt', 'lct', 'neatt', 'harukas', 'umeda', 'fktower', 'fkdome',
-  'citic', 'cctv', 'russky', 'zolotoy', 'cctvtower', 'tjtower', 'lntower', 'ryugyong', 'juche', 'sapporotv', 'daikannon'];
+  'citic', 'cctv', 'russky', 'zolotoy', 'cctvtower', 'tjtower', 'lntower', 'ryugyong', 'juche', 'sapporotv', 'daikannon',
+  'nagoyacastle', 'nagoyatv', 'torii', 'abombdome', 'osakacastle'];
 const TRI_BUDGET = 6000, TOTAL_BUDGET = 60000;
 
 test('the list: unique ids, the brief\'s order, a model for each, a source', () => {

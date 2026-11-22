@@ -110,6 +110,16 @@ function footprintsOverlap(A, B) {
 export const FILL = 0.7;            // share of the stands that get an aircraft
 export const CLEAR = 2.0;           // m grown on every side of a footprint (4 m wingtip gap)
 export const WINGTIP_CLEARANCE = 7.5; // m, ICAO Annex 14's clearance at a code E stand (v0.3.0)
+// v0.7.5 (briefs/V0-7-5.md part 7; the findings at Vienna's F31, Orly's A1 and Naples's gates):
+export const PLAYER_CLEAR = 4.5;    // m, wingtip to wingtip, between the player's narrowbody and a parked aircraft: ICAO's code C clearance (v0.7.4 and before: 3 m)
+export const TAIL_TAXIWAY_M = 15;   // m, [EST]: a parked aircraft's tail no nearer than this to a taxiway that runs behind it (a baked taxiway's 11.5 m half width and 3.5 m)
+// The service-road half of the rule is written and left off (node: FS_TAILROADS=1 to measure it). Measured on v0.7.4's
+// sixty airports, 6,804 parked aircraft: the taxiway rule takes 312 away and shortens 58; with the roads as well, 486
+// and 140. OSM's service roads cut across stands at most airports (Nice 18, Berlin 20, Malpensa 10 of the aircraft
+// there), nobody has reported one, and the taxiways were the finding (ROADMAP: "Found while building v0.7.5").
+export const TAIL_ROADS = typeof process !== 'undefined' && process.env?.FS_TAILROADS === '1';
+export const TAIL_FIT = !(typeof location !== 'undefined' && /[?&]tailfit=0(&|$)/.test(location.search))
+  && !(typeof process !== 'undefined' && process.env?.FS_TAILFIT === '0');   // ?tailfit=0 (node: FS_TAILFIT=0): the parked aircraft as v0.7.4 placed them
 
 // Liveries: 0 = Nuclear Airlines, then the made-up ones (liveries-other.js). Nuclear is
 // the commonest at every airport, the others by airport.
@@ -123,6 +133,49 @@ function pick(weights, r) {
   let s = 0;
   for (let i = 0; i < weights.length; i++) { s += weights[i]; if (r < s) return i; }
   return weights.length - 1;
+}
+
+// v0.7.5: the lines a parked aircraft's tail must not stand over: the taxiways with a name (OSM's unnamed lines on an
+// apron are the stands' own lead-ins) and the service roads (the vehicles drive them), each with its bounding box.
+function tailLines(airport) {
+  const box = (pts) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return { pts, bb: [x0, y0, x1, y1] }; };
+  return { taxi: (airport.taxiways || []).filter((t) => t.ref && t.points?.length > 1).map((t) => box(t.points)), roads: (airport.serviceRoads || []).filter((r) => r.points?.length > 1).map((r) => box(r.points)) };
+}
+// Where a line crosses an aircraft's axis (nose tip at (x, y), heading h), in metres behind the nose: only a line that
+// crosses at more than 45 degrees and runs on at least `side` m to both sides of the axis within 60 m (a through line,
+// not one that ends at the stand or turns into it).
+function axisCrossings(x, y, h, line, side, reachM) {
+  const [x0, y0, x1, y1] = line.bb;
+  if (x < x0 - reachM || x > x1 + reachM || y < y0 - reachM || y > y1 + reachM) return [];
+  const ux = Math.sin(h), uy = Math.cos(h), out = [];
+  const S = line.pts.map(([px, py]) => [-(px - x) * ux - (py - y) * uy, (px - x) * uy - (py - y) * ux]);   // [behind the nose, to the right]
+  const reach = (i, dir) => {
+    let d = 0;
+    for (let j = dir > 0 ? i + 1 : i; j >= 0 && j < S.length; j += dir) {
+      if (Math.abs(S[j][1]) >= side) return true;
+      const n = j + dir; if (n < 0 || n >= S.length) break;
+      d += Math.hypot(S[n][0] - S[j][0], S[n][1] - S[j][1]); if (d > 60) break;
+    }
+    return false;
+  };
+  for (let i = 0; i + 1 < S.length; i++) {
+    const [s0, t0] = S[i], [s1, t1] = S[i + 1];
+    if ((t0 > 0) === (t1 > 0) || Math.abs(s1 - s0) > Math.abs(t1 - t0)) continue;
+    if (reach(i, 1) && reach(i, -1)) out.push(s0 + (s1 - s0) * (t0 / (t0 - t1)));
+  }
+  return out;
+}
+// Does an aircraft L m long, parked with its nose tip at (x, y), stand with its tail over a taxiway or a service road?
+//   a taxiway: a named through line that crosses behind the tail within TAIL_TAXIWAY_M of it (Naples's stand 45: its
+//     A321's tail 14 m from taxiway Q's centreline). Where OSM draws a named line through the stand itself (under the
+//     aircraft, from a quarter of its length back), the game can't tell a lane from the stand and leaves the aircraft.
+//   a service road (only with TAIL_ROADS): a through road under the aft 40 % of the fuselage.
+export function tailOverLine(x, y, h, L, lines) {
+  let behind = Infinity, under = false;
+  for (const t of lines.taxi) for (const s of axisCrossings(x, y, h, t, 15, L + 80)) { if (s > 0.25 * L && s < L) under = true; else if (s >= L) behind = Math.min(behind, s - L); }
+  if (!under && behind < TAIL_TAXIWAY_M) return 'taxiway';
+  if (TAIL_ROADS) for (const r of lines.roads) for (const s of axisCrossings(x, y, h, r, 10, L + 80)) if (s > 0.6 * L && s < L) return 'road';
+  return null;
 }
 
 // Obstacles an aircraft must stay clear of: buildings (by polygon) and runway strips.
@@ -250,30 +303,47 @@ export function* placeParkedInSteps(airport, { heightAt = null, wide = airport.i
   const placed = [];
   const aprons = apronIndex(airport);
   const fits = (fp) => !blocked(fp, obs) && !placed.some((p) => footprintsOverlap(fp, p.fp));
+  // v0.7.5: a parked aircraft only where it fits its stand (tailOverLine()). A stand whose aircraft is taken away by
+  // that rule still counts towards the target (`unfit`), so no other stand's aircraft changes with it.
+  const lines = TAIL_FIT ? tailLines(airport) : null;
+  let unfit = 0;
   yield 'parked: ready';
   for (const s of stands) {
-    if (placed.length >= target) break;
+    if (placed.length + unfit >= target) break;
     if (tick()) yield 'parked';
     const h = standHeading(airport, s, aprons);
     const r0 = R(), r1 = R(), r2 = R();
     // Widebodies at about half of Incheon's stands that are big enough; else a narrowbody.
     const tries = wide && r0 < 0.5 ? [1, 0] : [0];
+    let tailed = false;
     for (const type of tries) {
       const T = AIRLINER_TYPES[type];
-      const lenScale = type === 0 ? (r1 < 0.45 ? T.shortScale : 1) : 1;
+      let lenScale = type === 0 ? (r1 < 0.45 ? T.shortScale : 1) : 1;
       // The stand point is the nose's stop mark; back off up to 12 m if the nose would
       // touch a building (some OSM stop marks sit right at the terminal wall).
-      let ok = null;
-      for (let back = 0; back <= 12; back += 3) {
-        const x = s.x - Math.sin(h) * back, y = s.y - Math.cos(h) * back;
-        const fp = footprint(T, x, y, h, lenScale, CLEAR);
-        if (fits(fp)) { ok = { x, y, fp }; break; }
-      }
+      const at = (ls) => {
+        for (let back = 0; back <= 12; back += 3) {
+          const x = s.x - Math.sin(h) * back, y = s.y - Math.cos(h) * back;
+          const fp = footprint(T, x, y, h, ls, CLEAR);
+          if (fits(fp)) return { x, y, fp };
+        }
+        return null;
+      };
+      let ok = at(lenScale);
       if (!ok) continue;
+      // v0.7.5: its tail over a taxiway or a service road: the shorter narrowbody if that one fits, else none here
+      if (lines && tailOverLine(ok.x, ok.y, h, T.length * lenScale, lines)) {
+        tailed = true;
+        const short = type === 0 && lenScale === 1 ? at(T.shortScale) : null;
+        if (!short || tailOverLine(short.x, short.y, h, T.length * T.shortScale, lines)) continue;
+        ok = short; lenScale = T.shortScale;
+      }
+      tailed = false;
       const z = heightAt ? heightAt(ok.x - Math.sin(h) * T.length * 0.4, ok.y - Math.cos(h) * T.length * 0.4) : (airport.elevM || 0);
       placed.push({ stand: s.ref, type, livery: pick(weights, r2), x: ok.x, y: ok.y, z, hdg: h, lenScale, fp: ok.fp });
       break;
     }
+    if (tailed) unfit++;
   }
   return placed;
 }
@@ -315,7 +385,7 @@ export function blockedByPlayer(airport, parked, ref, opts = null) {
   // The player's nose is on the stand point (gate-flow.js), the same convention as the
   // parked aircraft, so the footprint goes on the stand itself.
   const T = AIRLINER_TYPES[0];
-  const fp = footprint(T, s.x, s.y, h, 1, 1);
+  const fp = footprint(T, s.x, s.y, h, 1, TAIL_FIT ? PLAYER_CLEAR - CLEAR : 1);   // (v0.7.5: 4.5 m between wingtips; a parked footprint carries CLEAR already. Before: 1, so 3 m)
   const out = new Set();
   parked.forEach((p, i) => { if (p.stand === ref || footprintsOverlap(fp, p.fp)) out.add(i); });
   return out;

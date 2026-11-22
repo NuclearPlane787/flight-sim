@@ -145,6 +145,52 @@ COAST += ['RJSS', 'RJSN']
 # (field_runways(); tests/v063-ne-airport.mjs's fieldSurface 'runways' checks the stands against the same surface).
 FIELD_RUNWAYS = {'RJSS', 'RJSN'}
 FIELD_PAVEMENT = set()
+# v0.7.5 (pending, airports subagent apj2), Komatsu: one patch, ~29 x 23 km, taking in the ground under both finals to
+# ~15 km out (06's from the south-west along the Sea of Japan's shore and the Kaga plain, 24's from the north-east over
+# the plain towards Kanazawa and the low hills east of it). GLO-30 N36 E136. Flattened to the plane through its runway's
+# ends (FIELD_PLANE; AIP Japan's thresholds 11.6 and 5.6 m). Coast patch: the field lies a kilometre from the sea.
+NEW_AIRPORTS += ['RJNK']
+PATCHES['komatsu'] = (136.25, 36.30, 136.57, 36.51)
+COAST += ['RJNK']
+FIELD_PLANE = FIELD_PLANE | {'RJNK'}
+# v0.7.5 (pending, apj2), Hiroshima: one patch, ~37 x 26 km round the plateau, taking in the ground under both finals to
+# ~15 km out (10's from the west over the hills towards Hongo and the Nuta valley, 28's from the east over the hills
+# towards Mihara and the Kamo plateau). GLO-30 N34 E132 and N34 E133. Flattened to the plane through its runway's ends
+# (FIELD_PLANE; AIP Japan's thresholds 326.7 and 325.3 m). Coast: bake_region_patches.py coast RJOA says whether its
+# 16 km square reaches the Seto Inland Sea by Mihara.
+NEW_AIRPORTS += ['RJOA']
+PATCHES['hiroshima'] = (132.72, 34.32, 133.12, 34.55)
+COAST += ['RJOA']
+FIELD_PLANE = FIELD_PLANE | {'RJOA'}
+# v0.7.5 (pending, airports subagent apj1), Nagoya Chubu Centrair and Osaka Itami: one patch each. Centrair ~26 x 31 km
+# round its island, taking in both finals to ~15 km out (18's from the north over Ise Bay's shore at Tokoname and Handa,
+# 36's from the south over the bay), north only to 34.995 N so GLO-30's N34 E136 alone covers it. Itami ~27 x 25 km,
+# both pairs of finals to ~15 km out (32L/32R's from the south-east over Osaka's city, 14R/14L's from the north-west over
+# the Hokusetsu hills and Mount Rokko's east end); GLO-30 N34 E135. Both flattened to their runways' own profiles
+# (FIELD_RUNWAYS: Centrair's one runway, both thresholds 15 ft with a 12.4 ft dip between, two ends making no plane;
+# Itami's runways fall 14.8 and 16 ft north-west to south-east). Coast: Centrair's island in the bay; Itami's 16 km
+# square is checked with bake_region_patches.py coast RJOO (Osaka Bay ~10 km south-west).
+NEW_AIRPORTS += ['RJGG', 'RJOO']
+PATCHES.update({
+    'centrair': (136.66, 34.715, 136.95, 34.995),
+    'itami': (135.29, 34.67, 135.59, 34.90),
+})
+COAST += ['RJGG', 'RJOO']
+FIELD_RUNWAYS = FIELD_RUNWAYS | {'RJGG', 'RJOO'}
+# v0.7.5 (pending, airports subagent apk), Cheongju and Kunsan: one patch each. Cheongju ~29 x 23 km, taking in both
+# runways' finals to ~15 km out (06L/06R's from the south-west over Cheongju's city and the Musim valley, 24R/24L's from
+# the north-east over the Miho plain and the hills beyond); GLO-30 N36 E127 alone. Kunsan ~21 x 33 km, 18/36's finals to
+# ~15 km out (18's from the north over the Geum's mouth and Gunsan's city, 36's from the south over the Mangyeong estuary's
+# reclaimed land and the Saemangeum seawall's shore); GLO-30 N35 E126 and N36 E126. Both flattened to the plane through
+# their runway ends (FIELD_PLANE: Korea's eAIP's thresholds, Cheongju 50.6 to 58.4 m on two parallel runways, Kunsan 5.3
+# and 8.2 m). Coast: Kunsan stands on the Yellow Sea's shore; Cheongju's square is checked with coast RKTU (inland).
+NEW_AIRPORTS += ['RKTU', 'RKJK']
+PATCHES.update({
+    'cheongju': (127.34, 36.61, 127.66, 36.82),
+    'kunsan': (126.50, 35.755, 126.73, 36.05),
+})
+COAST += ['RKTU', 'RKJK']
+FIELD_PLANE = FIELD_PLANE | {'RKTU', 'RKJK'}
 
 # v0.7.0, Europe (FS_REGION=europe, read by bake_common at import: Europe's frame): Heathrow and Charles de Gaulle, pending.
 # Their airports from data/europe/airports, their patches staged in /tmp/flight-sim/v070/airports/patches (FS_PATCH_OUT
@@ -440,8 +486,8 @@ def airfields():
     """{icao: (polygon in map metres, elevation m)} from the airport JSONs (boundary is map metres)."""
     out = {}
     for icao in NEW_AIRPORTS:
-        if bc.EUROPE and not os.path.exists(os.path.join(AIRPORT_DIR, icao + '.json')):
-            continue    # (v0.7.0: Europe's airports arrive one by one)
+        if not os.path.exists(os.path.join(AIRPORT_DIR, icao + '.json')):
+            continue    # (v0.7.0: Europe's airports arrive one by one; v0.7.5: East Asia's six too, three subagents at once)
         d = json.load(open(os.path.join(AIRPORT_DIR, icao + '.json')))
         g = Polygon(d['boundary'])
         if not g.is_valid:

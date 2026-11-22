@@ -25,7 +25,7 @@ if (inRegion('europe', import.meta.url)) {
   test("v0.7.1's list: after v0.7.0's twenty-eight, in the brief's order, each in its city's box with a country, a source and its own model", () => {
     assert.ok(EUROPE_LANDMARKS.length >= 28 + NEW.length);     // v0.7.2's follow (tests/v072-eu-landmarks.test.mjs)
     assert.deepEqual(EUROPE_LANDMARKS.slice(28, 28 + NEW.length).map((l) => l.id), NEW);
-    assert.equal(LANDMARKS.length, 30);
+    assert.equal(LANDMARKS.length, 35);   // (v0.7.5: East Asia's thirty and v0.7.5's five, appended)
     const ids = new Set();
     for (const L of EUROPE_LANDMARKS.slice(28, 28 + NEW.length)) {
       assert.ok(!ids.has(L.id)); ids.add(L.id);
@@ -188,7 +188,7 @@ if (inRegion('europe', import.meta.url)) {
   test("East Asia's page: v0.7.1's landmarks not on, its thirty as before", async () => {
     const { LANDMARKS, EUROPE_LANDMARKS, REGION_LANDMARKS, landmarkOn } = await import('../src/world/landmarks.js');
     assert.equal(REGION_LANDMARKS, LANDMARKS);
-    assert.equal(LANDMARKS.length, 30);
+    assert.equal(LANDMARKS.length, 35);   // (v0.7.5: East Asia's thirty and v0.7.5's five, appended)
     for (const L of EUROPE_LANDMARKS.slice(28, 28 + NEW.length)) assert.equal(landmarkOn(L), false, L.id);
   });
 }

@@ -16,7 +16,8 @@ const NM = 1852, DEG = Math.PI / 180;
 const CLEAR_M = 60;   // what a straight-in final keeps between itself and the ground, 1 to 15 nm out
 
 test('the circling-only ends: Gimhae 18L and 18R (and since v0.6.4 Wonsan 33L and 33R), marked on the airports, and nothing else', () => {
-  assert.deepEqual(CIRCLING_ONLY, { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'], LOWI: ['08'] });   // v0.7.3: Innsbruck's 08, in Europe (tests/v073-eu-lowi.test.mjs checks its line against the terrain)
+  assert.deepEqual(CIRCLING_ONLY, { RKPK: ['18L', '18R'], ZKWS: ['33L', '33R'], LOWI: ['08'], RJOO: ['14R', '14L'] });   // v0.7.5: Itami's 14s (tests/v075-ea-rjoo.test.mjs checks their lines against the terrain)
+  // (v0.7.3: Innsbruck's 08, in Europe (tests/v073-eu-lowi.test.mjs checks its line against the terrain)
   assert.ok(circlingOnly('ZKWS', '33L') && circlingOnly('ZKWS', '33R') && !circlingOnly('ZKWS', '15R') && !circlingOnly('ZKPY', '35'));
   assert.ok(circlingOnly('RKPK', '18l') && circlingOnly('RKPK', '18R') && !circlingOnly('RKPK', '36L') && !circlingOnly('RKSS', '14R'));
   const aps = createAirports([{ icao: 'RKPK', runways: [{ ends: [{ ident: '18L', x: 0, y: 1000 }, { ident: '36R', x: 0, y: -1000 }] }] }]);

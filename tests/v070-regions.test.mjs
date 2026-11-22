@@ -85,7 +85,7 @@ test('every listed airport is in the index of all regions, under its file\'s sho
       if (a.shortName) assert.equal(airportShortName(a.icao), a.shortName, a.icao);
     }
   }
-  assert.equal(Object.values(AIRPORT_INDEX).filter(([, r]) => r === 'east-asia').length, 23);
+  assert.equal(Object.values(AIRPORT_INDEX).filter(([, r]) => r === 'east-asia').length, 29);   // v0.7.5: Cheongju, Kunsan, Itami, Centrair, Hiroshima, Komatsu
   assert.equal(Object.values(AIRPORT_INDEX).filter(([, r]) => r === 'europe').length, 37);   // v0.7.0: Heathrow to Fiumicino, 11; v0.7.1: Toulouse to Manchester, 20; v0.7.2: Düsseldorf to Santiago, 29
   assert.equal(airportShortName('EGLL'), 'Heathrow'); assert.equal(airportRegion('RKSS'), 'east-asia');
   assert.equal(airportShortName('XXXX'), 'XXXX'); assert.equal(airportRegion('XXXX'), null);

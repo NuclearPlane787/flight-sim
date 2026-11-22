@@ -81,7 +81,7 @@ SHOTS['world-3000-shanghai-night'] = { q: look(31.235, 121.5, 3000, 285, -12), m
 SHOTS['world-10000-osaka'] = { q: look(34.69, 135.5, 10000, 30, -20), ms: DAY };
 SHOTS['world-10000-fukuoka'] = { q: look(33.59, 130.4, 10000, 160, -20), ms: DAY };
 SHOTS['world-10000-busan'] = { q: look(35.16, 129.06, 10000, 30, -20), ms: DAY };
-const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04', ZBAA: '36R', ZBAD: '35L', UHWW: '25L', ZYTX: '24', ZYTL: '28', RJCC: '19R', RJSA: '24', ZKPY: '17', ZKWS: '15R', RJSS: '27', RJSN: '28' };   // (the last six: v0.6.4)   // (ZSYN: v0.6.1; ZBAA, ZBAD: v0.6.3)
+const FINALS = { ZSPD: '35L', RJTT: '34L', RJAA: '34L', RKPK: '36L', ZSSS: '36R', RJBB: '06R', RJFF: '16L', ZSQD: '34', ZSYN: '04', ZBAA: '36R', ZBAD: '35L', UHWW: '25L', ZYTX: '24', ZYTL: '28', RJCC: '19R', RJSA: '24', ZKPY: '17', ZKWS: '15R', RJSS: '27', RJSN: '28', RKTU: '24R', RKJK: '36', RJGG: '36', RJOO: '32L', RJNK: '06', RJOA: '10' };   // (the last six: v0.7.5)     // (the last six: v0.6.4)   // (ZSYN: v0.6.1; ZBAA, ZBAD: v0.6.3)
 for (const [icao, end] of Object.entries(FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: NIGHT };
@@ -508,8 +508,55 @@ SHOTS['p9n-rksi-1000-night-m3'] = { q: along3(SHOTS['p9n-rksi-1000-night'].q), m
 SHOTS['p9n-egll-apron-night-m3'] = { q: along3(SHOTS['p9n-egll-apron-night'].q), ms: EU_NIGHT };
 GROUPS['p9n-ea'] = ['rksi', 'rjtt'].flatMap((k) => [`p9n-${k}-apron-night`, `p9n-${k}-1000-night`, `p9n-${k}-apron-day`]).concat(['RJTT-final-night', 'ZSPD-final-night']);
 GROUPS['p9n-eu'] = ['egll', 'eddf'].flatMap((k) => [`p9n-${k}-apron-night`, `p9n-${k}-1000-night`, `p9n-${k}-apron-day`]).concat(['EGLL-final-night']);
+// v0.7.5. The military sides of the three airports shared with air bases (Shane: "Empty": shelters, hangars and bare
+// ramps, no parked aircraft there): each from above (2,500 ft at -35 deg, looking from the civil apron across the
+// field) and from the civil apron (40 ft up, level). [civil stands' centre x, y; the runways' middle x, y; the heading
+// from the one to the other], from the airports' files.
+const MIL075 = { rktu: [-186.6, 80083.3, -63.9, 79439.0, 169.2], rjnk: [797946.6, 80644.3, 797368.1, 79703.1, 211.6], rkjk: [-79723.8, -7869.3, -79731.6, -10309.9, 180.2] };
+for (const [k, [cx, cy, mx, my, hdg]] of Object.entries(MIL075)) {
+  SHOTS[`mil-${k}-above`] = { q: lookXY(mx, my, 2500, hdg, -35), ms: DAY };
+  SHOTS[`mil-${k}-apron`] = { q: `x=${cx}&y=${cy}&agl=40&hdg=${hdg}&pitch=-3&aglAt=${cx},${cy}`, ms: DAY };
+}
+GROUPS['mil-075'] = Object.keys(MIL075).flatMap((k) => [`mil-${k}-above`, `mil-${k}-apron`]);
+// v0.7.5, part 7: the parked aircraft whose tails stood over a taxiway behind (traffic-layout.js tailOverLine()), from
+// 500 ft at -50 deg, looking along each stand's heading: Naples's 45 (the finding) and Vienna's A55 in Europe's page,
+// Narita's 431 and Gimpo's 914 in East Asia's. Taken with and without `&tailfit=0` (--q), as before and after.
+const PARKED075 = { 'eu-lirn-45': [861234.9, -618923.3, 305.6, 'eu'], 'eu-loww-a55': [921708.7, 197787.9, 286.8, 'eu'], 'ea-rjaa-431': [1161692.5, 50385.1, 119.3, 'ea'], 'ea-rkss-914': [-62939.6, 172693.2, 225.5, 'ea'] };
+for (const [k, [x, y, hdg, reg]] of Object.entries(PARKED075)) SHOTS[`parked-${k}`] = { q: lookXY(x - 25 * Math.sin(hdg * DEG), y - 25 * Math.cos(hdg * DEG), 500, hdg, -50), ms: reg === 'eu' ? EU_DAY : DAY };
+GROUPS['parked-075-eu'] = Object.keys(PARKED075).filter((k) => k.startsWith('eu-')).map((k) => `parked-${k}`);
+GROUPS['parked-075-ea'] = Object.keys(PARKED075).filter((k) => k.startsWith('ea-')).map((k) => `parked-${k}`);
 GROUPS['p9g-eu'] = Object.keys(P9_GRASS).filter((k) => P9_GRASS[k][2] === 'eu').map((k) => `p9g-${k}-700`);
 GROUPS['p9g-ea'] = Object.keys(P9_GRASS).filter((k) => P9_GRASS[k][2] === 'ea').map((k) => `p9g-${k}-700`);
+// v0.7.5 part 6 (--region --cities): Nagoya's and Hiroshima's centres from 3,000 ft by day and by night; the five
+// landmarks level (D m off, the eye hM above the ground there, looking at half the height) and from above (aimAt's,
+// 250 m off and 150 m up; the torii's 200 m off and 100 m up), from the side of a clear line [lat, lon of a point that
+// way]: Nagoya Castle from Meijo Park to the north, the TV tower from down Hisaya-odori to the south, the torii from the
+// sea to the north-west (the shrine behind it), the Dome from the Peace Park across the river to the south-west, Osaka
+// Castle from the Nishinomaru garden to the south-west; the castles and the tower by night too. Itami's 32L final at
+// 4 nm and 1,500 ft looking along it (the threshold from OurAirports, 34.7722 N 135.4520 E, 315 true), a point of
+// its own (RJOO's file comes with this version's airports).
+const CITY075 = { nagoya: [35.176, 136.895, 340], hiroshima: [34.396, 132.462, 20] };
+for (const [k, [la, lo, h]] of Object.entries(CITY075)) {
+  for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`cities-${k}-3000-${tod}`] = { q: look(la, lo, 3000, h, -12), ms };
+}
+const LANDMARK075 = { // id: [lat, lon, H, from lat, from lon, level D, level hM]
+  nagoyacastle: [35.185582, 136.899086, 55.6, 35.1905, 136.8988, 420, 45], nagoyatv: [35.172298, 136.90834, 180, 35.1650, 136.9081, 520, 70],
+  torii: [34.297297, 132.318135, 16.6, 34.2995, 132.3158, 130, 8], abombdome: [34.395468, 132.45347, 25, 34.3935, 132.4518, 260, 38],
+  osakacastle: [34.68728, 135.525843, 55, 34.6850, 135.5228, 420, 45] };
+for (const [k, [la, lo, H, fla, flo, D, hM]] of Object.entries(LANDMARK075)) {
+  for (const [tod, ms] of [['day', DAY], ['night', NIGHT]]) SHOTS[`landmark-${k}-${tod}`] = { q: aimAt(la, lo, H, D, hM, fla, flo, 0.5), ms };
+  SHOTS[`landmark-${k}-above-day`] = { q: aimAt(la, lo, H, k === 'torii' ? 200 : 250, k === 'torii' ? 100 : 150, fla, flo, 0.4), ms: DAY };
+}
+{
+  const [tx, ty] = toMap(34.7722, 135.4520), [cx, cy] = toMap(34.72505, 135.50938);   // 4 nm out on 135 true
+  const hdg = ((Math.atan2(tx - cx, ty - cy) / DEG) + 360) % 360, pitch = -Math.atan2(1500 * FT, Math.hypot(tx - cx, ty - cy)) / DEG;
+  const q = `x=${cx.toFixed(1)}&y=${cy.toFixed(1)}&agl=1500&hdg=${hdg.toFixed(1)}&pitch=${pitch.toFixed(2)}&aglAt=${cx.toFixed(1)},${cy.toFixed(1)}`;
+  SHOTS['rjoo-32l-final-osaka-day'] = { q, ms: DAY };
+  SHOTS['rjoo-32l-final-osaka-night'] = { q, ms: NIGHT };
+}
+GROUPS['ea-centres-075'] = Object.keys(CITY075).flatMap((k) => [`cities-${k}-3000-day`, `cities-${k}-3000-night`]).concat(['rjoo-32l-final-osaka-day', 'rjoo-32l-final-osaka-night']);
+GROUPS['ea-landmarks-075'] = Object.keys(LANDMARK075).flatMap((k) => [`landmark-${k}-day`, `landmark-${k}-above-day`])
+  .concat(['nagoyacastle', 'nagoyatv', 'osakacastle'].map((k) => `landmark-${k}-night`));
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {

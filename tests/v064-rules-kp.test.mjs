@@ -53,10 +53,11 @@ test('the setup\'s lists: Japan\'s northern four after Fukuoka, North Korea betw
   assert.equal(COUNTRY_LABEL.KP, 'North Korea');
   const groups = airportGroups(AIRPORT_ORDER.map((icao) => ({ icao })));
   assert.deepEqual(groups.map((g) => g.country), ['KR', 'JP', 'CN', 'KP', 'RU']);
-  assert.deepEqual(groups.find((g) => g.country === 'JP').airports.map((a) => a.icao), ['RJTT', 'RJAA', 'RJBB', 'RJFF', 'RJSN', 'RJSS', 'RJSA', 'RJCC']);
+  assert.deepEqual(groups.find((g) => g.country === 'JP').airports.map((a) => a.icao), ['RJTT', 'RJAA', 'RJBB', 'RJOO', 'RJGG', 'RJFF', 'RJOA', 'RJNK', 'RJSN', 'RJSS', 'RJSA', 'RJCC']);   // (v0.7.5: Itami after Kansai, Osaka's other; Centrair; Hiroshima and Komatsu after Fukuoka, west to east, before the north's four)
+  assert.deepEqual(groups.find((g) => g.country === 'KR').airports.map((a) => a.icao), ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RKTU', 'RKJK']);   // v0.7.5: Cheongju and Kunsan after the four
   assert.deepEqual(groups.find((g) => g.country === 'KP').airports.map((a) => a.icao), ['ZKPY', 'ZKWS']);
-  assert.equal(AIRPORT_ORDER.length, 23);
-  assert.equal(new Set(AIRPORT_ORDER).size, 23);
+  assert.equal(AIRPORT_ORDER.length, 29);
+  assert.equal(new Set(AIRPORT_ORDER).size, 29);
 }));
 
 // The review (2026-11-21): which end a circling-only end is circled from, and no ILS on such an end.

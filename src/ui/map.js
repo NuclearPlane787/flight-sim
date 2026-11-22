@@ -13,7 +13,7 @@ import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, 
 import { mapExtent, fineExtent, fineOutline } from '../world/region.js';
 import { regionOutline, outlineIsRect } from '../world/outline.js';
 import { fuelEstimate } from './setup.js';
-import { circleFrom } from '../world/runways.js';
+import { circleFrom, runwayUseNote } from '../world/runways.js';
 import { smoothOutline, traceClipped } from './map-outline.js';
 import { buildCountries, traceBorders, layoutNames } from './map-countries.js';
 import { loadRelief, RELIEF_BANDS, POLDER_RGB } from './map-relief.js';
@@ -280,10 +280,11 @@ export function createMap(root, { airports, coast, urban } = {}) {
       // 15 nm final fix on the extended centreline.
       const h = (view.dest.hdgGridDeg || 0) * DEG, [tx, ty] = pts[pts.length - 1];
       const fx = tx - Math.sin(h) * 15 * NM, fy = ty - Math.cos(h) * 15 * NM;
-      if (view.dest.use === 'takeoff' || view.dest.use === 'closed') {   // v0.7.0: nothing lands on it, so no final drawn
+      if (!view.dest.circling && (view.dest.use === 'takeoff' || view.dest.use === 'closed')) {   // v0.7.5: the AIP's use as a note; the final is drawn as any other's (v0.7.0 drew none, and "TAKE-OFF ONLY")
         ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fillText(view.dest.use === 'takeoff' ? 'TAKE-OFF ONLY' : 'NOT IN USE', X(tx) + 10, Y(ty) + 14);
-      } else if (view.dest.circling) {   // v0.6.2: no straight-in final to it (Gimhae 18L, 18R), so no 15 nm final drawn
+        ctx.fillText(view.dest.use === 'takeoff' ? 'TAKE-OFFS ONLY IN THE AIP' : 'NOT IN USE IN THE AIP', X(tx) + 10, Y(ty) + 14);
+      }
+      if (view.dest.circling) {   // v0.6.2: no straight-in final to it (Gimhae 18L, 18R), so no 15 nm final drawn
         ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
         ctx.fillText('CIRCLING ONLY', X(tx) + 10, Y(ty) + 14);
       } else {
@@ -886,7 +887,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
     for (const r of apt.runways || []) {
       for (const [e, o] of [[r.ends[0], r.ends[1]], [r.ends[1], r.ends[0]]]) {
         if (e.circling) continue;   // v0.6.2: not one you'd fly straight in to (Gimhae 18L, 18R)
-        if (e.use === 'takeoff' || e.use === 'closed') continue;   // v0.7.0: nothing lands on it (runways.js ONE_WAY: Frankfurt's 18)
+        if (e.use === 'takeoff' || e.use === 'closed') continue;   // v0.7.0: never the one picked for you (runways.js ONE_WAY: Frankfurt's 18); v0.7.5: it is in the list all the same
         const [tx, ty] = thresholdOf(e), land = Math.atan2(o.x - e.x, o.y - e.y);
         const d = st ? Math.abs(wrapPi(land - Math.atan2(tx - st.pos.x, ty - st.pos.y))) : 0;
         if (e.use === 'standby') { if (d < sd) { sd = d; spare = e.ident; } continue; }
@@ -910,17 +911,20 @@ export function createMap(root, { airports, coast, urban } = {}) {
     const list = airportList(airports), apt = list.find((a) => a.icao === pick.icao);
     routeEl.querySelector('[data-r="apt"]').innerHTML = list.map((a) =>
       `<button data-icao="${a.icao}" class="${a.icao === pick.icao ? 'on' : ''}" tabindex="-1">${a.icao}<small>${nameOf(a)}</small></button>`).join('');
-    // v0.7.0: only the ends that are landed on (runways.js ONE_WAY: not Frankfurt's 18, Madrid's 14s and 36s, Barcelona's 20), a standby runway's last.
-    const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r }))).filter(({ e }) => e.use !== 'takeoff' && e.use !== 'closed')
-      .sort((p, q) => (p.e.use === 'standby') - (q.e.use === 'standby'));
+    // v0.7.5 (Shane, of Barcelona's 20: "I can't select all the runways for landing"): every end, in the order the setup
+    // lists them: the ends the AIP lands on, a standby runway's, then the ends it only takes off from or doesn't use
+    // (runways.js ONE_WAY: Frankfurt's 18 and 36, Madrid's 14s and 36s, Barcelona's 20), dimmed, with their note.
+    const rank = (e) => (e.use === 'standby' ? 1 : e.use === 'takeoff' || e.use === 'closed' ? 2 : e.circling ? 0.5 : 0);   // (a circling-only end after the straight-in ones, as the setup's arrival list)
+    const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r }))).sort((p, q) => rank(p.e) - rank(q.e));
     routeEl.querySelector('[data-r="rwy"]').innerHTML = ends.map(({ e, r }) =>
-      `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${courseText(runwayCourseMag(e, r.ends.find((x) => x !== e)))}° · ${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}" tabindex="-1">${e.ident}</button>`).join('');
+      `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${courseText(runwayCourseMag(e, r.ends.find((x) => x !== e)))}° · ${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}${rank(e) === 2 ? ', ' + runwayUseNote(apt.icao, e.ident) : ''}"${rank(e) === 2 ? ' style="opacity:0.62"' : ''} tabindex="-1">${e.ident}</button>`).join('');
     const sel = ends.find((x) => x.e.ident === pick.ident);
     const st = view?.state, lines = [];
     if (sel) {
       const same = view?.dest === sel.e;
       lines.push(`<b>${apt.icao} ${sel.e.ident}</b> · course <b>${courseText(runwayCourseMag(sel.e, sel.r.ends.find((x) => x !== sel.e)))}°</b> · ${Math.round(sel.r.lengthM || 0).toLocaleString()} m${sel.e.ils ? ` · ILS CAT ${sel.e.ils}` : ''}${same ? ' · <span class="dim">your destination now</span>' : ''}`);
       // v0.6.2: an end with no straight-in approach (Gimhae 18L, 18R)
+      if (rank(sel.e) === 2) lines.push(`<span class="dim">${sel.e.ident} · ${runwayUseNote(apt.icao, sel.e.ident)}: the real airport doesn't land on it; here it is flown as any other, with the game's 3° beam.</span>`);
       if (sel.e.circling) lines.push(`<span class="warn">Circling only: no straight-in approach, so no Skip to final. It's flown by a circle from the approach to ${circleFrom(apt, sel.e.ident)?.ident || 'the other end'}.</span>`);
       if (st) {
         const [tx, ty] = thresholdOf(sel.e), nm = Math.hypot(tx - st.pos.x, ty - st.pos.y) / NM;

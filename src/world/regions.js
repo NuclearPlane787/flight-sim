@@ -152,6 +152,8 @@ export const AIRPORT_INDEX = {
   ZSPD: ['Pudong', 'east-asia'], ZSSS: ['Hongqiao', 'east-asia'], ZSQD: ['Qingdao', 'east-asia'], ZSYN: ['Yancheng', 'east-asia'],
   ZBAA: ['Beijing Capital', 'east-asia'], ZBAD: ['Daxing', 'east-asia'], ZYTX: ['Shenyang', 'east-asia'], ZYTL: ['Dalian', 'east-asia'],
   ZKPY: ['Pyongyang', 'east-asia'], ZKWS: ['Wonsan', 'east-asia'], UHWW: ['Vladivostok', 'east-asia'],
+  RKTU: ['Cheongju', 'east-asia'], RKJK: ['Kunsan', 'east-asia'], RJOO: ['Itami', 'east-asia'], RJGG: ['Centrair', 'east-asia'],   // v0.7.5
+  RJOA: ['Hiroshima', 'east-asia'], RJNK: ['Komatsu', 'east-asia'],
   EGLL: ['Heathrow', 'europe'], LFPG: ['Charles de Gaulle', 'europe'], EDDF: ['Frankfurt', 'europe'], LEMD: ['Madrid', 'europe'],
   LSZH: ['Zurich', 'europe'], EGKK: ['Gatwick', 'europe'], LFPO: ['Orly', 'europe'], EHAM: ['Schiphol', 'europe'],
   EDDM: ['Munich', 'europe'], LEBL: ['Barcelona', 'europe'], LIRF: ['Fiumicino', 'europe'],

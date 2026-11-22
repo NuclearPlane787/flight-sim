@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { inRegion } from './region-run.mjs';
 
 if (inRegion('europe', import.meta.url)) {
-  const { runwayCrossings, runwayRects, rectElev, profileAt, knotPairs, knotChainGlsl, MAX_KNOTS, CROSSING_LEVEL, pavementEnd, ONE_WAY, canTakeOff, canLand, RUNWAY_SHOULDER_M } = await import('../src/world/runways.js');
+  const { runwayCrossings, runwayRects, rectElev, profileAt, knotPairs, knotChainGlsl, MAX_KNOTS, CROSSING_LEVEL, pavementEnd, ONE_WAY, aipTakesOff, aipLands, RUNWAY_SHOULDER_M } = await import('../src/world/runways.js');
   const { createTiledHeightfield } = await import('../src/world/heightfield.js');
   const { DATA, readGz, readJson, manifest } = await import('./tile-terrain.mjs');
   const load = () => JSON.parse(readFileSync(new URL('airports/EBBR.json', DATA)));
@@ -57,7 +57,7 @@ if (inRegion('europe', import.meta.url)) {
     assert.equal(s.knots.length, 8);
     for (let i = 1; i < 8; i++) assert.ok(s.knots[i][0] > s.knots[i - 1][0], 'sorted along the runway');
     for (const r of ap.runways) if (r !== s) { assert.equal(r.knots.length, 0, r.id); assert.equal(r.cutBy.length, 0, r.id); }
-    assert.equal(ONE_WAY.EBBR, undefined); assert.ok(canTakeOff('EBBR', '19') && canLand('EBBR', '19') && canTakeOff('EBBR', '01') && canLand('EBBR', '01'));
+    assert.equal(ONE_WAY.EBBR, undefined); assert.ok(aipTakesOff('EBBR', '19') && aipLands('EBBR', '19') && aipTakesOff('EBBR', '01') && aipLands('EBBR', '01'));
     // each bend is where one of a longer runway's drawn edges meets one of 01/19's two sides, at that runway's height there
     const p0 = pavementEnd(s.ends[0]), p1 = pavementEnd(s.ends[1]), sl = Math.hypot(p1.x - p0.x, p1.y - p0.y), ux = (p1.x - p0.x) / sl, uy = (p1.y - p0.y) / sl;
     const hwS = (s.widthM || 45) / 2 + RUNWAY_SHOULDER_M;

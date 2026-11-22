@@ -116,7 +116,10 @@ export function airportSuite(cfg) {
   const noTiles = skip || (!TILES && `${ICAO}: the region's 250 m tiles not installed yet (no tilesRegion)`);
   const geo = HAVE_GEO ? createGeoRules({ magvar: part('magvar'), country: part('country') }) : null;
   // the WMM grid's variation where there is one; else the airport's own magVarDeg (the bake's WMM at its reference point)
-  const varAt = (ap, x, y) => (geo ? geo.wmmVar(x, y) : ap.magVarDeg);
+  // v0.7.5, cfg.koreaPlane: an airport inside south-korea.poly (Cheongju, Kunsan), where the game's magVar() is frame.js's
+  // plane, as Gimhae's (this suite's geo is made without the Korea mask, so its own magVarAt would say WMM there).
+  const krPlane = (la, lo) => -8.46 - 0.378 * (la - 36) + 0.082 * (lo - 127.5);
+  const varAt = (ap, x, y, e = null) => (cfg.koreaPlane && e ? krPlane(e.lat, e.lon) : geo ? geo.wmmVar(x, y) : ap.magVarDeg);
   const varTol = geo ? 0.02 : 0.1;
   const bootAirport = () => {
     const ap = load(ICAO);
@@ -176,7 +179,8 @@ export function airportSuite(cfg) {
     for (const k of ['taxiways', 'aprons', 'stands', 'holdingPositions', 'buildings', 'serviceRoads']) assert.ok(ap[k].length > 0, `${k}: ${ap[k].length}`);
     assert.ok(Math.abs(ap.lat - cfg.latLon[0]) < 0.02 && Math.abs(ap.lon - cfg.latLon[1]) < 0.02);
     assert.ok(Math.abs(ap.elevM - cfg.elevM) < 0.1, `elevM ${ap.elevM}`);
-    if (geo) assert.ok(Math.abs(ap.magVarDeg - geo.wmmVar(ap.origin[0], ap.origin[1])) < 0.01, `magVarDeg ${ap.magVarDeg} is the WMM grid's`);
+    if (cfg.koreaPlane) assert.ok(Math.abs(ap.magVarDeg - krPlane(ap.lat, ap.lon)) < 0.011, `magVarDeg ${ap.magVarDeg} is the plane's (${krPlane(ap.lat, ap.lon).toFixed(3)})`);
+    else if (geo) assert.ok(Math.abs(ap.magVarDeg - geo.wmmVar(ap.origin[0], ap.origin[1])) < 0.01, `magVarDeg ${ap.magVarDeg} is the WMM grid's`);
     else console.log(`  ${ICAO}: no WMM grid in the region's data yet: magVarDeg ${ap.magVarDeg} not checked against it`);
     if (cfg.pubVar !== undefined) assert.ok(Math.abs(ap.magVarDeg - cfg.pubVar) < 1, `magVarDeg ${ap.magVarDeg} vs the AIP's ${cfg.pubVar}`);
     assert.ok(regionRules(ap), 'the region\'s taxi rules apply');
@@ -204,7 +208,7 @@ export function airportSuite(cfg) {
       assert.ok(Math.abs(f.ldaM - (r.lengthM - e.displacedM)) < 0.2);
       assert.ok(Math.abs(e.elevM - c.elevFt * FT) < 0.06, `${e.ident}: ${e.elevM} m, ${c.elevFt} ft`);
       assert.ok(Math.abs(wrapd(e.hdgGridDeg - (e.hdgTrueDeg - convergence(e.lon) / DEG))) < 0.02, `${e.ident}: grid vs true`);
-      assert.ok(Math.abs(wrapd(e.hdgMagDeg - (e.hdgTrueDeg - varAt(ap, e.x, e.y)))) < varTol, `${e.ident}: mag = true - WMM`);
+      assert.ok(Math.abs(wrapd(e.hdgMagDeg - (e.hdgTrueDeg - varAt(ap, e.x, e.y, e)))) < varTol, `${e.ident}: mag = true - ${cfg.koreaPlane ? 'the plane' : 'WMM'}`);
       assert.ok(Math.abs(wrapd(e.hdgTrueDeg - o.hdgTrueDeg - 180)) < 0.2, 'reciprocal');
       assert.ok(Math.abs(wrapd(e.hdgMagDeg - parseInt(e.ident, 10) * 10)) <= (cfg.identTolDeg ?? 5), `${e.ident}: ${e.hdgMagDeg} M rounds to its ident`);
       if (c.pubMag != null) assert.ok(Math.abs(wrapd(e.hdgMagDeg - c.pubMag)) < c.pubMagTol, `${e.ident}: ${e.hdgMagDeg} M vs the published ${c.pubMag}`);

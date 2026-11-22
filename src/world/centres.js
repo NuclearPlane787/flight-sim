@@ -65,6 +65,7 @@ const COUNTRY = {
   seoul: 0, songdo: 0, busan: 0, tokyo: 1, yokohama: 1, osaka: 1, fukuoka: 1, shanghai: 2, qingdao: 2,
   beijing: 2, tianjin: 2, shenyang: 2, dalian: 2, vladivostok: 0,
   pyongyang: 0, sapporo: 1, sendai: 1, niigata: 1,
+  nagoya: 1, hiroshima: 1,   // v0.7.5: Japan's look
   // v0.7.0: Europe's nine (drawn only with REGION_ID 'europe', by VERT_EU below): 3 pale stone and plaster under
   // grey slate and zinc, 4 cream and ochre plaster under terracotta, 5 brick under dark tile.
   london: 3, paris: 3, frankfurt: 3, madrid: 4, barcelona: 4, rome: 4, munich: 4, zurich: 4, amsterdam: 5,

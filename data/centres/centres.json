@@ -204,28 +204,28 @@
    "name": "Osaka",
    "file": "osaka.bin.gz",
    "origin": [
-    732012,
-    -117435
+    731765,
+    -114397
    ],
    "box": [
-    729046,
+    728343,
     -121578,
-    734978,
-    -113292
+    735187,
+    -107216
    ],
    "latlon": [
-    34.63307,
-    135.46657,
-    34.71192,
-    135.53847
+    34.63292,
+    135.45892,
+    34.76707,
+    135.54615
    ],
-   "cols": 12,
-   "rows": 17,
-   "count": 26121,
-   "vertices": 150235,
+   "cols": 14,
+   "rows": 29,
+   "count": 36360,
+   "vertices": 220544,
    "maxHeightM": 300.0,
    "minKeepHeightM": 12.0,
-   "bytes": 524788
+   "bytes": 776064
   },
   {
    "id": "fukuoka",
@@ -506,6 +506,62 @@
    "maxHeightM": 140.0,
    "minKeepHeightM": 12.0,
    "bytes": 27760
+  },
+  {
+   "id": "nagoya",
+   "name": "Nagoya",
+   "file": "nagoya.bin.gz",
+   "origin": [
+    853723,
+    -50648
+   ],
+   "box": [
+    851911,
+    -52413,
+    855535,
+    -48883
+   ],
+   "latlon": [
+    35.1586,
+    136.87334,
+    35.19341,
+    136.91667
+   ],
+   "cols": 8,
+   "rows": 8,
+   "count": 2659,
+   "vertices": 18019,
+   "maxHeightM": 247.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 64525
+  },
+  {
+   "id": "hiroshima",
+   "name": "Hiroshima",
+   "file": "hiroshima.bin.gz",
+   "origin": [
+    455871,
+    -166266
+   ],
+   "box": [
+    454173,
+    -167539,
+    457569,
+    -164993
+   ],
+   "latlon": [
+    34.38426,
+    132.44435,
+    34.40874,
+    132.48265
+   ],
+   "cols": 7,
+   "rows": 6,
+   "count": 2635,
+   "vertices": 16221,
+   "maxHeightM": 197.5,
+   "minKeepHeightM": 12.0,
+   "bytes": 58938
   }
  ]
 }

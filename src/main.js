@@ -390,10 +390,11 @@ async function boot() {
     // v0.7.4: a localizer to every end that is landed on straight in, as the Boeings always had it (the game gives every
     // such runway a 3 deg beam down its centreline, whether or not the real one has an ILS: Jeju's 13/31, Haneda's 04
     // and 05, Innsbruck's 26), and now the A321's LOC and APPR too. None to a circling-only end (CIRCLING_ONLY: its
-    // straight 3 deg line meets the terrain), nor to one only taken off from or closed (ONE_WAY). Both families.
+    // straight 3 deg line meets the terrain). Both families. (v0.7.4 gave none to an end the AIP only takes off from or
+    // doesn't use, ONE_WAY; v0.7.5 offers those ends for landing, so they get the beam too.)
     // (The lead: the cockpit subagent's first rule also asked for the end's own `ils`, which took LOC and APP away
     // from the Boeings at 55 of the game's 264 ends.)
-    if (dest && !dest.end.circling && dest.end.use !== 'takeoff' && dest.end.use !== 'closed') {
+    if (dest && !dest.end.circling) {
       const ax = runwayAxis(dest.end, dest.other);
       ap.setIls({ x: ax.tx, y: ax.ty, hdgGrid: ax.hdg, elev: dest.end.elevM ?? dest.airport.elevM ?? 0, gsDeg: 3 });
     } else ap.setIls(null);
@@ -404,25 +405,10 @@ async function boot() {
   const navKeyNow = () => (map.waypoints || []).join(';') + '|' + (dest ? dest.end.x + ',' + dest.end.y : '');
   const payloadOf = (p) => (p.pax || 0) * (sim.type.limits.PAX_KG || 84) + (p.cargoKg || 0);
 
-  // v0.7.0: a plan whose departure end is only landed on, or whose arrival end is only taken off from (runways.js's
-  // ONE_WAY; the setup never offers one, but a scenario saved by hand or before an end was marked can hold one): the
-  // same runway's other end where that is usable, else the airport's first that is, a standby runway's last. Only
-  // an end with a `use` is ever changed, so East Asia's plans come back as they are.
-  function usablePlan(p) {
-    const fix = (icao, ident, bad) => {
-      const r = icao && ident ? runwayEnds(icao, ident) : null;
-      if (!r || !bad(r.end.use)) return ident;
-      if (!bad(r.other.use)) return r.other.ident;
-      const ends = (r.airport.runways || []).flatMap((rw) => rw.ends).filter((e) => !bad(e.use));
-      return (ends.find((e) => e.use !== 'standby') || ends[0] || r.end).ident;
-    };
-    const dep = fix(p.origin, p.depRunway, (u) => u === 'landing' || u === 'closed');
-    const arr = fix(p.dest, p.arrRunway, (u) => u === 'takeoff' || u === 'closed');
-    return dep === p.depRunway && arr === p.arrRunway ? p : { ...p, depRunway: dep, arrRunway: arr };
-  }
+  // (v0.7.0 to v0.7.4 moved a plan off an end the AIP doesn't use that way, usablePlan(); v0.7.5 offers every end, so a
+  // plan is flown as it was made.)
 
   function startFlight(p, { keepClock = false } = {}) {
-    p = usablePlan(p);
     plan = p;
     useType(p.design || p.type);
     // v0.4.0: the plan's weather, before the aircraft is placed (the reset and the trim read the wind).
@@ -449,7 +435,7 @@ async function boot() {
       gate.clear();
       world.traffic?.setPlayerStand(p.origin, null);
       // v0.6.2: no 15 nm final to a circling-only end (the setup won't offer one; a check's URL might): the runway instead
-      if (p.start === 'final' && dest && !dest.end.circling && dest.end.use !== 'takeoff' && dest.end.use !== 'closed') placeOnFinal(null);   // (v0.7.0: nor to an end nothing lands on)
+      if (p.start === 'final' && dest && !dest.end.circling) placeOnFinal(null);   // (v0.7.5: every other end, whatever the AIP uses it for)
       else placeOnRunway(p.origin, p.depRunway, null);
     }
     sim.setLocalQnh();   // v0.4.0: the altimeter set to the day's QNH before the flight, as a crew sets it (1013.25 in calm)
@@ -683,7 +669,6 @@ async function boot() {
     if (!dest) { toast('No destination runway set'); return; }
     // v0.6.2: Gimhae's 18L and 18R are flown by a circle from the approach to 36: their straight-in final meets the hills.
     if (dest.end.circling) { toast(circlingNote(dest), 6000); return; }
-    if (dest.end.use === 'takeoff' || dest.end.use === 'closed') { toast(`${dest.airport.shortName || dest.airport.icao} ${dest.end.ident} is ${dest.end.use === 'takeoff' ? 'for take-offs only' : 'not in use'}: change the runway on the map for a final.`, 6000); return; }   // v0.7.0 (runways.js ONE_WAY)
     fadeThen(() => {
       const s = sim.state;
       // The load as it is now (v0.3.2: the Weight window may have changed it from the plan's).
@@ -718,7 +703,6 @@ async function boot() {
     if (landed && sim.state.onGround) return { ok: false, error: 'You’ve landed. A new flight (Esc → New flight) starts from here.' };
     const d = runwayEnds(icao, ident);
     if (!d) return { ok: false, error: `${icao} has no runway ${ident}` };
-    if (d.end.use === 'takeoff' || d.end.use === 'closed') return { ok: false, error: `${icao} ${ident} is ${d.end.use === 'takeoff' ? 'for take-offs only' : 'not in use'}` };   // v0.7.0 (runways.js ONE_WAY)
     const same = dest && d.end === dest.end;
     plan.dest = icao; plan.arrRunway = ident; plan.waypoints = [];
     dest = d; destOther = d.other;

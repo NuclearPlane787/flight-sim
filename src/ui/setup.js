@@ -29,7 +29,7 @@
 import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints, runwayCourseMag, courseText } from './common.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
 import { zoneAt, zoneLabel, fmtZone, fmtZoneDate, zoneFieldValues, zoneFromFields } from '../clock.js';
-import { circleFrom, canTakeOff, canLand, runwayUse, runwayUseNote } from '../world/runways.js';
+import { circleFrom, useRank, runwayUseNote, circlingOnly } from '../world/runways.js';
 import { shortPlace } from './home-card.js';
 import { REGION_ID, defaultPlan, planInRegion } from '../world/regions.js';
 import { EUROPE_COUNTRY_OF, EUROPE_COUNTRY_LABEL, EUROPE_COUNTRY_ORDER, EUROPE_AIRPORT_ORDER } from '../world/rules-europe.js';
@@ -97,10 +97,22 @@ const EU = REGION_ID === 'europe';
 const COUNTRY_OF = EU ? EUROPE_COUNTRY_OF : [['RK', 'KR'], ['ZK', 'KP'], ['RJ', 'JP'], ['RO', 'JP'], ['Z', 'CN'], ['U', 'RU']];   // (U: Russia, v0.6.3)
 export const COUNTRY_LABEL = EU ? EUROPE_COUNTRY_LABEL : { KR: 'Korea', JP: 'Japan', CN: 'China', KP: 'North Korea', RU: 'Russia', other: 'Elsewhere' };
 const COUNTRY_ORDER = EU ? EUROPE_COUNTRY_ORDER : ['KR', 'JP', 'CN', 'KP', 'RU', 'other'];
-export const AIRPORT_ORDER = EU ? EUROPE_AIRPORT_ORDER : ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RJTT', 'RJAA', 'RJBB', 'RJFF', 'RJSN', 'RJSS', 'RJSA', 'RJCC', 'ZKPY', 'ZKWS', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok; v0.6.4: Niigata, Sendai, Aomori and New Chitose after Fukuoka, south to north, and North Korea's Pyongyang and Wonsan)
+export const AIRPORT_ORDER = EU ? EUROPE_AIRPORT_ORDER : ['RKSS', 'RKSI', 'RKPK', 'RKPC', 'RKTU', 'RKJK', 'RJTT', 'RJAA', 'RJBB', 'RJOO', 'RJGG', 'RJFF', 'RJOA', 'RJNK', 'RJSN', 'RJSS', 'RJSA', 'RJCC', 'ZKPY', 'ZKWS', 'ZBAA', 'ZBAD', 'ZSPD', 'ZSSS', 'ZSYN', 'ZSQD', 'ZYTL', 'ZYTX', 'UHWW'];   // (ZSYN: v0.6.1, between Hongqiao and Qingdao, south to north along the coast; v0.6.3: Beijing's two first, the capital's, then Dalian and Shenyang on north, and Vladivostok; v0.6.4: Niigata, Sendai, Aomori and New Chitose after Fukuoka, south to north, and North Korea's Pyongyang and Wonsan)
 export const airportCountry = (ap) => (COUNTRY_OF.find(([p]) => String(ap?.icao || '').startsWith(p)) || [null, 'other'])[1];
 // The airport's short name: its data's shortName, else its name made short ("Seoul Gimpo International Airport" → "Gimpo").
 export const airportShort = (ap) => ap?.shortName || shortPlace(ap?.name) || ap?.icao || '';
+// The runway ends of an airport as a list's [ident, label] pairs, for a departure ('dep') or an arrival ('arr').
+// v0.7.5 (Shane: every end can be picked): every end is in both lists. The ends the AIP uses that way come first (so
+// the default is one of them), then a standby runway's, then the ends the AIP doesn't use that way, each with its note
+// (runways.js ONE_WAY, useRank()). A circling-only end says so (CIRCLING_ONLY), and in the arrival list it comes after the
+// AIP's straight-in ends, so the default arrival has a final (Itami's 32L, not its 14R; Gimhae's 36R; Innsbruck's 26).
+export function runwayEndList(airport, what) {
+  const icao = airport?.icao;
+  const out = (airport?.runways || []).flatMap((r) => r.ends
+    .map((e) => [e.ident, `RWY ${e.ident}  (${courseText(runwayCourseMag(e, r.ends.find((x) => x !== e)))}°, ${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling || circlingOnly(icao, e.ident) ? ', circling only' : ''}${runwayUseNote(icao, e.ident) ? ', ' + runwayUseNote(icao, e.ident) : ''})`]));
+  const key = (i) => { const k = useRank(icao, i, what); return k === 0 && what === 'arr' && circlingOnly(icao, i) ? 0.5 : k; };
+  return [0, 0.5, 1, 2].flatMap((k) => out.filter(([i]) => key(i) === k));
+}
 // The list's text for an airport: "RJTT · Haneda".
 export const airportOption = (ap) => `${ap.icao} · ${airportShort(ap)}`;
 // [{ country, label, airports }] in the lists' order.
@@ -334,14 +346,11 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     return sel.value;
   };
   // v0.6.2: an end with no straight-in approach (runways.js CIRCLING_ONLY: Gimhae's 18L and 18R) says so
-  // v0.7.0: an end used one way (runways.js ONE_WAY) is offered only for what it is used for (`what`: 'dep' or 'arr'),
-  // says so, and a standby runway's ends come last, so they are never the default.
-  const ends = (icao, what) => {
-    const out = (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends
-      .filter((e) => (what === 'dep' ? canTakeOff(icao, e.ident) : what === 'arr' ? canLand(icao, e.ident) : true))
-      .map((e) => [e.ident, `RWY ${e.ident}  (${courseText(runwayCourseMag(e, r.ends.find((x) => x !== e)))}°, ${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling ? ', circling only' : ''}${runwayUseNote(icao, e.ident) ? ', ' + runwayUseNote(icao, e.ident) : ''})`]));
-    return out.filter(([i]) => runwayUse(icao, i) !== 'standby').concat(out.filter(([i]) => runwayUse(icao, i) === 'standby'));
-  };
+  // v0.7.0: an end used one way in its AIP (runways.js ONE_WAY) says so, and a standby runway's ends come after the
+  // others, so they are never the default.
+  // v0.7.5 (Shane: every end can be picked): the ends the AIP doesn't use for this (`what`: 'dep' or 'arr') are no
+  // longer left out; they come last, after the standby ones, with their note.
+  const ends = (icao, what) => runwayEndList(list().find((a) => a.icao === icao), what);
   const endObj = (icao, ident) => {
     for (const r of list().find((a) => a.icao === icao)?.runways || []) for (const e of r.ends) if (e.ident === ident) return e;
     return null;

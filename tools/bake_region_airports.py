@@ -543,6 +543,269 @@ STAND_EXCLUDE = {'RJSS': (-380.0, "AD 2.8's South One to Three and run-up aprons
                  'RJSN': (-300.0, "AD 2.8's S apron (AUW 11 t), its taxiway S joining only runway 04/22: light aircraft")}
 THR_LEN = {('RJSS', '09/27'): 3000, ('RJSS', '12/30'): 1200, ('RJSN', '10/28'): 2500, ('RJSN', '04/22'): 1314}   # AD 2.12
 
+# ---- v0.7.5 (airports subagent apj1): Nagoya Chubu Centrair (RJGG, chubu-261119) and Osaka Itami (RJOO, kansai-261118),
+# pending: their boxes cut by /tmp/flight-sim/v075/apj1/extract.sh, notes in /tmp/flight-sim/v075/airports. From AIP Japan
+# as Sendai's were (the full AD 2 PDFs as mirrored at nagodede.github.io/aip/japan, read with pypdf; no page kept here):
+# - RJGG AD 2.12 (EFF 28 NOV 2024), 2.13, 2.14 (EFF 21 MAR 2024), 2.19 (EFF 21 MAR 2024), MAG VAR 7 deg W (2021): one
+#   runway in use, 18/36 3500 x 60 m (the replacement runway being built east of it isn't in the AIP and isn't drawn as
+#   a live runway in OSM), no displacements (LDA 3500 m both ways); PALS 900 m (CAT II at 18, CAT III at 36), TDZ 900 m,
+#   RCLL 3500 m, PAPI 3.0 left at both; ILS-LOC 18 CAT II (BRG MAG 177), ILS-LOC 36 CAT III (357), GP 3.0.
+# - RJOO AD 2.12 (EFF 15 MAY 2025), 2.13, 2.14 (EFF 10 AUG 2023), 2.19 (EFF 17 APR 2025), MAG VAR 8 deg W (2023):
+#   14R/32L 3000 x 60 m, 14L/32R 1828 x 45 m, no displacements (LDA = TORA at all four); 14R "AGL 422m" (approach light
+#   beacons at 570 and 944 m and a lead-in system, RLLS: drawn as the game's SSALF), 14L "AGL 597m" (the same), 32L PALS
+#   CAT I 450 m with TDZ 900 m, 32R SALS 600 m (SSALF); RCLL on both runways; PAPI 3.0 left at all four; one ILS, to 32L
+#   (LOC BRG MAG 322, GP 3.0). The parallel runways don't cross.
+NAMES['RJGG'] = ('Centrair', 'Chubu Centrair International Airport')
+NAMES['RJOO'] = ('Itami', 'Osaka International Airport')
+OSM_DIRS.update({i: '/tmp/flight-sim/v075/airports/osm' for i in ('RJGG', 'RJOO')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v075/airports/bake' for i in ('RJGG', 'RJOO')})
+AIP.update({
+    'RJGG': {'18': ('ALSF-II', 900, 'left', 3.0, 'II', 15.0, True, True, 60, 0),
+             '36': ('ALSF-II', 900, 'left', 3.0, 'III', 15.0, True, True, 60, 0)},
+    'RJOO': {'14R': ('SSALF', 422, 'left', 3.0, None, 46.0, False, True, 60, 0),
+             '32L': ('ALSF-I', 450, 'left', 3.0, 'I', 31.2, True, True, 60, 0),
+             '14L': ('SSALF', 597, 'left', 3.0, None, 50.0, False, True, 45, 0),
+             '32R': ('SSALF', 600, 'left', 3.0, None, 34.0, False, True, 45, 0)},
+})
+ICAOS += [i for i in ('RJGG', 'RJOO') if i not in ICAOS]      # (load_ourairports() reads ICAOS's rows)
+PUBLISHED_MAG.update({'RJGG': {'18': 177.0, '36': 357.0}, 'RJOO': {'32L': 322.0}})    # AD 2.19's LOC BRG(MAG)
+THR_AT.update({(i, e): (_dms(la), _dms(lo)) for i, e, la, lo in (
+    ('RJGG', '18', '345226.01N', '1364806.03E'), ('RJGG', '36', '345034.59N', '1364832.81E'),
+    ('RJOO', '14R', '344728.77N', '1352543.34E'), ('RJOO', '32L', '344619.92N', '1352706.76E'),
+    ('RJOO', '14L', '344742.97N', '1352543.27E'), ('RJOO', '32R', '344701.02N', '1352634.11E'))})
+THR_LEN.update({('RJGG', '18/36'): 3500, ('RJOO', '14R/32L'): 3000, ('RJOO', '14L/32R'): 1828})    # AD 2.12
+# The stands: AIP Japan's AD 2.8 INS checkpoint positions (every spot published). OSM's are not usable as they are: at
+# Centrair its numbered parking_position nodes sit on the AIP's points but its lead-ins are drawn as 235 short pieces whose
+# dead ends made 76 more stands in the middle of the aprons, and Terminal 2's spots 71 to 80 aren't mapped; at Itami its
+# stands lie 15 to 30 m off the AIP's, 11 are unnumbered and some are missing. Each stand's heading is OSM's nearest
+# lead-in's (within 35 m), else away from the nearest taxiway [EST] (/tmp/flight-sim/v075/apj1/mkpoints.py), Itami 51 and
+# 84 set to their rows' 45 deg; a 60 m lead-in behind each. Left out: the letter variants that overlap their spot (RJGG
+# 72A, 74A, 400D-F, 500A-F; RJOO 1A, 1B, 2A, 3A, 3B, 4A, 4B, 45W) and RJOO spot 0 (32 m from spot 1); Centrair's small
+# aircraft apron N1-N6 (AD 2.8) and its 601W/601E at the apron's south end [EST: not an airliner stand].
+STAND_POINTS['RJGG'] = [
+    ('1', 34.86421667, 136.81230556, 57.4), ('2', 34.86363056, 136.81238056, 78.7),
+    ('3', 34.8631, 136.81250833, 78.7), ('4', 34.86239167, 136.81267778, 78.7),
+    ('5', 34.86186111, 136.81280556, 78.7), ('6', 34.86133056, 136.81293333, 78.7),
+    ('7', 34.86076667, 136.81313333, 78.7), ('8', 34.85977778, 136.81328056, 115.9),
+    ('9', 34.85920278, 136.81231667, 160.5), ('10', 34.85906389, 136.81146389, 169.8),
+    ('11', 34.85893333, 136.81065833, 168.8), ('12', 34.85882778, 136.81003889, 148.8),
+    ('14', 34.85776389, 136.81028611, 9.0), ('15', 34.85788333, 136.81091111, 348.7),
+    ('16', 34.85801389, 136.81171389, 348.7), ('17', 34.85815833, 136.8126, 358.4),
+    ('18', 34.85790278, 136.81371944, 40.5), ('19', 34.85690833, 136.81406111, 78.7),
+    ('20', 34.85624722, 136.81421944, 78.7), ('21', 34.85558333, 136.81438056, 78.7),
+    ('22', 34.85474167, 136.81458056, 78.7), ('23', 34.85408056, 136.81474167, 78.7),
+    ('24', 34.85347222, 136.81482778, 78.9), ('25', 34.85288611, 136.81500278, 78.7),
+    ('71', 34.8521, 136.81520833, 78.7), ('72', 34.85153333, 136.81500556, 78.7),
+    ('73', 34.85119722, 136.81522222, 78.7), ('74', 34.85078889, 136.81518056, 78.7),
+    ('75', 34.85043889, 136.81539722, 78.7), ('76', 34.85007778, 136.81546389, 349.4),
+    ('77', 34.85035278, 136.81702222, 349.4), ('78', 34.85065556, 136.8166, 349.4),
+    ('79', 34.85109444, 136.81684444, 258.3), ('80', 34.85139722, 136.81641667, 258.3),
+    ('101', 34.86435, 136.80975556, 78.7), ('102', 34.86501389, 136.80959722, 78.7),
+    ('103', 34.86554444, 136.80946944, 78.7), ('104', 34.866075, 136.80934167, 78.7),
+    ('105', 34.86660556, 136.80921389, 78.7), ('106', 34.86713611, 136.80908611, 78.7),
+    ('107', 34.86766667, 136.80895833, 78.7), ('108', 34.86819722, 136.80883056, 78.7),
+    ('109', 34.86879444, 136.80869722, 78.6), ('110', 34.86945833, 136.80853611, 78.6),
+    ('111', 34.87012222, 136.80837778, 78.6), ('112', 34.87071667, 136.808225, 78.7),
+    ('113', 34.87124722, 136.80809722, 78.7), ('114', 34.87177778, 136.80796944, 78.7),
+    ('115', 34.87237778, 136.80783611, 78.6), ('116', 34.87297222, 136.80768333, 78.7),
+    ('117', 34.87363889, 136.80766111, 78.9), ('118', 34.87441111, 136.807475, 78.9),
+    ('119', 34.87518611, 136.80728889, 78.9), ('201', 34.86253611, 136.81048889, 168.6),
+    ('202', 34.86241111, 136.80973889, 168.6), ('203', 34.86228889, 136.80898611, 168.6),
+    ('204', 34.86185556, 136.81065278, 348.4), ('205', 34.86173333, 136.80990278, 348.4),
+    ('206', 34.86161111, 136.80915, 348.4), ('301', 34.85517222, 136.81223056, 168.6),
+    ('302', 34.85506111, 136.81150556, 169.0), ('303', 34.85493611, 136.81078333, 168.6),
+    ('304', 34.85449444, 136.81239444, 348.5), ('305', 34.85436944, 136.81167222, 349.0),
+    ('306', 34.85425833, 136.81094444, 348.6), ('401', 34.85251944, 136.81286667, 168.6),
+    ('402', 34.85240833, 136.81214167, 169.0), ('403', 34.85228333, 136.81141944, 168.6),
+    ('405', 34.85164722, 136.81315278, 348.9), ('406', 34.85163056, 136.8126, 349.0),
+    ('407', 34.85154167, 136.81206389, 349.0), ('408', 34.85138333, 136.81154444, 349.0),
+    ('501', 34.85008056, 136.81353056, 169.1), ('502', 34.84992222, 136.81301111, 169.0),
+    ('503', 34.84983611, 136.81247222, 169.0), ('504', 34.84981667, 136.81191944, 169.0),
+    ('505', 34.84926111, 136.813725, 349.0), ('506', 34.84924167, 136.81317222, 348.8),
+    ('507', 34.84915556, 136.81263611, 349.0), ('508', 34.84899722, 136.81211667, 348.9),
+]
+STAND_POINTS['RJOO'] = [
+    ('1', 34.78515, 135.44451667, 92.9), ('2', 34.78724167, 135.44655833, 75.6),
+    ('3', 34.78774722, 135.44591944, 44.7), ('4', 34.78840278, 135.44518056, 6.8),
+    ('5', 34.78793611, 135.44406111, 331.1), ('6', 34.7873, 135.44383611, 351.5),
+    ('7', 34.78709167, 135.443375, 29.8), ('8', 34.78751389, 135.44286389, 56.1),
+    ('9', 34.78823333, 135.443075, 67.7), ('10', 34.788875, 135.44231389, 29.0),
+    ('11', 34.78865278, 135.44149444, 50.2), ('12', 34.78868056, 135.44059444, 16.8),
+    ('13', 34.78975278, 135.4412, 67.5), ('14', 34.79041111, 135.44038611, 26.4),
+    ('15', 34.79016944, 135.43965833, 54.0), ('16', 34.79018889, 135.43871389, 44.9),
+    ('17', 34.79129444, 135.43936111, 67.6), ('18', 34.79193333, 135.43860833, 29.2),
+    ('19', 34.79180556, 135.4377, 49.8), ('20', 34.7921, 135.43660833, 38.2),
+    ('21', 34.79254722, 135.43718611, 154.5), ('22', 34.79281667, 135.43776389, 152.2),
+    ('23', 34.7932, 135.438475, 131.5), ('24', 34.79383056, 135.43872222, 77.9),
+    ('25', 34.79437778, 135.43841389, 50.1), ('26', 34.79468611, 135.43803333, 46.8),
+    ('27', 34.79472778, 135.43757222, 45.6), ('41', 34.794225, 135.43715556, 46.5),
+    ('42', 34.79447778, 135.43685, 46.8), ('43', 34.793875, 135.43646111, 347.4),
+    ('44', 34.793575, 135.43610556, 357.2), ('45', 34.79412222, 135.43579444, 34.1),
+    ('46', 34.79426111, 135.43596111, 34.1), ('47', 34.79458611, 135.43635278, 131.9),
+    ('48', 34.79491111, 135.43674722, 131.8), ('51', 34.79336667, 135.4339, 45.0),
+    ('52', 34.79365, 135.43348333, 45.1), ('53', 34.79404444, 135.43297778, 45.0),
+    ('70', 34.79554722, 135.43416944, 135.3), ('71', 34.79588889, 135.43457778, 103.8),
+    ('72', 34.79610833, 135.43483056, 135.6), ('73', 34.79645278, 135.43526389, 135.2),
+    ('74', 34.79745833, 135.43436111, 14.5), ('75', 34.79648611, 135.43320278, 314.7),
+    ('76', 34.79629444, 135.43288889, 330.2), ('77', 34.79591667, 135.43250278, 331.8),
+    ('80', 34.79509444, 135.43207778, 44.7), ('81', 34.79535278, 135.43176389, 44.8),
+    ('82', 34.79561111, 135.43145, 45.0), ('83', 34.79586667, 135.43113889, 44.9),
+    ('84', 34.79612778, 135.43082778, 44.9),
+]
+STAND_POINTS_ONLY = {'RJGG', 'RJOO'}   # (v0.7.5: OSM's parking_position ways and nodes not read there; the stands are these only)
+STAND_POINTS_REASONS.update({i: ("OSM's stands unusable as drawn (see the bake tool): AIP Japan AD 2.8's INS checkpoint positions, "
+                                 "every spot but the overlapping letter variants and the small aircraft's; the heading OSM's "
+                                 "nearest lead-in's, else away from the nearest taxiway [EST]; a 60 m lead-in along each")
+                             for i in ('RJGG', 'RJOO')})
+
+# ---- v0.7.5 (airports subagent apj2): Komatsu (RJNK, chubu-261119), pending: its box cut by
+# /tmp/flight-sim/v075/airports/osm/extract-apj2.sh, notes in /tmp/flight-sim/v075/airports. From AIP Japan as Sendai's
+# were (the full AD 2 PDF as mirrored at nagodede.github.io/aip/japan, read with pypdf; no page kept here):
+# - RJNK AD 2.12 (EFF 23 JAN 2025), 2.13, 2.14 (EFF 19 FEB 2026), 2.19 (EFF 29 MAR 2020), MAG VAR 8 deg W (2006): one
+#   runway, 06/24 2700 x 45 m, no displacements (LDA 2700 both ways); 06 PALS CAT I 839 m, 24 PALS CAT I 597 m, PAPI 3.0
+#   left at both, RCLL 2700 m, no TDZ lights; one ILS, to 06 (LOC BRG MAG 063, GP 3.0); 24 has an RNP approach only.
+#   (OurAirports' "06T/24T" is the JASDF's parallel taxiway, AIP's TWY P: not a runway in the AIP or in OSM.)
+# - A joint field (AD 2.2: "Japan Air Self Defense Force. Public AD."): the civil terminal and its apron (spots 2 to 8,
+#   AD 2.8) north of the runway, the JASDF's side south of it. OSM maps no landuse=military there, and no apron, taxiway
+#   or parking position on the JASDF's side: only its buildings, the shelters among them. The stands are AD 2.8's INS
+#   checkpoints (STAND_POINTS; OSM's six nodes on the terminal's row sit on spots 3 to 8, and its five small
+#   parking_position ways in front of the terminal are not AIP spots), so the military side has none (Shane's "Empty").
+# - The taxiways: OSM maps them without refs; named from the AD chart (AD 2.24): P the parallel north of the runway (its
+#   loop's ends are C1 at the 24 end and C5 at the 06 end), C2 to C4 its links between, NE to SW.
+NAMES['RJNK'] = ('Komatsu', 'Komatsu Airport')
+ICAOS += [i for i in ('RJNK',) if i not in ICAOS]      # (load_ourairports() reads ICAOS's rows)
+OSM_DIRS['RJNK'] = '/tmp/flight-sim/v075/airports/osm'
+NOTES_DIRS['RJNK'] = '/tmp/flight-sim/v075/airports/bake'
+AIP['RJNK'] = {'06': ('ALSF-I', 839, 'left', 3.0, 'I', 38.1, False, True, 45, 0),
+               '24': ('ALSF-I', 597, 'left', 3.0, None, 18.4, False, True, 45, 0)}
+PUBLISHED_MAG['RJNK'] = {'06': 63.0}    # AD 2.19's LOC BRG(MAG)
+THR_AT.update({('RJNK', '06'): (_dms('362312.93N'), _dms('1362342.53E')),
+               ('RJNK', '24'): (_dms('362403.07N'), _dms('1362511.48E'))})    # AD 2.12
+THR_LEN[('RJNK', '06/24')] = 2700
+# Spots 2 to 8 at AD 2.8's INS checkpoints; the nose square to the row (054.6 deg true) towards the terminal [EST: the heading]
+STAND_POINTS['RJNK'] = [(r, _dms(la), _dms(lo), 324.6) for r, la, lo in (
+    ('2', '362410.87N', '1362500.30E'), ('3', '362409.47N', '1362457.78E'), ('4', '362408.26N', '1362455.61E'),
+    ('5', '362406.89N', '1362453.50E'), ('6', '362405.61N', '1362451.19E'), ('7', '362404.32N', '1362448.87E'),
+    ('8', '362403.03N', '1362446.55E'))]
+STAND_POINTS_ONLY.add('RJNK')    # (apj1's switch: OSM's parking_position ways not read either)
+STAND_POINTS_REASONS['RJNK'] = ("the civil spots 2 to 8 at AIP Japan's INS checkpoint positions (RJNK AD 2.8), the nose "
+                                "square to the row towards the terminal [EST]; none on the JASDF's side (no stands there)")
+TWY_REFS['RJNK'] = {164419213: 'P', 164419211: 'C2', 164419212: 'C2', 164419221: 'C2', 164419217: 'C3', 164419210: 'C3',
+                    164419215: 'C3', 164419216: 'C4', 164419218: 'C4', 164419220: 'C4'}
+TWY_REF_REASONS['RJNK'] = ("OSM maps no taxiway ref at Komatsu: named from AIP Japan's AD chart (RJNK AD 2.24): P the "
+                           "parallel (its loop's ends C1 at 24 and C5 at 06 kept in P's way), C2 to C4 its links NE to SW")
+# The JASDF's shelters: OSM's twenty hangars of about 25 x 23 m on the south side, no height in OSM: low vaults [EST] 9 m
+# (public photographs: an F-15's shelter stands about 8 to 10 m), not the 20 m of a hangar (SHELTERS, building loop).
+SHELTERS = {'RJNK': (frozenset({1435071180, 1435071181, 1435071184, 1435071185, 1435071186, 1435071187, 1435071188,
+                                1435071189, 1435071191, 1435071192, 1435071193, 1435071194, 1435071195, 1435071196,
+                                1435071197, 1435071198, 318940517, 318940521, 318940522, 318940529}), 9.0,
+                     "the JASDF's hardened aircraft shelters (OSM hangars of about 25 x 23 m, no height): low vaults 9 m")}
+# ---- v0.7.5 (airports subagent apj2): Hiroshima (RJOA, chugoku-261122), pending: its box cut by the same script.
+# - RJOA AD 2.12 (EFF 28 NOV 2024), 2.13, 2.14 (EFF 20 MAR 2025), 2.19 (EFF 23 MAR 2023), MAG VAR 8 deg W (2022): one
+#   runway on the plateau, 10/28 3000 x 60 m, no displacements (LDA 3000 both ways); 10 PALS CAT III 900 m (the game's
+#   ALSF-II), TDZ 900 m, ILS CAT III (LOC BRG MAG 097.93, GP 3.0); 28 SALS 420 m (SSALF), no ILS (AD 2.14: CGL and wide
+#   angle approach lights for the south side circling to 28); PAPI 3.0 left and RCLL at both. THR elevations 1071.7 and
+#   1067.2 ft. OSM's runway way runs over the overruns (3,113 m): THR_AT.
+# - OSM maps no stand there: AD 2.8's INS checkpoints, spots 1 to 10 (no 4), the letter variants 6R, 6L and 7L left out
+#   (they overlap 6 and 7), each nose north to the terminal (the row runs east-west) [EST: the heading].
+# - The taxiways named from the AD chart (AD 2.24): P the parallel north of the runway (P1 to P5 in one OSM way, its
+#   ends T1 at 28 and T6 at 10), T2 to T5 its links east to west, the sub taxiway to the sub apron in the west.
+NAMES['RJOA'] = ('Hiroshima', 'Hiroshima Airport')
+ICAOS += [i for i in ('RJOA',) if i not in ICAOS]
+OSM_DIRS['RJOA'] = '/tmp/flight-sim/v075/airports/osm'
+NOTES_DIRS['RJOA'] = '/tmp/flight-sim/v075/airports/bake'
+AIP['RJOA'] = {'10': ('ALSF-II', 900, 'left', 3.0, 'III', 1071.7, True, True, 60, 0),
+               '28': ('SSALF', 420, 'left', 3.0, None, 1067.2, False, True, 60, 0)}
+PUBLISHED_MAG['RJOA'] = {'10': 97.93}    # AD 2.19's LOC BRG(MAG)
+THR_AT.update({('RJOA', '10'): (_dms('342609.69N'), _dms('1325411.25E')),
+               ('RJOA', '28'): (_dms('342609.69N'), _dms('1325608.75E'))})    # AD 2.12
+THR_LEN[('RJOA', '10/28')] = 3000
+STAND_POINTS['RJOA'] = [(r, _dms(la), _dms(lo), 0.0) for r, la, lo in (
+    ('1', '342621.10N', '1325517.84E'), ('2', '342621.09N', '1325515.09E'), ('3', '342621.09N', '1325512.35E'),
+    ('5', '342621.09N', '1325509.61E'), ('6', '342620.86N', '1325506.74E'), ('7', '342621.09N', '1325503.83E'),
+    ('8', '342621.09N', '1325500.89E'), ('9', '342621.11N', '1325458.60E'), ('10', '342621.08N', '1325456.33E'))]
+STAND_POINTS_ONLY.add('RJOA')
+STAND_POINTS_ONLY.add('RKJK')    # (the code review: Kunsan's two stands are the bake's own; OSM maps none there today, and a newer extract's must not bring the air base's in)
+STAND_POINTS_REASONS['RJOA'] = ("OSM maps no stands: spots 1 to 10 (no 4) at AIP Japan's INS checkpoint positions (RJOA "
+                                "AD 2.8), 6R, 6L and 7L left out (they overlap 6 and 7), the nose north to the terminal [EST]")
+TWY_REFS['RJOA'] = {96933280: 'P', 885164517: 'T1', 885164518: 'T2', 885164519: 'T2', 96933333: 'T2', 96933335: 'T2',
+                    96933337: 'T2', 885164520: 'T3', 885164521: 'T3', 96933332: 'T3', 96933291: 'T3', 96933309: 'T3',
+                    96933305: 'T4', 96933294: 'T4', 96933319: 'T4', 96933296: 'T5', 96933320: 'T5'}
+TWY_REF_REASONS['RJOA'] = ("OSM maps no taxiway ref at Hiroshima: named from AIP Japan's AD chart (RJOA AD 2.24): P the "
+                           "parallel (P1 to P5 and its end links T1 and T6 in one OSM way), T2 to T5 its links east to west")
+
+# ---- v0.7.5 (airports subagent apk): Cheongju (RKTU) and Kunsan (RKJK), both from south-korea-latest, pending: their boxes
+# cut by /tmp/flight-sim/v075/airports/osm/extract-apk.sh, notes in /tmp/flight-sim/v075/airports. From Korea's eAIP as
+# Gimhae's were (aim.koca.go.kr, KR-AD-2.<ICAO>, the 2026-11-12 package, read directly; no page kept in the repository):
+# - RKTU AD 2.12, 2.13, 2.14, 2.19 (MAG VAR 9 deg W 2025): 06L/24R 2744 x 60 m and 06R/24L 2744 x 45 m, parallel (no
+#   crossing), no displacements (LDA 2744 m at all four); 06L SSALR 717 m (drawn as the game's SSALF, as Gimhae's 18L),
+#   24R ALSF-I 900 m, 06R SALS 291 m (SSALF), 24L ALSF-I 900 m with TDZ 900 m; PAPI both sides 3.0 deg at all four;
+#   centreline lights on 06R/24L only (06L/24R's "NIL"); an ILS (LOC and GP) to every end, its category not stated:
+#   I [EST]. AD 2.20 1.3: "It is mandatory for all airliners to use RWY 06L/24R except for emergency situations."
+#   Jointly operated with the ROKAF (17th Fighter Wing, OSM's landuse=military): no stands on its side.
+# - RKJK AD 2.12, 2.13, 2.14, 2.19 (MAG VAR 8 deg W 2025): 18/36 9008 ft x 150 ft (2746 x 45 m), no displacements; ALSF-I at
+#   both ends (length not stated: 900 m [EST]), PAPI left 3 deg, no TDZ, no centreline lights; ILS to both (LOC 36 inbound
+#   356, LOC 18 176; category not stated: I [EST]); THR elevations 5.3 m (18) and 8.2 m (36). A USAF and ROKAF base whose
+#   whole aerodrome OSM tags landuse=military (as Wonsan's): not in MILITARY, its stands only the civil ramp's STAND_POINTS.
+# Their variation is frame.js's plane, as Gimhae's (PLANE): both lie inside south-korea.poly, where the game's magVar()
+# is the plane (tests/v060-rules-frame.test.mjs loads the game's own rules and compares every listed airport: Cheongju
+# baked from the WMM grid was 0.06 deg off it, found at the promotion; the lead's mend, 13:35).
+PLANE |= {'RKTU', 'RKJK'}
+# (The notes' AIP wording is Japan's: AIP_SOURCE is defined further down, for Europe.)
+NAMES['RKTU'] = ('Cheongju', 'Cheongju International Airport')
+NAMES['RKJK'] = ('Kunsan', 'Gunsan Airport (Kunsan Air Base)')
+OSM_DIRS.update({i: '/tmp/flight-sim/v075/airports/osm' for i in ('RKTU', 'RKJK')})
+NOTES_DIRS.update({i: '/tmp/flight-sim/v075/airports/bake' for i in ('RKTU', 'RKJK')})
+ICAOS += [i for i in ('RKTU', 'RKJK') if i not in ICAOS]      # (load_ourairports() reads ICAOS's rows)
+AIP.update({
+    'RKTU': {'06L': ('SSALF', 717, 'both', 3.0, 'I', 166.0, False, False, 60, 0),
+             '24R': ('ALSF-I', 900, 'both', 3.0, 'I', 185.4, False, False, 60, 0),
+             '06R': ('SSALF', 291, 'both', 3.0, 'I', 171.27, False, True, 45, 0),
+             '24L': ('ALSF-I', 900, 'both', 3.0, 'I', 191.46, True, True, 45, 0)},
+    'RKJK': {'18': ('ALSF-I', 900, 'left', 3.0, 'I', 17.39, False, False, 45, 0),
+             '36': ('ALSF-I', 900, 'left', 3.0, 'I', 26.90, False, False, 45, 0)},
+})
+# AD 2.12's true bearing less the AIP's variation (RKTU 9 W), and RKJK's AD 2.19 LOC inbound headings (notes only)
+PUBLISHED_MAG.update({'RKTU': {'06L': 61.42, '24R': 241.43, '06R': 61.43, '24L': 241.43}, 'RKJK': {'18': 176.0, '36': 356.0}})
+MILITARY = MILITARY | {'RKTU'}
+# Every end at AD 2.12's threshold (no displacement anywhere, so the runway's end), projected on OSM's axis, then both ends
+# trimmed evenly to AD 2.12's length times the frame's scale (THR_AT, THR_LEN; the notes' wording is Japan's).
+THR_AT.update({(i, e): (_dms(la), _dms(lo)) for i, e, la, lo in (
+    ('RKTU', '06L', '364236.10N', '1272912.46E'), ('RKTU', '24R', '364330.38N', '1273040.05E'),
+    ('RKTU', '06R', '364228.26N', '1272914.84E'), ('RKTU', '24L', '364322.53N', '1273042.46E'),
+    ('RKJK', '18', '355457.29N', '1263646.82E'), ('RKJK', '36', '355329.83N', '1263707.63E'))})
+THR_LEN.update({('RKTU', '06L/24R'): 2744, ('RKTU', '06R/24L'): 2744, ('RKJK', '18/36'): 2746})
+# Cheongju's stands 71 to 78 (AD 2.8 lists them with 1 to 13): eight positions 18 m apart in two rows behind stand 1, a
+# light aircraft's spacing [EST], not an airliner's stand.
+STAND_EXCLUDE['RKTU'] = (frozenset({'71', '72', '73', '74', '75', '76', '77', '78'}),
+                         "AD 2.8's stands 71 to 78, 18 m apart behind stand 1: light aircraft's [EST]")
+# OSM's aerodrome polygon at Cheongju runs along the apron's north-west edge, leaving out the passenger terminal behind
+# stands 1 to 7 (way 125836349): a box round it is added to the area the buildings are read from (AREA_EXTRA, Toulouse's).
+AREA_EXTRA['RKTU'] = [(127.4946, 36.7209, 127.4974, 36.7229)]
+# Kunsan's civil ramp: OSM maps the passenger terminal at the field's north end and the ramp's taxilane loop south of it,
+# but no apron, stand or gate. Two stands [EST] nose-in to the terminal (12 m off its south face, 44 m apart, code C: AD
+# 2.20 bars spans over 118 ft north of TWY E), each with a 60 m lead-in across the loop's north side; their pushback ground
+# paved (APRON_PUSH).
+STAND_POINTS['RKJK'] = [('1', 35.92579051, 126.61554437, 1.9), ('2', 35.92579051, 126.61603247, 1.9)]
+STAND_POINTS_REASONS['RKJK'] = ("OSM maps no stand, gate or apron at the civil terminal: two stands nose-in to it, 44 m "
+                                "apart, 12 m off its south face, a 60 m lead-in behind each [EST]")
+APRON_PUSH['RKJK'] = 27.0
+# The ROKAF's and the USAF's hardened aircraft shelters: Cheongju's OSM building=bunker (59, those inside the aerodrome
+# kept), Kunsan's ten square 35 x 36 m buildings by its taxiways (OSM building=yes, no height): low vaults 9 m [EST],
+# as Komatsu's.
+SHELTERS['RKTU'] = (frozenset({
+    888880774, 888880785, 888880786, 888880787, 888880788, 888880789, 888880790, 888880791, 888880792, 888880793, 888880794,
+    888880795, 888880796, 888880797, 888880798, 893949443, 893949444, 893949445, 893949446, 893949447, 893949448, 893949449,
+    893949450, 893949451, 893949452, 893949453, 893949454, 893949455, 893949456, 893949457, 893949458, 893949459, 893949460,
+    893949465, 893949466, 893949467, 893949475, 893949476, 893949521, 893949522, 893949523, 893949524, 893949525, 893949526,
+    893949527, 893949528, 893949529, 893949530, 893949531, 893949532, 893949533, 893949534, 893949535, 893949536, 893949537,
+    893949538, 1377441567, 1377441568, 1377441569}), 9.0,
+    "the ROKAF's hardened aircraft shelters (OSM building=bunker, no height): low vaults 9 m")
+SHELTERS['RKJK'] = (frozenset({1344345603, 1490559745, 1490559748, 1490559749, 1490559750, 1490559751, 1490559753,
+                               1490559754, 1490559765, 1490559766}), 9.0,
+                    "the air base's hardened aircraft shelters (OSM's square 35 x 36 m buildings by the taxiways, no "
+                    "height): low vaults 9 m")
+
 # ---------------------------------------------------------------- v0.7.0: Europe (FS_REGION=europe)
 # With FS_REGION=europe (read by bake_common at import: Europe's frame, LCC 47 N 4 E, 39/54) the tool bakes Europe's
 # airports into data/europe/airports (FS_AIRPORT_OUT overrides), their boxes and notes in /tmp/flight-sim/v070/airports.
@@ -1879,7 +2142,7 @@ def bake(icao, wmm, oa_ap, oa_rw):
     node_refs = [(tuple(float(v) for v in to_map(la, lo)), t['ref']) for _, t, lo, la in d['nodes']
                  if t.get('aeroway') == 'parking_position' and t.get('ref')]
     for _, tags, coords in d['ways']:
-        if tags.get('aeroway') != 'parking_position' or icao in PP_CHAINS:
+        if tags.get('aeroway') != 'parking_position' or icao in PP_CHAINS or icao in STAND_POINTS_ONLY:
             continue
         xy = to_xy(coords)
         a, b = xy[0], xy[-1]
@@ -2102,7 +2365,9 @@ def bake(icao, wmm, oa_ap, oa_rw):
                     f'(at least {HOLD_MIN_EDGE_M:.0f} m outside the edge); "est": true, ref the taxiway\'s'))
 
     buildings = []
-    for _, _, tags, g in d['areas']:
+    shelter_ids, shelter_h, shelter_why = SHELTERS.get(icao, (frozenset(), None, ''))    # (v0.7.5: Komatsu's only)
+    n_shelters = 0
+    for oid, from_way, tags, g in d['areas']:
         kind = tags.get('aeroway') if tags.get('aeroway') in ('terminal', 'hangar') else (
             'hangar' if tags.get('building') == 'hangar' else
             'terminal' if tags.get('building') in ('terminal', 'transportation') else
@@ -2116,8 +2381,12 @@ def bake(icao, wmm, oa_ap, oa_rw):
                 continue
             if EUROPE:      # v0.7.0: Europe's big fields, kept to East Asia's biggest JSON's size (EU_SIMPLIFY_M)
                 xy = np.asarray(pp.simplify(EU_SIMPLIFY_M).exterior.coords)
-            buildings.append(dict(kind=kind, heightM=round(building_height(tags, kind), 1),
+            shelter = bool(from_way and oid in shelter_ids)
+            n_shelters += shelter
+            buildings.append(dict(kind=kind, heightM=round(shelter_h if shelter else building_height(tags, kind), 1),
                                   name='' if EUROPE else (tags.get('name:en') or tags.get('name') or ''), points=pts(xy)))
+    if n_shelters:
+        est.append(('shelters', f'{n_shelters} at {shelter_h:.0f} m', shelter_why + ' (SHELTERS)'))
 
     roads = []
     for _, tags, coords in d['ways']:

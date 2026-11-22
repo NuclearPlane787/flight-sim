@@ -31,7 +31,7 @@ if (inRegion('europe', import.meta.url)) {
   test("Europe's list: the brief's order, region europe, a country, a source, a model each; East Asia's thirty kept apart", () => {
     assert.deepEqual(EUROPE_LANDMARKS.map((l) => l.id).slice(0, ORDER.length), ORDER);     // v0.7.1's follow (tests/v071-eu-landmarks.test.mjs)
     assert.equal(REGION_LANDMARKS, EUROPE_LANDMARKS);
-    assert.equal(LANDMARKS.length, 30);
+    assert.equal(LANDMARKS.length, 35);   // (v0.7.5: East Asia's thirty and v0.7.5's five, appended)
     for (const L of LANDMARKS) assert.equal(landmarkOn(L), false, `${L.id} is East Asia's`);
     for (const L of EUROPE_LANDMARKS) {
       assert.equal(L.region, 'europe');
@@ -238,9 +238,9 @@ if (inRegion('europe', import.meta.url)) {
   test("East Asia's page: its thirty as before, none of Europe's on", async () => {
     const { LANDMARKS, EUROPE_LANDMARKS, REGION_LANDMARKS, landmarkOn, createLandmarks } = await import('../src/world/landmarks.js');
     assert.equal(REGION_LANDMARKS, LANDMARKS);
-    assert.equal(LANDMARKS.length, 30);
+    assert.equal(LANDMARKS.length, 35);   // (v0.7.5: East Asia's thirty and v0.7.5's five, appended)
     for (const L of EUROPE_LANDMARKS) assert.equal(landmarkOn(L), false, L.id);
     const lm = createLandmarks({ add() {}, remove() {} }, { uNight: { value: 0 } }, {}, {});
-    assert.equal(lm.items.length, 30);
+    assert.equal(lm.items.length, 35);   // (v0.7.5: thirty-five)
   });
 }

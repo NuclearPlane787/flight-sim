@@ -31,6 +31,9 @@ const BRIDGE_M = 30;          // a piece of taxi line this close to the network,
 // the end that the route reaches without crossing that runway (holdForRoute), and the setup lists our R-numbered
 // stands after the real numbers (gate-flow.js standList).
 const REGION_ICAOS = new Set(['ZSPD', 'RJTT', 'RJAA', 'RKPK', 'ZSSS', 'RJBB', 'RJFF', 'ZSQD', 'ZSYN', 'ZBAA', 'ZBAD', 'ZYTX', 'ZYTL', 'UHWW', 'ZKPY', 'ZKWS', 'RJSN', 'RJSS', 'RJSA', 'RJCC']);   // (ZSYN: v0.6.1; then five: v0.6.3; the last six: v0.6.4)
+REGION_ICAOS.add('RJNK').add('RJOA');   // v0.7.5 (airports subagent apj2): Komatsu, Hiroshima
+REGION_ICAOS.add('RKTU').add('RKJK');   // v0.7.5 (airports subagent apk): Cheongju, Kunsan
+REGION_ICAOS.add('RJGG').add('RJOO');   // v0.7.5 (airports subagent apj1): Centrair, Itami
 // v0.7.0: every airport of a later region takes them too (Europe's codes begin E or L; Morocco's G).
 export const regionRules = (airport) => REGION_ICAOS.has(airport?.icao) || /^[ELG]/.test(airport?.icao || '');
 const HOLD_NEAR_M = 200;      // holds this much farther down the runway than the nearest still count as "at the end"
@@ -641,6 +644,28 @@ const AIP_STANDS = {
   // first [EST: which of 3 to 10 take code E isn't published; 1 and 2 are the small aircraft's in AD 2.20].
   // (And a span over code E's 65 m only at spot 9, the AIP's B747-8 spot.)
   RJSN: { exclude: (ref, span) => (span > 65 && ref !== '9') || (span > 52 && !['3', '4', '5', '6', '7', '8', '9', '10'].includes(ref)), prefer: ['9'] },
+  // Cheongju (v0.7.5, pending, airports subagent apk): Korea's eAIP (RKTU AD 2.20 1.8 and 5) names stand 7 for code D or
+  // above and stand 13 for code F (an A380's or a 747-8's diversion); the others' MARS halves are code C. Code E at 7
+  // and 13 only, 13 first [EST: which of the others could take a widebody isn't published].
+  RKTU: { exclude: (ref, span) => span > 52 && !['7', '13'].includes(ref), prefer: ['13', '7'] },
+  // Kunsan (v0.7.5, pending, airports subagent apk): the civil ramp's two stands [EST]; AD 2.20 bars spans over 118 ft
+  // (36 m) from taxiing north of TWY E, where the civil terminal is: code C at most, the widebodies divert.
+  RKJK: { exclude: () => false, prefer: [], maxSpan: 36 },
+  // Centrair (v0.7.5, pending): AIP Japan (RJGG AD 2.20 1.4) parks an A380-800 only at stands 15, 20, 117, 118 and 119;
+  // code E wherever the geometry fits, those five first. (A span over code E's 65 m only there.)
+  RJGG: { exclude: (ref, span) => span > 65 && !['15', '20', '117', '118', '119'].includes(ref), prefer: ['15', '20', '117', '118', '119'] },
+  // Itami (v0.7.5, pending): AIP Japan (RJOO AD 2.8) gives spots 7 to 14, 16 and 18 the strongest pavement (PCR 1132), the
+  // terminal's middle; AD 2.20 lists taxiways to watch for the B777-200/-300, B787 and A350-900 but no stands. Code E on
+  // those ten only [EST: which spots take code E isn't published], and AD 2.21 1.1 bars jets of three or more engines.
+  RJOO: { exclude: (ref, span) => span > 52 && !['7', '8', '9', '10', '11', '12', '13', '14', '16', '18'].includes(ref), prefer: ['10', '12', '14', '16', '18'] },
+  // Komatsu (v0.7.5, pending): AIP Japan (RJNK AD 2.8) lists the civil spots 2 to 8 (PCR 1132) and puts stand ID signs
+  // only at 5 to 8, the four with jet bridges; AD 2.4 handles freighters up to the B747-8. Code E (and wider) at 5 to 8
+  // only, offered first [EST: which spots take code E isn't published].
+  RJNK: { exclude: (ref, span) => span > 52 && !['5', '6', '7', '8'].includes(ref), prefer: ['5', '6', '7', '8'] },
+  // Hiroshima (v0.7.5, pending): AIP Japan (RJOA AD 2.8) lists spots 1 to 10 (PCR 1132; no 4), stand ID signs at 2, 3
+  // and 5 to 8 (AD 2.9); AD 2.4 handles freighters up to the B747. Spots 9 and 10 stand 58 m apart, code D's spacing.
+  // Code E at 1, 2, 3 and 5 to 8 only, the middle of the terminal first [EST: which spots take code E isn't published].
+  RJOA: { exclude: (ref, span) => span > 52 && !['1', '2', '3', '5', '6', '7', '8'].includes(ref), prefer: ['5', '6', '3', '7'] },
   // Frankfurt (v0.7.0, pending): the DFS AIP's stand charts aren't read; the geometry decides which stands take code E.
   // Offered first: the bridge stands of the widebody piers that the geometry gives the 777 (Terminal 1's A pier's south
   // side, the B pier's B26 to B48, Terminal 2's D and E). [EST]

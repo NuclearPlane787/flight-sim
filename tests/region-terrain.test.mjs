@@ -21,9 +21,9 @@ const region = (opts = {}) => createTiledHeightfield(m, DATA.href, { region: tru
 
 test('the region: the manifest lists its tiles, patches and airports; the extents match region.js', { skip: !HAVE }, () => {
   assert.equal(spec.region, true);
-  assert.equal(spec.airports.length, 23);   // v0.6.1: Yancheng (12); v0.6.3: Beijing's two, Shenyang, Dalian, Vladivostok (17); v0.6.4: New Chitose, Aomori, Sendai, Niigata, Pyongyang, Wonsan
-  assert.equal(spec.patches.length, 21);    // and a patch each
-  assert.equal(spec.coastPatches.length, 13);   // v0.6.3: Dalian's and Vladivostok's; v0.6.4: Wonsan's, Sendai's, Niigata's
+  assert.equal(spec.airports.length, 29);   // v0.7.5: Cheongju, Kunsan, Centrair, Itami, Komatsu, Hiroshima (23 before) // v0.6.1: Yancheng (12); v0.6.3: Beijing's two, Shenyang, Dalian, Vladivostok (17); v0.6.4: New Chitose, Aomori, Sendai, Niigata, Pyongyang, Wonsan
+  assert.equal(spec.patches.length, 27);    // and a patch each (21 until v0.7.5's six)
+  assert.equal(spec.coastPatches.length, 17);   // v0.7.5: Centrair's, Itami's, Komatsu's, Kunsan's (13 before) // v0.6.3: Dalian's and Vladivostok's; v0.6.4: Wonsan's, Sendai's, Niigata's
   assert.equal(new Set(spec.airports).size, spec.airports.length, 'no airport listed twice');
   const t = m.tilesRegion, l0 = t.levels[0], l1 = t.levels[1];
   assert.deepEqual(FINE_EXTENT, { x0: t.x0 + l0.extent.i0 * l0.cell, y0: t.y0 + l0.extent.j0 * l0.cell, x1: t.x0 + l0.extent.i1 * l0.cell, y1: t.y0 + l0.extent.j1 * l0.cell });
@@ -50,7 +50,7 @@ test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by d
     }
   }
   assert.equal(hf.runwayRects.length, airportsAll.reduce((n, a) => n + a.runways.length, 0));
-  assert.equal(runwayRects(airportsAll).length, 50);   // (29 until v0.6.1's Yancheng, 30 until v0.6.3, 40 until v0.6.4: New Chitose's 2, Sendai's 2, Niigata's 2, Wonsan's 2, Aomori's, Pyongyang's)
+  assert.equal(runwayRects(airportsAll).length, 58);   // (50 until v0.7.5: Cheongju's 2, Itami's 2, Kunsan's, Centrair's, Komatsu's, Hiroshima's; 29 until v0.6.1's Yancheng, 30 until v0.6.3, 40 until v0.6.4: New Chitose's 2, Sendai's 2, Niigata's 2, Wonsan's 2, Aomori's, Pyongyang's)
   // Fuji's summit (the 30 m patch): within 60 m of 3,776 m; the 250 m data alone is lower.
   const [fx, fy] = toMap(35.3606, 138.7274);
   await T.whenReady(fx, fy, 20000, 'test');

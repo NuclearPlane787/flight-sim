@@ -737,6 +737,60 @@
       "nx": 1061,
       "ny": 960,
       "height": "terrain/patch-niigata.i16.gz"
+    },
+    {
+      "id": "cheongju",
+      "x0": -14310,
+      "y0": 67620,
+      "cell": 30,
+      "nx": 954,
+      "ny": 777,
+      "height": "terrain/patch-cheongju.i16.gz"
+    },
+    {
+      "id": "kunsan",
+      "x0": -90360,
+      "y0": -26910,
+      "cell": 30,
+      "nx": 702,
+      "ny": 1097,
+      "height": "terrain/patch-kunsan.i16.gz"
+    },
+    {
+      "id": "centrair",
+      "x0": 834270,
+      "y0": -103560,
+      "cell": 30,
+      "nx": 978,
+      "ny": 1114,
+      "height": "terrain/patch-centrair.i16.gz"
+    },
+    {
+      "id": "itami",
+      "x0": 710610,
+      "y0": -119280,
+      "cell": 30,
+      "nx": 981,
+      "ny": 921,
+      "height": "terrain/patch-itami.i16.gz"
+    },
+    {
+      "id": "komatsu",
+      "x0": 782160,
+      "y0": 68040,
+      "cell": 30,
+      "nx": 1023,
+      "ny": 861,
+      "height": "terrain/patch-komatsu.i16.gz"
+    },
+    {
+      "id": "hiroshima",
+      "x0": 478500,
+      "y0": -173520,
+      "cell": 30,
+      "nx": 1270,
+      "ny": 916,
+      "height": "terrain/patch-hiroshima.i16.gz"
     }
   ],
   "coastPatchesRegion": [
@@ -829,6 +883,42 @@
       "nx": 1600,
       "ny": 1600,
       "coast": "terrain/coast-RJSN.u8.gz"
+    },
+    {
+      "id": "RKJK",
+      "x0": -87730,
+      "y0": -18310,
+      "cell": 10,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RKJK.u8.gz"
+    },
+    {
+      "id": "RJGG",
+      "x0": 840880,
+      "y0": -94470,
+      "cell": 10,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RJGG.u8.gz"
+    },
+    {
+      "id": "RJOO",
+      "x0": 717420,
+      "y0": -113920,
+      "cell": 10,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RJOO.u8.gz"
+    },
+    {
+      "id": "RJNK",
+      "x0": 789320,
+      "y0": 71640,
+      "cell": 10,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-RJNK.u8.gz"
     }
   ],
   "airportsRegion": [
@@ -851,6 +941,12 @@
     "airports/RJSA.json",
     "airports/ZKWS.json",
     "airports/RJSS.json",
-    "airports/RJSN.json"
+    "airports/RJSN.json",
+    "airports/RKTU.json",
+    "airports/RKJK.json",
+    "airports/RJGG.json",
+    "airports/RJOO.json",
+    "airports/RJNK.json",
+    "airports/RJOA.json"
   ]
 }

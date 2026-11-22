@@ -40,6 +40,10 @@ EAST_ASIA = {
     'ZSSS': [('T1', -587639, -514443), ('T2', -589435, -514283)],
     'ZBAA': [('T2', -930936, 504384), ('T3', -929463, 501788)],               # T3's D and E halls unlabelled
     'ZKPY': [('T1', -157733, 356792), ('T2', -157687, 356682)],               # [EST] the file's "Terminal 3" left out
+    # v0.7.5: Centrair's two. [EST] T2: OSM names the southern building "1st Passenger Terminal" too; its place (south of
+    # T1, joined by the walkway) and its footprint (27,900 m2) are the second terminal's. Itami's one building (its north
+    # and south wings), Cheongju's, Hiroshima's, Komatsu's and Kunsan's one terminal each: no label.
+    'RJGG': [('T1', 849746, -86322), ('T2', 849934, -86821)],
 }
 EUROPE = {
     'EGLL': [('T2', -307493, 502130), ('T3', -308166, 502368), ('T4', -307376, 501095), ('T5', -310122, 502556)],  # T1 closed (2015); 5B, 5C unlabelled

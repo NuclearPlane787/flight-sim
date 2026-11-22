@@ -118,6 +118,25 @@ export const CITY_BOXES = {
   pyongyang: [38.95, 125.65, 39.12, 125.85], sapporo: [42.98, 141.25, 43.15, 141.45], sendai: [38.20, 140.78, 38.34, 140.98],
 };
 
+// v0.7.5 (briefs/V0-7-5.md part 6): Nagoya's castle and TV tower, Miyajima's torii, Hiroshima's Atomic Bomb Dome, Osaka
+// Castle (placed 2026-11-22 from OSM's outlines in the extracts chubu-261119, chugoku-261122, kansai-261118: lat, lon
+// the outline's centre, brg its long axis on the map's grid). Heights as published where known (from memory of the
+// articles, not re-read in the run: no network for this subagent's checks) and OSM's tags; [EST] marks the rest.
+// atSea: based at the water's level (y 0), as a bridge is, without being one.
+LANDMARKS.push(
+  { id: 'nagoyacastle', city: 'nagoya', country: 'JP', lat: 35.185582, lon: 136.899086, heightM: 55.6, footprintM: 72, brg: -11.2,
+    source: 'Wikipedia "Nagoya Castle": main keep 36.1 m on a 19.5 m stone base (55.6 m); OSM way 45022265 (the base, 39.8 x 36.5 m) and 45022267 (the small keep, 29.8 x 21.0 m, 52.8 m to the south); storeys, roofs and the small keep\'s heights [EST]' },
+  { id: 'nagoyatv', city: 'nagoya', country: 'JP', lat: 35.172298, lon: 136.90834, heightM: 180, footprintM: 34, brg: -11,
+    source: 'Wikipedia, "Nagoya TV Tower": 180 m, Sky Deck about 90 m, Sky Balcony about 100 m; OSM way 51778897 height=180, the legs 47 x 48 m; the taper above the deck, the antenna and the base building [EST]' },
+  { id: 'torii', city: 'hiroshima', country: 'JP', lat: 34.297297, lon: 132.318135, heightM: 16.6, footprintM: 13, brg: -52.1, atSea: true,
+    source: 'Wikipedia "Itsukushima Shrine": the great torii, about 16 m, in the sea off the shrine; OSM way 555763409 height=16.591, 22.7 x 11.9 m, long axis at grid bearing 37.9; the pillars\' girth and spacing, the legs and the beams [EST]' },
+  { id: 'abombdome', city: 'hiroshima', country: 'JP', lat: 34.395468, lon: 132.45347, heightM: 25, footprintM: 33, brg: 79,
+    source: 'Wikipedia "Hiroshima Peace Memorial": the ruin of the Prefectural Industrial Promotion Hall, about 25 m to the dome\'s frame [the brief]; OSM way 1506282 (46.3 x 31.6 m; height=19.5 to the walls); the wings\' plan, the walls\' broken heights and the dome\'s ellipse [EST]' },
+  { id: 'osakacastle', city: 'osaka', country: 'JP', lat: 34.68728, lon: 135.525843, heightM: 55, footprintM: 30, brg: 1,
+    source: 'Wikipedia "Osaka Castle": the main tower, about 55 m with its stone base [the brief; OSM height=58]; OSM way 34619038 (41.8 x 37.7 m); the base\'s height (13.5 m), storeys and gables [EST]' },
+);
+Object.assign(CITY_BOXES, { nagoya: [35.10, 136.82, 35.25, 136.98], hiroshima: [34.25, 132.25, 34.45, 132.55] });
+
 export const PYLON_R = 45;     // m: a bridge pylon's circle (Russky's footings are 80 m apart)
 for (const L of LANDMARKS) {
   const [x, y] = toMap(L.lat, L.lon);
@@ -580,6 +599,7 @@ function lightMaterial(uniforms) {
 // side floats), less half a metre.
 export function baseHeight(L, heightAt) {
   if (L.kind === 'bridge') return 0;     // a bridge stands in the sea: its model's y 0 is the water
+  if (L.atSea) return 0;                 // v0.7.5: Miyajima's torii, standing in the sea
   let h = heightAt(L.x, L.y);
   const circles = L.parts ? L.parts.map(([dx, dy, r]) => [L.x + dx, L.y + dy, r]) : [[L.x, L.y, L.footprintM]];
   for (const [x, y, r] of circles) {
