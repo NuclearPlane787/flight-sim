@@ -15,7 +15,7 @@
 // --whole: no skip to final; the jump lands 60 nm out and the script descends on the autopilot,
 // then the test pilot flies the approach from about 12 nm.
 // Env: E2E_ROOT (default http://127.0.0.1:8014/).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

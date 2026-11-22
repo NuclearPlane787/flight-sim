@@ -5,7 +5,7 @@
 // geometries and textures and the resident tiles are read. A place's second and third visits
 // must be within 20 % of its first: what is released 1,100 km away must really be released.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 6 -- node games/flight-sim/tests/browser-v060-revisit.mjs [--settle 12]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { toMap } from '../src/world/frame.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };

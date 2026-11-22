@@ -7,6 +7,11 @@
   border-radius: 6px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45); overflow: hidden; }
 .fsui-screen canvas { display: block; }
 .fsui-nd { cursor: pointer; }
+/* v0.7.4: the warnings' silence button, in the PFD's bottom right corner; lit (amber) while something is silenced */
+.fsui-silence { position: absolute; right: 1.2%; bottom: 1.2%; padding: 0.35em 0.7em; font: 700 1em var(--font-screen);
+  letter-spacing: 0.06em; color: #7d8891; background: #161d23; border: 1px solid #3a454e; border-radius: 4px; cursor: pointer; }
+.fsui-silence:hover { color: #c3ccd3; border-color: #56646f; }
+.fsui-silence.on { color: #ffb02e; border-color: #ffb02e; background: #2a1f0c; box-shadow: 0 0 0.6em rgba(255, 176, 46, 0.45); }
 
 /* FCU */
 .fsui-fcu { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch;

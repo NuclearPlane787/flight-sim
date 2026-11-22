@@ -20,7 +20,7 @@ const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === 
 process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 
 const CLOUD = !!process.env.FS_CLOUD;
-const { chromium } = CLOUD ? createRequire(import.meta.url)('playwright') : await import('/tmp/flight-sim/pw/node_modules/playwright/index.mjs');
+const { chromium } = CLOUD ? createRequire(import.meta.url)('playwright') : await import('./pw.mjs');
 const ROOT = process.env.E2E_ROOT || 'http://localhost:8001/';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };

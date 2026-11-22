@@ -56,6 +56,9 @@ export const BOGIE = {
   wheelRadiusNose: 40 * 0.0254 / 2, wheelWidthNose: 16 * 0.0254,
   overallWidth: 11.9,    // outside to outside, 38 ft 11 in
 };
+// v0.7.4: the main wheels across one leg, under the name the A321neo's module gives them (the landing score's
+// centreline part, score.js's gearOuterM()): the bogie's own tread and tyre width.
+export const MAIN_WHEELS = { tread: BOGIE.tread, wheelWidthMain: BOGIE.wheelWidthMain };
 
 // [ACAP] 4-3: turning at the maximum steering angle (radii from the turn centre, metres).
 export const TURNING = { steerMaxDeg: 70, innerGear: 3.7, outerGear: 15.5, noseGear: 28.3, wingtip: 41.5, nose: 32.9, tail: 37.2 };

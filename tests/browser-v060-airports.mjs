@@ -13,7 +13,7 @@
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 18 -- node games/flight-sim/tests/browser-v060-airports.mjs ZSPD day
 // Env: E2E_URL (default http://127.0.0.1:8014/games/flight-sim/), STAND, DEP, ARR (override the picks).
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';

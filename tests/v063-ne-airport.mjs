@@ -68,16 +68,18 @@ function lsqPlane(P) {
 // v0.6.4 (cfg.fieldSurface 'runways'): each runway's straight profile between its ends, blended by 1 / (1 + d^2) of the
 // distance to its centreline (bake_region_patches.py field_runways(), FIELD_RUNWAYS: Sendai, Niigata)
 // (pavement, v0.7.0: between the pavement's ends, as runwayRects() draws a runway: bake_region_patches.py FIELD_PAVEMENT)
-function runwaySurface(runways, pavement = false) {
+// (bent, v0.7.4: each runway's profile as runwayCrossings() bends it, profileAt(), not the straight line: FIELD_BENT,
+// Prague. The airport's runways must have been through runwayCrossings() first.)
+function runwaySurface(runways, pavement = false, bent = false) {
   const R = runways.map((r) => {
     const [a, b] = pavement ? r.ends.map((e) => ({ ...pavementEnd(e), elevM: e.elevM })) : r.ends, L = Math.hypot(b.x - a.x, b.y - a.y);
-    return { a, b, L, ux: (b.x - a.x) / L, uy: (b.y - a.y) / L };
+    return { r, a, b, L, ux: (b.x - a.x) / L, uy: (b.y - a.y) / L };
   });
   return (x, y) => {
     let n = 0, d = 0;
-    for (const { a, b, L, ux, uy } of R) {
+    for (const { r, a, b, L, ux, uy } of R) {
       const t = Math.max(0, Math.min(L, (x - a.x) * ux + (y - a.y) * uy)), dd = Math.hypot(x - a.x - ux * t, y - a.y - uy * t), w = 1 / (1 + dd * dd);
-      n += w * (a.elevM + ((b.elevM - a.elevM) * t) / L); d += w;
+      n += w * (bent ? profileAt(r, t) : a.elevM + ((b.elevM - a.elevM) * t) / L); d += w;
     }
     return n / d;
   };
@@ -96,6 +98,7 @@ const withPending = async (fn) => { setPending(true); try { return await fn(); }
 //     v0.7.1: stands, a list of refs, limits it to those stands' routes),
 //   crossingProfile: true (v0.6.4: two runways cross: the shorter's ground checked against runwayCrossings()'s profile),
 //   fieldSurface: 'runways' (v0.6.4: the field flattened to its runways' profiles, not a plane: FIELD_RUNWAYS),
+//   fieldBent: true (v0.7.4: with fieldSurface 'runways' and fieldPavement, the profiles as runwayCrossings() bends them: FIELD_BENT),
 //   lowFinals: { ident: reason } (ends whose 3° final is known to pass under 60 m over the ground; logged, not hidden),
 //   circlingFinals: { ident: reason } (v0.7.3: ends whose straight 3° final hits the terrain: they must be in
 //     CIRCLING_ONLY (src/world/runways.js) for the check to pass; their clearance is logged, not asserted),
@@ -243,7 +246,8 @@ export function airportSuite(cfg) {
     // the field flattened to the plane through the runway's ends (bake_region_patches.py FIELD_PLANE): with one
     // runway that plane is level across it, so a stand stands at its projection's height on the runway
     const L = Math.hypot(e1.x - e0.x, e1.y - e0.y), ux = (e1.x - e0.x) / L, uy = (e1.y - e0.y) / L;
-    const plane = cfg.fieldSurface === 'runways' ? runwaySurface(ap.runways, !!cfg.fieldPavement) : ap.runways.length > 1 ? lsqPlane(ap.runways.flatMap((q) => q.ends))
+    if (cfg.fieldBent) runwayCrossings(ap);
+    const plane = cfg.fieldSurface === 'runways' ? runwaySurface(ap.runways, !!cfg.fieldPavement, !!cfg.fieldBent) : ap.runways.length > 1 ? lsqPlane(ap.runways.flatMap((q) => q.ends))
       : (x, y) => e0.elevM + (e1.elevM - e0.elevM) * (((x - e0.x) * ux + (y - e0.y) * uy) / L);
     let worst = 0, steep = 0;
     for (const st of ap.stands) {

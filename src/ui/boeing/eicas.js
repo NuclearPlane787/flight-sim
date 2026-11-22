@@ -161,6 +161,8 @@ export function createEicas(cv) {
   function refN1(st, ap) {
     const mode = thrustRefMode(st, ap);
     if (!eng) return { mode, n1: st.leverN1 || 0 };
+    // v0.7.4: the sim's own idle N1 (the flat-rated air the lever's ring uses), so the ring at full sits on the reference.
+    if (st.n1Idle > 0) return { mode, n1: eng.n1ForPhi(refPhi(mode, A), st.n1Idle) };
     const sigma = st.airSigma || isa(st.pos?.z || 0).rho / RHO0;
     return { mode, n1: eng.n1ForPhi(refPhi(mode, A), eng.idleN1(sigma, st.mach || 0)) };
   }

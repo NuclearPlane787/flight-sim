@@ -26,10 +26,11 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
       '24': { ...E, ils: 'III', approachLights: 'ALSF-II', tdz: true, elevFt: 1157.5, pubMag: 240, trueBrg: 245, thr: ['500657.42N', '0141624.12E'] },
     },
     fieldSurface: 'runways', fieldPavement: true, crossingProfile: true,
-    // (the review, 19:50: 06/24's own level where 12/30 crosses it, runways.js's CROSSING_LEVEL; the 30 m patch is still
-    // flattened to the straight profiles, so the stands beside the crossing stand below the patch's surface)
-    standGround: { byStand: { '50A': 1.2, '53': 1.8, '75': 2.0, '52': 2.2, '62': 2.2, '74': 2.6, '73': 3.3, '72': 3.8, '71': 4.2 },
-      reason: "beside 06/24 where 12/30 crosses it: 06/24's real level there is 7 m under the straight line between its ends (CROSSING_LEVEL)" },
+    // (v0.7.4: the 30 m patch baked to the runways' profiles as runwayCrossings() bends them, 06/24 at its own level where
+    // 12/30 crosses it (runways.js's CROSSING_LEVEL; bake_region_patches.py's FIELD_BENT), and every stand checked against
+    // that surface within the suite's 0.6 m. v0.7.2's patch was flattened to the straight profiles: nine stands beside the
+    // crossing then needed allowances of 1.2 to 4.2 m (standGround), gone now.)
+    fieldBent: true,
     knownTaxiIn: { '30@0.9': "no exit ahead of 90 % along 30 in OSM's taxiways" },
     // OSM's stands; which take a widebody is the geometry's (the parking list not read for code letters)
     stands: { min: 103, max: 103, refs: ['V72', 'V71', '5', '28'], gates: 28, e787: { min: 63, max: 63 }, e777: { min: 58, max: 58 } },

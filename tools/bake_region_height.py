@@ -477,6 +477,7 @@ def main():
     if args.plan:
         cmd_plan(args)
     elif args.validate:
+        bc.refuse_retired('bake_region_height.py --validate', "data/terrain/l0/ (Korea's own 250 m tiles, the square it compares against)", 'Its other modes run as before.')
         cmd_validate(args)
     elif args.quicklook:
         cmd_quicklook(args)

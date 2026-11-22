@@ -18,7 +18,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { toMap, EARTH_RADIUS } from './frame.js';
-import { MODELS, EUROPE_MODELS } from './landmark-models.js';
+import { MODELS, EUROPE_MODELS, LANDMARKS77 } from './landmark-models.js';
 import { REGION_ID } from './regions.js';
 
 export const BUILD_M = 85000;
@@ -376,6 +376,23 @@ for (const L of EUROPE_LANDMARKS.slice(53)) {
   const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
   L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
   L.parts = P.map(([px, py]) => [px - L.x, py - L.y, PYLON_R]);
+  L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
+  const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
+  L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
+}
+// v0.7.4 part 9, item 6 (LANDMARKS77, landmark-models.js): Tower Bridge becomes `kind: 'bridge'` as the Forth's, based at
+// the Thames (y 0; the installed 250 m ground reads about 2.4 m there), its `pylons` the two towers' centres (77 m apart)
+// and its `ends` the abutment towers' outer faces (244 m apart), on a true bearing of 0 [EST] through the article's point.
+// Its `parts` stay the one 122 m circle it had, so the real centres leave out what they did. Switch off: v0.7.3's entry.
+if (LANDMARKS77) {
+  const L = EUROPE_LANDMARKS.find((l) => l.id === 'towerbridge'), dLat = (m) => m / 111195;
+  L.kind = 'bridge';
+  L.pylons = [[L.lat - dLat(38.5), L.lon], [L.lat + dLat(38.5), L.lon]];
+  L.ends = [[L.lat - dLat(122), L.lon], [L.lat + dLat(122), L.lon]];
+  const P = L.pylons.map(([la, lo]) => toMap(la, lo));
+  const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
+  L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
+  L.parts = [[0, 0, L.footprintM]];
   L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
   const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
   L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };

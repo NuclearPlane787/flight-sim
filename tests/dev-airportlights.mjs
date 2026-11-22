@@ -8,7 +8,7 @@
 // after main's own setTime, with the exposure the sky asks for; without sky.setTime the
 // uniforms are set by hand. The rabbit's phase is pinned (uTime) so a still catches it.
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';

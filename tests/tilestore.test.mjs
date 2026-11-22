@@ -115,7 +115,9 @@ test('tiles: beyond the 250 m extent the 1 km level is read (the margin), waited
   const spec = { x0: 0, y0: 0, extent: { i0: 0, j0: 0, i1: 4, j1: 4 }, sea: { h: -160, w: [0, 255], c: [0, 0, 0, 0] },
     levels: [{ id: 'l0', cell: 250, tile: 4, border: 2, dir: 'l0/', extent: { i0: 0, j0: 0, i1: 4, j1: 4 }, tiles: ['0_0'] },
       { id: 'l1', cell: 1000, tile: 4, border: 2, dir: 'l1/', extent: { i0: -4, j0: -4, i1: 4, j1: 4 }, tiles: ['-1_-1', '0_-1', '-1_0', '0_0'] }] };
-  const store = createTileStore(spec, { layers: ['h'], readGz: async (rel) => files.get(rel) || null });
+  // (v0.7.4 part 9: edgeBlend off. This l0 tile is 1 km across, all of it within EDGE_BLEND_M of the 1 km level beyond, so
+  // with the blend on its cells take the 1 km level's 40; that blend has its own tests, tests/v074-p9-edge.test.mjs.)
+  const store = createTileStore(spec, { layers: ['h'], readGz: async (rel) => files.get(rel) || null, edgeBlend: false });
   assert.equal(store.isReady(500, 500, 0), false);
   await store.whenReady(500, 500, 100);
   assert.equal(store.height(500, 500), 100, 'inside: the 250 m level');

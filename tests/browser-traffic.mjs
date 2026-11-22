@@ -2,7 +2,7 @@
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 6 -- node games/flight-sim/tests/browser-traffic.mjs [name ...]
 // Writes Claude outputs/flight-sim/traffic-<name>.png; prints fps, draw calls, triangles
 // and the traffic update cost.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { placeParked, createVehicles, chainRoads } from '../src/world/traffic-layout.js';
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one

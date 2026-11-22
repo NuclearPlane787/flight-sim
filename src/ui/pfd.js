@@ -3,7 +3,7 @@
 // the flight mode annunciator, raw ILS-style deviations and the radio altitude.
 // Drawn on one square Canvas 2D, sized by the HUD; all lengths are fractions of `s`.
 
-import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from './common.js';
+import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation, courseText } from './common.js';
 import { inchesOf, metricAltOn } from './fcu.js';
 import { rulesAt } from '../world/region.js';
 
@@ -70,6 +70,7 @@ export function createPfd(cv) {
     const ils = view.dest ? ilsDeviation(st, view.destInfo) : null;
 
     drawAttitude(s, st, yc, now);
+    if (ap.trkFpa) drawBird(s, st, yc);   // v0.7.4: TRK-FPA's flight path vector
     drawSpeed(s, st, ap, yc, view);
     drawAlt(s, st, ap, yc, view);
     drawVs(s, st, yc);
@@ -194,6 +195,30 @@ export function createPfd(cv) {
         ctx.fillStyle = col; ctx.fillText(t, cx, y);
       });
     }
+  }
+
+  // v0.7.4: the flight path vector (the "bird") in TRK-FPA, as the real PFD has it: where the aircraft is going, its
+  // flight path angle over the ground below or above the aircraft symbol and its drift to the side, on the sphere's
+  // pitch scale, turned with the bank. Green, a circle with wings and a fin.
+  function drawBird(s, st, yc) {
+    const cx = 0.43 * s, pp = s * 0.0155;
+    const gs = st.gs || 0, pitch = st.pitch / DEG, roll = st.roll / DEG;
+    const fpa = Math.atan2(st.vs || 0, Math.max(gs, 1)) / DEG;
+    let drift = 0;
+    if (gs > 5) drift = angDiff(Math.atan2(st.vel.x, st.vel.y) / DEG, st.hdg / DEG);
+    const dx = clamp(drift, -12, 12) * pp, dy = clamp(pitch - fpa, -14, 14) * pp;
+    ctx.save(); ctx.translate(cx, yc); ctx.rotate(-roll * DEG); ctx.translate(dx, dy);
+    const r = 0.013 * s;
+    ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(3, s * 0.009);
+    const shape = () => {
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.moveTo(-r, 0); ctx.lineTo(-r - 0.03 * s, 0); ctx.moveTo(r, 0); ctx.lineTo(r + 0.03 * s, 0);
+      ctx.moveTo(0, -r); ctx.lineTo(0, -r - 0.014 * s);
+    };
+    shape(); ctx.stroke();
+    ctx.strokeStyle = C.green; ctx.lineWidth = Math.max(1.5, s * 0.0045);
+    shape(); ctx.stroke();
+    ctx.restore();
   }
 
   // A small triangle with its tip at (x, y); dir -1 points down (tip at the bottom), 1 points up.
@@ -496,8 +521,10 @@ export function createPfd(cv) {
     else if (st.detent === 'TOGA') thr = 'MAN TOGA';
     else if (st.detent === 'FLX/MCT' && !st.onGround) thr = 'MAN MCT';
     else if (st.detent === 'FLX/MCT') thr = 'MAN FLX';
-    const vert = apOn ? ap.vertical || '' : '';
-    const lat = apOn ? ap.lateral || 'HDG' : '';
+    // v0.7.4: TRK-FPA's names: the HDG mode is TRACK and the V/S mode FPA (the modes underneath are the same).
+    const fp = !!ap.trkFpa;
+    const vert = apOn ? (fp && ap.vertical === 'V/S' ? 'FPA' : ap.vertical || '') : '';
+    const lat = apOn ? (fp && (ap.lateral || 'HDG') === 'HDG' ? 'TRACK' : ap.lateral || 'HDG') : '';
     trackModes({ thr, vert, lat, ap: apOn ? 'AP1' : '', athr: athr ? 'A/THR' : '' }, now);
 
     ctx.strokeStyle = '#9aa3aa'; ctx.lineWidth = Math.max(1, s * 0.0025);
@@ -518,19 +545,29 @@ export function createPfd(cv) {
       }
     };
     text(0, 0, thr, thr.startsWith('MAN') ? C.white : C.green, 'thr');
-    if (vert === 'V/S') {
+    if (vert === 'LAND' || vert === 'FLARE' || vert === 'ROLL OUT') {
+      // v0.7.4: the autoland's modes span the vertical and lateral columns, as on the real FMA.
+      ctx.fillStyle = '#000'; ctx.fillRect(2 * cw - 0.004 * s, 0.006 * s, 0.008 * s, row(0) + 0.02 * s);
+      ctx.font = font(s * 0.033, true); ctx.fillStyle = C.green; ctx.fillText(vert, 2 * cw, row(0));
+      if (boxed('vert', now)) { const tw = ctx.measureText(vert).width + 0.016 * s; ctx.strokeStyle = C.white; ctx.strokeRect(2 * cw - tw / 2, row(0) - 0.017 * s, tw, 0.034 * s); }
+    } else if (vert === 'V/S' || vert === 'FPA') {
       ctx.font = font(s * 0.033, true);
-      const v = Math.round(ap.vsFpm || 0), vt = (v >= 0 ? '+' : '') + v;
-      const w1 = ctx.measureText('V/S ').width, w2 = ctx.measureText(vt).width, x = cw + cw / 2 - (w1 + w2) / 2;
+      const v = Math.round(ap.vsFpm || 0), f = Math.round((ap.fpaDeg || 0) * 10) / 10;
+      const vt = vert === 'FPA' ? (f >= 0 ? '+' : '') + f.toFixed(1) + '°' : (v >= 0 ? '+' : '') + v;
+      const w1 = ctx.measureText(vert + ' ').width, w2 = ctx.measureText(vt).width, x = cw + cw / 2 - (w1 + w2) / 2;
       ctx.textAlign = 'left';
-      ctx.fillStyle = C.green; ctx.fillText('V/S ', x, row(0));
+      ctx.fillStyle = C.green; ctx.fillText(vert + ' ', x, row(0));
       ctx.fillStyle = C.cyan; ctx.fillText(vt, x + w1, row(0));
       ctx.textAlign = 'center';
       if (boxed('vert', now)) { ctx.strokeStyle = C.white; ctx.strokeRect(x - 0.008 * s, row(0) - 0.017 * s, w1 + w2 + 0.016 * s, 0.034 * s); }
     } else text(1, 0, vert, C.green, 'vert');
-    // Armed altitude capture (cyan, row 2) while climbing or descending to the FCU altitude.
-    if (apOn && /OP CLB|OP DES|V\/S/.test(vert)) text(1, 1, 'ALT', C.cyan);
-    text(2, 0, lat, C.green, 'lat');
+    // Armed altitude capture (cyan, row 2) while climbing or descending to the FCU altitude. v0.7.4: an armed
+    // glideslope beside it (APPR), an armed localizer under the lateral mode.
+    const altArm = apOn && /OP CLB|OP DES|V\/S|FPA/.test(vert);
+    const gsArm = apOn && ap.armedVertical === 'G/S';
+    if (altArm || gsArm) text(1, 1, altArm && gsArm ? 'ALT  G/S' : altArm ? 'ALT' : 'G/S', C.cyan);
+    if (apOn && ap.armedLateral === 'LOC') text(2, 1, 'LOC', C.cyan);
+    if (!/^(LAND|ROLL OUT)$/.test(lat)) text(2, 0, lat, C.green, 'lat');
     if ((st.law || 'normal') !== 'normal') text(3, 2, 'ALTN LAW', C.amber);
     text(4, 0, apOn ? 'AP1' : '', C.white, 'ap');
     text(4, 2, athr ? 'A/THR' : '', athrArmed ? C.cyan : C.white, 'athr');
@@ -564,7 +601,7 @@ export function createPfd(cv) {
     if (!ils) return;
     ctx.fillStyle = C.magenta; ctx.font = font(s * 0.034); ctx.textAlign = 'left';
     ctx.fillText(`${ils.icao} ${ils.ident}`.trim(), 0.012 * s, 0.9 * s);
-    ctx.fillText(`${String(Math.round(ils.courseMag) || 360).padStart(3, '0')}°  ${ils.distNm < 100 ? ils.distNm.toFixed(1) : Math.round(ils.distNm)}NM`, 0.012 * s, 0.94 * s);
+    ctx.fillText(`${courseText(ils.courseMag)}°  ${ils.distNm < 100 ? ils.distNm.toFixed(1) : Math.round(ils.distNm)}NM`, 0.012 * s, 0.94 * s);
   }
 
   return { update, draw };

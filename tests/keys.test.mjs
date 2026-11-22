@@ -18,7 +18,7 @@ const ONLY_BLOCK = 'Only the block’s keys here: 7–0, U–P, J–; and M–/'
 
 test('the defaults: every control on the Controls page, the moved keys, nothing in the block, every key once', () => {
   const r = resolveKeys(null);
-  assert.equal(BINDINGS.length, 36);
+  assert.equal(BINDINGS.length, 37);   // v0.7.4: + silenceWarnings (')
   assert.deepEqual(SECTIONS.map((s) => s.id), ['fly', 'thrust', 'wing', 'ground', 'auto', 'views', 'time']);
   for (const b of BINDINGS) assert.ok(SECTIONS.some((s) => s.id === b.section), b.id);
   const k = (id) => r.bind[id];

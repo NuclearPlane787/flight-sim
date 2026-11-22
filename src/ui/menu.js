@@ -482,12 +482,17 @@ function createPage(root, cls, title, bodyHtml) {
   return api;
 }
 
-export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, onSky, onIndestructible, onAutoTrim, onPanelScale, keyName = null } = {}) {
+export function createSettingsPage(root, { get, onVolume, onMix, onCallouts, onPerf, onSky, onIndestructible, onAutoTrim, onPanelScale, keyName = null } = {}) {
+  // v0.7.4 (Shane's item 12): the volumes under the master, each 0 to 100 % of it: [key, label, what]
+  const MIX = [['warnings', 'Warnings', 'The chimes, the cricket, the cavalry charge and the siren'], ['callouts', 'Callouts volume', 'The voice: the height calls, “retard” and the ground-proximity warnings'],
+    ['engines', 'Engines', 'The engines and the reversers'], ['frame', 'Airframe and ground', 'The wind, the gear, the flaps, the wheels, the brakes, the air conditioning and the weather']];
   const seg = (k) => `<div class="fsui-seg" data-seg="${k}"><button data-v="on">On</button><button data-v="off">Off</button></div>`;
   const page = createPage(root, 'fsm-settings', 'Settings', `
     <div class="fsm-set">
-      <label class="fsm-set-row"><span class="lab">Master volume</span>
+      <label class="fsm-set-row"><span class="lab">Master volume${onMix ? '<small>The four below are each a share of it</small>' : ''}</span>
         <span class="ctl"><input type="range" min="0" max="100" step="5" data-s="volume"><output data-s="volOut">100%</output></span></label>
+      ${onMix ? MIX.map(([k, lab, what]) => `<label class="fsm-set-row fsm-set-sub"><span class="lab">${lab}<small>${what}</small></span>
+        <span class="ctl"><input type="range" min="0" max="100" step="5" data-s="mix-${k}"><output data-s="mixOut-${k}">100%</output></span></label>`).join('') : ''}
       ${onPanelScale ? `<label class="fsm-set-row"><span class="lab">Panel size<small>The PFD, the ND and the engine panel, from half their size to 120 %</small></span>
         <span class="ctl"><input type="range" min="50" max="120" step="5" data-s="panelScale"><output data-s="panelOut">100%</output></span></label>` : ''}
       <div class="fsm-set-row"><span class="lab">Callouts<small>The radio-altitude calls on final, “retard” and the ground-proximity warnings</small></span><span class="ctl">${seg('callouts')}</span></div>
@@ -503,9 +508,11 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
   // v0.6.2: the side panels' size (Shane: "an option to the settings that scales up or down the size of the two side panels")
   const showPanel = (k) => { q('panelScale').value = Math.round(k * 100); q('panelOut').textContent = `${Math.round(k * 100)}%`; };
 
+  const showMix = (k, v) => { q(`mix-${k}`).value = Math.round(v * 100); q(`mixOut-${k}`).textContent = `${Math.round(v * 100)}%`; };
   page.render = () => {
     const s = get?.() || {};
     showVol(Number.isFinite(s.volume) ? s.volume : 1);
+    if (onMix) for (const [k] of MIX) showMix(k, Number.isFinite(s.mix?.[k]) ? s.mix[k] : 1);
     if (onPanelScale) showPanel(Number.isFinite(s.panelScale) ? s.panelScale : 1);
     setSeg('callouts', s.callouts !== false);
     setSeg('perf', !!s.showPerf);
@@ -515,6 +522,7 @@ export function createSettingsPage(root, { get, onVolume, onCallouts, onPerf, on
     if (keyName) { const k = keyName('perf'); q('perfNote').textContent = `Frame rate, triangles and draw calls along the top${k ? ` (${k})` : ''}`; }
   };
   q('volume').addEventListener('input', () => { const v = Number(q('volume').value) / 100; showVol(v); onVolume?.(v); });
+  if (onMix) for (const [k] of MIX) q(`mix-${k}`).addEventListener('input', () => { const v = Number(q(`mix-${k}`).value) / 100; showMix(k, v); onMix(k, v); });
   if (onPanelScale) q('panelScale').addEventListener('input', () => { const k = Number(q('panelScale').value) / 100; showPanel(k); onPanelScale(k); });
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-seg] button');

@@ -47,6 +47,7 @@
 // only nodes made after that; sim time drives it, so paused, nothing moves.
 
 import { strikesBetween } from '../sim/lightning.js';
+import { createSilencer } from './silence.js';
 
 const KT = 1.943844; // m/s → kt
 
@@ -150,6 +151,13 @@ const INSIDE_LP = 1300;
 // The master gain at 100% on the pause menu's volume slider (main.js scales it).
 export const FULL_VOLUME = 0.8;
 
+// v0.7.4 (Shane's item 12): the volumes under the master, each 0 to 1 of it (Settings): the warnings (warnBus), the
+// engines (engineBus, split from worldBus), and the airframe and ground (frameBus: the wind, the gear, the flaps, the
+// wheels, the brakes, the packs, the thumps and clunks; and the weather's rain, thunder and buffet). The voice's is
+// callouts.js's. At 1 every bus is a gain of exactly 1, so the mix is what it was.
+export const MIX_KINDS = ['warnings', 'engines', 'frame'];
+const clampVol = (v) => (Number.isFinite(+v) ? clamp01(+v) : 1);
+
 export function createSynth({ context = null } = {}) {
   let ctx = null;
   let n = null; // all the nodes, made once in start()
@@ -181,6 +189,11 @@ export function createSynth({ context = null } = {}) {
   let cavNext = 0, cavLeft = 0;
   let chimeNext = 0;
   let stallNext = 0;
+  // v0.7.4: the volumes (MIX_KINDS), the warnings silenced by the left panel's button, and what sounds now (for it).
+  const vols = { warnings: 1, engines: 1, frame: 1 };
+  let warnBase = 1;    // the warnings' bus before its volume (paused, time compression, more engines)
+  const hush = createSilencer();
+  const sounding = { apDisc: false, overspeed: false, stall: false, windshear: false };
 
   // ---- building ----
 
@@ -318,7 +331,7 @@ export function createSynth({ context = null } = {}) {
       const g = gain(depth); s.connect(g); return g;
     };
     const loop = (buf) => { const s = noise(buf); src.push(s); return s; };
-    const p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(kit.worldBus);
+    const p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(kit.engineBus);   // v0.7.4: the engines' own bus
     const fanOsc = ctx.createOscillator(); fanOsc.setPeriodicWave(kit.fanWave); fanOsc.frequency.value = 13; fanOsc.start();
     const buzzOsc = ctx.createOscillator(); buzzOsc.setPeriodicWave(kit.buzzWave); buzzOsc.frequency.value = 13; buzzOsc.start();
     // Pitch: ±4 cents (measured fan tones wander under 0.5 %); level: ±15 % (fan), ±20 % (buzz).
@@ -388,57 +401,60 @@ export function createSynth({ context = null } = {}) {
     const worldBus = gain(1);
     const muffle = filter('lowpass', 1200); // cockpit: low; outside: wide open
     chain(worldBus, muffle, pre);
+    // v0.7.4: the engines and the airframe each through a volume of their own into worldBus (1: as before).
+    const engineBus = gain(vols.engines); engineBus.connect(worldBus);
+    const frameBus = gain(vols.frame); frameBus.connect(worldBus);
 
     // Engines (see the top): one set of voices per engine (v0.5.0: as many as the type or design has,
     // up to six), made by makeEngine() below; panned by where each hangs.
-    const kit = { white, pink, brown, wander, fanWave, buzzWave, worldBus };
+    const kit = { white, pink, brown, wander, fanWave, buzzWave, worldBus, engineBus };
     const engines = sides.map((side) => makeEngine(kit, side * 0.6));
 
     const windBp = filter('bandpass', 500, 0.6);
     const wind = gain(0);
-    chain(noise(white), windBp, wind, worldBus);
+    chain(noise(white), windBp, wind, frameBus);
 
     const spoilerLp = filter('lowpass', 160, 1.2);
     const spoiler = gain(0);
-    chain(noise(brown), spoilerLp, spoiler, worldBus);
+    chain(noise(brown), spoilerLp, spoiler, frameBus);
 
     const rollLp = filter('lowpass', 90, 1.5);
     const rolling = gain(0);
-    chain(noise(brown), rollLp, rolling, worldBus);
+    chain(noise(brown), rollLp, rolling, frameBus);
 
     // Hydraulic motors: a buzzy tone through a low-pass.
     const gearOsc = osc('sawtooth', 95);
     const gear = gain(0);
-    chain(gearOsc, filter('lowpass', 400, 2), gear, worldBus);
+    chain(gearOsc, filter('lowpass', 400, 2), gear, frameBus);
     const flapOsc = osc('sawtooth', 420);
     const flap = gain(0);
-    chain(flapOsc, filter('bandpass', 900, 3), flap, worldBus);
+    chain(flapOsc, filter('bandpass', 900, 3), flap, frameBus);
 
     // Cockpit air conditioning: a soft broadband hiss, always there inside.
     const packs = gain(0);
-    chain(noise(white), filter('lowpass', 2500, 0.5), filter('highpass', 250, 0.5), packs, worldBus);
+    chain(noise(white), filter('lowpass', 2500, 0.5), filter('highpass', 250, 0.5), packs, frameBus);
 
     // Brakes: a rumble while braking at speed, a narrow squeal just before stopping.
     const brakeRumble = gain(0);
-    chain(noise(brown), filter('lowpass', 140, 0.9), brakeRumble, worldBus);
+    chain(noise(brown), filter('lowpass', 140, 0.9), brakeRumble, frameBus);
     const brakeSqueal = gain(0);
-    chain(noise(white), filter('bandpass', 2900, 30), brakeSqueal, worldBus);
+    chain(noise(white), filter('bandpass', 2900, 30), brakeSqueal, frameBus);
 
     // Clunks (reverser doors, gear locking): a short low knock.
     const clunkOsc = osc('sine', 85);
     const clunk = gain(0);
-    chain(clunkOsc, clunk, worldBus);
+    chain(clunkOsc, clunk, frameBus);
     const clunkNoise = gain(0);
-    chain(noise(brown), filter('lowpass', 600, 0.8), clunkNoise, worldBus);
+    chain(noise(brown), filter('lowpass', 600, 0.8), clunkNoise, frameBus);
 
     // Touchdown: a low thump and a short tyre chirp (envelopes on fixed sources).
     const thumpOsc = osc('sine', 55);
     const thump = gain(0);
-    chain(thumpOsc, thump, worldBus);
+    chain(thumpOsc, thump, frameBus);
     const thumpNoise = gain(0);
-    chain(noise(brown), filter('lowpass', 250), thumpNoise, worldBus);
+    chain(noise(brown), filter('lowpass', 250), thumpNoise, frameBus);
     const squeal = gain(0);
-    chain(noise(white), filter('bandpass', 2200, 6), squeal, worldBus);
+    chain(noise(white), filter('bandpass', 2200, 6), squeal, frameBus);
 
     // Warnings (on their own bus, not muffled).
     const cavOsc = osc('square', 392);
@@ -461,7 +477,7 @@ export function createSynth({ context = null } = {}) {
     chain(stallOsc, filter('lowpass', 1800), stallTone, warnBus);
 
     return {
-      pre, master, warnBus, worldBus, muffle, kit, engines, windBp, wind, spoilerLp, spoiler, rollLp, rolling,
+      pre, master, warnBus, worldBus, engineBus, frameBus, muffle, kit, engines, windBp, wind, spoilerLp, spoiler, rollLp, rolling,
       gearOsc, gear, flapOsc, flap, thump, thumpNoise, squeal, cav, cavOsc, chime, cricket, stallTone,
       packs, brakeRumble, brakeSqueal, clunk, clunkNoise,
     };
@@ -613,7 +629,7 @@ export function createSynth({ context = null } = {}) {
   function buildBuffet() {
     const out = gain(0);
     const src = noise(noiseBuffer(true));
-    chain(src, filter('lowpass', 75, 0.8), out, n.worldBus);
+    chain(src, filter('lowpass', 75, 0.8), out, n.frameBus);   // v0.7.4: the airframe's volume
     return { out, src: [src] };
   }
 
@@ -713,7 +729,7 @@ export function createSynth({ context = null } = {}) {
 
   // Rain, the bus, the buffet: only with weather.
   function weatherStep(s, now, paused, fast, shake) {
-    set(wx.bus.gain, paused || fast ? 0 : 1, 0.05);
+    set(wx.bus.gain, paused || fast ? 0 : vols.frame, 0.05);   // v0.7.4: the airframe and ground's volume (1 before)
     if (wx.rain) {
       const R = wx.rain, rate = clamp01(wxSet.precip.rate);
       // The fall stops at the lowest layer's base, as the particles' does (world/precip.js ceilingM).
@@ -757,6 +773,7 @@ export function createSynth({ context = null } = {}) {
   // ---- update ----
 
   const NO_OPTS = {};
+  const heard = { apDisc: false, overspeed: false, stall: false, windshear: false };   // v0.7.4: the warnings as heard
 
   // An engine is heard while it runs (N1 above 8 %).
   const running = (n1) => (n1 > 0.08 ? 1 : n1 / 0.08);
@@ -780,7 +797,8 @@ export function createSynth({ context = null } = {}) {
     // v0.5.0: more than two engines are louder (+10·log10(n/2) dB), so the warnings come up as much and
     // stay about as clear over them as over two (two: 1, as before; time compression mutes the engines).
     const warnK = n.engines.length > 2 ? Math.sqrt(n.engines.length / 2) : 1;
-    set(n.warnBus.gain, paused ? 0 : fast ? 0.25 : warnK, 0.05);
+    warnBase = paused ? 0 : fast ? 0.25 : warnK;
+    set(n.warnBus.gain, warnBase * vols.warnings, 0.05);   // v0.7.4: × the warnings' volume (1: as before)
     // The cockpit's walls; outside, the air dulls a distant aircraft.
     set(n.muffle.frequency, inside ? INSIDE_LP : Math.max(3500, 16000 * Math.min(1, 120 / Math.max(dist, 1))), 0.1);
     set(n.packs.gain, mix('packs') * 0.02, 0.2);   // 0.035 under the old 900 Hz low-pass (v0.3.1)
@@ -912,8 +930,10 @@ export function createSynth({ context = null } = {}) {
       if (gsKt > 30) pluck(n.squeal, now, mix('squeal') * clamp01(gsKt / 140) * 0.8, 0.07);
     }
 
-    // Warnings.
-    const w = s.warnings || NO_OPTS;
+    // Warnings. v0.7.4: as heard: one the left panel's button silenced stays silent while its condition holds (silence.js).
+    const w0 = s.warnings || NO_OPTS, w = heard;
+    w.apDisc = hush.allow(!!w0.apDisc, 'apDisc'); w.overspeed = hush.allow(!!w0.overspeed, 'overspeed');
+    w.stall = hush.allow(!!w0.stall, 'stall'); w.windshear = hush.allow(!!w0.windshear, 'windshear');
     if (w.apDisc && !wasApDisc) { cavLeft = 3; cavNext = now; } // up to 3 phrases while it stays on
     if (!w.apDisc) { if (cavLeft > 0) silence(n.cav); cavLeft = 0; }
     while (cavLeft > 0 && now + 0.05 >= cavNext) {
@@ -941,6 +961,9 @@ export function createSynth({ context = null } = {}) {
     if (dying.length) reap(now);
     if (wx) weatherStep(s, now, paused, fast, shake);
     if (wxSet || siren) sirenStep(boeing && !!w.windshear && !paused, now);
+    // v0.7.4: what sounds now, for the button (the cavalry charge's three phrases end while the AP's warning stays on).
+    sounding.apDisc = w.apDisc && (cavLeft > 0 || now < cavNext);
+    sounding.overspeed = w.overspeed; sounding.stall = w.stall; sounding.windshear = boeing && w.windshear;
 
     hasPrev = true; pT = s.t; pGear = gearPos; pFlap = flapDeg; pSlat = slatDeg; pGround = !!s.onGround; pRev = rev0;
   }
@@ -993,6 +1016,36 @@ export function createSynth({ context = null } = {}) {
       return new Promise((r) => setTimeout(r, 150)).then(() => ctx.suspend());
     },
     set volume(v) { vol = clamp01(v); if (ctx) set(n.master.gain, vol, 0.05); },
+    // v0.7.4: the volumes under the master ({ warnings, engines, frame }, each 0 to 1; a missing one stays).
+    setVolumes(o = {}) {
+      for (const k of MIX_KINDS) if (o[k] !== undefined) vols[k] = clampVol(o[k]);
+      if (!n) return;
+      set(n.engineBus.gain, vols.engines, 0.05);
+      set(n.frameBus.gain, vols.frame, 0.05);
+      set(n.warnBus.gain, warnBase * vols.warnings, 0.05);   // the weather's bus follows in the next update()
+    },
+    get volumes() { return { ...vols }; },
+    // The buses' gains as last set (a test hook: headless runs are muted, so the checks read the graph).
+    levels() {
+      if (!n) return null;
+      const g = (p) => (p._v ?? p.value);
+      return { warnings: g(n.warnBus.gain), engines: g(n.engineBus.gain), frame: g(n.frameBus.gain), world: g(n.worldBus.gain), master: g(n.master.gain), weather: wx ? g(wx.bus.gain) : null };
+    },
+    // v0.7.4: the left panel's button: every warning tone sounding now goes quiet until its condition ends and comes
+    // back (silence.js). Returns how many it silenced.
+    silenceWarnings() {
+      const k = hush.press(sounding);
+      if (!n || !k) return k;
+      if (hush.has('apDisc')) { silence(n.cav); cavLeft = 0; cavNext = 0; }
+      if (hush.has('overspeed') && chimeNext) { silence(n.chime); chimeNext = 0; }
+      if (hush.has('stall') && stallNext) { silence(n.cricket); silence(n.stallTone); stallNext = 0; }
+      if (hush.has('windshear') && siren && siren.next) { silence(siren.out); siren.next = 0; }
+      return k;
+    },
+    get silenced() { return hush.any; },
+    // (the lead, from the code review: a new flight, a rewind, a jump or a load leaves nothing silenced)
+    resetSilence() { hush.reset(); },
+    get sounding() { return { ...sounding }; },
     // A short, soft tone through the master gain: the volume slider's preview.
     blip() {
       if (!ctx || !n) return;

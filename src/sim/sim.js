@@ -11,7 +11,7 @@
 
 import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0, STD_INHG_HPA } from './atmosphere.js';
 import { rulesAt } from '../world/region.js';   // v0.6.0: the transition by place (Korea's everywhere with the flag off)
-import { compileWeather, isDefaultWeather, normalizeWeather, windAt, windTurnAt, newWind, microburstInto } from './weather.js';
+import { compileWeather, isDefaultWeather, normalizeWeather, windAt, windTurnAt, newWind, microburstInto, localWeather } from './weather.js';
 import { leverToPhi, createEngines } from './engines.js';
 import { kitFor, DEFAULT_TYPE } from './types.js';
 import { resolveDef, isDesign } from './designs.js';
@@ -102,12 +102,16 @@ function newCore(A, boeing, n) {
     // reported (what would have crashed, and when), so a scrape is one event, not one a step.
     scrapes: 0, dmgReason: '', dmgT: -100,
     prevAlpha: 0, prevIas: 0, iasDot: 0, nzPrev: 1, nzF: 1, fAlong: 0, gspLatched: false,
+    // v0.7.4: the A321's autoland (autopilot.js): ROLL OUT's and the decrab's pedals, the flare's time constant
+    a3Rollout: false, a3RollYaw: 0, a3Align: false, a3AlignYaw: 0, a3YawClear: false, a3FlareTau: 0, a3Crab0: 0, a3AlignI: 0, a3AlignBI: 0,
     ...(boeing ? boeing.coreFields() : null),
   };
 }
 
 // type: a type id (src/sim/types.js), the A321neo by default. sim.setType(id) changes it (and
 // resets nothing else: call reset() or restore() next).
+// v0.7.4: the A321's AP fields new in v0.7.4, as an older save (which has none of them) restores them.
+const AP_V074 = { armedLateral: '', armedVertical: '', trkFpa: false, fpaDeg: 0 };
 const ENG_KITS = new WeakMap();   // v0.5.2: engine models per engine's numbers (a design's mixed engines)
 export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   const groundFn = ground || defaultGround;
@@ -189,10 +193,16 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (k === 'indestructible') indestructible = opts[k];
   }
   const Wd = newWind();
-  const windOn = () => wxC !== null && wxC.windOn;
+  const windOn = () => wxC !== null && wxL().windOn;   // (v0.7.4: the weather here; a single weather's own flag)
+  const modesOn = () => wxC !== null && !!wxL().modes;   // v0.7.4: turbulence in the weather here
   // The air here: ISA by the very same arithmetic as before unless the day isn't standard.
+  // v0.7.4: the weather's place-bound parts where the aircraft is (weather by place: the departure's, the
+  // destination's or the blend between; a single weather is wxC itself, so its arithmetic is as before).
+  const wxL = () => localWeather(wxC, X.px, X.py);
   function atmAt(h, out) {
-    return wxC !== null && wxC.atmOn ? columnInto(h, wxC.dT, wxC.qnhPa, out) : isaInto(h, out);
+    if (wxC === null) return isaInto(h, out);
+    const L = wxL();
+    return L.atmOn ? columnInto(h, L.dT, L.qnhPa, out) : isaInto(h, out);
   }
   // The wind at the CG into Wd: exactly zero with no wind, so that subtracting it changes nothing.
   function windHere(gh) {
@@ -201,7 +211,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   }
   // The flat rating: up to ISA + 15 the engine makes the thrust it makes at ISA for that pressure, so a cold day
   // doesn't give more (the FADEC holds the rating) and a hot one gives less only past ISA + 15.
-  const flatSigma = (s, T) => (wxC !== null && wxC.dT !== 0 ? s * T / (T - Math.min(wxC.dT, 15)) : s);
+  const flatSigma = (s, T) => { const dT = wxC !== null ? wxL().dT : 0; return dT !== 0 ? s * T / (T - Math.min(dT, 15)) : s; };
   const trendIas = (a) => casFromTasP(Math.sqrt((X.vn - Wd.sn) ** 2 + (X.ve - Wd.se) ** 2 + (X.vd - Wd.sd) ** 2), a.p, a.a);
   function setWeather(s) {
     if (!s || isDefaultWeather(s)) { wxS = null; wxC = null; } else { wxS = normalizeWeather(s); wxC = compileWeather(wxS); }
@@ -211,7 +221,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // The altimeter at height z. With the air and the baro both standard it IS z: no round trip.
   function altimeter(z) {
     const pa = baroPa();
-    if ((wxC === null || !wxC.atmOn) && pa === 101325) return z;
+    if ((wxC === null || !wxL().atmOn) && pa === 101325) return z;
     return indicatedAltitude(atmAt(z, atm2).p, pa);
   }
 
@@ -440,7 +450,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const mach = V / atm.a;
     const ias = casFromTasP(V, atm.p, atm.a);
     // The speed trend leaves the turbulence out: a real one is filtered, and the noise would trip the overspeed logic.
-    const iasTrendBase = wxC !== null && wxC.modes ? trendIas(atm) : ias;
+    const iasTrendBase = modesOn() ? trendIas(atm) : ias;
     const qbar = 0.5 * atm.rho * V * V;
     const gs = Math.sqrt(X.vn * X.vn + X.ve * X.ve);
     const theta = Math.asin(clamp(-R[6], -1, 1));
@@ -513,11 +523,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       if (firm) ap.disconnectAp('stick');
       // Decision 7: an autoland always tries, so gusts that dip into the protections don't take it off.
       else if ((X.protAlpha || X.protSpeed) && !(windOn() && kit.boeing && ap.lateral === 'LOC' && (ap.vertical === 'G/S' || ap.vertical === 'FLARE'))) ap.disconnectAp('protection');
-      else if (onGround && !(kit.boeing && kit.boeing.staysOnGround(ap))) ap.disconnectAp('ground');
+      else if (onGround && !(kit.boeing ? kit.boeing.staysOnGround(ap) : kit.auto.staysOnGround?.(ap))) ap.disconnectAp('ground');   // v0.7.4: the A321's autoland too
       else if (controls.law === 'alternate' && Math.abs(phi) > 45 * A.DEG) ap.disconnectAp('attitude');
     }
     apStep(X, ap, E, state, dt);
     if (kit.boeing) kit.boeing.applyControls(X, controls);
+    else kit.auto.applyControls?.(X, controls, ap);   // v0.7.4: the A321's ROLL OUT steers
 
     // Thrust demand (A/THR or manual) and the engines. While the A/THR drives the lever
     // (v0.2.2) it writes it back to the controls, so the keyboard's lever, the cockpit's levers
@@ -669,7 +680,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       kctx.w = R[2] * X.vn + R[5] * X.ve + R[8] * X.vd;
       kctx.p = X.p; kctx.q = X.q; kctx.r = X.r;
       kctx.steer = X.steer;
-      kctx.tyres = wxC !== null ? wxC.tyres : null;
+      kctx.tyres = wxC !== null ? wxL().tyres : null;
       kctx.hydro = 0;   // v0.4.2: the most any tyre is hydroplaning (gear.js)
       for (let i = 0; i < 3; i++) {
         const L = legs[i];
@@ -1003,17 +1014,18 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const RL = rulesAt(S.pos.x, S.pos.y);
     S.baroAlert = !S.onGround && (X.baroStd ? S.altInd < RL.transLevelM && S.vs < -1 : X.baroHpa !== 1013.25 && X.baroHpa !== STD_INHG_HPA && S.altInd > RL.transAltM);
     // The day's air for the screens' Mach conversions: 0 on a standard day, when they use ISA as they always did.
-    const dayAir = wxC !== null && wxC.atmOn;
+    const wxHere = wxC !== null ? wxL() : null;   // v0.7.4: the weather here
+    const dayAir = wxHere !== null && wxHere.atmOn;
     S.airP = dayAir ? atmo.p : 0; S.airA = dayAir ? atmo.a : 0; S.airSigma = dayAir ? atmo.rho / RHO0 : 0;
     S.wind.x = Wd.e; S.wind.y = Wd.n; S.wind.z = -Wd.d; S.wind.meanX = Wd.meanE; S.wind.meanY = Wd.meanN;
-    S.wind.sfcX = wxC !== null ? wxC.sfE : 0; S.wind.sfcY = wxC !== null ? wxC.sfN : 0;
-    if (wxC !== null) {
+    S.wind.sfcX = wxHere !== null ? wxHere.sfE : 0; S.wind.sfcY = wxHere !== null ? wxHere.sfN : 0;
+    if (wxHere !== null) {
       // v0.6.0: the surface wind as it blows here (the landing card's tower wind), turned like the
       // wind itself; the turn is 0 with the region off, for an old save's weather and at the arrival.
-      const turn = windTurnAt(wxC, X.px, X.py);
-      if (turn !== 0) { const tc = Math.cos(turn), ts = Math.sin(turn); S.wind.sfcY = wxC.sfN * tc - wxC.sfE * ts; S.wind.sfcX = wxC.sfE * tc + wxC.sfN * ts; }
+      const turn = windTurnAt(wxHere, X.px, X.py);
+      if (turn !== 0) { const tc = Math.cos(turn), ts = Math.sin(turn); S.wind.sfcY = wxHere.sfN * tc - wxHere.sfE * ts; S.wind.sfcX = wxHere.sfE * tc + wxHere.sfN * ts; }
     }
-    S.wind.gustKt = wxS !== null && wxS.wind.gustKt > wxS.wind.kt ? wxS.wind.gustKt : 0;
+    S.wind.gustKt = wxHere !== null ? wxHere.gustKt : 0;   // (a single weather's: its gust peak above its wind, as before)
     if (windOn() && X.vn * X.vn + X.ve * X.ve > 1) {
       let dr = Math.atan2(X.ve, X.vn) - S.hdg;
       if (dr > Math.PI) dr -= 2 * Math.PI; else if (dr < -Math.PI) dr += 2 * Math.PI;
@@ -1044,6 +1056,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     S.fuelFlowKgS = ffSum;
     S.thrustLever = controls.thrust; S.detent = detentName(controls.thrust);
     S.athrActive = X.athrDriving; S.leverN1 = X.leverN1;
+    S.n1Idle = idleN1(flatSigma(atmo.rho / RHO0, atmo.T), mach);   // v0.7.4: the screens' thrust limit, where the ring's N1 comes from
     S.flapLever = controls.flapLever; S.config = X.cfg; S.slatDeg = X.slat; S.flapDeg = X.flap;
     S.gearPos = X.gearPos; S.gearDoors = X.gearDoors;
     S.gearCompression.nose = legs[0].comp; S.gearCompression.left = legs[1].comp; S.gearCompression.right = legs[2].comp;
@@ -1142,6 +1155,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     X.gearPos = controls.gearDown || onGround ? 1 : 0;
     X.thsTakeoff = takeoffThs();
     ap.ap = false; ap.athr = false; ap.thrustMode = ''; ap.vertical = 'V/S'; ap.lateral = 'HDG';
+    if ('armedLateral' in ap) { ap.armedLateral = ''; ap.armedVertical = ''; }   // v0.7.4: nothing stays armed from the flight before
+    if ('trkFpa' in ap) { ap.trkFpa = false; ap.fpaDeg = 0; }   // v0.7.4: a new flight opens in HDG-V/S
 
     if (onGround) {
       controls.thrust = 0;
@@ -1254,7 +1269,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     controls.parkingBrake = false;
     X.flt = 1; X.everAirborne = true; X.airTime = 100; X.groundTime = 0;
     X.holdLatched = true; X.gammaRef = 0; X.rollLatched = true; X.phiRef = 0;
-    X.prevAlpha = alpha; X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : ias; X.nzPrev = 1;
+    X.prevAlpha = alpha; X.prevIas = modesOn() ? trendIas(atm) : ias; X.nzPrev = 1;
     X.fAlong = 0;
     wowN = wowL = wowR = false;
   }
@@ -1297,13 +1312,14 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, baroIn: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
       scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0, tanksDropped: false,
+      a3Rollout: false, a3RollYaw: 0, a3Align: false, a3AlignYaw: 0, a3YawClear: false, a3FlareTau: 0, a3Crab0: 0, a3AlignI: 0, a3AlignBI: 0,   // v0.7.4: a save from before has none
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
     migrateEngines(snap.core);
     Object.assign(controls, snap.controls);
     // v0.5.6: the levers apart, as saved (a save from before has none: together).
     const te = snap.controls?.thrustEng;
     controls.thrustEng = Array.isArray(te) && te.length === NE && te.every(Number.isFinite) ? te.slice() : null;
-    for (const k of AP_FIELDS) ap[k] = snap.ap[k];
+    for (const k of AP_FIELDS) ap[k] = k in snap.ap ? snap.ap[k] : (AP_V074[k] ?? snap.ap[k]);   // v0.7.4: an older save's missing fields read as off
     [wowN, wowL, wowR] = snap.wow;
     events.length = 0;
     massProps(); computeR();
@@ -1316,7 +1332,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // same air nothing is touched, so a restored flight still flies on exactly.)
     if (keepWeather && JSON.stringify(snap.weather || null) !== JSON.stringify(wxS)) {
       X.wsValid = false;
-      X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : casFromTasP(V, atm.p, atm.a);
+      X.prevIas = modesOn() ? trendIas(atm) : casFromTasP(V, atm.p, atm.a);
     }
   }
 
@@ -1423,7 +1439,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   function setBaro(hpa) { X.baroHpa = clamp(hpa, 900, 1100); X.baroStd = false; state.altInd = altimeter(state.pos.z); }
   function setBaroStd(on = true) { X.baroStd = !!on; state.altInd = altimeter(state.pos.z); }
   // v0.6.0: in the local unit too (inches in Japan: rulesAt() where the aircraft is), as the crew would set it.
-  function setLocalQnh() { setBaro(wxS ? wxS.qnh : 1013.25); X.baroIn = rulesAt(state.pos.x, state.pos.y).baroUnit === 'inHg'; }
+  function setLocalQnh() { setBaro(wxC !== null ? wxL().qnh : 1013.25); X.baroIn = rulesAt(state.pos.x, state.pos.y).baroUnit === 'inHg'; }
   // v0.6.0: the BARO's unit (a click on the FCU's outer ring or the EFIS selector): a display choice only.
   function setBaroUnit(inHg) { X.baroIn = !!inHg; }
   // In flight it applies at once: the aircraft doesn't move, it's flying in the new air.
@@ -1437,7 +1453,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const V = Math.hypot(X.vn - Wd.n, X.ve - Wd.e, X.vd - Wd.d);
     const ias = casFromTasP(V, atm.p, atm.a);
     // The new air isn't an acceleration: without this the speed-trend logic reads the change as one and trips the protections.
-    X.prevIas = wxC !== null && wxC.modes ? trendIas(atm) : ias;
+    X.prevIas = modesOn() ? trendIas(atm) : ias;
     updateState(atm, ias, V / atm.a, X.prevAlpha, state.beta, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
   }
 

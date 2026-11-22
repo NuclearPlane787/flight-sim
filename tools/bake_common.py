@@ -26,6 +26,17 @@ DATA = os.path.join(GAME, 'data')
 # else) is East Asia, exactly as before.
 REGION = 'europe' if os.environ.get('FS_REGION', '').strip().lower() == 'europe' else 'eastasia'
 EUROPE = REGION == 'europe'
+
+
+# v0.7.4 (fix 7, "Found while building v0.7.0"): v0.7.0 retired Korea's own national files and tiles from data/
+# (terrain/l0/, terrain/l1/, terrain/height.i16.gz, water.rg8.gz, cover.rgba8.gz, coast.json, the old r0 <tile>.c
+# cover, and the manifest's `national`, `tiles` and `cover2`). A tool, or a mode of one, that reads or rewrites them
+# stops here with a line naming them, so that no later run writes old data by mistake.
+def refuse_retired(tool, files, note=''):
+    import sys
+    sys.exit(f"{tool}: stopped, nothing read or written. It needs {files}, retired from data/ in v0.7.0 "
+             f"(Korea's old national files and tiles; the repository's history before v0.7.0 has them)."
+             + (' ' + note if note else ''))
 EU_BATCH = os.environ.get('FS_EUROPE_BATCH', 'B').strip().upper() if EUROPE else None   # v0.7.1: the Europe batch baked
 CACHE = ({'A': '/tmp/flight-sim/v070/work/cache', 'C': '/tmp/flight-sim/v072/work/cache', 'D': '/tmp/flight-sim/v073/work/cache'}.get(EU_BATCH, '/tmp/flight-sim/v071/work/cache') if EUROPE else '/tmp/flight-sim/bake')   # v0.7.2: batch C's own   # intermediate results (resumable pieces)
 EXTRA_DEM90 = os.path.join(CACHE, 'dem90extra')  # N32 and N39 GLO-90 tiles, fetched by the bake

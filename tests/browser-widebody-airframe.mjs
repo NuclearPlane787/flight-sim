@@ -6,7 +6,7 @@
 // --close: close-ups instead (the forward plug's windows, the tail's roots, a pylon, the fairing and gear from below).
 // Saves "Claude outputs/flight-sim/v053-<787|777>-<design>.png".
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { newDesign, defaultAirframe } from '../src/sim/designs.js';

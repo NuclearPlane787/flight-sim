@@ -64,6 +64,20 @@ export const EUROPE_DEFAULT_RULES = rule('other', 'Europe/Paris', 'CET', 'CEST',
 // day's level. It applies within AIRPORT_TRANSITION_RADIUS_M of the airport (about its terminal area), the
 // country's beyond; where two overlap, the nearer airport's. A function of position only.
 export const AIRPORT_TRANSITION_RADIUS_M = 60000;
+// v0.7.4 (fix 3, "Found while building v0.7.1": Malpensa's 6,000 ft reached Lugano, 44 km off, where Switzerland's
+// 7,000 ft applies): an airport's altitude applies only where the place's country (countryAt()) is the airport's own,
+// by its ICAO prefix below, or one its entry lists under `also` (a terminal area that reaches across a border: Nice's
+// takes in Monaco, which France's AIP serves). Elsewhere inside the radius the place keeps its own country's, or the
+// nearest airport's of its own country.
+export const EUROPE_ICAO_COUNTRY = Object.freeze({ EG: 'GB', LF: 'FR', ED: 'DE', ET: 'DE', LE: 'ES', LS: 'CH', EH: 'NL', LI: 'IT',
+  LO: 'AT', EB: 'BE', EI: 'IE', LP: 'PT', EK: 'DK', LK: 'CZ', LX: 'GI' });
+export const airportCountries = (icao, entry) => [EUROPE_ICAO_COUNTRY[icao.slice(0, 2)] || 'other', ...((entry && entry.also) || [])];
+// Ground the 2 km country raster reads as its neighbour's: Gibraltar's own (its airport read Spain, "Found while
+// building v0.7.3"). A box in latitude and longitude: the territory from Europa Point to the frontier fence, the
+// harbour and the runway's two ends in the sea. region.js's countryAt() answers these first.
+export const EUROPE_COUNTRY_OVERRIDES = Object.freeze([
+  { country: 'GI', lat0: 36.1060, lon0: -5.3720, lat1: 36.1553, lon1: -5.3350 },
+]);
 export const EUROPE_AIRPORT_TRANSITIONS = Object.freeze({
   EGLL: { at: [51.4706, -0.4619], taFt: 6000, tlFl: 70, note: 'UK AIP EGLL AD 2.17: 6,000 ft (the London TMA)' },
   EGKK: { at: [51.1481, -0.1903], taFt: 6000, tlFl: 70, note: 'UK AIP EGKK AD 2.17: 6,000 ft (the London TMA)' },
@@ -86,7 +100,7 @@ export const EUROPE_AIRPORT_TRANSITIONS = Object.freeze({
   // consider 10000 FT AMSL as transition altitude": Austria's own)
   LFLL: { at: [45.726, 5.0901], taFt: 5000, tlFl: 60, note: 'France AIP LFLL AD 2.20 20.2: 5,000 ft' },
   LFML: { at: [43.4381, 5.2125], taFt: 5000, tlFl: 60, note: 'France AIP LFML AD 2.20: 5,000 ft' },
-  LFMN: { at: [43.6584, 7.2159], taFt: 5000, tlFl: 60, note: 'France AIP LFMN AD 2.20: "The transition altitude in NICE TMA is 5000 ft."' },
+  LFMN: { at: [43.6584, 7.2159], taFt: 5000, tlFl: 60, also: ['MC'], note: 'France AIP LFMN AD 2.20: "The transition altitude in NICE TMA is 5000 ft."' },
   LSGG: { at: [46.2381, 6.1089], taFt: 7000, tlFl: 80, note: 'Switzerland: Geneva 7,000 ft [EST] (skyguide\'s eAIP asks for a login)' },
   LIMC: { at: [45.6306, 8.7281], taFt: 6000, tlFl: 70, note: 'Italy: Malpensa 6,000 ft [EST] (ENAV\'s eAIP asks for a login; from a public pilot briefing)' },
 });

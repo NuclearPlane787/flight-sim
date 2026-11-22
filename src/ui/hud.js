@@ -47,8 +47,26 @@ export function createHud(root, { airports, coast } = {}) {
   const builtCoast = coast ? buildCoast(coast) : null;
   // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()), for the Boeing MCP's tooltips (made on its first use).
   let keyNames = null;
-  function setKeyNames(fn) { keyNames = typeof fn === 'function' ? fn : null; boeing?.fcu.setKeyNames?.(keyNames); }
-  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, setPanelScale, get panelScale() { return panelScale; }, onlaw: null, onview: null, onpause: null, poke, el };
+  function setKeyNames(fn) { keyNames = typeof fn === 'function' ? fn : null; boeing?.fcu.setKeyNames?.(keyNames); if (silenceBtn) silenceBtn.title = silenceTip(); }
+  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, setPanelScale, setSilenced, get panelScale() { return panelScale; }, onlaw: null, onview: null, onpause: null, onsilence: null, poke, el };
+  // v0.7.4 (Shane's item 12: "a small button on the left panel, where there is empty space, that silences the warning
+  // sounds"): in the PFD's bottom right corner, empty on all three types' PFDs; lit while something is silenced.
+  // Clicks go to main.js (hud.onsilence); main.js says when it's lit (setSilenced). Its key is the Controls page's.
+  const silenceBtn = document.createElement('button');
+  silenceBtn.className = 'fsui-silence';
+  silenceBtn.tabIndex = -1;
+  silenceBtn.textContent = 'SILENCE';
+  pfdEl.appendChild(silenceBtn);
+  silenceBtn.addEventListener('click', (e) => { e.stopPropagation(); hud.onsilence?.(); });
+  let silenceLit = false;
+  const silenceTip = () => `Silence the warnings sounding now${keyNames?.('silenceWarnings') ? ` (${keyNames('silenceWarnings')})` : ''}: the chimes, the cricket, the cavalry charge, the siren and the ground-proximity calls. One that stops and comes back sounds again; the screens and lights stay`;
+  silenceBtn.title = silenceTip();
+  function setSilenced(on) {
+    on = !!on;
+    if (on === silenceLit) return;
+    silenceLit = on;
+    silenceBtn.classList.toggle('on', on);
+  }
   const airbus = {
     pfd: createPfd(pfdCv),
     nd: createNd(ndCv, { airports, coast: builtCoast }),
@@ -225,7 +243,8 @@ export function createHud(root, { airports, coast } = {}) {
     if (isBoeing) {
       sP.push(st.autoTrim ? 0 : r(st.vRef), r(st.vmm), r(st.vStick), r(st.pliDeg, 5), st.shaker, ap.armedLateral, ap.armedVertical, r(st.flapDeg), r(st.slatDeg));
       sE.push(r(sp.stab, 500), ap.thrustMode, ap.lateral, ap.vertical, st.onGround ? 1 : 0, r(st.vs * FPM, 0.01), st.flapLever, r(st.pos.z, 0.01), r(st.mach, 100));
-    }
+    } else sP.push(ap.armedLateral, ap.armedVertical, ap.trkFpa ? 1 : 0, ap.fpaDeg);   // v0.7.4: the A321's LOC, APPR and TRK-FPA
+    sE.push(r(st.n1Idle, 10), ap.athrWake ? 1 : 0);   // v0.7.4: the thrust limit above the dials
     if (!panelsHidden) {          // hidden, they aren't drawn; showing them again pokes a full draw
       if (force || changed(sigP, sP)) { pfd.draw(dv, now); sigP = sP; }
       if (force || changed(sigN, sN)) { nd.draw(dv); sigN = sN; }
@@ -289,6 +308,7 @@ export function createHud(root, { airports, coast } = {}) {
     const s = Math.max(80, Math.min(lay.base * panelScale, below, (W - 3 * pad) / 2));
     const sr = Math.max(60, Math.min(s, (below - 8) / 1.62));
     place(pfdEl, pfdCv, pad, top, s, s);
+    silenceBtn.style.fontSize = Math.max(8, s * 0.026) + 'px';   // v0.7.4: the button scales with the PFD
     place(ndEl, ndCv, W - sr - pad, top, sr, sr);
     place(engEl, engCv, W - sr - pad, top + sr + 8, sr, sr * 0.62);
     force = true;

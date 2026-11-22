@@ -40,6 +40,8 @@ def rings(geom, tol, min_area):
 
 
 def main():
+    import bake_common
+    bake_common.refuse_retired('bake_water.py', "data/terrain/height.i16.gz, data/terrain/water.rg8.gz and data/coast.json (it rewrites Korea's national grids and coast)")
     osm_land, ne_out, land = land_geoms()
     water = inland_water()
     f = 2

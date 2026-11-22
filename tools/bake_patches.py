@@ -54,6 +54,9 @@ def bilinear_grid(src, sx0, sy0, scell, X, Y):
 
 
 def main():
+    import bake_common
+    bake_common.refuse_retired('bake_patches.py', "data/terrain/cover.rgba8.gz (Korea's national cover, for the built-up filter of Korea's three patches)",
+                               "Korea's patches in data/terrain/ are as it last wrote them; the region's patches come from bake_region_patches.py.")
     _, _, land = land_geoms()
     water = inland_water()
     aero = aerodromes()

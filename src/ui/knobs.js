@@ -18,6 +18,14 @@
 const PX_PER_STEP = 12;   // trackpad scrolling per step
 const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 
+// v0.7.4: n steps of `st` from v, the first to the next whole step in that direction when v sits between two.
+export function stepDecimal(v, st, n) {
+  if (!n) return v;
+  const q = v / st, eps = 1e-9;
+  if (Math.abs(q - Math.round(q)) < eps) return (Math.round(q) + n) * st;
+  return (n > 0 ? Math.ceil(q) + n - 1 : Math.floor(q) + n + 1) * st;
+}
+
 export function bindKnobs(el, { windows, getView, current, setValue, commit, acceptKey, refresh, poke, onClick }) {
   let selected = null, acc = 0, recent = [];
   let edit = null;   // the window being typed into: { k, text }
@@ -28,8 +36,12 @@ export function bindKnobs(el, { windows, getView, current, setValue, commit, acc
     const now = performance.now();
     recent = recent.filter((t) => now - t < 300); recent.push(now);
     const W = windows[k], big = recent.length > 6, st = big ? W.big : W.step;
+    const n = Math.sign(steps) * (big ? 1 : Math.abs(steps));
+    // v0.7.4: a window that holds decimals (W.decimal: the heading) steps from one to the next whole step: from
+    // 071.466, one step right is 072 and one left 071.
+    if (W.decimal) { setValue(k, stepDecimal(current(k), st, n)); poke(); return; }
     const base = Math.round(current(k) / st) * st;
-    setValue(k, base + Math.sign(steps) * st * (big ? 1 : Math.abs(steps)));
+    setValue(k, base + st * n);
     poke();
   }
 
@@ -47,7 +59,7 @@ export function bindKnobs(el, { windows, getView, current, setValue, commit, acc
     if (!edit || MODIFIERS.has(e.key)) return;
     const key = e.key, k = edit.k, W = windows[k];
     let used = true;
-    if (/^[0-9]$/.test(key)) { if (edit.text.replace('-', '').length < 5) edit.text += key; }
+    if (/^[0-9]$/.test(key)) { if (edit.text.replace('-', '').length < (W.maxLen || 5)) edit.text += key; }   // v0.7.4: maxLen
     else if (acceptKey(edit, key)) { /* it added the key */ }
     else if (key === 'Backspace') edit.text = edit.text.slice(0, -1);
     else if (key === 'Enter') closeEdit(true);

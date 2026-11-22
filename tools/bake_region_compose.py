@@ -393,6 +393,11 @@ def seal(args):
 
 
 def main():
+    if not _bc.EUROPE:
+        # v0.7.4: East Asia's compose keeps Korea's tiles exactly by reading them from data/terrain/l0/, which is gone;
+        # without them it would bake Korea's square anew. Europe's batches never read it.
+        _bc.refuse_retired('bake_region_compose.py (East Asia)', "data/terrain/l0/ (Korea's own tiles, kept exactly inside south-korea.poly)",
+                           "Europe's batches (FS_REGION=europe) don't read it and run as before.")
     ap = argparse.ArgumentParser()
     ap.add_argument('--tiles', default='all')
     ap.add_argument('--plan', action='store_true')

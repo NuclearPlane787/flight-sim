@@ -9,17 +9,33 @@
 //   openRoute(icao?), setCoast(coast), setUrban(urban), waypoints, setWaypoints(list) }
 // v0.6.3: `urban` is data/urban-region.json (the city areas and names; the region's map only).
 
-import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, buildUrban, pickPlaces, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg, headingForTrack } from './common.js';
+import { C, font, KT, FT, NM, DEG, clamp, airportList, thresholdOf, buildCoast, buildUrban, pickPlaces, traceRings, traceLand, traceCoastLines, route, setWaypoints, altLabel, magDeg, headingForTrack, runwayCourseMag, courseText } from './common.js';
 import { mapExtent, fineExtent, fineOutline } from '../world/region.js';
 import { regionOutline, outlineIsRect } from '../world/outline.js';
 import { fuelEstimate } from './setup.js';
 import { circleFrom } from '../world/runways.js';
+import { smoothOutline, traceClipped } from './map-outline.js';
+import { buildCountries, traceBorders, layoutNames } from './map-countries.js';
+import { loadRelief, RELIEF_BANDS, POLDER_RGB } from './map-relief.js';
 
 const PRED = '#c6ff2e';      // the predicted path: bright lime
 // v0.6.3: the city areas' tint over the land, and a switch for comparing (?mapcities=0 draws the map without them).
 const URBAN_FILL = 'rgba(226,212,176,0.27)';
 const CITY_AREAS = !/[?&]mapcities=0\b/.test((typeof location !== 'undefined' && location.search) || '');
 const PRED_GLOW = 'rgba(198,255,46,0.55)';
+// v0.7.4: the map's four lines designed together, in an order of weight under the route (magenta 2.5 px), the
+// predicted path (lime 3.5 px with a glow) and the airports: the coast a solid green (the land's own edge, v0.6.0's),
+// the region's edge the strongest of the rest (long white dashes), the country borders a warm grey dash-dot (the
+// charts' border style), and the 250 m data's edge the faintest (white dots).
+// v0.7.4: the terminals on the map, zoomed in (item 1): a quiet fill, a slightly lighter edge, a pale label.
+const TERMINAL = { fill: 'rgba(132,150,172,0.42)', edge: 'rgba(170,188,210,0.55)', text: 'rgba(236,240,246,0.92)' };
+export const LINE = {
+  coast: { color: '#46775a', width: 1 },
+  edge: { color: 'rgba(255,255,255,0.6)', width: 1.6, dash: [8, 5], casing: 'rgba(6,16,28,0.55)', casingWidth: 3.6 },
+  border: { color: 'rgba(212,188,152,0.74)', width: 1.3, dash: [9, 3, 1.5, 3] },
+  // (second pass: 0.27 couldn't be found over the relief and the city tint; now bright dots on a dark casing of dots)
+  inner: { color: 'rgba(255,255,255,0.68)', width: 2.3, dash: [0.1, 6], casing: 'rgba(6,16,28,0.7)', casingWidth: 4.2 },
+};
 
 export function createMap(root, { airports, coast, urban } = {}) {
   const el = document.createElement('div');
@@ -61,6 +77,12 @@ export function createMap(root, { airports, coast, urban } = {}) {
   let cx = 0, cy = 0, k = 1 / 1000;      // view centre (map m) and px per metre
   let view = null, samples = [], pending = null, hover = null, dirty = true, raf = 0, lastDraw = 0;
   let isOpen = false, lastSig = '';
+  let innerEdges = null, innerRings = [];   // v0.7.4: fineOutline()'s edges and the rings drawn from them
+  let countriesL = null;                    // v0.7.4: the land borders and the countries' names (map-countries.js)
+  let termLabels = null;                    // v0.7.4: the terminals' labels by ICAO (terminal-labels.json)
+  let relief = null;                        // v0.7.4: the colour by height's image (map-relief.js loadRelief())
+  const _devKeep = {}, L7 = { relief: () => relief, countries: () => countriesL, terminals: () => termLabels };
+  const L7set = { relief: (v) => { relief = v; }, countries: (v) => { countriesL = v; }, terminals: (v) => { termLabels = v; } };
 
   // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()): the Close button's and the autopilot's in a hint.
   let keyName = (id) => ({ map: 'N', ap: 'Z' })[id] || '';
@@ -70,7 +92,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
     if (b) b.textContent = k ? `Close (${k})` : 'Close';
   }
   const api = {
-    open, close, toggle, update, setPrediction, setCoast, setUrban, setKeyNames,
+    open, close, toggle, update, setPrediction, setCoast, setUrban, setKeyNames, setCountries, loadExtras,
     get isOpen() { return isOpen; },
     get waypoints() { return route.waypoints; },
     setWaypoints(list) { setWaypoints(list); redraw(); },
@@ -83,6 +105,17 @@ export function createMap(root, { airports, coast, urban } = {}) {
     // Dev hooks (v0.6.0): centre the view on a map point at a scale; time n full draws (ms each).
     _devView(x, y, mPerPx) { cx = x; cy = y; k = 1 / mPerPx; layoutSig = ''; placeSig = ''; if (isOpen) draw(); },
     _devPlaces() { return urbanL && CITY_AREAS ? placeLayout().map((p) => ({ name: p.name, x: p.x, y: p.y, pop: p.pop })) : []; },   // v0.6.3: the names written now
+    // v0.7.4: switch the new layers off and on again, for timing ({ relief, countries, terminals } as booleans)
+    _devLayers(o) {
+      for (const n of Object.keys(L7)) {
+        if (!(n in o)) continue;
+        if (!o[n] && L7[n]()) { _devKeep[n] = L7[n](); L7set[n](null); }
+        if (o[n] && _devKeep[n]) { L7set[n](_devKeep[n]); delete _devKeep[n]; }
+      }
+      if (isOpen) draw();
+    },
+    _devTerminals(icao) { return (termLabels?.[icao] || []).map((L) => ({ ...L, sx: X(L.x), sy: Y(L.y) })); },
+    _devCountries() { return countriesL ? countryLayout().map((n) => ({ name: n.name, box: n.box, alpha: n.alpha })) : []; },
     _devDrawMs(n = 20) { const t = performance.now(); for (let i = 0; i < n; i++) draw(); return (performance.now() - t) / n; },
     // Dev hook: a point on an airport's label (its ICAO code), in page px.
     _devLabel(icao) {
@@ -130,6 +163,14 @@ export function createMap(root, { airports, coast, urban } = {}) {
   function toggle() { isOpen ? close() : open(); }
   function setCoast(c) { coastL = c ? buildCoast(c) : null; redraw(); }
   function setUrban(u) { urbanL = u ? buildUrban(u) : null; placeSig = ''; redraw(); }
+  function setCountries(doc) { countriesL = buildCountries(doc); redraw(); }
+  // v0.7.4: the map's own extra layers from the region's data folder (regions.js dataUrl()): the country borders and
+  // names. A missing file draws nothing. main.js calls it once; the dev page too.
+  function loadExtras(base) {
+    const get = (f) => fetch(base + f).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    return Promise.all([get('country-lines.json').then(setCountries), get('terminal-labels.json').then((d) => { termLabels = d?.airports || null; redraw(); }),
+      loadRelief(base).then((r) => { relief = r; redraw(); })]);
+  }
   function setPrediction(list) { samples = Array.isArray(list) ? list : []; hover = null; redraw(); }
 
   function update(v) {
@@ -161,6 +202,17 @@ export function createMap(root, { airports, coast, urban } = {}) {
         // v0.6.0: the region's coast, by level of detail and only the cells in view (common.js).
         ctx.beginPath(); traceLand(ctx, coastL, lod, box, tf, 1.5 / k);
         ctx.fillStyle = '#1c2a22'; ctx.fill('evenodd');
+        // v0.7.4 (item 11): the colour by height over the land. Its 2 km cells blur over the shore close in, so closer
+        // than 600 m a pixel the sea is painted again over it (the view's rectangle with the land cut out): cheaper
+        // than a clip to the coast (about 12 ms a draw close in) or a pattern fill (worse).
+        if (relief) {
+          drawRelief(box);
+          if (1 / k < 600) {
+            ctx.beginPath(); ctx.rect(-2, -2, W + 4, H + 4); traceLand(ctx, coastL, lod, box, tf, 1.5 / k);
+            ctx.fillStyle = '#06101c'; ctx.fill('evenodd');
+            ctx.beginPath(); traceLand(ctx, coastL, lod, box, tf, 1.5 / k);   // (the land path again, for the city areas' clip)
+          }
+        }
         // v0.6.3: the city areas, on the land only (the same path clips them, so none spills over a harbour).
         if (urbanL && CITY_AREAS) {
           // (Clipped only closer in than 600 m a pixel: further out a shape's overhang is under a pixel, and the
@@ -181,23 +233,43 @@ export function createMap(root, { airports, coast, urban } = {}) {
       ctx.beginPath(); traceRings(ctx, coastL.water, lod, box, tf, 2 / k, true);
       ctx.fillStyle = '#0b2236'; ctx.fill('evenodd');
     }
+    // v0.7.4 (item 10): the land borders between countries, a warm grey dash-dot (LINE.border).
+    if (countriesL) {
+      ctx.beginPath(); traceBorders(ctx, countriesL, countriesL.lod(1 / k), box, tf, { x0: -20, y0: -20, x1: W + 20, y1: H + 20 });
+      ctx.strokeStyle = LINE.border.color; ctx.lineWidth = LINE.border.width; ctx.setLineDash(LINE.border.dash); ctx.lineJoin = 'round';
+      ctx.stroke(); ctx.setLineDash([]);
+    }
     // The edge of the world data.
     {
       // v0.6.0: the region's rectangle, and inside it, fainter, the 250 m data's.
-      const E = mapExtent(), F = fineExtent();
-      ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.setLineDash([3, 7]);
+      const E = mapExtent(), F = fineExtent(), sbox = { x0: -20, y0: -20, x1: W + 20, y1: H + 20 };
+      // v0.7.4 (items 2 and 3): the inner border three times v0.7.3's 0.09, still dotted and under the region's edge
+      // in weight; its staircases cut diagonally (map-outline.js smoothOutline(), drawing only).
+      ctx.strokeStyle = LINE.inner.color; ctx.lineWidth = LINE.inner.width; ctx.setLineDash(LINE.inner.dash); ctx.lineCap = 'round';
       // v0.6.3: the 250 m data's own outline (its tiles' outer sides); its bounding rectangle until the manifest is read.
       const edges = fineOutline();
-      if (edges) { ctx.beginPath(); for (const [ax, ay, bx, by] of edges) { ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by)); } ctx.stroke(); }
-      else ctx.strokeRect(X(F.x0), Y(F.y1), (F.x1 - F.x0) * k, (F.y1 - F.y0) * k);
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([6, 6]);
+      if (edges) {
+        if (edges !== innerEdges) { innerEdges = edges; innerRings = smoothOutline(edges); }
+        ctx.beginPath();
+        for (const r of innerRings) traceClipped(ctx, r.flatMap(([x, y]) => [X(x), Y(y)]), true, sbox);
+      } else { ctx.beginPath(); traceClipped(ctx, [X(F.x0), Y(F.y0), X(F.x1), Y(F.y0), X(F.x1), Y(F.y1), X(F.x0), Y(F.y1)], true, sbox); }
+      // the casing first (larger dark dots), then the dots on it
+      ctx.strokeStyle = LINE.inner.casing; ctx.lineWidth = LINE.inner.casingWidth; ctx.stroke();
+      ctx.strokeStyle = LINE.inner.color; ctx.lineWidth = LINE.inner.width; ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.setLineDash([]); ctx.strokeStyle = LINE.edge.casing; ctx.lineWidth = LINE.edge.casingWidth;   // the edge: a dark casing under white dashes
+      { const P = outlineIsRect() ? [[E.x0, E.y0], [E.x1, E.y0], [E.x1, E.y1], [E.x0, E.y1]] : regionOutline();
+        ctx.beginPath(); traceClipped(ctx, P.flatMap(([x, y]) => [X(x), Y(y)]), true, sbox); ctx.stroke(); }
+      ctx.strokeStyle = LINE.edge.color; ctx.lineWidth = LINE.edge.width; ctx.setLineDash(LINE.edge.dash);
       // v0.7.0: the region's outline where it isn't a rectangle (Europe's: its corners cut, a diagonal in the south-east).
-      if (outlineIsRect()) ctx.strokeRect(X(E.x0), Y(E.y1), (E.x1 - E.x0) * k, (E.y1 - E.y0) * k);
-      else { const P = regionOutline(); ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath(); ctx.stroke(); }
+      // (v0.7.4: both cut to the screen, traceClipped(): dashing their whole length cost tens of ms a draw close in.)
+      const P = outlineIsRect() ? [[E.x0, E.y0], [E.x1, E.y0], [E.x1, E.y1], [E.x0, E.y1]] : regionOutline();
+      ctx.beginPath(); traceClipped(ctx, P.flatMap(([x, y]) => [X(x), Y(y)]), true, sbox); ctx.stroke();
     }
     ctx.setLineDash([]);
 
     if (urbanL && CITY_AREAS && coastL?.region) drawPlaces();   // v0.6.3: under the airports, the route and the path
+    if (countriesL) drawCountryNames();   // v0.7.4: fading in as the map zooms out; never over a label, the lines or the aircraft
     drawAirports();
     const st = view?.state;
     // The line to the destination (magenta), with its waypoints.
@@ -219,7 +291,14 @@ export function createMap(root, { airports, coast, urban } = {}) {
         ctx.beginPath(); ctx.moveTo(X(tx), Y(ty)); ctx.lineTo(X(fx), Y(fy)); ctx.stroke(); ctx.setLineDash([]);
         ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(X(fx), Y(fy), 3, 0, Math.PI * 2); ctx.fill();
         ctx.font = font(11); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fillText('15 NM FINAL', X(fx) + 6, Y(fy));
+        // v0.7.4 (second pass): the label's first place round the fix that keeps off every airport's label and dot
+        const tw = ctx.measureText('15 NM FINAL').width, fxs = X(fx), fys = Y(fy);
+        const boxes = [...labelLayout().values()];
+        for (const a of airportList(airports)) { const [ox, oy] = originOf(a); boxes.push({ x0: X(ox) - 6, y0: Y(oy) - 6, x1: X(ox) + 6, y1: Y(oy) + 6 }); }
+        const spots = [[fxs + 6, fys], [fxs - 6 - tw, fys], [fxs - tw / 2, fys - 12], [fxs - tw / 2, fys + 12], [fxs + 6, fys - 14], [fxs - 6 - tw, fys + 14]];
+        for (const d of [28, 44]) spots.push([fxs + 6, fys + d], [fxs + 6, fys - d], [fxs - 6 - tw, fys + d], [fxs - 6 - tw, fys - d], [fxs - tw / 2, fys + d], [fxs - tw / 2, fys - d]);
+        const spot = spots.find(([x, y]) => boxes.every((q) => x + tw < q.x0 || x > q.x1 || y + 7 < q.y0 || y - 7 > q.y1));
+        if (spot) ctx.fillText('15 NM FINAL', spot[0], spot[1]);   // (nowhere free: the fix's dot alone, never over a label)
       }
       const wps = view.waypoints || route.waypoints;
       wps.forEach(([x, y], i) => {
@@ -269,6 +348,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
     }
     if (st) drawAircraft(st);
     drawScale();
+    drawLegend();   // v0.7.4: the colour by height's legend, bottom left
     drawInfo();
   }
 
@@ -285,12 +365,13 @@ export function createMap(root, { airports, coast, urban } = {}) {
   const originOf = (apt) => apt.origin || [apt.runways?.[0]?.ends[0].x || 0, apt.runways?.[0]?.ends[0].y || 0];
   function labelLayout() {
     const list = airportList(airports), dest = destAirport();
-    const sig = [W, H, cx, cy, k, list.length, dest?.icao].join();
+    const sig = [W, H, cx, cy, k, list.length, dest?.icao, !!relief].join();
     if (sig === layoutSig) return layoutMap;
     layoutSig = sig; layoutMap = new Map();
     const order = dest ? [dest, ...list.filter((a) => a !== dest)] : list.slice();
     const dots = list.map((a) => { const [ox, oy] = originOf(a); return [X(ox), Y(oy)]; });
     const placed = [];
+    const LB = legendBox(); if (LB) placed.push(LB);   // v0.7.4: not under the colour by height's legend
     const free = (b, self) => placed.every((q) => b.x1 < q.x0 || b.x0 > q.x1 || b.y1 < q.y0 || b.y0 > q.y1)
       && dots.every(([dx, dy], i) => i === self || dx < b.x0 - 6 || dx > b.x1 + 6 || dy < b.y0 - 6 || dy > b.y1 + 6);
     for (const apt of order) {
@@ -327,17 +408,103 @@ export function createMap(root, { airports, coast, urban } = {}) {
     for (const a of airportList(airports)) { const [ox, oy] = originOf(a); taken.push({ x0: X(ox) - 7, y0: Y(oy) - 7, x1: X(ox) + 7, y1: Y(oy) + 7 }); }
     // And the map's own overlays (the bar, the help's lines, the info, the scale bar at the bottom right): a name
     // under them can't be read.
-    const cr = canvas.getBoundingClientRect();
-    for (const q of el.querySelectorAll('.fsui-map-bar, .fsui-map-help, .fsui-map-info')) {
-      const r = q.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) taken.push({ x0: r.left - cr.left - 6, y0: r.top - cr.top - 6, x1: r.right - cr.left + 6, y1: r.bottom - cr.top + 6 });
-    }
-    taken.push({ x0: W - 200, y0: H - 150, x1: W, y1: H });
+    taken.push(...overlayBoxes());
     placeList = pickPlaces(urbanL.places, {
       k, W, H, taken, toScreen: (x, y, o) => { o[0] = X(x); o[1] = Y(y); return o; },
       measure: (name, st) => { ctx.font = font(st.px, st.bold); return ctx.measureText(name).width; },
     });
     return placeList;
+  }
+  // ---- v0.7.4 (item 11): the colour by height and its legend ----
+  function drawRelief(box) {
+    const R = relief, top = R.y0 + R.ny * R.cell;
+    // the cells under the view, one more on each side for the smoothing
+    const cx0 = Math.max(0, Math.floor((box.x0 - R.x0) / R.cell) - 1), cx1 = Math.min(R.nx, Math.ceil((box.x1 - R.x0) / R.cell) + 1);
+    const cy0 = Math.max(0, Math.floor((top - box.y1) / R.cell) - 1), cy1 = Math.min(R.ny, Math.ceil((top - box.y0) / R.cell) + 1);
+    if (cx1 <= cx0 || cy1 <= cy0) return;
+    const dx = X(R.x0 + cx0 * R.cell), dy = Y(top - cy0 * R.cell), dw = (cx1 - cx0) * R.cell * k, dh = (cy1 - cy0) * R.cell * k;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'medium';
+    ctx.drawImage(R.canvas, cx0, cy0, cx1 - cx0, cy1 - cy0, dx, dy, dw, dh);
+  }
+  const LEGEND = { x: 18, w: 40, h: 9 };
+  function legendBox() {
+    if (!relief) return null;
+    const n = RELIEF_BANDS.length + (relief.polders ? 1 : 0);
+    // above the info box (bottom left), whatever its height now
+    const r = info.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
+    const bottom = r.height > 4 ? r.top - cr.top - 8 : H - 12;
+    return { x0: LEGEND.x - 6, y0: bottom - 44, x1: LEGEND.x + RELIEF_BANDS.length * LEGEND.w + (relief.polders ? 12 + LEGEND.w + 34 : 14), y1: bottom };
+  }
+  function drawLegend() {
+    const B = legendBox(); if (!B) return;
+    ctx.fillStyle = 'rgba(6,16,28,0.72)'; ctx.fillRect(B.x0, B.y0, B.x1 - B.x0, B.y1 - B.y0);
+    const y = B.y0 + 18;
+    ctx.font = font(10); ctx.textBaseline = 'top'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    let x = LEGEND.x;
+    ctx.textAlign = 'left'; ctx.fillText('HEIGHT, FT', x, B.y0 + 5); ctx.textAlign = 'center';
+    RELIEF_BANDS.forEach((b, i) => {
+      ctx.fillStyle = `rgb(${b.rgb.map((c) => Math.round(c * 1.15)).join(',')})`; ctx.fillRect(x, y, LEGEND.w - 1, LEGEND.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText(b.ft ? b.ft.toLocaleString('en-US') : '0', x, y + LEGEND.h + 3);
+      x += LEGEND.w;
+    });
+    if (relief.polders) {
+      x += 12;
+      ctx.fillStyle = `rgb(${POLDER_RGB.join(',')})`; ctx.fillRect(x, y, LEGEND.w - 1, LEGEND.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.textAlign = 'left'; ctx.fillText('below sea', x, y + LEGEND.h + 3);
+    }
+    ctx.textBaseline = 'middle';
+  }
+  function overlayBoxes() {
+    const out = [], cr = canvas.getBoundingClientRect();
+    for (const q of el.querySelectorAll('.fsui-map-bar, .fsui-map-help, .fsui-map-info')) {
+      const r = q.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) out.push({ x0: r.left - cr.left - 6, y0: r.top - cr.top - 6, x1: r.right - cr.left + 6, y1: r.bottom - cr.top + 6 });
+    }
+    out.push({ x0: W - 200, y0: H - 150, x1: W, y1: H });
+    const L = legendBox(); if (L) out.push(L);
+    return out;
+  }
+  // ---- v0.7.4: the countries' names (item 10) ----
+  // Laid out each draw (a few dozen names at most): they keep off the airports' labels and dots, the cities' names,
+  // the map's panels, the aircraft, the magenta route and the predicted path, whichever moves.
+  const COUNTRY_PX = 13, COUNTRY_FONT = font(COUNTRY_PX, true), COUNTRY_SPACING = '2.5px';
+  function countryLayout() {
+    const taken = overlayBoxes();
+    for (const B of labelLayout().values()) taken.push(B);
+    for (const a of airportList(airports)) { const [ox, oy] = originOf(a); taken.push({ x0: X(ox) - 8, y0: Y(oy) - 8, x1: X(ox) + 8, y1: Y(oy) + 8 }); }
+    if (urbanL && CITY_AREAS && coastL?.region) {
+      for (const p of placeLayout()) { ctx.font = font(p.px, p.bold); const w = ctx.measureText(p.name).width; taken.push({ x0: p.x - w / 2 - 3, x1: p.x + w / 2 + 3, y0: p.y - p.px / 2 - 3, y1: p.y + p.px / 2 + 3 }); }
+    }
+    const st = view?.state, lines = [];
+    if (st) taken.push({ x0: X(st.pos.x) - 18, y0: Y(st.pos.y) - 18, x1: X(st.pos.x) + 18, y1: Y(st.pos.y) + 18 });
+    const pts = routePts();
+    if (pts.length > 1 && view?.dest) {
+      lines.push(pts.flatMap(([x, y]) => [X(x), Y(y)]));
+      const h = (view.dest.hdgGridDeg || 0) * DEG, [tx, ty] = pts[pts.length - 1];
+      lines.push([X(tx), Y(ty), X(tx - Math.sin(h) * 15 * NM), Y(ty - Math.cos(h) * 15 * NM)]);
+    }
+    const ah = ahead();
+    if (ah.length > 1 && st) { const pl = [X(st.pos.x), Y(st.pos.y)]; for (const s of ah) pl.push(X(s.x), Y(s.y)); lines.push(pl); }
+    ctx.font = COUNTRY_FONT; ctx.letterSpacing = COUNTRY_SPACING;
+    const list = layoutNames(countriesL, {
+      mPerPx: 1 / k, W, H, px: COUNTRY_PX, taken, polylines: lines,
+      toScreen: (x, y, o) => { o[0] = X(x); o[1] = Y(y); return o; },
+      measure: (t, px) => { ctx.font = font(px, true); return ctx.measureText(t).width; },
+    });
+    ctx.letterSpacing = '0px';
+    return list;
+  }
+  function drawCountryNames() {
+    const list = countryLayout();
+    if (!list.length) return;
+    ctx.letterSpacing = COUNTRY_SPACING; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    for (const n of list) {
+      ctx.font = font(n.px || COUNTRY_PX, true);
+      ctx.strokeStyle = `rgba(6,16,28,${0.75 * n.alpha})`; ctx.lineWidth = 3.5; ctx.strokeText(n.name, n.x, n.y);
+      ctx.fillStyle = `rgba(222,204,178,${0.78 * n.alpha})`; ctx.fillText(n.name, n.x, n.y);
+    }
+    ctx.letterSpacing = '0px';
   }
   function drawPlaces() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
@@ -347,8 +514,51 @@ export function createMap(root, { airports, coast, urban } = {}) {
       ctx.fillStyle = `rgba(232,236,244,${p.alpha})`; ctx.fillText(p.name, p.x, p.y);
     }
   }
+  // ---- v0.7.4 (item 1): the terminals, zoomed in to an airport: every terminal building's shape filled quietly
+  // (under the runways), and the passenger terminals' labels by the numbers the airport signs them by
+  // (terminal-labels.json, tools/bake_terminal_labels.py). Shapes from 60 m a pixel in, labels from 22.
+  const TERM_SHAPES_MPP = 60, TERM_LABELS_MPP = 22;
+  const termCache = new WeakMap();
+  function termShapes(apt) {
+    let t = termCache.get(apt);
+    if (!t) {
+      t = (apt.buildings || []).filter((b) => b.kind === 'terminal' && b.points?.length >= 3).map((b) => {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const [x, y] of b.points) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        return { pts: b.points, x0, y0, x1, y1 };
+      });
+      termCache.set(apt, t);
+    }
+    return t;
+  }
+  function drawTerminals(list, box) {
+    if (1 / k > TERM_SHAPES_MPP) return;
+    ctx.beginPath();
+    for (const apt of list) {
+      for (const b of termShapes(apt)) {
+        if (b.x1 < box.x0 || b.x0 > box.x1 || b.y1 < box.y0 || b.y0 > box.y1) continue;
+        b.pts.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath();
+      }
+    }
+    ctx.fillStyle = TERMINAL.fill; ctx.fill();
+    ctx.strokeStyle = TERMINAL.edge; ctx.lineWidth = 1; ctx.stroke();
+  }
+  function drawTerminalLabels(list, box) {
+    if (1 / k > TERM_LABELS_MPP || !termLabels) return;
+    ctx.font = font(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    for (const apt of list) {
+      for (const L of termLabels[apt.icao] || []) {
+        if (L.x < box.x0 || L.x > box.x1 || L.y < box.y0 || L.y > box.y1) continue;
+        ctx.strokeStyle = 'rgba(6,16,28,0.85)'; ctx.lineWidth = 3; ctx.strokeText(L.label, X(L.x), Y(L.y));
+        ctx.fillStyle = TERMINAL.text; ctx.fillText(L.label, X(L.x), Y(L.y));
+      }
+    }
+  }
   function drawAirportsRegion() {
     const list = airportList(airports), lay = labelLayout();
+    const vbox = { x0: cx - W / 2 / k, x1: cx + W / 2 / k, y0: cy - H / 2 / k, y1: cy + H / 2 / k };
+    drawTerminals(list, vbox);
+    drawTerminalLabels(list, vbox);
     for (const apt of list) {
       const rws = apt.runways || [];
       ctx.lineCap = 'butt';
@@ -361,8 +571,19 @@ export function createMap(root, { airports, coast, urban } = {}) {
         if (k > 0.012) { // closer in than Korea's 0.004: Pudong's and Haneda's parallels pile up
           ctx.fillStyle = C.white; ctx.font = font(11); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           for (const [e, o] of [[a, b], [b, a]]) {
-            const L = Math.hypot(o.x - e.x, o.y - e.y) || 1, d = 14 / k;
-            ctx.fillText(e.ident, X(e.x - (o.x - e.x) / L * d), Y(e.y - (o.y - e.y) / L * d));
+            const L = Math.hypot(o.x - e.x, o.y - e.y) || 1;
+            // v0.7.4 (second pass): the label block (the name, and closer in the course under it) placed beyond the end
+            // along the runway's axis, far enough that the block's box (half its width or height, whichever the axis
+            // meets first) clears the runway's stroke: before, the course sat on the runway.
+            const two = k > 0.04, bw = two ? 44 : 26, bh = two ? 26 : 13;
+            const ux = -(o.x - e.x) / L, uy = (o.y - e.y) / L;   // screen direction away from the runway (y down)
+            const reach = Math.min(Math.abs(ux) > 1e-6 ? bw / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-6 ? bh / 2 / Math.abs(uy) : Infinity);
+            const dpx = reach + Math.max(5, (rw.widthM || 45) * k / 2) + 3;
+            const lx = X(e.x) + ux * dpx, ly = Y(e.y) + uy * dpx;
+            if (two) {
+              ctx.fillText(e.ident, lx, ly - 6);
+              ctx.fillText(courseText(runwayCourseMag(e, o)) + '°', lx, ly + 6);   // v0.7.4: the end's course to 0.1° magnetic under its name
+            } else ctx.fillText(e.ident, lx, ly);
           }
         }
       }
@@ -623,7 +844,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
     const H = headingForTrack(T, w?.meanX, w?.meanY, st?.tas || 0);
     return { hdg: magDeg(H, x, y), trk: magDeg(T, x, y) };
   }
-  const hdg3 = (d) => String((Math.round(d) % 360) || 360).padStart(3, '0');
+  const hdg3 = (d) => courseText(d);   // v0.7.4: to 0.1° (it was the whole degree)
   function showLegTip(seg, sx, sy) {
     const [x, y] = toMapXY(sx, sy);
     const { hdg, trk } = legHeading(seg, x, y);
@@ -693,12 +914,12 @@ export function createMap(root, { airports, coast, urban } = {}) {
     const ends = (apt.runways || []).flatMap((r) => r.ends.map((e) => ({ e, r }))).filter(({ e }) => e.use !== 'takeoff' && e.use !== 'closed')
       .sort((p, q) => (p.e.use === 'standby') - (q.e.use === 'standby'));
     routeEl.querySelector('[data-r="rwy"]').innerHTML = ends.map(({ e, r }) =>
-      `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}" tabindex="-1">${e.ident}</button>`).join('');
+      `<button data-ident="${e.ident}" class="${e.ident === pick.ident ? 'on' : ''}" title="${courseText(runwayCourseMag(e, r.ends.find((x) => x !== e)))}° · ${Math.round(r.lengthM || 0).toLocaleString()} m${e.ils ? ', ILS' : ''}" tabindex="-1">${e.ident}</button>`).join('');
     const sel = ends.find((x) => x.e.ident === pick.ident);
     const st = view?.state, lines = [];
     if (sel) {
       const same = view?.dest === sel.e;
-      lines.push(`<b>${apt.icao} ${sel.e.ident}</b> · ${Math.round(sel.r.lengthM || 0).toLocaleString()} m${sel.e.ils ? ` · ILS CAT ${sel.e.ils}` : ''}${same ? ' · <span class="dim">your destination now</span>' : ''}`);
+      lines.push(`<b>${apt.icao} ${sel.e.ident}</b> · course <b>${courseText(runwayCourseMag(sel.e, sel.r.ends.find((x) => x !== sel.e)))}°</b> · ${Math.round(sel.r.lengthM || 0).toLocaleString()} m${sel.e.ils ? ` · ILS CAT ${sel.e.ils}` : ''}${same ? ' · <span class="dim">your destination now</span>' : ''}`);
       // v0.6.2: an end with no straight-in approach (Gimhae 18L, 18R)
       if (sel.e.circling) lines.push(`<span class="warn">Circling only: no straight-in approach, so no Skip to final. It's flown by a circle from the approach to ${circleFrom(apt, sel.e.ident)?.ident || 'the other end'}.</span>`);
       if (st) {

@@ -2,7 +2,7 @@
 // main menu's filter, the pause menu's scoped view, "Clear these flights" and the keys, and takes
 // v020-logbook-dev-all.png, -filtered.png and -pause-scoped.png.
 //   python3 tools/cpu-guard.py -- node tests/browser-logbook-filter.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
 process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 

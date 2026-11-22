@@ -6,7 +6,7 @@
 // it, else from the world uniforms set by hand. The lights follow the real phase (main.js's
 // lightsFor); a shot can force them with `force` (setLights wrapped so main can't undo it).
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';

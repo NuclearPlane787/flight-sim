@@ -5,7 +5,7 @@
 //   flight  each type's stretched design takes off on the runway and climbs on the autopilot, nothing crashed
 //   python3 tools/cpu-guard.py --minutes 15 -- node tests/browser-airframe.mjs [fps] [reload] [flight]
 // Env: FS_URL (default http://127.0.0.1:8014/games/flight-sim/), FS_OUT (screenshots).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one

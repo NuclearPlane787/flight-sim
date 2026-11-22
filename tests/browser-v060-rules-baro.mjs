@@ -4,7 +4,7 @@
 // Until the region's airports and terrain are in, the aircraft is placed in the air over each one's coordinates.
 //   python3 tools/cpu-guard.py --minutes 6 -- node tests/browser-v060-rules-baro.mjs
 // Env: FS_URL (default http://127.0.0.1:8014/games/flight-sim/), OUT (the pictures' folder).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 

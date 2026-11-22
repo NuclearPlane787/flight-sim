@@ -11,7 +11,7 @@
 // Env: FS_URL (default http://127.0.0.1:8014/games/flight-sim/), FS_OUT (screenshots).
 // Takes the 3D view and the HUD with page.screenshot, on the real GPU, a temporary Chrome profile.
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

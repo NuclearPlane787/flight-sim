@@ -1,6 +1,6 @@
 // The Weather tab and the setup's chooser, in Chrome (no WebGL: tests/dev-weather-tab.html).
 //   python3 tools/cpu-guard.py -- node tests/browser-weather-tab.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -3,7 +3,7 @@
 //   python3 games/flight-sim/tools/cpu-guard.py -- node games/flight-sim/tests/browser-weather-landing.mjs [a321neo|b787-9|b777-300er] [crosswind kt] [autoland]
 // With `autoland` (a Boeing): the autopilot flies the ILS to the stop, and the checks are the centreline and the decrab.
 // Env: E2E_URL (default http://localhost:8014/games/flight-sim/), E2E_OUT.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

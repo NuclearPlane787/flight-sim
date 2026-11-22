@@ -3,7 +3,7 @@
 // right model, the HUD's panels, and the type in the logbook.
 //   python3 tools/cpu-guard.py --minutes 8 -- node tests/browser-types.mjs [type id]
 // Env: FS_URL (default http://127.0.0.1:8014/games/flight-sim/).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
 process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 const BASE = process.env.FS_URL || 'http://127.0.0.1:8014/games/flight-sim/';

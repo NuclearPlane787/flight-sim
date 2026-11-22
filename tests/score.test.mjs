@@ -102,7 +102,9 @@ test('each part scores out of 10: good values 9–10, bad ones 0–3', () => {
     ['vs', [COST.vs(130), COST.vs(190), COST.vs(250), COST.vs(60)], [COST.vs(600), COST.vs(900)]],
     ['g', [COST.g(1), COST.g(1.15), COST.g(1.3)], [COST.g(2.0), COST.g(2.6)]],
     ['aim', [COST.aim(400, 400), COST.aim(450, 400), COST.aim(350, 400), COST.aim(500, 400)], [COST.aim(700, 400), COST.aim(1400, 400), COST.aim(80, 400), COST.aim(-120, 400)]],
-    ['centreline', [COST.centreline(0), COST.centreline(1), COST.centreline(-1.5)], [COST.centreline(6), COST.centreline(15)]],
+    // (v0.7.4: the centreline part is a straight line to 0 at the runway's edge, 18 m for the A321 on 45 m; 6 m, bad
+    // until v0.7.3, now scores 7, and bad is near the edge)
+    ['centreline', [COST.centreline(0), COST.centreline(1), COST.centreline(-1.5), COST.centreline(3)], [COST.centreline(13.5), COST.centreline(16.5), COST.centreline(20)]],
     ['bank', [COST.bank(0), COST.bank(1), COST.bank(2)], [COST.bank(7), COST.bank(10)]],
     ['pitch', [COST.pitch(5.5), COST.pitch(4), COST.pitch(7.5)], [COST.pitch(1), COST.pitch(9.5)]],
     ['bounces', [COST.bounces(0)], [COST.bounces(2), COST.bounces(3)]],
@@ -139,7 +141,9 @@ test('only 10/10 in every part makes 100; one 9/10 already costs', () => {
   assert.ok(COST.vs(100) > 0 && COST.vs(60) > COST.vs(100) && COST.vs(0) > COST.vs(60));
   assert.ok(rising((x) => COST.aim(400 + x, 400), [0, 50, 150, 300, 600, 1200]));
   assert.ok(rising((x) => COST.aim(400 - x, 400), [0, 50, 150, 300, 450]));
-  assert.ok(rising(COST.centreline, [0, 0.5, 2, 5, 15, 30]) && COST.centreline(-3) === COST.centreline(3));
+  // (v0.7.4: flat at 0 within 1.5 m of the centreline, rising from there to the runway's edge, the same beyond it)
+  assert.ok(COST.centreline(0) === 0 && COST.centreline(1.5) === 0 && rising(COST.centreline, [1.5, 2, 5, 10, 15, 18]) && COST.centreline(-3) === COST.centreline(3));
+  assert.equal(COST.centreline(30), COST.centreline(19));
   assert.ok(rising(COST.bank, [0, 0.5, 2, 5, 10]));
   assert.ok(rising(COST.g, [1, 1.2, 1.6, 2.2, 3]));
   assert.ok(COST.pitch(5.5) === 0 && COST.pitch(4) > 0 && COST.pitch(1) > COST.pitch(4) && COST.pitch(9.5) > COST.pitch(8));
@@ -154,9 +158,10 @@ test("Shane's landing (190 ft/min, 2 m left, 150 m long, low at 1 km and a bob):
   assert.ok(ap.swingFpm > 150 && ap.swingFpm < 260, `${ap.swingFpm}`);
   const res = land({ vs: 190, g: 1.3, along: 550, cross: -2, bank: 0.5, pitch: 6, track: shanesFinal });
   // (v0.1.3 to v0.5.4: exactly 80; v0.5.5: 81, the final costing about ten points; v0.6.2: the touchdown alone)
-  assert.deepEqual(scores(res), { 'Vertical speed': 10, 'Peak g': 9, 'Touchdown vs aiming point': 7, 'From centreline': 8,
+  // (v0.7.4: 2 m off the centreline scores 10, not 8: the centreline part is a straight line to 0 at the runway's edge)
+  assert.deepEqual(scores(res), { 'Vertical speed': 10, 'Peak g': 9, 'Touchdown vs aiming point': 7, 'From centreline': 10,
     Bank: 10, Pitch: 10, Bounces: 10 });
-  assert.ok(res.points >= 88 && res.points <= 91, `${res.points} ${JSON.stringify(scores(res))}`);
+  assert.ok(res.points >= 92 && res.points <= 95, `${res.points} ${JSON.stringify(scores(res))}`);
   assert.equal(res.approach.note, 'low');            // measured, for the record, not scored
   assert.ok(!part(res, 'Approach path') && !part(res, 'Sink rate swings') && !part(res, 'Held down by the approach path'));
   // The same touchdown after a steady approach: the same score, part for part.
@@ -215,7 +220,8 @@ test('several middling flaws make a C or a D; a hard touchdown holds the total d
   assert.equal(land({ track: approach((d) => (d + 300) * Math.tan(1.8 * DEG)) }).points, 100);
   // Everything at once: hard, long, off the side, banked, nose high, two bounces, after an
   // approach swinging ±1,200 ft/min.
-  const all = land({ vs: 880, g: 2.6, along: 1300, cross: 15, bank: 6, pitch: 9, bounceG: 2.6,
+  // (v0.7.4: "off the side" is 18 m, the outer wheel at the runway's edge; 15 m scores 2 of 10 now)
+  const all = land({ vs: 880, g: 2.6, along: 1300, cross: 18, bank: 6, pitch: 9, bounceG: 2.6,
     track: approach((d) => onPath(d) + 30 * Math.sin((d / 2100) * 2 * Math.PI)) });
   assert.ok(all.points <= 15, `${all.points} ${JSON.stringify(scores(all))}`);
 });
@@ -280,16 +286,18 @@ test('a would-be crash (Indestructible) is halved, and says so', () => {
 // ft/min, 2.33 g, 982 m past the aiming point, 8.4 m off, 0.4° of bank, 0.2° of pitch, no bounce counted, and the nose
 // gear would have gone. v0.5.4 gave it 10 (its parts' scores out of 10 summed to 29 of 80). Now its rows add up to
 // about 30, halved for the would-be crash: about 15.
-test("Shane's would-be crash of 2026-11-17: its rows add up to about 30, then half", () => {
+// (v0.7.4: the centreline part's straight line gives its 8.4 m 5 of 10, not 1: the rows add up to 40, halved to 20.)
+test("Shane's would-be crash of 2026-11-17: its rows add up to about 40 (30 until v0.7.3), then half", () => {
   const res = land({ vs: 587, g: 2.33, along: 400 + 982, cross: 8.4, bank: 0.4, pitch: 0.2, damage: 'nose gear collapsed', type: TYPES['b777-300er'] });
-  assert.deepEqual(scores(res), { 'Vertical speed': 3, 'Peak g': 1, 'Touchdown vs aiming point': 0, 'From centreline': 1,
+  // (v0.7.4: 8.4 m off in the 777 on a 45 m runway scores 5, not 1: halfway from full marks to the edge at 16 m)
+  assert.deepEqual(scores(res), { 'Vertical speed': 3, 'Peak g': 1, 'Touchdown vs aiming point': 0, 'From centreline': 5,
     Bank: 10, Pitch: 4, Bounces: 10, 'Would have crashed': undefined });
   const cats = res.parts.filter((p) => p.kind !== 'penalty');
   assert.equal(cats.reduce((a, p) => a + p.share, 0), 100);
   const sum = cats.reduce((a, p) => a + p.points, 0);
-  assert.ok(sum >= 27 && sum <= 33, `${sum} ${JSON.stringify(cats.map((p) => `${p.points}/${p.share}`))}`);
+  assert.ok(sum >= 37 && sum <= 43, `${sum} ${JSON.stringify(cats.map((p) => `${p.points}/${p.share}`))}`);
   assert.equal(res.points, Math.floor(sum / 2));
-  assert.ok(res.points >= 13 && res.points <= 16 && res.grade === 'F', `${res.points}`);
+  assert.ok(res.points >= 18 && res.points <= 21 && res.grade === 'F', `${res.points}`);
   assert.equal(part(res, 'Would have crashed').minus, sum - res.points);
   assert.match(verdict(res), /^Without Indestructible, that was a crash \(nose gear/);
   // the card: each part "points/share", the would-be crash's row "half" and what it took

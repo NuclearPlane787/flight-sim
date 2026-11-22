@@ -3,7 +3,7 @@
 // timed from outside for 24 s (day, then night from 8 s, then day again from 16 s), and every
 // frame over 25 ms is printed with what ran in it.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/browser-v060-slowframes.mjs RJAA [stand]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const icao = process.argv[2] || 'RJAA', stand = process.argv[3] || '11';
 const RW = { RJAA: '34L', RJTT: '34L', ZSSS: '36R', ZSPD: '34L', RJBB: '06R', RJFF: '16L', RKPK: '36L', ZSQD: '34', ZSYN: '04', RKSS: '14R' }[icao];

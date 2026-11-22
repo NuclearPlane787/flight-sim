@@ -8,7 +8,7 @@
 // and the numbers to /tmp/flight-sim/v060/landmarks-work/landmarks-<cities>.json.
 // The page is tests/dev-landmarks.html with ?cities=1 (and &eastasia=1 outside Korea); its frames are stepped
 // by hand (as browser-v060-stills.mjs does) until the fps run at the end.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim', import.meta.url).pathname);

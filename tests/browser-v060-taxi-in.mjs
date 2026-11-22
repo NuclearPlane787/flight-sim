@@ -4,7 +4,7 @@
 // gate flow is asked for the route; the route must exist, start ahead and name a stand, and its
 // line is drawn. A functional check (no frame rates). Headless, muted.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/browser-v060-taxi-in.mjs [ICAO:RWY ...]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const BASE = process.env.E2E_URL || 'http://127.0.0.1:8014/games/flight-sim/';
 const OUT = decodeURIComponent(new URL('../../../Claude outputs/flight-sim/', import.meta.url).pathname);
 const args = process.argv.slice(2).filter((a) => /^[A-Z]{4}:/.test(a));

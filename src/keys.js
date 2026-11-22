@@ -87,6 +87,8 @@ export const BINDINGS = [
   { id: 'map', section: 'time', kind: 'action', label: 'Map', short: 'the map', keys: ['KeyN'] },
   { id: 'pushback', section: 'time', kind: 'action', label: 'Pushback start or stop', short: 'the pushback', keys: ['Shift+KeyG'] },
   { id: 'perf', section: 'time', kind: 'action', label: 'Performance readout', short: 'the performance readout', keys: ['F3'] },
+  // v0.7.4 (Shane's item 12): the left panel's SILENCE button's key: ' (free, outside the block, no Shift).
+  { id: 'silenceWarnings', section: 'time', kind: 'action', label: 'Silence the warnings sounding now (the PFD’s SILENCE button)', short: 'silencing the warnings', keys: ['Quote'] },
 ];
 const BY_ID = new Map(BINDINGS.map((b) => [b.id, b]));
 export const bindingOf = (id) => BY_ID.get(id) || null;

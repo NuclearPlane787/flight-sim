@@ -8,7 +8,7 @@
 
 import { clamp, wrap360 } from '../common.js';
 import { bindKnobs } from '../knobs.js';
-import { baroOf, baroText, turnBaro, toggleStd, baroKnobValue, commitBaro, toggleBaroUnit, toggleMetricAlt, metricAltOn, metricUnitShown } from '../fcu.js';
+import { baroOf, baroText, turnBaro, toggleStd, baroKnobValue, commitBaro, toggleBaroUnit, toggleMetricAlt, metricAltOn, metricUnitShown, hdgSetting, hdgWindowText, acceptHdgPoint } from '../fcu.js';
 import { mcpLights, usesMach, machOfKt, ktOfMach, machText, typedSpeedKt } from './logic.js';
 
 const FPM = 196.85;     // ft/min per m/s
@@ -40,7 +40,7 @@ const STRIP = [
 ];
 const TIPS = {
   spd: 'Speed (kt, or Mach above FL260; 84 or .84 is a Mach)',
-  hdg: 'Heading',
+  hdg: 'Heading (decimals to 0.001°: 071.466)',
   alt: 'Altitude (ft; 350 = FL350)',
   vs: 'Vertical speed (ft/min; −15 = −1,500)',
   baro: 'Altimeter setting (hPa)',
@@ -93,7 +93,7 @@ export function createMcp(root, hud) {
   // 10 kt or 0.05 (10 × 0.01 would be a jump from cruise to the buffet).
   const windows = {
     spd: { step: 1, get big() { return mach() ? 5 : 10; } },
-    hdg: { step: 1, big: 10 },
+    hdg: { step: 1, big: 10, decimal: true, maxLen: 7 },   // v0.7.4: decimals to 0.001°
     alt: { step: 100, big: 1000 },
     vs: { step: 100, big: 500 },
     baro: { step: 1, big: 5 },
@@ -105,7 +105,7 @@ export function createMcp(root, hud) {
       const kt = ap.spdKt ?? 250;
       return mach() ? Math.round(machOfKt(kt, view.state.pos.z, view.state) * 100) : Math.round(kt);
     }
-    if (k === 'hdg') return Math.round(ap.hdgDeg ?? 0);
+    if (k === 'hdg') return ap.hdgDeg ?? 0;   // v0.7.4: the exact value
     if (k === 'alt') return Math.round(ap.altFt ?? 5000);
     if (k === 'baro') return baroKnobValue(view);
     return vsMode() ? ap.vsFpm ?? 0 : vsPreset ?? presentVs();
@@ -115,7 +115,7 @@ export function createMcp(root, hud) {
     if (k === 'spd') {
       const kt = mach() ? ktOfMach(v / 100, view.state.pos.z, view.state) : v;
       call('setSpd', clamp(Math.round(kt), 100, 399));
-    } else if (k === 'hdg') { const h = wrap360(Math.round(v)); call('setHdg', h === 0 ? 360 : h); }
+    } else if (k === 'hdg') call('setHdg', hdgSetting(v));
     else if (k === 'alt') call('setAlt', clamp(Math.round(v / 100) * 100, 100, ALT_TOP));
     else if (k === 'baro') turnBaro(view, v);
     else if (k === 'vs') {
@@ -154,6 +154,7 @@ export function createMcp(root, hud) {
     acceptKey(edit, key) {
       if ((key === '-' || key === '−') && edit.k === 'vs' && edit.text === '') { edit.text = '-'; return true; }
       if (key === '.' && edit.k === 'spd' && !edit.text.includes('.')) { edit.text += '.'; return true; }
+      if (acceptHdgPoint(edit, key)) { edit.text += '.'; return true; }
       if (key === '.' && edit.k === 'baro' && baroOf(view)?.inHg && !edit.text.includes('.')) { edit.text += '.'; return true; }
       return false;
     },
@@ -190,7 +191,7 @@ export function createMcp(root, hud) {
     // In VNAV the MCP's window is blank: the FMC has the speed.
     const fmcSpeed = /^VNAV/.test(ap.vertical || '');
     set(parts.spd, shown('spd', fmcSpeed ? '' : spdText), (ap.athr ? ' lit' : '') + sel('spd') + ed('spd'));
-    set(parts.hdg, shown('hdg', String(Math.round(ap.hdgDeg ?? 0) || 360).padStart(3, '0')), (on && ap.lateral === 'HDG SEL' ? ' lit' : '') + sel('hdg') + ed('hdg'));
+    set(parts.hdg, shown('hdg', hdgWindowText(ap.hdgDeg)), (on && ap.lateral === 'HDG SEL' ? ' lit' : '') + sel('hdg') + ed('hdg'));
     set(parts.alt, shown('alt', String(Math.round(ap.altFt ?? 0)).padStart(5, '0')), (on && ap.vertical === 'ALT' ? ' lit' : on && ap.vertical === 'FLCH SPD' ? ' arm' : '') + sel('alt') + ed('alt'));
     if (vsPreset !== null && performance.now() - vsPresetAt > 10000 && !vsMode()) vsPreset = null;
     const vsv = vsMode() ? ap.vsFpm ?? 0 : vsPreset;

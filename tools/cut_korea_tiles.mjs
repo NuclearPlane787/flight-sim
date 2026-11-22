@@ -25,6 +25,10 @@ const DATA = path.resolve(here, '../data');
 export const TILE = 512, BORDER = 2;
 const SEA = { h: -160, w: [0, 255], c: [0, 0, 0, 0] };
 
+// v0.7.4: v0.7.0 retired what this reads and writes (Korea's national grids, data/terrain/l0/ and l1/, the manifest's
+// `national` and `tiles`): it stops here, so that no run cuts old tiles back into data/.
+console.error("cut_korea_tiles.mjs: stopped, nothing read or written. It needs data/terrain/height.i16.gz, water.rg8.gz and cover.rgba8.gz and the manifest's `national`, and writes data/terrain/l0/ and l1/: all retired from data/ in v0.7.0 (the repository's history before v0.7.0 has them).");
+process.exit(2);
 const man = JSON.parse(readFileSync(path.join(DATA, 'manifest.json'), 'utf8'));
 const nat = man.national;
 const NX = nat.nx, NY = nat.ny;

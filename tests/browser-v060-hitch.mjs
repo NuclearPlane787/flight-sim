@@ -4,7 +4,7 @@
 // parts (the clip window's fill and upload, the cities' and the lights' block lists, each
 // update) are timed from outside, so a slow frame names its cause.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 6 -- node games/flight-sim/tests/browser-v060-hitch.mjs [--alt 35000] [--speed 3840] [--from lat,lon] [--to lat,lon]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { toMap } from '../src/world/frame.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };

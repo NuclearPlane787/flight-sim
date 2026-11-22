@@ -110,11 +110,12 @@ test('A/T wake-up: armed but off, near the shaker it comes on in SPD and recover
   const sim = air({ altFt: 8000, iasKt: 230 });
   const s = sim.state, c = sim.controls;
   c.thrust = 0;
-  let wokeAt = -1, wakeIas = 0, minIas = 1e9, shaker = false;
+  let wokeAt = -1, wakeIas = 0, minIas = 1e9, shaker = false, maxLever = 0;
   run(sim, 200, () => {
     holdLevel(sim);
     minIas = Math.min(minIas, s.ias);
     if (sim.ap.athr && wokeAt < 0) { wokeAt = s.t; wakeIas = s.ias; }
+    if (wokeAt > 0) maxLever = Math.max(maxLever, c.thrust);
     return wokeAt > 0 && s.t > wokeAt + 45;
   });
   assert.ok(wokeAt > 0, 'it woke');
@@ -123,7 +124,10 @@ test('A/T wake-up: armed but off, near the shaker it comes on in SPD and recover
   assert.ok(wakeIas < s.vmm, `at ${(wakeIas / KT).toFixed(0)} kt, under vmm ${(s.vmm / KT).toFixed(0)}`);
   assert.ok(Math.abs(wakeIas - s.vStick) < 15 * KT, `near the shaker's ${(s.vStick / KT).toFixed(0)} kt`);
   assert.ok(minIas > s.vStick - 15 * KT, `it recovered from ${(minIas / KT).toFixed(0)} kt`);
-  assert.ok(c.thrust > 0.5, `lever advanced to ${c.thrust.toFixed(2)}`);
+  // v0.7.4 (item 7): the wake-up goes to full thrust, so 45 s on the speed is back and the SPD loop has brought the
+  // levers down again (it was capped at max continuous, and the levers were still above 0.5 then). What it checked,
+  // that the levers advanced, is now their highest since the wake-up.
+  assert.ok(maxLever > 0.5, `lever advanced to ${maxLever.toFixed(2)}`);
   assert.ok(s.ias > minIas + 20 * KT, `IAS ${(s.ias / KT).toFixed(0)} kt`);
   assert.equal(s.crashed, null);
 });

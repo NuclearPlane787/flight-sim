@@ -2,7 +2,7 @@
 // Run through the CPU guard, from the GameDump root or anywhere:
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 6 -- node games/flight-sim/tests/browser-world.mjs [name ...]
 // Writes Claude outputs/flight-sim/world-<name>.png and prints fps, draw calls, triangles.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync } from 'node:fs';
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
 process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it

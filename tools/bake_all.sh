@@ -9,6 +9,11 @@
 #     curl -fsS -o $t.tif https://copernicus-dem-90m.s3.eu-central-1.amazonaws.com/$t/$t.tif || rm -f $t.tif
 #   done; done
 # Usage (from games/flight-sim/): tools/bake_all.sh [--fresh]   (--fresh drops the caches)
+# v0.7.4: this is v0.1.0 to v0.5.8's whole bake of Korea's national grids, which v0.7.0 retired from data/
+# (terrain/height.i16.gz, water.rg8.gz, cover.rgba8.gz, coast.json). It stops here so that no run writes them back;
+# bake_height.py, bake_water.py, bake_cover.py, bake_patches.py and bake_quicklook.py each stop the same way.
+echo "bake_all.sh: stopped, nothing run. It rewrites data/terrain/height.i16.gz, water.rg8.gz, cover.rgba8.gz and data/coast.json, retired from data/ in v0.7.0 (the repository's history before v0.7.0 has them)." >&2
+exit 2
 set -e
 cd "$(dirname "$0")/.."
 PY="/tmp/flight-sim/venv/bin/python -I"

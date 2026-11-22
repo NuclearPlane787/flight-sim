@@ -77,6 +77,9 @@ def spot_heights(m):
 
 
 def main(what):
+    import bake_common
+    bake_common.refuse_retired('bake_quicklook.py', "data/terrain/height.i16.gz, water.rg8.gz and cover.rgba8.gz and the manifest's `national` (Korea's national grids)",
+                               "The region's pictures come from quicklook_region_l0.py and bake_europe_quicklook.py.")
     m = json.load(open(os.path.join(DATA, 'manifest.json')))
     if 'height' in what:
         h = load_height()

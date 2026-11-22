@@ -46,12 +46,44 @@ export function insideRegion(x, y) {
   const e = O.extent;
   if (x < e.x0 || x > e.x1 || y < e.y0 || y > e.y1) return false;
   if (O.rect) return true;
+  // v0.7.4: the grid answers at once wherever no edge is near (nearly every call); the polygon only in a cell an edge
+  // may touch. The same answer as the polygon's everywhere (tests/v074-outline-grid.test.mjs: a million points).
+  const c = GRID[Math.floor((y - e.y0) / CELL) * GW + Math.floor((x - e.x0) / CELL)];
+  if (c === 1) return true;
+  if (c === 2) return false;
+  return insidePolygon(x, y);
+}
+
+// The polygon's own test (even-odd), as v0.7.0 to v0.7.3 made it for every call.
+export function insidePolygon(x, y) {
   let inside = false;
   for (let i = 0, j = N - 1; i < N; j = i++) {
     if ((PY[i] > y) !== (PY[j] > y) && x < ((PX[j] - PX[i]) * (y - PY[i])) / (PY[j] - PY[i]) + PX[i]) inside = !inside;
   }
   return inside;
 }
+
+// v0.7.4 ("Found while building v0.7.0": the predicted path tested Europe's 420 edges at every step): a coarse grid
+// over the outline's rectangle. A cell no edge comes near (its bounding box, padded, misses every edge's) is wholly
+// inside or wholly outside the polygon, so its centre's answer is every point's: 1 inside, 2 outside. A cell an edge
+// may touch is 0: the polygon is asked. (The rectangle's own columns and rows end at x1 and y1, where the floor gives
+// one cell more: the grid is a cell wider and taller than the rectangle needs.)
+const CELL = 16000, PAD = 1;
+const GW = O.rect ? 0 : Math.floor((O.extent.x1 - O.extent.x0) / CELL) + 1, GH = O.rect ? 0 : Math.floor((O.extent.y1 - O.extent.y0) / CELL) + 1;
+const GRID = new Uint8Array(GW * GH);
+if (!O.rect) {
+  const near = new Uint8Array(GW * GH), e = O.extent;
+  const col = (x) => Math.min(GW - 1, Math.max(0, Math.floor((x - e.x0) / CELL))), row = (y) => Math.min(GH - 1, Math.max(0, Math.floor((y - e.y0) / CELL)));
+  for (let i = 0, j = N - 1; i < N; j = i++) {
+    const c0 = col(Math.min(PX[i], PX[j]) - PAD), c1 = col(Math.max(PX[i], PX[j]) + PAD), r0 = row(Math.min(PY[i], PY[j]) - PAD), r1 = row(Math.max(PY[i], PY[j]) + PAD);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) near[r * GW + c] = 1;
+  }
+  for (let r = 0; r < GH; r++) for (let c = 0; c < GW; c++) {
+    if (!near[r * GW + c]) GRID[r * GW + c] = insidePolygon(e.x0 + (c + 0.5) * CELL, e.y0 + (r + 0.5) * CELL) ? 1 : 2;
+  }
+}
+// For the tests and the log: how many cells answer at once, of how many.
+export const outlineGridStats = () => ({ cellM: CELL, cells: GW * GH, inside: GRID.reduce((a, v) => a + (v === 1), 0), outside: GRID.reduce((a, v) => a + (v === 2), 0) });
 
 // How far inside the outline a point is (m; negative outside): the distance to the nearest edge, signed.
 // For a margin test ("within 20 km of the map's edge"). O(N): not for every frame's every point.

@@ -115,6 +115,8 @@ export const speedLow = (st) => !st.onGround && st.vmm > 0 && st.ias < st.vmm - 
 export function thrustRefMode(st, ap) {
   if (st.onGround) return 'TO';
   if (ap.lateral === 'TO/GA' || ap.vertical === 'TO/GA') return st.agl / FT < 3000 ? 'TO' : 'G/A';
+  // v0.7.4: the A/T's wake-up from low speed goes to full thrust: the reference reads it.
+  if (ap.athrWake) return 'G/A';
   if (st.vs > 300 * FT / 60 || ap.thrustMode === 'THR REF') return 'CLB';
   if (st.flapDeg > 0.5) return 'G/A';   // flaps out, not climbing: on an approach it reads go-around thrust
   return 'CRZ';

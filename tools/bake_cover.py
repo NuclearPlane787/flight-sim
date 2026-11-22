@@ -76,6 +76,8 @@ def fill_rule(forest, farm, urban, h, land, cell):
 
 
 def main():
+    import bake_common
+    bake_common.refuse_retired('bake_cover.py', "data/terrain/height.i16.gz and data/terrain/cover.rgba8.gz (it reads and rewrites Korea's national grids)")
     f = 4
     c = NAT['cell'] / f
     x0, y0, nx, ny = NAT['x0'], NAT['y0'], NAT['nx'], NAT['ny']

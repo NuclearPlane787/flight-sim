@@ -318,6 +318,9 @@ def lakes():
     n_wc = len(out)
     if bc.EUROPE:
         return out, n_wc
+    # v0.7.4: East Asia's coast took Korea's inland water from data/coast.json, which is gone
+    bc.refuse_retired('bake_region_coast.py (East Asia)', "data/coast.json (Korea's own coast file, for its inland water)",
+                      "Europe's coast (FS_REGION=europe) doesn't read it and bakes as before.")
     with open(KOREA_COAST) as f:
         kw = json.load(f).get('water', [])
     for r in kw:

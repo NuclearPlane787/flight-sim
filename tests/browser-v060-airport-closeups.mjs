@@ -6,7 +6,7 @@
 //     --base http://127.0.0.1:8014/games/flight-sim/ [--tag closeup] [ICAO:END ...]
 // Writes "Claude outputs/flight-sim/v060-<tag>-<icao>-<view>.png". Two frames 1/60 s apart are also compared
 // (the camera still): a picture that swims shows differences there (printed as "swim").
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -79,6 +79,9 @@ def korea_weight(ti, tj, rings):
 
 
 def main():
+    import bake_common
+    bake_common.refuse_retired('bake_korea_cover2.py', "data/terrain/r0/<tile>.c.rgba8.gz as Korea's OLD cover and the manifest's `cover2` list",
+                               'Since v0.7.0 the `c` files are the `c2` cover this tool once wrote, so it would blend the new cover with itself.')
     ap = argparse.ArgumentParser()
     ap.add_argument('--check', action='store_true', help='only report (the seams, the shares); write nothing')
     A = ap.parse_args()

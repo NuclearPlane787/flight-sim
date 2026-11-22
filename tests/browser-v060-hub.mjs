@@ -2,7 +2,7 @@
 // directly with no parameters. The menu comes up, New flight opens the setup with the region's
 // airports, Fly starts the default flight, and nothing is logged as an error. Headless, muted.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/browser-v060-hub.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const ROOT = process.env.E2E_ROOT || 'http://127.0.0.1:8014/';
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=metal', '--ignore-gpu-blocklist'] });
 let bad = 0;

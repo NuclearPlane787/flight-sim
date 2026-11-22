@@ -1,7 +1,7 @@
 // v0.4.0 Part 4: visibility, fog and the overcast's light and the wet/snowy ground, in the real game on this Mac's GPU.
 //   python3 tools/cpu-guard.py -- node tests/browser-weather-look.mjs [names…]
 // Env: FS_URL (default http://localhost:8014/games/flight-sim/).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one

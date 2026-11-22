@@ -8,7 +8,7 @@
 // Pictures: "Claude outputs/flight-sim/v060-cities-<id>-<3000|fl350|low>-<day|night>.png"; the numbers in
 // /tmp/flight-sim/v060/centres-render-work/centres.json. By default the procedural blocks (cities.js) are
 // hidden so the real buildings can be judged (cities.js doesn't read the mask yet); --procedural keeps them.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { toMap } from '../src/world/frame.js';
 

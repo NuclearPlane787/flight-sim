@@ -19,6 +19,19 @@ import * as THREE from '../../vendor/three.module.js';
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 
+// v0.7.4 part 9, item 6 (v0.7.7's landmarks: Tower Bridge as a bridge, Madrid's unlit tower, the village church's
+// tower in rural.js). On by default; ?landmarks77=0 on the page or FS_LANDMARKS77=0 in node: the models, Tower
+// Bridge's entry and the church's shader text exactly as v0.7.3's (the `...Old` functions). Read once, at import.
+export const LANDMARKS77 = (() => {
+  try {
+    const q = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = /[?&]landmarks77=([01])\b/.exec(q);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { const v = typeof process !== 'undefined' && process.env ? process.env.FS_LANDMARKS77 : undefined; if (v === '0') return false; } catch (e) { /* no process */ }
+  return true;
+})();
+
 // ------------------------------------------------------------------ the builder
 
 const DEFAULT = { col: [0.4, 0.4, 0.4], fac: [0, 0, 0, 0], seed: 0, shell: 0, spec: 0, glow: [0, 0, 0] };
@@ -1486,7 +1499,103 @@ export function stpauls(brg = 0) {
 // Tower Bridge: the two towers about 65 m (local n along the bridge, from the river at y 0), the
 // bascules between them, the high walkways at about 42 m, the side spans hung from chains to the
 // shore towers. Stone towers floodlit at night, the steel painted blue and white.
-export function towerbridge(brg = 0) {
+// v0.7.4 (LANDMARKS77): the bridge itself (towerbridge77 below); with the switch off v0.7.3's plain model (towerbridgeOld).
+export function towerbridge(brg = 0, geo = {}) { return LANDMARKS77 ? towerbridge77(brg, geo) : towerbridgeOld(brg); }
+
+// Tower Bridge as a bridge (v0.7.4, `kind: 'bridge'` in landmarks.js: y 0 the Thames). 244 m between the abutments' ends,
+// the two towers 65 m to their pinnacles on piers in the river, the central span 61 m between the towers' faces closed by
+// the two bascules' road deck, the two high-level walkways 44 m above the water between the towers, and the side spans
+// hung from the chains down to the road and up to the abutment towers on the banks (Wikipedia "Tower Bridge": 244 m, the
+// towers 65 m, the central span 61 m, the walkways 44 m). The towers' plan (22 x 16 m), the piers' cutwaters, the road's
+// height (10 m), the side spans' length (65.5 m here, the article's 82 m measured from the towers' centres), the chains'
+// curve and the abutment towers (26 m) [EST]. Stone towers with windows, floodlit at night; the steel in light blue.
+function towerbridge77(brg = 0, geo = {}) {
+  void geo;     // (the ends are the abutments' own, at +-122 m; bridgeEnds()'s heights aren't needed: no ramp)
+  const b = new Builder(0.19).frame(0, 0, brg);
+  const TN = 38.5, TH = 8, FACE = TN - TH, DECK = 10, AB = 117, ABH = 5, END = AB + ABH, WALK = 42;
+  const stone = GLASS([0.62, 0.58, 0.48], 6.0, 3.0, 0.1, 0.2, { glow: flood(0.9) });
+  const plainStone = PLAIN([0.58, 0.55, 0.46], 0.1, { glow: flood(0.7) });
+  const granite = PLAIN([0.42, 0.40, 0.36], 0.1);
+  const slate = PLAIN(SLATE, 0.2, { glow: flood(0.5) });
+  const blue = PLAIN([0.36, 0.52, 0.66], 0.35, { glow: [0.10, 0.16, 0.24] });
+  const road = PLAIN([0.30, 0.30, 0.31], 0.1);
+  // A pinnacled stone tower about (0, n): legs either side of the road's arch (half width `open`, up to `archTop`), the
+  // body above, four octagonal corner turrets with their spires and a pyramid roof between them.
+  const tower = (n, hx, hn, base, archTop, top, open, turretTop, spireTop, roofTop, tr) => {
+    b.set(stone);
+    for (const s of [-1, 1]) box(b, s * (open + hx) / 2, n, base, archTop, (hx - open) / 2, hn);
+    box(b, 0, n, base, DECK - 2.4, open, hn);                                                 // under the road
+    box(b, 0, n, archTop, top, hx, hn, 0, { capBottom: true });
+    b.set(plainStone);
+    box(b, 0, n, archTop - 2.5, archTop, open, hn * 0.3, 0, { capBottom: true });             // the arch's head, inside
+    b.set(stone);
+    for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) cyl(b, dx * (hx - tr * 0.6), n + dn * (hn - tr * 0.6), base, turretTop, tr, tr, 8);
+    b.set(slate);
+    for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) spire(b, dx * (hx - tr * 0.6), n + dn * (hn - tr * 0.6), turretTop, spireTop, tr * 1.05, 8);
+    b.loft([at(shift([[hx - 1.5, -(hn - 1.5)], [hx - 1.5, hn - 1.5], [-(hx - 1.5), hn - 1.5], [-(hx - 1.5), -(hn - 1.5)]], 0, n), top),
+      at(shift([[1.2, -0.6], [1.2, 0.6], [-1.2, 0.6], [-1.2, -0.6]], 0, n), roofTop)]);
+  };
+  for (const s of [-1, 1]) {
+    const n = s * TN;
+    b.set(granite);
+    b.loft([at(shift([[27, 0], [19, 12], [-19, 12], [-27, 0], [-19, -12], [19, -12]], 0, n), 0), at(shift([[27, 0], [19, 12], [-19, 12], [-27, 0], [-19, -12], [19, -12]], 0, n), 5)]);   // the pier and its cutwaters
+    tower(n, 11, TH, 5, 26, 47, 5, 51, 65, 58, 2.6);
+    b.set(slate);
+    for (const sx of [-1, 1]) spire(b, sx * 4.5, n, 58 - 4, 60.5, 0.9, 6);                     // the roof's small pinnacles
+    // the abutment tower on the bank
+    tower(s * AB, 9, ABH, 0, 17, 24, 5, 26, 32, 29, 1.6);
+  }
+  // the two high-level walkways: a lattice girder each side, floor and roof, between the towers' faces
+  b.set(blue);
+  const PANELS = 8;
+  for (const sx of [-1, 1]) {
+    const xc = sx * 7, W = 1.8, y0 = WALK, y1 = WALK + 4;
+    box(b, xc, 0, y0 - 0.5, y0, W + 0.2, FACE, 0, { capBottom: true });
+    box(b, xc, 0, y1, y1 + 0.5, W + 0.2, FACE, 0, { capBottom: true });
+    for (const w of [-1, 1]) {
+      const x = xc + w * W;
+      b.member([x, y0, -FACE], [x, y0, FACE], 0.35, 4);
+      b.member([x, y1, -FACE], [x, y1, FACE], 0.35, 4);
+      for (let k = 0; k <= PANELS; k++) {
+        const na = lerp(-FACE, FACE, k / PANELS);
+        b.member([x, y0, na], [x, y1, na], 0.25, 4);
+        if (k < PANELS) { const nb = lerp(-FACE, FACE, (k + 1) / PANELS); b.member(k % 2 ? [x, y0, na] : [x, y1, na], k % 2 ? [x, y1, nb] : [x, y0, nb], 0.2, 4); }
+      }
+    }
+  }
+  // the bascules (closed: two leaves meeting in the middle), deeper at their heels by the towers
+  b.set(road);
+  for (const s of [-1, 1]) {
+    box(b, 0, s * (FACE / 2 + 0.1), DECK - 2.2, DECK, 8.5, FACE / 2 - 0.1, 0, { capBottom: true });
+    box(b, 0, s * (FACE - 4), DECK - 4.2, DECK - 2.2, 7.5, 4, 0, { capBottom: true });
+  }
+  b.set(blue);
+  for (const sx of [-1, 1]) box(b, sx * 8.8, 0, DECK - 2.4, DECK + 1.1, 0.35, FACE, 0, { capBottom: true });   // their side girders
+  // the side spans: the road from each tower to its abutment tower, the stiffening girders, the chains and their hangers
+  const S0 = TN + TH, S1 = AB - ABH;
+  const chain = (t) => 12 + 66.3 * (t - 0.65) ** 2;                                          // 40 m at the tower, 20 m at the abutment
+  for (const s of [-1, 1]) {
+    b.set(road);
+    box(b, 0, s * (S0 + S1) / 2, DECK - 1.6, DECK, 8.5, (S1 - S0) / 2, 0, { capBottom: true });
+    b.set(blue);
+    for (const sx of [-1, 1]) {
+      box(b, sx * 8.8, s * (S0 + S1) / 2, DECK - 1.8, DECK + 1.6, 0.4, (S1 - S0) / 2, 0, { capBottom: true });
+      const K = 10, pts = [];
+      for (let k = 0; k <= K; k++) { const t = k / K; pts.push([sx * 8.2, chain(t), s * lerp(S0, S1, t)]); }
+      for (let k = 0; k < K; k++) b.member(pts[k], pts[k + 1], 0.9, 4);
+      for (let k = 1; k < K; k++) if (pts[k][1] - DECK > 2.5) b.member([sx * 8.2, DECK + 1.6, pts[k][2]], [sx * 8.2, pts[k][1] - 0.8, pts[k][2]], 0.18, 4);
+    }
+  }
+  // the road through the towers' arches (the main towers' and the abutments', out to the ends on the banks)
+  b.set(road);
+  for (const s of [-1, 1]) {
+    box(b, 0, s * (FACE + S0) / 2, DECK - 2.4, DECK, 5, (S0 - FACE) / 2, 0, { capBottom: true });
+    box(b, 0, s * (S1 + END) / 2, DECK - 2.4, DECK, 5, (END - S1) / 2, 0, { capBottom: true });
+  }
+  return b.result();
+}
+
+function towerbridgeOld(brg = 0) {
   const b = new Builder(0.19).frame(0, 0, brg);
   const TN = 40.5, DECK = 9, END = 120;
   const stone = GLASS([0.62, 0.58, 0.48], 6.0, 3.0, 0.1, 0.2, { glow: flood(0.9) });
@@ -1709,7 +1818,29 @@ export function europaturm() {
 
 // Torre Cepsa: 248.3 m. Two concrete cores at its sides joined at the top by a frame, the glass
 // between them stopping short of it: an opening under the top.
-export function cepsa(brg = 0) {
+// v0.7.4 (LANDMARKS77): the unlit slab at night was this tower's two cores, PLAIN (no window pattern, so no lit windows)
+// under an even pale glow, and they are all of the tower seen from the east and the west (the glass between them is
+// recessed and narrower): now they carry a pale glazed facade with lit windows as the three towers beside it, a dimmer
+// glow; the frame at the top keeps its light. With the switch off, v0.7.3's (cepsaOld).
+export function cepsa(brg = 0) { return LANDMARKS77 ? cepsa77(brg) : cepsaOld(brg); }
+function cepsa77(brg = 0) {
+  const b = new Builder(0.68).frame(0, 0, brg);
+  const H = 248.3;
+  // (the lead's picture review: no glow on the cores, as the neighbours' glass has none, so the wall between the lit
+  // windows is as dark as theirs at night; the frame at the top dark too but for a trace, under its red lights. The
+  // glow is added times uNight only: by day both read as before.)
+  b.set(GLASS([0.44, 0.46, 0.47], 4.0, 2.5, 0.7, 0.26, { spec: 0.15 }));
+  for (const s of [-1, 1]) box(b, s * 20, 0, 0, 232, 6, 20);
+  b.set(PLAIN([0.64, 0.64, 0.62], 0.15, { glow: [0.02, 0.02, 0.025] }));
+  for (const s of [-1, 1]) box(b, s * 20, 0, 232, H, 6, 20);
+  box(b, 0, 0, 232, H, 14, 20, 0, { capBottom: true });
+  b.set(GLASS([0.30, 0.34, 0.38], 4.0, 2.5, 0.85, 0.26));
+  box(b, 0, 0, 0, 212, 14, 19);
+  for (const s of [-1, 1]) b.light([s * 26, H, 0], 1);
+  for (const y of [212, 140, 70]) ringLights(b, [[26, 20], [-26, 20], [-26, -20], [26, -20]], y, 0);
+  return b.result();
+}
+function cepsaOld(brg = 0) {
   const b = new Builder(0.68).frame(0, 0, brg);
   const H = 248.3;
   b.set(PLAIN([0.64, 0.64, 0.62], 0.15, { glow: [0.18, 0.18, 0.20] }));

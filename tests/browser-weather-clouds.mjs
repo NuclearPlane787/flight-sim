@@ -1,7 +1,7 @@
 // v0.4.0: the cloud layers and lightning in the real game, on this Mac's GPU. Saves v040-clouds-<name>.png.
 //   python3 games/flight-sim/tools/cpu-guard.py -- node games/flight-sim/tests/browser-weather-clouds.mjs [names…]
 // Env: FS_URL (default http://localhost:8014/games/flight-sim/), FS_OUT.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

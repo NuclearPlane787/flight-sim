@@ -3,7 +3,7 @@
 // New scenario offers it at Gimpo, with its own nose on the stop mark, the parked traffic clear of its own wings,
 // and is pushed back onto the taxi lines. Pictures from above, parked and after the pushback.
 //   python3 tools/cpu-guard.py --minutes 10 -- node tests/browser-stands-airframe.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one

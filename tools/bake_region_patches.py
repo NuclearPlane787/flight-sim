@@ -365,10 +365,43 @@ def field_plane(icao, x0, y0, cell, nx, ny):
     return (c[0] * X[None, :] + c[1] * Y[:, None] + c[2]).astype(np.float32)
 
 
+# v0.7.4: fields flattened to their runways' profiles as the game bends them where two cross, not the straight lines
+# between their ends (FIELD_RUNWAYS and FIELD_PAVEMENT with it). Prague: runways.js's CROSSING_LEVEL puts 06/24 at
+# 353.6 m where 12/30 crosses it, 7.1 m under its straight line, and 12/30 bends to 06/24's edges; the patch baked to
+# the straight lines left nine stands beside the crossing 0.9 to 3.7 m off the ground the game draws (ROADMAP, "Found
+# while building v0.7.2"). The bends come from the game's own runwayCrossings() (node, runway_knots()), so the bake and
+# the game can't drift apart; each profile is then profileAt()'s piecewise line through them, from end 0's pavement end.
+# Only these airports: every other field keeps its straight profiles (its patch bakes byte-identical to v0.7.3's).
+FIELD_BENT = {'LKPR'} if bc.EUROPE else set()
+
+
+def runway_knots(icao):
+    """{runway id: [[s, h], ...]}: runways.js's runwayCrossings() on data/<region>/airports/<icao>.json, run by node
+    (s in metres from end 0's pavement end, as profileAt() reads them)."""
+    import shutil
+    import subprocess
+    from urllib.parse import quote
+    js_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src', 'world', 'runways.js')
+    code = ("import fs from 'node:fs'; const { runwayCrossings } = await import(process.argv[1]);"
+            " const ap = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')); runwayCrossings(ap);"
+            " process.stdout.write(JSON.stringify(Object.fromEntries(ap.runways.map((r) => [r.id, r.knots || []]))));")
+    node = shutil.which('node') or 'node'
+    out = subprocess.run([node, '--input-type=module', '-e', code, 'file://' + quote(js_path),
+                          os.path.join(AIRPORT_DIR, icao + '.json')], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
 def field_runways(icao, x0, y0, cell, nx, ny):
     """FIELD_RUNWAYS: each runway's straight profile between its ends' elevations, blended by 1 / (1 + d^2) of the
-    distance d (m) to its centreline segment, at the grid's cell centres (row by row)."""
+    distance d (m) to its centreline segment, at the grid's cell centres (row by row). (FIELD_BENT, v0.7.4: each
+    runway's profile through the game's bends instead.)"""
     d = json.load(open(os.path.join(AIRPORT_DIR, icao + '.json')))
+    bent = None
+    if icao in FIELD_BENT:
+        assert icao in FIELD_PAVEMENT, icao + ': FIELD_BENT measures along the pavement, as profileAt() does'
+        kn = runway_knots(icao)
+        bent = [sorted(kn.get(r['id']) or []) for r in d['runways']]
+        log(icao, 'FIELD_BENT: the bends', json.dumps({r['id']: k for r, k in zip(d['runways'], bent)}))
     if icao in FIELD_PAVEMENT:
         # v0.7.0: between the pavement's ends, as the game draws a runway's surface (runways.js runwayRects(): its ends'
         # elevations at the pavement's ends), so a displaced threshold's runway (Charles de Gaulle's 26R and 27L) has the
@@ -383,13 +416,17 @@ def field_runways(icao, x0, y0, cell, nx, ny):
     for j in range(ny):
         y = y0 + (j + 0.5) * cell
         num_, den = np.zeros(nx), np.zeros(nx)
-        for (ax, ay, az), (bx, by, bz) in R:
+        for k, ((ax, ay, az), (bx, by, bz)) in enumerate(R):
             L = np.hypot(bx - ax, by - ay)
             ux, uy = (bx - ax) / L, (by - ay) / L
             t = np.clip((X - ax) * ux + (y - ay) * uy, 0, L)
             dd = np.hypot(X - ax - ux * t, y - ay - uy * t)
             w = 1.0 / (1.0 + dd * dd)
-            num_ += w * (az + (bz - az) * t / L)
+            if bent is not None and bent[k]:
+                # profileAt(): the straight pieces through [0, e0], the bends, [L, e1]
+                num_ += w * np.interp(t, [0.0] + [s for s, _ in bent[k]] + [L], [az] + [h for _, h in bent[k]] + [bz])
+            else:
+                num_ += w * (az + (bz - az) * t / L)
             den += w
         out[j] = num_ / den
     return out
@@ -465,7 +502,10 @@ def patch_name(pid):
 # the lagoon's level with noise either side (the patch had them at -0.5 m in the middle, 67 % of the city's cells below
 # 0 m, a few to -6.75 m), so the city stood in a pit below its own water. The islands' land is raised to 1 m (the real
 # pavements stand about 1 m over the lagoon); the lagoon itself (sea, exactly 0) and everything outside the box are as baked.
+# (v0.7.4: land only, by the patch's own sea and inland-water masks, eased off outside the box: see cmd_patch. v0.7.3's
+# floor raised the inland water inside the box too.)
 LAND_FLOOR = {'venice': ((640500.0, -141500.0, 650500.0, -134500.0), 1.0)}
+LAND_FLOOR_FEATHER_M = 300.0     # (v0.7.4: see cmd_patch)
 
 def cmd_patch(pid, force):
     path = patch_name(pid)
@@ -509,6 +549,7 @@ def cmd_patch(pid, force):
     del lab
     water_sd = -bg.signed_distance(wat, cell)
     log(pid, 'urban mean %.3f, inland water cells %d' % (float(urban.mean()), int(wat.sum())))
+    inland = wat                    # (v0.7.4: kept for LAND_FLOOR, which raises land only)
     del wat, land
 
     aero = airfields()
@@ -527,10 +568,20 @@ def cmd_patch(pid, force):
     if lf:
         (bx0, by0, bx1, by1), floor = lf
         xs = x0 + (np.arange(nx) + 0.5) * cell; ys = y0 + (np.arange(ny) + 0.5) * cell
-        inbox = ((ys >= by0) & (ys <= by1))[:, None] & ((xs >= bx0) & (xs <= bx1))[None, :]
-        low = inbox & (sea_sd > 0) & (h < floor)   # (sea_sd > 0 is land, inland water with it)
-        log(pid, 'LAND_FLOOR: %d land cells in the box raised to %.2f m (lowest was %.2f m)' % (int(low.sum()), floor, float(h[low].min()) if low.any() else float('nan')))
-        h = np.where(low, floor, h)
+        # v0.7.4: land only, by the patch's own masks: not the sea (sea_sd <= 0) and not inland water (WorldCover's, as
+        # compose_height() drew it: the lagoon round the old city is mostly inland water on OSM's land). v0.7.3 raised
+        # every cell over sea_sd > 0, the lagoon's water in the box with the islands (from about -1.5 m to 1 m), a step
+        # of 2 to 3.4 m in the water at the box's edge. The water is now as compose_height() left it everywhere, the
+        # same inside the box as out. The floor's full inside the box (the islands as in v0.7.3) and eases off over
+        # LAND_FLOOR_FEATHER_M outside it, so land the box's edge cuts (225 cell pairs of land across it at Venice)
+        # ramps down to the baked ground instead of stepping by up to 4.5 m.
+        dx = np.maximum(np.maximum(bx0 - xs, xs - bx1), 0.0); dy = np.maximum(np.maximum(by0 - ys, ys - by1), 0.0)
+        w = 1.0 - bg.smoothstep(0.0, LAND_FLOOR_FEATHER_M, np.hypot(dy[:, None], dx[None, :]))
+        low = (w > 0) & (sea_sd > 0) & ~inland & (h < floor)
+        log(pid, 'LAND_FLOOR: %d land cells raised towards %.2f m, %d of them in the box (lowest was %.2f m); water left as baked'
+            % (int(low.sum()), floor, int((low & (w >= 1)).sum()), float(h[low].min()) if low.any() else float('nan')))
+        h = np.where(low, h + (floor - h) * w, h).astype(np.float32)
+    del inland
     os.makedirs(OUT, exist_ok=True)
     bc.write_gz(path, bc.height_to_i16_land(h, sea_sd > 0) if bc.EUROPE else bc.height_to_i16(h))
     np.save(os.path.join(OUT, f'patch-{pid}.sea.npy'), (sea_sd > 0))  # for the quick-look

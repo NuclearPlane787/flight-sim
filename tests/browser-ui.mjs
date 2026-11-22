@@ -1,7 +1,7 @@
 // Screens check: loads tests/dev-ui.html in Chrome at 1440x900, takes the ui-*.png
 // screenshots and pokes the FCU, ND and map. Run through the cpu-guard:
 //   python3 tools/cpu-guard.py -- node tests/browser-ui.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
 process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 

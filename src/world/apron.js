@@ -58,6 +58,42 @@ const PULL = { taxi: [0.06, 0.0006], apron: [0.10, 0.0010], paint: [0.13, 0.0013
 // between them.
 const RUNWAY_OVERLAP = 0.05;
 
+// v0.7.4 part 9, item 6 (v0.7.7's look pass): two look switches, each on by default and read once, at import, from the
+// page's query (?termnight=0, ?aprongrass=0) or in node from FS_TERMNIGHT=0, FS_APRONGRASS=0. Off, each gives exactly
+// what the pushed v0.7.3 drew: the same shader text, the same triangles.
+function lookSwitch(q, env) {
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = new RegExp(`[?&]${q}=([01])\\b`).exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env[env] === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+// The terminals at night ("Found while building v0.7.3": storey-high window squares; v0.2.0's "a little like a
+// checkerboard close up"): BLDG_FRAG_NIGHT below.
+export const TERM_NIGHT = lookSwitch('termnight', 'FS_TERMNIGHT');
+// Grass through the aprons ("Found while building v0.7.0", at Madrid and Gatwick): neighbouring apron polygons in OSM
+// don't share their edges exactly (one side densified along a curve, the other not; two straight edges a few cm to a
+// metre apart), so thin wedges of grass, up to about 2 m wide and 200 m long, showed between them (EGKK 292 of them,
+// LEMD 487, EDDF 1,116, counted on v0.7.3's triangles; tests/v074-p9-look1.test.mjs checks three of them). Each apron gets a skirt APRON_SKIRT m wide outside its ring,
+// in the same concrete; overlapping concrete is invisible (no depth writes, the same colour at the same place).
+export const APRON_GRASS = lookSwitch('aprongrass', 'FS_APRONGRASS');
+export const APRON_SKIRT = 1.5;
+
+// A strip m wide outside each edge of a counter-clockwise ring, as a triangle soup (map x, y pairs).
+export function apronSkirt(ring, m) {
+  const out = [];
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, ay] = ring[i], [bx, by] = ring[(i + 1) % ring.length];
+    const l = Math.hypot(bx - ax, by - ay);
+    if (l < 0.01) continue;
+    const nx = ((by - ay) / l) * m, ny = (-(bx - ax) / l) * m;   // outward (the right of a counter-clockwise ring)
+    out.push(ax, ay, bx, by, bx + nx, by + ny, ax, ay, bx + nx, by + ny, ax + nx, ay + ny);
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ shaders
 
 const COMMON_VERT = /* glsl */ `
@@ -286,6 +322,60 @@ const BLDG_FRAG = /* glsl */ `
     #include <colorspace_fragment>
   }`;
 
+// v0.7.4 part 9, item 6 (TERM_NIGHT): the terminals at night. BLDG_FRAG lit each 3 m by 4.5 m pane on its own (a hash
+// per pane, 0.6 to 1.0, one in ten dark), which from the apron and the final read as a checkerboard of storey-high
+// squares. This variant (made from BLDG_FRAG's text, which stays as it was for ?termnight=0) lights a terminal's glass
+// by storeys of 3.8 m: a dark slab band at each storey's foot, mullions every 1.5 m, and along each storey long runs
+// from smooth noise (about 40 m: lit concourse to dim offices), darker service floors and plant where a slower noise
+// is low, the gate level (the jet bridges' floors, 4.6 m up) mostly lit, the apron level dimmer, and one bay in seven
+// brighter (gates, shops) at places that don't line up from storey to storey. The fine parts (the slab band, the
+// mullions, the pane-to-pane differences) fade to their means as they shrink below a pixel. Day: `lit` is only ever
+// scaled by uNight, so by day it adds nothing.
+const TERM_LIT_GLSL = /* glsl */ `
+  float termLit(float along, float y, vec2 fw) {
+    if (y < 0.6) return 0.0;
+    const float H = 3.8;
+    float yy = (y - 0.6) / H;
+    float s = floor(yy), fy = fract(yy);
+    float slab = mix(band(fy, 0.0, 0.18, fw.y / H), 0.18, smoothstep(0.4, 1.4, fw.y));
+    float mul = mix(band(fract(along / 1.5), 0.0, 0.06, fw.x / 1.5), 0.06, smoothstep(0.15, 0.6, fw.x));
+    // Each storey in stretches of 24 m (shifted storey by storey): one level a stretch, by a hash of the storey and the
+    // stretch, with a ramp into the next one as wide as the pixel's footprint (at least 1.5 m), so every edge of light
+    // is a floor line or a vertical bay line.
+    int si = int(s);
+    float u = (along + 9.7 * s) / 24.0, f = fract(u);
+    int ui = int(floor(u));
+    float w = max(1.5, 1.5 * fw.x) / 24.0;
+    float h0 = ihash(ivec2(ui, si), 41u), h1 = ihash(ivec2(ui + 1, si), 41u);
+    float v0 = h0 < 0.12 ? 0.2 : h0 < 0.4 ? 0.5 : h0 < 0.9 ? 0.85 : 1.2;
+    float v1 = h1 < 0.12 ? 0.2 : h1 < 0.4 ? 0.5 : h1 < 0.9 ? 0.85 : 1.2;
+    float lvl = mix(v0, v1, smoothstep(1.0 - w, 1.0, f));
+    // Service floors and plant: a whole storey dark over a stretch of 96 m, edged the same way.
+    float uq = along / 96.0, fq = fract(uq), wq = max(1.5, 1.5 * fw.x) / 96.0;
+    int qi = int(floor(uq));
+    float d0 = step(ihash(ivec2(qi, si), 43u), 0.15), d1 = step(ihash(ivec2(qi + 1, si), 43u), 0.15);
+    lvl *= 1.0 - 0.85 * mix(d0, d1, smoothstep(1.0 - wq, 1.0, fq));
+    if (s < 0.5) lvl *= 0.5;
+    else if (s < 1.5) lvl = max(lvl, 0.8);
+    // Far off (from a storey of about twelve pixels to one of four, or a stretch under about eight): to the mean, so
+    // nothing steps or shimmers.
+    lvl = mix(lvl, 0.62, max(smoothstep(0.3, 1.0, fw.y), smoothstep(3.0, 8.0, fw.x)));
+    float pane = ihash(ivec2(int(floor(along / 1.5)), int(s)), 29u);
+    lvl *= mix(1.0, 0.85 + 0.3 * pane, 1.0 - smoothstep(0.3, 1.2, fw.x));
+    return (1.0 - slab) * (1.0 - mul) * lvl;
+  }`;
+function termNightVariant(src) {
+  const oldLit = `      float h = ihash(ivec2(floor(along / 3.0), floor(y / 4.5)), 7u);
+      lit = glass * (0.6 + 0.4 * h) * step(0.1, h);`;
+  const head = `  #include <logdepthbuf_pars_fragment>
+  void main() {`;
+  if (src.split(oldLit).length !== 2 || src.split(head).length !== 2) throw new Error('apron.js: BLDG_FRAG changed: TERM_NIGHT\'s variant needs mending');
+  return src.replace(head, `${TERM_LIT_GLSL}\n${head}`).replace(oldLit, '      lit = termLit(along, y, fw);');
+}
+export const BLDG_FRAG_NIGHT = termNightVariant(BLDG_FRAG);
+export const BLDG_FRAG_USED = TERM_NIGHT ? BLDG_FRAG_NIGHT : BLDG_FRAG;
+export { BLDG_FRAG };
+
 // v0.4.1: the signs in the grass. Boxes on posts, lit by the sun and the sky; the faces' letters from the glyph atlas,
 // and at night the faces glow (they're lit from inside).
 const SIGN_VERT = /* glsl */ `
@@ -427,6 +517,7 @@ export function* buildPavementInSteps(a, ox, oy, groundAt, aprons, tick = sliceT
     const soup = [];
     for (const f of faces) for (const k of f) soup.push(ring[k][0], ring[k][1]);
     yield* add(subdivideSoup(soup, 30), 1, 1);   // 30 m: follow the 30 m height patches
+    if (APRON_GRASS) yield* add(subdivideSoup(apronSkirt(ring, APRON_SKIRT), 30), 1, 1);   // v0.7.4: see APRON_GRASS
     if (tick()) yield 'pavement: aprons';
   }
   yield 'pavement: aprons';
@@ -935,7 +1026,7 @@ export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = 
     yield 'paint';
     const bl = yield* buildBuildingsInSteps(a, ox, oy, groundAt, tick);
     meshes.push(new THREE.Mesh(bl.geo, new THREE.ShaderMaterial({
-      uniforms: u, vertexShader: vhead + BLDG_VERT, fragmentShader: fhead + BLDG_FRAG,
+      uniforms: u, vertexShader: vhead + BLDG_VERT, fragmentShader: fhead + BLDG_FRAG_USED,
     })));
     yield 'buildings';
     const signs = yield* buildSignsInSteps(signSites, ox, oy, groundAt, chars, tick);

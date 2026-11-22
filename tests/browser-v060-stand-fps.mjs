@@ -2,7 +2,7 @@
 // free camera), parked at the first gate the setup offers the A321neo, the outside view, by day
 // and at night: frames counted over 4 s of real time, with the draws and triangles.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 8 -- node games/flight-sim/tests/browser-v060-stand-fps.mjs [ICAO ...]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

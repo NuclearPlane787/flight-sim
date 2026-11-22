@@ -230,6 +230,52 @@ export function boxAt(cx, cy, cz, lx, ly, lz) {
   g.translate(cx, cy, cz);
   return g;
 }
+// v0.7.4 (item 6): a flat bar from p0 to p1, w wide and t thick, its thickness along `nrm` (a torque link's plate).
+export function plateBetween(p0, p1, w, t, nrm = V(0, 1, 0)) {
+  const ex = p1.clone().sub(p0), len = ex.length();
+  ex.normalize();
+  const ey = nrm.clone().sub(ex.clone().multiplyScalar(nrm.dot(ex))).normalize(), ez = ex.clone().cross(ey);
+  const g = new THREE.BoxGeometry(len, t, w);
+  g.applyMatrix4(new THREE.Matrix4().makeBasis(ex, ey, ez).setPosition((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, (p0.z + p1.z) / 2));
+  return g;
+}
+// v0.7.4 (item 6): a wheel's brake stack and hub cap, so the wheel reads solid: a disc of radius kr·R on the side
+// facing `inward` (±1 along y), standing out of the hub by `out`, and a small cap on the other side.
+export function wheelCentre(c, R, W, inward, { brake = 0.55, out = 0.08, cap = 0.2, segs = 14 } = {}) {
+  const parts = [];
+  if (brake) parts.push(new THREE.CylinderGeometry(brake * R, brake * R, out + 0.06, segs).translate(c.x, c.y + inward * (W / 2 + out / 2 - 0.03), c.z));
+  parts.push(new THREE.CylinderGeometry(cap * R, cap * R * 0.85, 0.07, 10).translate(c.x, c.y - inward * (W / 2 + 0.015), c.z));
+  return parts;
+}
+// v0.7.4 (item 6, second pass): a wheel's two faces, the rim at its real size: `rim` the bead seat's radius (the tyre's
+// R number in inches, halved [EST]), its flange 0.03 m bigger. On each face: the tyre's black sidewall from the flange
+// out to `blackOuter` (so no daylight past the rim), a light rim flange standing 0.03 m proud with a lip, a dished face
+// recessed 0.05 m behind it, inside that the brake stack (mains, dark) or the wheel's own web (light), and a bright boss
+// with its hub cap. The wheel's tyre and size are the caller's. Returns the parts by colour, each a list of geometries.
+export const WHEEL_COLOURS = { rim: '#d9dde1', dish: '#aab1b8', brake: '#3d4249', web: '#9ea5ad', boss: '#eceef0' };
+export function wheelFaces(c, R, W, rim, { brake = true, blackOuter = 0.68 * R, segs = 12 } = {}) {
+  const out = { rim: [], dish: [], inner: [], boss: [], black: [] };
+  const flange = rim + 0.03, dishR = rim - 0.02, bossR = Math.max(0.05, 0.3 * rim);
+  const ring = (r0, r1, y, s) => new THREE.RingGeometry(r0, r1, segs).rotateX(s > 0 ? -Math.PI / 2 : Math.PI / 2).translate(c.x, y, c.z);
+  // The inside, closing the wheel: its two faces 0.05 m behind each rim face (the brake stack or the web).
+  out.inner.push(new THREE.CylinderGeometry(dishR, dishR, Math.max(0.05, W - 0.1), segs).translate(c.x, c.y, c.z));
+  for (const s of [1, -1]) {
+    const f = c.y + s * W / 2;
+    out.black.push(ring(flange, blackOuter, f - s * 0.004, s));
+    out.rim.push(new THREE.CylinderGeometry(flange, flange, 0.04, segs, 1, true).translate(c.x, f + s * 0.01, c.z));
+    out.rim.push(ring(dishR, flange, f + s * 0.03, s));
+    out.dish.push(ring(bossR + 0.6 * (dishR - bossR), dishR, f - s * 0.02, s));
+    out.boss.push(new THREE.CylinderGeometry(bossR, bossR, 0.08, 8).translate(c.x, f - s * 0.01, c.z));
+  }
+  out.brake = brake;
+  return out;
+}
+// Adds wheelFaces()'s parts to a builder on one bone.
+export function addWheelFaces(b, bone, faces) {
+  const K = WHEEL_COLOURS;
+  b.add(faces.rim, bone, K.rim); b.add(faces.dish, bone, K.dish); b.add(faces.boss, bone, K.boss);
+  b.add(faces.inner, bone, faces.brake ? K.brake : K.web); b.add(faces.black, bone, '#1a1b1d');
+}
 export function sphereAt(c, r, segs = 8) {
   const g = new THREE.SphereGeometry(r, segs, Math.max(4, segs >> 1));
   g.translate(c.x, c.y, c.z);
@@ -783,20 +829,34 @@ export function createAircraft(opts = {}) {
     const pivot = AF ? V(gm.x, gm.y, onWing(0, 0, -0.9).z) : V(gm.x, gm.y, -0.9);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
     // v0.5.0: a design's longer gear (EXT) lengthens the leg below the wing; the pivot and braces stay.
-    b.add(cylBetween(pivot, V(gm.x, gm.y, -2.7 - EXT), 0.15, 0.14, 14), LEG, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, -2.15), onWing(0, -side * 0.95, -0.98), 0.06, 0.06, 8), LEG, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, -2.0), onWing(1.0, 0, -0.98), 0.06, 0.06, 8), LEG, C.gear);
+    // v0.7.4 (Shane's item 6: "made with thin little rods"): in real proportions from the ACAP drawings and photographs
+    // [EST]: the shock strut about 0.34 m across with its gland at the foot (was 0.3), tubes for the braces (0.2 m, tapering to the old 0.12 m where they meet the wing's skin), a
+    // 0.28 m piston, the axle as thick as the hubs with its housing, plate torque links, brake stacks and hub caps.
+    // Looks only: every bone, pivot and wheel is where it was.
+    b.add(cylBetween(pivot, V(gm.x, gm.y, -2.7 - EXT), 0.165, 0.175, 16), LEG, C.gear);   // (its top clear of the inner flap)
+    b.add(cylBetween(V(gm.x, gm.y, -2.72 - EXT), V(gm.x, gm.y, -2.58 - EXT), 0.2, 0.2, 16), LEG, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, -2.15), onWing(0, -side * 0.95, -0.98), 0.1, 0.06, 10), LEG, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, -2.0), onWing(1.0, 0, -0.98), 0.1, 0.06, 10), LEG, C.gear);
     b.add(boxAt(gm.x, gm.y + side * 0.24, -1.76, 0.75, 0.04, 1.52), LEG, C.navy);
     const PIS = bone('mainPiston' + S, 'mainLeg' + S, V(gm.x, gm.y, axleZ), V(0, 0, 1));
-    b.add(cylBetween(V(gm.x, gm.y, -2.6 - EXT), V(gm.x, gm.y, axleZ), 0.1, 0.1, 12), PIS, C.chrome);
-    b.add(cylBetween(V(gm.x, gm.y - 0.5, axleZ), V(gm.x, gm.y + 0.5, axleZ), 0.075, 0.075, 8), PIS, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, axleZ + 0.05), V(gm.x + 0.45, gm.y, axleZ + 0.6), 0.04, 0.04, 6), PIS, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, -2.6 - EXT), V(gm.x, gm.y, axleZ), 0.14, 0.14, 14), PIS, C.chrome);
+    b.add(cylBetween(V(gm.x, gm.y - 0.5, axleZ), V(gm.x, gm.y + 0.5, axleZ), 0.11, 0.11, 12), PIS, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y - 0.17, axleZ), V(gm.x, gm.y + 0.17, axleZ), 0.17, 0.17, 12), PIS, C.gear);   // the axle's housing
+    {
+      // Torque links, two plates hinged at a knee ahead of the strut (was a rod of 0.04 m).
+      const zt = -2.66 - EXT, top = V(gm.x + 0.14, gm.y, zt), knee = V(gm.x + 0.46, gm.y, (zt + axleZ) / 2 + 0.06), foot = V(gm.x + 0.16, gm.y, axleZ + 0.22);
+      b.add(plateBetween(top, knee, 0.14, 0.06), PIS, C.gear);
+      b.add(plateBetween(knee, foot, 0.14, 0.06), PIS, C.gear);
+    }
     const WH = bone('mainWheel' + S, 'mainPiston' + S, V(gm.x, gm.y, axleZ), V(0, 1, 0));
     for (const dy of [-0.465, 0.465]) {
       const c = V(gm.x, gm.y + dy, axleZ);
-      b.add(new THREE.CylinderGeometry(TYRE_R, TYRE_R, 0.44, 24).translate(c.x, c.y, c.z), WH, C.tyre);
-      b.add(new THREE.CylinderGeometry(0.36, 0.36, 0.46, 16).translate(c.x, c.y, c.z), WH, C.hub);
-      b.add(boxAt(c.x, c.y + Math.sign(dy) * 0.235, c.z + 0.2, 0.08, 0.01, 0.12), WH, C.tyre); // marks to show spin
+      // v0.7.4 (second pass): the tread an open band (the same radius and width), its faces the tyre's black sidewall
+      // and the rim at its real size, 46×17 R20 [EST], light, with the brake stack inside (wheelFaces()); it was a
+      // closed black drum with a grey disc of 0.36 m over each face (C.hub).
+      b.add(new THREE.CylinderGeometry(TYRE_R, TYRE_R, 0.44, 24, 1, true).translate(c.x, c.y, c.z), WH, C.tyre);
+      addWheelFaces(b, WH, wheelFaces(c, TYRE_R, 0.44, 20 * 0.0254 / 2, { blackOuter: TYRE_R, segs: 16 }));
+      b.add(boxAt(c.x, c.y + Math.sign(dy) * 0.222, c.z + 0.45, 0.08, 0.01, 0.1), WH, C.tyre); // marks to show spin
     }
     // hinged belly door over the leg bay
     const DR = bone('mainDoor' + S, 'root', V(gm.x, side * 0.25, -2.36), V(1, 0, 0));
@@ -860,20 +920,30 @@ export function createAircraft(opts = {}) {
   const nAxle = V(NG.x, 0, NG.z + NTYRE), nPivot = V(16.1 + fwd, 0, -1.3);   // NG: geo.GEAR.nose, moved with the plug
   const nAxis = nPivot.clone().sub(nAxle).normalize();
   const NLEG = bone('noseLeg', 'root', nPivot, V(0, 1, 0));
-  b.add(cylBetween(nPivot, nPivot.clone().lerp(nAxle, 0.6), 0.11, 0.1, 12), NLEG, C.gear);
-  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.35), V(17.3 + fwd, 0, -1.4), 0.05, 0.05, 6), NLEG, C.gear);
+  // v0.7.4 (item 6): the nose gear to match [EST] (the strut 0.22 m and its brace 0.1 m, were 0.1 m and 0.05 m).
+  b.add(cylBetween(nPivot, nPivot.clone().lerp(nAxle, 0.6), 0.14, 0.13, 14), NLEG, C.gear);
+  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.57), nPivot.clone().lerp(nAxle, 0.62), 0.155, 0.155, 14), NLEG, C.gear);
+  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.35), V(17.3 + fwd, 0, -1.4), 0.07, 0.07, 8), NLEG, C.gear);
   b.add(sphereAt(nPivot.clone().lerp(nAxle, 0.5).add(V(0.12, 0, 0)), 0.08), NLEG, C.lamp); // taxi light
   const NSTEER = bone('noseSteer', 'noseLeg', nAxle, nAxis);
   const NPIS = bone('nosePiston', 'noseSteer', nAxle, nAxis);
-  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.5), nAxle, 0.075, 0.075, 10), NPIS, C.chrome);
-  b.add(cylBetween(V(nAxle.x, -0.36, nAxle.z), V(nAxle.x, 0.36, nAxle.z), 0.05, 0.05, 8), NPIS, C.gear);
-  b.add(boxAt(nAxle.x + 0.05, 0, nAxle.z + 0.42, 0.5, 0.2, 0.06), NPIS, C.gear); // mudguard-ish link
+  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.5), nAxle, 0.095, 0.095, 12), NPIS, C.chrome);
+  b.add(cylBetween(V(nAxle.x, -0.36, nAxle.z), V(nAxle.x, 0.36, nAxle.z), 0.075, 0.075, 10), NPIS, C.gear);
+  b.add(cylBetween(V(nAxle.x, -0.13, nAxle.z), V(nAxle.x, 0.13, nAxle.z), 0.12, 0.12, 12), NPIS, C.gear);   // the axle's housing
+  {
+    // Torque links ahead of the strut, hinged at a knee (was a flat plate over the axle).
+    const L = nPivot.distanceTo(nAxle), at = (d, f) => nAxle.clone().addScaledVector(nAxis, d).add(V(f, 0, 0));
+    const top = at(0.4 * L - 0.03, 0.12), knee = at(0.25 * L, 0.32), foot = at(0.12, 0.12);
+    b.add(plateBetween(top, knee, 0.11, 0.05), NPIS, C.gear);
+    b.add(plateBetween(knee, foot, 0.11, 0.05), NPIS, C.gear);
+  }
   const NWH = bone('noseWheel', 'nosePiston', nAxle, V(0, 1, 0));
   for (const dy of [-0.235, 0.235]) {
     const c = V(nAxle.x, dy, nAxle.z);
-    b.add(new THREE.CylinderGeometry(NTYRE, NTYRE, 0.22, 20).translate(c.x, c.y, c.z), NWH, C.tyre);
-    b.add(new THREE.CylinderGeometry(0.2, 0.2, 0.235, 12).translate(c.x, c.y, c.z), NWH, C.hub);
-    b.add(boxAt(c.x, c.y + Math.sign(dy) * 0.118, c.z + 0.12, 0.06, 0.01, 0.08), NWH, C.tyre);
+    b.add(new THREE.CylinderGeometry(NTYRE, NTYRE, 0.22, 20, 1, true).translate(c.x, c.y, c.z), NWH, C.tyre);
+    // v0.7.4 (second pass): the rim, 30×8.8 R15 [EST], light, no brakes (was a grey disc of 0.2 m)
+    addWheelFaces(b, NWH, wheelFaces(c, NTYRE, 0.22, 15 * 0.0254 / 2, { brake: false, blackOuter: NTYRE, segs: 12 }));
+    b.add(boxAt(c.x, c.y + Math.sign(dy) * 0.112, c.z + 0.3, 0.06, 0.01, 0.06), NWH, C.tyre);
   }
   for (const side of [1, -1]) {
     const D = bone('noseDoor' + (side > 0 ? 'L' : 'R'), 'root', V(17.1 + fwd, side * 0.36, -2.0), V(1, 0, 0));

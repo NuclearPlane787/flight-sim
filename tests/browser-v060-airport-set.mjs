@@ -7,7 +7,7 @@
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 10 -- node games/flight-sim/tests/browser-v060-airport-set.mjs \
 //     --base http://127.0.0.1:8014/games/flight-sim/
 // Writes /tmp/flight-sim/v060/airport-set-work/browser-airport-set.json; exits 1 on a failed check.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

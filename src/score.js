@@ -127,6 +127,26 @@ function grade(points) {
 }
 
 const sq = (x) => x * x;
+// v0.7.4: the centreline part. Full marks within CENTRE_FULL_M of the centreline; 0 where the outer main wheel's outer
+// edge is on the runway's edge.
+export const CENTRE_FULL_M = 1.5;
+// How far the outer main wheel's outer edge is from the aircraft's centreline (m): the farther main leg, half the
+// bogie's tread (the wheels' centres across one leg) and half a tyre's width. From the geometry being flown, so a
+// design whose gear the warehouse moved out is scored by where its wheels are.
+export function gearOuterM(geo) {
+  const G = geo && geo.GEAR, W = (geo && (geo.BOGIE || geo.MAIN_WHEELS)) || { tread: 0.93, wheelWidthMain: 0.44 };
+  const leg = G ? Math.max(Math.abs(G.left.y), Math.abs(G.right.y)) : 3.795;
+  return leg + (W.tread ?? 0.93) / 2 + (W.wheelWidthMain ?? 0.44) / 2;
+}
+// The distance off the centreline that scores 0 on a runway widthM wide (never less than a metre past full marks).
+export const centrelineEdge = (widthM, geo) => Math.max(CENTRE_FULL_M + 1, (widthM > 0 ? widthM : 45) / 2 - gearOuterM(geo));
+// The A321neo on a 45 m runway: 22.5 − (3.795 + 0.465 + 0.22) = 18.02 m.
+export const CENTRE_EDGE_DEFAULT = centrelineEdge(45, null);
+// The part's score before rounding, 10 to 0.
+export const centrelineScore = (cross, edge = CENTRE_EDGE_DEFAULT) => {
+  const d = Math.abs(cross);
+  return d <= CENTRE_FULL_M ? 10 : d >= edge ? 0 : (10 * (edge - d)) / (edge - CENTRE_FULL_M);
+};
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 // About (x/s)²/2 near 0 and |x|/s far out: small misses cost little, big ones don't explode.
 const soft = (x, s) => Math.sqrt(1 + sq(x / s)) - 1;
@@ -147,8 +167,13 @@ export const COST = {
     const off = along - aim;
     return (off >= 0 ? 0.42 * soft(off, 300) : 0.28 * soft(off, 200)) + (along < 0 ? 0.3 : 0);
   },
-  // m off the centreline: 1 → 0.008, 2 → 0.03, 4 → 0.10, 8 → 0.31, 15 → 0.72.
-  centreline: (cross) => 0.25 * soft(cross, 4),
+  // m off the centreline. v0.7.4 (Shane: "5.7m is only a tiny fraction of the runway's width. Maybe let landing on
+  // the very edge be 0, and closer and closer to the center is full marks, not a steep dropoff"): 10 within
+  // CENTRE_FULL_M, then a straight line to 0 at `edge`, where the outer main wheel's outer edge reaches the runway's
+  // edge (centrelineEdge(): from the runway's own width and the flown type's or design's gear; the A321neo on a
+  // 45 m runway by default). The cost is the one whose score (scoreFor with RATE.centreline's k) is that line.
+  // (v0.5.4 to v0.7.3: 0.25 × soft(cross, 4): 1 m 10, 2 m 8, 5 m 4, 10 m 1.)
+  centreline: (cross, edge = CENTRE_EDGE_DEFAULT) => -0.16 * Math.log(Math.max(0.01, centrelineScore(cross, edge)) / 10),
   // °: 1 → 0.007, 2 → 0.03, 4 → 0.11, 6 → 0.25.
   bank: (deg) => sq(deg / 12),
   // °: a shallow bowl around 5.5° (4 → 0.006, 7.2 → 0.007), steep below 2.5° (the nosewheel
@@ -167,7 +192,7 @@ export const COST = {
 // v0.5.4: what makes each part's score out of 10 and how much it weighs: [k, weight]. A part
 // scores round(10 × e^(−cost / k)) (scoreFor). Vertical speed: 190 ft/min 10, 300 8, 400 6,
 // 600 3, 900 0. Peak g: 1.3 9, 1.5 7, 2.0 3. Aiming point: ±50 m 10, +150 m 7, +300 m 3,
-// +500 m 1. Centreline: 1 m 10, 2 m 8, 5 m 4, 10 m 1. Bank: 2° 9, 5° 5, 7° 3. Pitch: 3–8° 9–10,
+// +500 m 1. Centreline (v0.7.4): 1.5 m 10, then a straight line to 0 at the runway's edge (COST.centreline). Bank: 2° 9, 5° 5, 7° 3. Pitch: 3–8° 9–10,
 // 1° 3, 9.5° 1. Bounces: one 5, two 3. (The grass, the taxiway and the would-be crash were parts
 // in v0.5.4; since v0.5.5 they're rows of what comes off the total, so their entries here go unused.
 // The approach's two parts, path [0.095, 2] and swing [0.1, 1.5], went in v0.6.2.)
@@ -350,7 +375,7 @@ export function runwayEndRefs(airports) {
 export function createScorer() {
   // The aircraft type (v0.3.0: scorer.setType(def)): the height of its reference point on the
   // wheels, and the touchdown pitch it's scored against, from its tail-strike geometry.
-  let groundZ = GROUND_Z, pitchBand = PITCH_A321;
+  let groundZ = GROUND_Z, pitchBand = PITCH_A321, geo = null;   // (v0.7.4: geo, for the centreline part's edge)
   let rf = null;
   let landing = null;  // { runway, end, other } of the touchdown, or null (off the runway)
   let td = null;       // the first touchdown
@@ -366,7 +391,7 @@ export function createScorer() {
   const clearTrack = () => { track = []; lastSampleT = -Infinity; };
 
   return {
-    setType(def) { groundZ = def.geo.GROUND_Z; pitchBand = def.score || PITCH_A321; },
+    setType(def) { groundZ = def.geo.GROUND_Z; pitchBand = def.score || PITCH_A321; geo = def.geo; },
     // The runway end being landed on (null clears it). The touchdown sets it again
     // (setLanding), so this is only the plan until then.
     setRunway(end, other) {
@@ -497,7 +522,9 @@ export function createScorer() {
       add('g', 'Peak g', +peakG.toFixed(2), 'g', COST.g(peakG));
       if (td.onRunway) {
         add('aim', 'Touchdown vs aiming point', Math.round(td.along - aim), 'm', COST.aim(td.along, aim));
-        add('centreline', 'From centreline', +Math.abs(td.cross).toFixed(1), 'm', COST.centreline(td.cross));
+        // v0.7.4: against the runway's own width and the gear being flown (0 with the outer wheel on the edge)
+        const edge = centrelineEdge(landing && landing.runway && landing.runway.widthM, geo);
+        add('centreline', 'From centreline', +Math.abs(td.cross).toFixed(1), 'm', COST.centreline(td.cross, edge), { edgeM: +edge.toFixed(2) });
       }
       add('bank', 'Bank', +td.bank.toFixed(1), '°', COST.bank(td.bank));
       add('pitch', 'Pitch', +td.pitch.toFixed(1), '°', COST.pitch(td.pitch, pitchBand));

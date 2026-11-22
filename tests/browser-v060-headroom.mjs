@@ -3,7 +3,7 @@
 // second it then reaches say how far the 60 fps cap is from the edge (120: twice the room).
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 5 -- node games/flight-sim/tests/browser-v060-headroom.mjs [--ground 0]
 // Run it ALONE (no other browser rendering), or the numbers mean nothing.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { toMap } from '../src/world/frame.js';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const ROOT = process.env.E2E_ROOT || 'http://127.0.0.1:8014/';

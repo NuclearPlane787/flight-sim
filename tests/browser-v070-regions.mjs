@@ -11,7 +11,7 @@
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 6 -- node games/flight-sim/tests/browser-v070-regions.mjs
 // Env: E2E_ROOT (default http://127.0.0.1:8014/), E2E_BASE (default E2E_ROOT + 'base/': skip part 1 with E2E_BASE=none),
 // E2E_PENDING=1 (Europe's airports still pending: adds ?pending=1).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,7 +51,7 @@ try {
       const p = f.sim.state.pos;
       return { ok: r.ok, id: r.id, pos: [p.x, p.y, p.z], t: f.sim.state.t, version: document.querySelector('[data-version]').textContent, hasRegion: 'region' in (f.scenarios.entry(r.id) || {}) };
     });
-    check('a scenario saved by the pushed build', oldSave.ok && /v0\.6\.4|v0\.7\.[012]/.test(oldSave.version), `${oldSave.version}; at ${oldSave.pos.map((v) => v.toFixed(1)).join(', ')}`);
+    check('a scenario saved by the pushed build', oldSave.ok && /v0\.6\.4|v0\.7\.[0-3]/.test(oldSave.version), `${oldSave.version}; at ${oldSave.pos.map((v) => v.toFixed(1)).join(', ')}`);
     await page.close();
 
     const now = await ctx.newPage(); watch(now);

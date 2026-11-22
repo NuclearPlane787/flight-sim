@@ -27,12 +27,15 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
       '24L': { ...E, elevFt: 149.1, pubMag: 243.83, trueBrg: 248.83, thr: ['522130.330N', '0133123.383E'] },
     },
     fieldSurface: 'runways', fieldPavement: true,
-    // The lead, 13:28: from the north apron (the old Schoenefeld side: stands 19, 21, 22, 24 and OSM's B, C, P1, P2 and
-    // PADEAST) the way to 06R/24L crosses 06L/24R where OSM's two taxiway stubs meet the runway 43 and 89 m apart, so
-    // the route runs that far along it. Allowed for those nine stands only; every other route is under 1 m.
-    alongRunway: { byStand: { 19: 100, 21: 100, 22: 100, 24: 100, B: 100, C: 100, P1: 100, P2: 100, PADEAST: 100 }, reason: 'crossing 06L/24R between two offset stubs' },
-    // OSM's stands; which take a widebody is the geometry's (the parking chart not read)
-    stands: { min: 173, max: 173, refs: ['R1', '19', '21', '34', '60'], gates: 5, e787: { min: 108, max: 108 }, e777: { min: 86, max: 86 } },
+    // The lead, 13:28: from the north apron (the old Schoenefeld side: stands 19, 21, 22, 24 and OSM's B, C, P1, P2 and,
+    // until v0.7.4 took the de-icing pads out of the stands, PADEAST) the way to 06R/24L crosses 06L/24R where OSM's two
+    // taxiway stubs meet the runway 43 and 89 m apart, so the route runs that far along it. Allowed for those eight stands
+    // only; every other route is under 1 m.
+    alongRunway: { byStand: { 19: 100, 21: 100, 22: 100, 24: 100, B: 100, C: 100, P1: 100, P2: 100 }, reason: 'crossing 06L/24R between two offset stubs' },
+    // OSM's stands; which take a widebody is the geometry's (the parking chart not read). v0.7.4: 156, not 173: OSM's
+    // fourteen de-icing pad positions (PAD1 to PADEAST) and three unnamed ones on the east pad are no stands (the bake's
+    // STAND_EXCLUDE by refs and STAND_DROP_NUMBERED); their pavement stays.
+    stands: { min: 156, max: 156, refs: ['R1', '19', '21', '34', '60'], gates: 5, e787: { min: 97, max: 97 }, e777: { min: 75, max: 75 } },   // (v0.7.4: 108 and 86 with the pads)
     countries: ['DE'],
     routes: [['EDDB', 'EDDM', 249.4], ['EDDB', 'EDDF', 232.9], ['EDDB', 'EHAM', 320.4]],
   });

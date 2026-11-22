@@ -9,6 +9,7 @@
 // KST time picked here, KST whatever the Mac's timezone); defaults.time sets the start.
 // plan.weather = a preset's id in src/sim/weather-presets.js (v0.4.0; 'clear' by default). It stays with the
 // plan (defaults.weather), so a New flight keeps it, but a new scenario starts clear: it isn't kept in lastPlan.
+// v0.7.4: plan.weather is the departure's; plan.weatherDest the destination's (absent: the same as the departure's).
 // opts = { title, name, nameField, cancel, lockType }: the dialog's title ("New scenario", "New flight"),
 // a Name field at the top (3–40 characters; the plan gets `name`, cleaned), a Cancel button (resolves null),
 // and lockType: a scenario keeps its aircraft, so a New flight inside one shows only defaults.type's card.
@@ -25,7 +26,7 @@
 // v0.5.8: the scenario's copy is named as the design is now (designName(), by its id; its own name once the design
 // is deleted), on its card and in the plan Fly returns: only the name, its parts stay the scenario's.
 
-import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints } from './common.js';
+import { C, font, NM, airportList, thresholdOf, buildCoast, traceRings, setWaypoints, runwayCourseMag, courseText } from './common.js';
 import { cleanName, nameOk, NAME_MIN, NAME_MAX } from '../scenarios.js';
 import { zoneAt, zoneLabel, fmtZone, fmtZoneDate, zoneFieldValues, zoneFromFields } from '../clock.js';
 import { circleFrom, canTakeOff, canLand, runwayUse, runwayUseNote } from '../world/runways.js';
@@ -257,7 +258,8 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
             <button data-v="now" title="The real time in Korea">Now</button><button data-v="set" title="A date and a time (KST)">Set</button>
           </div><span class="fsui-note" data-o="timeNote"></span></div>
           <div class="fsui-row" data-o="timeRow" hidden><input type="date" data-t="date" class="fsui-date"><input type="time" data-t="time" step="60" class="fsui-time"><span class="fsui-note">KST</span></div>
-          <div class="fsui-row"><label>Weather</label><select data-f="weather" aria-label="Weather">${PRESETS.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
+          <div class="fsui-row"><label title="The weather at the departure">Departure</label><select data-f="weather" aria-label="Weather at the departure">${PRESETS.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}</select></div>
+          <div class="fsui-row"><label title="The weather at the destination; between the two it blends along the route">Arrival</label><select data-f="weatherDest" aria-label="Weather at the destination"></select></div>
         </div>
       </div>
     </div>
@@ -337,7 +339,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
   const ends = (icao, what) => {
     const out = (list().find((a) => a.icao === icao)?.runways || []).flatMap((r) => r.ends
       .filter((e) => (what === 'dep' ? canTakeOff(icao, e.ident) : what === 'arr' ? canLand(icao, e.ident) : true))
-      .map((e) => [e.ident, `RWY ${e.ident}  (${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling ? ', circling only' : ''}${runwayUseNote(icao, e.ident) ? ', ' + runwayUseNote(icao, e.ident) : ''})`]));
+      .map((e) => [e.ident, `RWY ${e.ident}  (${courseText(runwayCourseMag(e, r.ends.find((x) => x !== e)))}°, ${Math.round(r.lengthM || 0).toLocaleString()} m${e.circling ? ', circling only' : ''}${runwayUseNote(icao, e.ident) ? ', ' + runwayUseNote(icao, e.ident) : ''})`]));
     return out.filter(([i]) => runwayUse(icao, i) !== 'standby').concat(out.filter(([i]) => runwayUse(icao, i) === 'standby'));
   };
   const endObj = (icao, ident) => {
@@ -398,6 +400,13 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     f('fuelKg').value = plan.fuelKg;
     plan.weather = opt(f('weather'), PRESETS.map((p) => [p.id, p.name]), plan.weather);
     f('weather').title = weatherNote();
+    // v0.7.4: the destination's weather, the departure's unless picked ('' is "the same").
+    plan.weatherDest = opt(f('weatherDest'), [['', 'Same as departure'], ...PRESETS.map((p) => [p.id, p.name])], plan.weatherDest || '');
+    f('weatherDest').title = PRESETS.find((p) => p.id === plan.weatherDest)?.note || 'The departure’s weather';
+    // A circuit (back to the same airport) has one place, so one weather: the Arrival picker is off.
+    const circuit = plan.origin === plan.dest;
+    f('weatherDest').disabled = circuit;
+    if (circuit) { plan.weatherDest = ''; f('weatherDest').value = ''; f('weatherDest').title = 'A circuit: one weather, the departure’s picker'; }
     seg('start', plan.start); seg('pick', pick);
     refresh();
   }
@@ -531,6 +540,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     else if (n === 'dest') { plan.dest = e.target.value; plan.arrRunway = ''; fill(); }
     else if (n === 'depRunway' || n === 'arrRunway') { plan[n] = e.target.value; refresh(); }
     else if (n === 'weather') { plan.weather = e.target.value; f('weather').title = weatherNote(); }
+    else if (n === 'weatherDest') { plan.weatherDest = e.target.value; f('weatherDest').title = PRESETS.find((p) => p.id === plan.weatherDest)?.note || 'The departure’s weather'; }
     else if (e.target === f('name') || e.target.dataset.t) { /* read on Fly */ }
     else if (e.target.matches('input')) { readInputs(e.target); fill(); }
   });
@@ -635,6 +645,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     if (opts.nameField) out.name = cleanName(f('name').value);
     out.time = timeMode === 'set' ? { mode: 'set', ms: startMs } : { mode: 'now' };
     out.weather = plan.weather || 'clear';
+    if (plan.weatherDest && plan.weatherDest !== out.weather) out.weatherDest = plan.weatherDest;   // v0.7.4 (absent: the same)
     setWaypoints(out.waypoints);
     hide();
     const r = resolver; resolver = null; r?.(out);
@@ -664,7 +675,7 @@ export function createSetup(root, { airports, coast, types, designs } = {}) {
     type = pickStart(defaults, !!opts.lockType);
     // The last plan's load and stand belong to its own type (or design): they don't carry over to another.
     const last = { ...(loadStored().lastPlan || {}) };
-    delete last.weather;   // a new scenario starts clear; only the given defaults carry a weather
+    delete last.weather; delete last.weatherDest;   // a new scenario starts clear; only the given defaults carry a weather
     if ((last.type || DEFAULT_TYPE) !== type.id || (last.design?.id ?? null) !== (type.design?.id ?? null)) { delete last.pax; delete last.cargoKg; delete last.fuelKg; delete last.stand; }
     // v0.7.0: a last plan or a default from another region (its airports aren't here) gives way to this region's first flight.
     const here = (p) => (planInRegion(p) ? p : { ...p, ...defaultPlan(), stand: undefined, waypoints: [] });

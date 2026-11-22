@@ -10,8 +10,12 @@
 // flight. Clicks and the wheel stay in the window; the settings scroll.
 // Styles: sky-window.css (fssw-* for the frame, fslw-* shared with the Weight tab, fswx-* for this).
 
-import { PRESETS, presetWeather, weatherForm, weatherFromForm, weatherCheck, metarOf, canPlaceOnFinal, COVERS, coverOf, oktaOf } from '../sim/weather-presets.js';
-import { normalizeWeather, runwayStateOf } from '../sim/weather.js';
+import { PRESETS, presetWeather, weatherForm, weatherFromForm, weatherCheck, metarOf, canPlaceOnFinal, COVERS, coverOf, oktaOf, endContext } from '../sim/weather-presets.js';
+import { normalizeWeather, runwayStateOf, endWeather, withEndWeather, hasTwoEnds } from '../sim/weather.js';
+// v0.7.4, weather by place: the Departure / Destination switch at the top. The form, the presets, Apply and the
+// METAR line are those of the end it shows (its weather alone: endWeather()); Apply and a preset set that end's
+// and keep the other's (withEndWeather(), at the ends' places in ctx.ends). The other end's METAR is the dim
+// line under it. Without the two places (no plan) the switch is off and the tab sets the one weather, as before.
 import { TAB_ICONS } from './load-window.js';
 
 const ICON = {
@@ -85,7 +89,9 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
       <span class="fssw-sub" data-o="name"></span>
       <button class="fssw-x" data-a="close" title="Close (\\ or Esc)">${ICON.x}</button></div>
     <div class="fssw-body fswx-body">
+      <div class="fswx-ends" style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px">${seg('end', [['both', 'Both ends'], ['dep', 'Departure'], ['dest', 'Destination']])}<span class="fswx-u fswx-dim" data-o="endNote" style="flex-basis:100%"></span></div>
       <div class="fswx-metar" data-o="metar"></div>
+      <div class="fswx-metar fswx-metar2" data-o="metar2" style="opacity:0.55;font-size:11px"></div>
       <div class="fswx-presets">${PRESETS.map((p) => `<button class="fssw-b" data-p="${p.id}" title="${p.name}: ${p.note}">${p.short}</button>`).join('')}</div>
       <div class="fswx-scroll">
         <div class="fswx-grid">
@@ -119,16 +125,29 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
 
   let open = false, base = normalizeWeather(null), form = weatherForm(base, null), ctx = null, crashed = false;
   let lastSettings, lastCtxKey = '', msg = '', msgCls = '', filled = {}, lastMetar = '', current = base;
-  const ctxKey = (c) => JSON.stringify(c?.arrival || null);
+  // v0.7.4: which end the tab shows ('both' | 'dep' | 'dest'), the whole settings (both ends) and the flight's own
+  // ctx. 'both' is the one weather everywhere, as the tab set it before v0.7.4 (it shows the destination's, and Apply
+  // or a preset sets both ends to it); the tab opens on it while the two ends are the same, on the destination when not.
+  let end = 'both', all = null, ctxAll = null;
+  const ctxKey = (c) => JSON.stringify([c?.arrival || null, c?.departure?.icao || null, c?.ends || null]);
+  const canSwitch = () => !!(ctxAll && ctxAll.ends);
+  const icaoOf = (e) => (e === 'dep' ? ctxAll?.departure?.icao : ctxAll?.arrival?.icao);
 
   const now = () => get?.() || { settings: null, ctx: null, crashed: false };
   const setMsg = (text, cls = '') => { msg = text; msgCls = cls; };
+  function takeNow(n) {
+    ctxAll = n.ctx || null; all = n.settings || null; lastSettings = n.settings; lastCtxKey = ctxKey(ctxAll);
+    if (!canSwitch()) end = 'both';
+    ctx = endContext(ctxAll, end);
+  }
   function rebase(n) {
-    ctx = n.ctx || null; crashed = !!n.crashed; lastSettings = n.settings; lastCtxKey = ctxKey(ctx);
-    base = current = normalizeWeather(n.settings);
+    takeNow(n); crashed = !!n.crashed;
+    base = current = normalizeWeather(endWeather(all, end));
     form = weatherForm(base, ctx);
     fill();
   }
+  // Both ends' settings with this end's set to `s`.
+  const whole = (s) => (canSwitch() && end !== 'both' ? withEndWeather(all, end, s, ctxAll.ends) : s);
 
   // The fields from the form.
   function fill() {
@@ -165,6 +184,21 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
 
     const metar = metarOf(current, ctx?.arrival?.icao, ctx);
     if (metar !== lastMetar) { o('metar').textContent = metar; lastMetar = metar; }
+    // v0.7.4: the switch, and the other end's own line.
+    paintSeg('end', end);
+    for (const b of segOf('end').querySelectorAll('button')) {
+      const v = b.dataset.v;
+      b.disabled = v !== 'both' && !canSwitch();
+      const ic = v === 'both' ? '' : icaoOf(v);
+      const t = (v === 'both' ? 'Both ends' : v === 'dep' ? 'Departure' : 'Destination') + (ic ? ` ${ic}` : '');
+      if (b.textContent !== t) { b.textContent = t; b.style.whiteSpace = 'nowrap'; }
+    }
+    const other = end === 'dep' ? 'dest' : 'dep';
+    const m2 = canSwitch() ? metarOf(normalizeWeather(endWeather(all, other)), icaoOf(other), endContext(ctxAll, other)) : '';
+    if (o('metar2').textContent !== m2) o('metar2').textContent = m2;
+    const note = !canSwitch() ? '' : end === 'both' ? (hasTwoEnds(all) ? 'Apply sets both to this' : 'One weather on the whole route')
+      : hasTwoEnds(all) ? 'Blends between the two along the route' : 'Apply sets this end only';
+    if (o('endNote').textContent !== note) o('endNote').textContent = note;
     const p = PRESETS.find((x) => x.id === current.preset);
     o('name').textContent = edited && !problems.length && current.preset !== 'custom' ? 'Custom' : p ? p.short : 'Custom';
     for (const b of el.querySelectorAll('[data-p]')) b.classList.toggle('on', b.dataset.p === current.preset && !problems.length);
@@ -182,10 +216,9 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
   }
 
   function send(settings, text) {
-    const r = onapply?.(settings) || { ok: true }, ok = r.ok !== false;
+    const r = onapply?.(whole(settings)) || { ok: true }, ok = r.ok !== false;
     if (ok) {
-      const n = now();
-      ctx = n.ctx || null; lastSettings = n.settings; lastCtxKey = ctxKey(ctx);
+      takeNow(now());
       base = current = normalizeWeather(settings); form = weatherForm(base, ctx); fill();
     }
     setMsg(r.text || (ok ? text : 'Not applied.'), ok ? 'ok' : 'bad');
@@ -214,7 +247,9 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
     open() {
       if (open) return;
       open = true; el.hidden = false; setMsg('');
-      rebase(now()); lastMetar = ''; render();
+      const n = now();
+      end = hasTwoEnds(n.settings) ? (end === 'both' ? 'dest' : end) : 'both';   // v0.7.4
+      rebase(n); lastMetar = ''; render();
     },
     close() {
       if (!open) return;
@@ -231,6 +266,12 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
       const edited = JSON.stringify(current) !== JSON.stringify(base) || weatherCheck(form, ctx).length > 0;
       if (!edited && (n.settings !== lastSettings || ctxKey(n.ctx) !== lastCtxKey)) rebase(n);
       render();
+    },
+    // v0.7.4: which end the tab shows, and showing one ('both' | 'dep' | 'dest'; edits not applied are dropped).
+    get end() { return end; },
+    showEnd(e) {
+      if (!['both', 'dep', 'dest'].includes(e) || (e !== 'both' && !canSwitch())) return;
+      end = e; setMsg(''); rebase(now()); lastMetar = ''; render();
     },
   };
 
@@ -258,6 +299,7 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
     const sg = t.closest('[data-seg]');
     if (sg) {
       const v = t.dataset.v;
+      if (sg.dataset.seg === 'end') { win.showEnd(v); return; }
       switch (sg.dataset.seg) {
         case 'turbulence': form.turbulence = v; break;
         case 'precipKind': form.precipKind = v; if (v !== 'none' && !(form.precipRate > 0)) form.precipRate = 0.5; break;

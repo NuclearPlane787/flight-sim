@@ -15,6 +15,7 @@ import * as THREE from '../../vendor/three.module.js';
 import { sunHorizontal, moonHorizontal, moonPhase, j2000ToEnuMatrix, galacticToEquatorial } from '../astro.js';
 import { runwayStateOf } from '../sim/weather.js';
 import { convergence } from './frame.js';
+import { REGION } from './regions.js';
 
 // v0.1.4's fixed afternoon sun: azimuth 230° true (south-west), 35° up.
 export const SUN_AZIMUTH_DEG = 230;
@@ -31,6 +32,14 @@ export const MOON_SCALE = 2.4;
 const RAD = Math.PI / 180;
 
 // Scene frame: X east, Y up, Z south (−map y). Azimuth from north, clockwise.
+// v0.7.4: how much of the aurora a latitude gets under a region's band ({ fadeLat, fullLat }): 0 at fadeLat and south
+// of it, 1 at fullLat and north of it, a smoothstep between; 1 with no band.
+export function auroraByLatitude(latDeg, band) {
+  if (!band) return 1;
+  const t = Math.min(1, Math.max(0, (latDeg - band.fadeLat) / (band.fullLat - band.fadeLat)));
+  return t * t * (3 - 2 * t);
+}
+
 export function azElToScene(azDeg, elDeg, out = new THREE.Vector3()) {
   const az = azDeg * RAD, el = elDeg * RAD;
   return out.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
@@ -723,6 +732,12 @@ export function createSky(scene, uniforms, chunks) {
   const m3 = new THREE.Matrix3();
 
   // Apply the light for the sun's and the Moon's altitudes (lightingAt) to every uniform and light.
+  // v0.7.4 (Shane: Europe's aurora "North only"): where the region says so (regions.js's `aurora`), the aurora is
+  // scaled by the camera's latitude: nothing at fadeLat and south of it, full at fullLat and north of it, smooth
+  // between. A region without the entry (East Asia) keeps v0.4.3's: the stars' visibility alone.
+  const AURORA_BAND = REGION.aurora || null;
+  let auroraByLat = 1;
+  const auroraLatFactor = (latDeg) => auroraByLatitude(latDeg, AURORA_BAND);
   function applyLight(sunAlt, moonAlt, illum) {
     L = lightingAt(sunAlt, moonAlt, illum, wx.cover);
     uniforms.uSunColor.value.setRGB(L.sunColor[0], L.sunColor[1], L.sunColor[2]);
@@ -739,7 +754,7 @@ export function createSky(scene, uniforms, chunks) {
     uniforms.uSunVis.value = (1 - wx.cover) * (1 - wx.cover);
     uniforms.uNight.value = L.night;
     own.uStarVis.value = L.stars;
-    own.uAurora.value = L.stars;   // v0.4.3: as dark and clear as the stars need
+    own.uAurora.value = AURORA_BAND ? L.stars * auroraByLat : L.stars;   // v0.4.3: as dark and clear as the stars need; v0.7.4: by latitude where the region says
     own.uMoonDisc.value = L.moonDisc;
     if (stars) stars.visible = L.stars > 0.002;
     // Three's lights: the sun, or the Moon (cool and dim) once it's the brighter.
@@ -772,6 +787,7 @@ export function createSky(scene, uniforms, chunks) {
       if (!Number.isFinite(ms) || !Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) return;
       if (Math.abs(ms - last.ms) < 250 && Math.abs(latDeg - last.lat) < 0.01 && Math.abs(lonDeg - last.lon) < 0.01) return;
       last.ms = ms; last.lat = latDeg; last.lon = lonDeg;
+      auroraByLat = auroraLatFactor(latDeg);
       const s = sunHorizontal(ms, latDeg, lonDeg);
       const m = moonHorizontal(ms, latDeg, lonDeg);
       const ph = moonPhase(ms);

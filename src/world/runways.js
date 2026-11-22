@@ -107,8 +107,21 @@ export function profileAt(r, s, elev = 0) {
 // centreline, 24 m from its edge), which left 12/30 a 7 m ramp in its first 19 m. The level is 12's threshold's [EST].
 export const CROSSING_LEVEL = { LKPR: { '06/24': ['12/30', 353.6] } };
 
-// Ranks, knots and cuts for an airport's runways (once; the airport keeps them). A runway
-// bends to one longer runway at most: a second crossing is left as it was, with a warning.
+// Ranks, knots and cuts for an airport's runways (once; the airport keeps them). A runway bends to every longer
+// runway it crosses and is cut by each (v0.7.4; until then to one at most, a second crossing left as it was with a
+// warning: Brussels's 01/19 crosses 07R/25L and 07L/25R).
+// - A runway that crosses ONE longer runway keeps v0.1.4's shape exactly: two bends, where its centreline meets the
+//   longer one's two drawn edges. (Off its centreline such a crossing has a step where the two meet at an angle: the
+//   shorter runway's height is a function of the distance along it alone, and the longer one's edge crosses its width
+//   askew. Up to 0.3 m at 20 m off the centreline at Dublin and Prague, under 1.5 cm on every centreline: ROADMAP.md,
+//   "Found while building v0.7.4". Shaping them as below would move ground already flown.)
+// - A runway that crosses TWO or more (v0.7.4: Brussels's 01/19 alone) gets four bends a crossing: where each of the
+//   longer runway's drawn edges meets each of its own two sides, at the longer runway's height there. Between an
+//   edge's two bends its surface is then the longer runway's height all along that edge, across its whole width, so
+//   the two meet without a lip wherever the wheels are.
+// Its knots end sorted along it. The runway's own shader carries up to MAX_KNOTS of them (knotPairs(), in a variant of
+// its text that only such a runway takes: airports.js); the heightfield and the terrain shader get the runway as
+// several rects of two bends each (runwayRects()), so their arithmetic and text are v0.1.4's for every runway.
 export function runwayCrossings(airport) {
   const rws = (airport?.runways || []).filter((r) => r.ends && r.ends.length === 2);
   if (!rws.length || rws.every((r) => r.rank !== undefined)) return;
@@ -129,6 +142,7 @@ export function runwayCrossings(airport) {
     if (s > 1 && s < a.len - 1) P.knots.push([s, set[1]]);
   }
   for (const S of order.slice().reverse()) {      // the longer ones first: their profiles are final
+    const own = S.knots.length;                   // (v0.7.4: a CROSSING_LEVEL knot of its own, kept below)
     for (const P of order) {
       if (P.rank <= S.rank) continue;
       const a = ax.get(S), b = ax.get(P);
@@ -137,13 +151,60 @@ export function runwayCrossings(airport) {
       const dx = b.p0.x - a.p0.x, dy = b.p0.y - a.p0.y;
       const sS = (dx * b.uy - dy * b.ux) / den, sP = (dx * a.uy - dy * a.ux) / den;
       if (sS < 0 || sS > a.len || sP < 0 || sP > b.len) continue;   // the centrelines don't cross on both
-      if (S.cutBy.length) { console.warn(`Runway ${S.id} crosses more than one longer runway; only ${S.cutBy[0].id} is handled`); continue; }
       const d = ((P.widthM || 45) / 2 + RUNWAY_SHOULDER_M) / Math.abs(den);   // along S, crossing to P's drawn edge
       const onP = (s) => { const x = a.p0.x + a.ux * s, y = a.p0.y + a.uy * s; return profileAt(P, (x - b.p0.x) * b.ux + (y - b.p0.y) * b.uy, elev); };
       for (const s of [sS - d, sS + d]) if (s > 1 && s < a.len - 1) S.knots.push([s, onP(s)]);
       S.cutBy.push(P);
     }
+    if (S.cutBy.length > 1) {
+      // v0.7.4: two or more crossings: four bends a crossing (above), in place of the two each just got. A point of
+      // S is (s along its axis, v to its left); across P it is linear in s, so each meeting is one division.
+      const a = ax.get(S), hwS = (S.widthM || 45) / 2 + RUNWAY_SHOULDER_M;
+      S.knots = S.knots.slice(0, own);
+      for (const P of S.cutBy) {
+        const b = ax.get(P), hwP = (P.widthM || 45) / 2 + RUNWAY_SHOULDER_M;
+        for (const edge of [-hwP, hwP]) for (const v of [-hwS, hwS]) {
+          const at = (s) => [a.p0.x + a.ux * s - a.uy * v, a.p0.y + a.uy * s + a.ux * v];
+          const across = (s) => { const [x, y] = at(s); return -(x - b.p0.x) * b.uy + (y - b.p0.y) * b.ux; };
+          const f0 = across(0), f1 = across(1), s = (edge - f0) / (f1 - f0), [x, y] = at(s);
+          if (s > 1 && s < a.len - 1) S.knots.push([s, profileAt(P, (x - b.p0.x) * b.ux + (y - b.p0.y) * b.uy, elev)]);
+        }
+      }
+      S.knots.sort((p, q) => p[0] - q[0]);
+    }
+    if (S.knots.length > MAX_KNOTS) console.warn(`Runway ${S.id} has ${S.knots.length} bends; the shaders draw the first ${MAX_KNOTS}`);
   }
+}
+
+// v0.7.4: a runway's bends for the shaders, as KNOT_VECS vec4s' worth of (position, height) pairs: [p0, h0, p1, h1],
+// [p2, h2, p3, h3] and so on, a position of 1e9 where there is none. One or two bends pack as v0.1.4's did (a single
+// bend twice); an odd count repeats its last. `knots` are [position, height] in the caller's own measure along the
+// runway, in order.
+export const MAX_KNOTS = 8, KNOT_VECS = MAX_KNOTS / 2;
+export function knotPairs(knots) {
+  const k = knots || [], n = Math.min(k.length, MAX_KNOTS), out = [];
+  for (let v = 0; v < KNOT_VECS; v++) {
+    const q = [1e9, 0, 1e9, 0], i = 2 * v;
+    if (n > i) { const k1 = k[n > i + 1 ? i + 1 : i]; q[0] = k[i][0]; q[1] = k[i][1]; q[2] = k1[0]; q[3] = k1[1]; }
+    out.push(q);
+  }
+  return out;
+}
+// The shaders' height along a runway through those vec4s, as GLSL: `h = …;` chained over KNOT_VECS vectors. `pos` is
+// the position's expression, `k` the vectors' names, `first` and `last` the two end segments' text as functions of a
+// vector's name (the runway shader measures from end 0, the terrain shader from the centre: each keeps its own
+// arithmetic, so a runway with no bend or two is computed exactly as before v0.7.4).
+export function knotChainGlsl({ pos, k, set, none, first, last }) {
+  let g = `if (${k[0]}.x > 1e8) ${set(none)}\n    else if (${pos} < ${k[0]}.x) ${set(first(k[0]))}\n`;
+  for (let i = 0; i < k.length; i++) {
+    const K = k[i], N = k[i + 1];
+    g += `    else if (${pos} < ${K}.z) ${set(`mix(${K}.y, ${K}.w, (${pos} - ${K}.x) / max(${K}.z - ${K}.x, 1e-3))`)}\n`;
+    if (N) {
+      g += `    else if (${N}.x > 1e8) ${set(last(K))}\n`;
+      g += `    else if (${pos} < ${N}.x) ${set(`mix(${K}.w, ${N}.y, (${pos} - ${K}.z) / max(${N}.x - ${K}.z, 1e-3))`)}\n`;
+    } else g += `    else ${set(last(K))}\n`;
+  }
+  return g;
 }
 
 // A runway rect's surface height at u metres along from its centre (as profileAt).
@@ -171,6 +232,22 @@ export function runwayRects(airports) {
       const dx = (e1.x - e0.x) / len, dy = (e1.y - e0.y) / len;
       const halfLen = len / 2, halfWid = (r.widthM || 45) / 2;
       const reach = halfLen + halfWid + 800;
+      const kn = r.knots || [];
+      if (kn.length > 2) {
+        // v0.7.4: more than two bends (a runway that crosses two longer ones: Brussels's 01/19). The heightfield and
+        // the terrain shader take two bends a rect (v0.1.4's rwyElev(), kept character for character), so the runway
+        // comes as several rects end to end, each with two bends inside it and the next bend's height at its end:
+        // together they are the same profile (profileAt()). Same rank, so the heightfield runs them in this order.
+        const E0 = r.ends[0].elevM ?? a.elevM ?? 0, E1 = r.ends[1].elevM ?? a.elevM ?? 0;
+        for (let i = 0, s0 = 0, h0 = E0; i < kn.length || s0 < len; i += 3) {
+          const cut = kn[i + 2], s1 = cut ? cut[0] : len, h1 = cut ? cut[1] : E1, hl = (s1 - s0) / 2, sc = (s0 + s1) / 2, rch = hl + halfWid + 800;
+          out.push({ icao: a.icao, runway: r, part: i / 3, cx: e0.x + dx * sc, cy: e0.y + dy * sc, dx, dy, halfLen: hl, halfWid,
+            e0: h0, e1: h1, reach2: rch * rch, rank: r.rank ?? 0, knots: kn.slice(i, i + 2).map(([s, h]) => [s - sc, h]) });
+          s0 = s1; h0 = h1;
+          if (!cut) break;
+        }
+        continue;
+      }
       out.push({ icao: a.icao, runway: r, cx: (e0.x + e1.x) / 2, cy: (e0.y + e1.y) / 2, dx, dy, halfLen, halfWid,
         e0: r.ends[0].elevM ?? a.elevM ?? 0, e1: r.ends[1].elevM ?? a.elevM ?? 0, reach2: reach * reach,
         rank: r.rank ?? 0, knots: (r.knots || []).map(([s, h]) => [s - halfLen, h]) });
@@ -311,11 +388,8 @@ export const ONE_WAY = {
   // From general knowledge of its published use: 18R/36L (the Polderbaan) is landed on southward and taken off from
   // northward only; 18L/36R (the Aalsmeerbaan) is taken off from southward and landed on northward only.
   EHAM: { '18R': 'landing', '36L': 'takeoff', '18L': 'takeoff', '36R': 'landing' },
-  // v0.7.1, Brussels: the game's own limit, not the AIP's (Belgium's eAIP wasn't read: [EST]). 01/19's north end crosses
-  // 07L/25R's east end, and runwayCrossings() shapes one crossing a runway (07R/25L's), so a lip of 0.2 to 0.3 m is left
-  // where a take-off from 19 would begin (a test take-off there ended in an engine strike on the spot). 19 is landed on
-  // only until the game shapes a second crossing; 01 is used both ways.
-  EBBR: { 19: 'landing' },
+  // (v0.7.1 to v0.7.3 had Brussels's 19 here as landing-only, the game's own limit: runwayCrossings() shaped one
+  // crossing a runway, and 01/19 crosses two. v0.7.4 shapes both, so 01/19 is used both ways.)
   // v0.7.3, Hamburg (Germany's AIP, EDDH AD 2.20 2.2, read 2026-11-21: "Take-offs from RWY 15 and landings on RWY 33 are
   // permitted only if required for reasons of air traffic safety"; 33 has no ILS).
   EDDH: { 15: 'landing', 33: 'takeoff' },

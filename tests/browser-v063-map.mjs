@@ -2,7 +2,7 @@
 // Pictures of the whole region, Korea, the Kanto plain, the Yangtze delta and Beijing; the names written at
 // each zoom; the draw's cost with the cities and without (?mapcities=0); no name on an airport's label.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 6 -- node games/flight-sim/tests/browser-v063-map.mjs [rootUrl]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));

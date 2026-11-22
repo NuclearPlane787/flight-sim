@@ -22,6 +22,7 @@ import { seaFloor } from './glsl.js';
 import { FINE_GLSL, FINE_PX, ihash } from './finecover.js';
 import { countryAt } from './region.js';
 import { coverReader } from './clipwindow.js';
+import { LANDMARKS77 } from './landmark-models.js';
 
 const CELL_PX = 2;                 // fine pixels a slot cell (62.5 m)
 const HALF = 64;                   // cells each side of the camera: ±4 km
@@ -152,10 +153,57 @@ const EU_LOOK = /* glsl */ `        if (uCountry >= 3) {
         }
 `;
 // East Asia's vertex text -> Europe's: three splices, each before an anchor that must occur exactly once.
-export function euRuralVert(src) {
+// v0.7.4 (LANDMARKS77, landmark-models.js): with the switch on, the church's variant below (euRuralVert77); off, v0.7.3's.
+export function euRuralVert(src) { return LANDMARKS77 ? euRuralVert77(src) : euRuralVertOld(src); }
+export function euRuralVertOld(src) {
   const A = '        float pw, zone;', B = '        size *= keep; rise *= keep;', C = '        vWall = wall; vRoof = roof;';
   for (const a of [A, B, C]) { const i = src.indexOf(a); if (i < 0 || src.indexOf(a, i + 1) >= 0) throw new Error('rural: euRuralVert anchor ' + JSON.stringify(a)); }
   return src.replace(A, EU_PLACE + A).replace(B, EU_SIZE + B).replace(C, EU_LOOK + C);
+}
+
+// v0.7.4 part 9, item 6 (v0.7.7's church spires): the village church's tower was the unit house at 6 x 6 m under a gable,
+// its gable ends drawn as wall. Now, still with no attribute, uniform, varying or triangle added: the tower's ridge drawn
+// in to a point (a pyramid: a tall spire in the north, a low tiled cap in Spain, Portugal and Italy's group), its four roof
+// faces in the roof's colour with their own flat normals, a dark belfry opening near the top of each wall and no window
+// bands; the nave stone under its own pitched roof (slate in the north, terracotta in the south), no window bands either.
+// The fragment learns "church" from vSeed (-1 the nave, -2 the tower; a house's is its hash, 0..1) and the tower's height
+// in units (vLocal.y: walls 0..1, roof 1..2). Built from v0.7.3's text: the size and look lines replaced, two splices more.
+const EU_SIZE77 = EU_SIZE.replace(
+  '          else if (euTower) { size = vec3(6.0, 18.0 + 8.0 * h1, 6.0); rise = 9.0 + 7.0 * h3; }   // a tower and its steep cap',
+  '          else if (euTower) { size = vec3(6.5, 18.0 + 8.0 * h1, 6.5); rise = uCountry == 6 ? 2.5 + 1.5 * h3 : size.y * (0.75 + 0.35 * h3); }   // a tower and its spire (a low cap in the south)');
+const EU_LOOK77 = EU_LOOK.replace(
+  '          else if (euNave || euTower) { wall = vec3(0.36, 0.34, 0.30); roof = vec3(0.10, 0.105, 0.12); vLocal.y = 0.0; }',
+  '          else if (euNave || euTower) {\n' +
+  '            wall = uCountry == 6 ? vec3(0.42, 0.38, 0.30) : vec3(0.36, 0.34, 0.30);\n' +
+  '            roof = uCountry == 6 ? vec3(0.30, 0.14, 0.08) : vec3(0.10, 0.105, 0.12);\n' +
+  '            vSeed = euTower ? -2.0 : -1.0; vLocal.y = euTower ? position.y : 0.0;\n' +
+  '          }');
+const EU_SPIRE77 = /* glsl */ `        if (euTower && position.y > 1.5) p.x = 0.0;              // v0.7.4: the tower's ridge drawn in to the spire's point
+`;
+const EU_FRAG77 = /* glsl */ `        if (vSeed < -0.5) {
+          // v0.7.4: a village church (vSeed -1 the nave, -2 the tower): stone, no window bands; the tower's roof faces
+          // (vLocal.y over 1) in the roof's colour, lit by their own flat normals; a belfry opening near each wall's top.
+          if (vSeed < -1.5) {
+            vec3 fn = normalize(cross(dFdx(vRel), dFdy(vRel)));
+            if (dot(fn, vRel) > 0.0) fn = -fn;
+            float along = min(abs(vLocal.x), abs(vLocal.z));
+            if (vLocal.y > 1.001) { alb = vRoof; n = fn; }
+            else if (vLocal.y > 0.80 && vLocal.y < 0.91 && along < 0.9) alb = vec3(0.03, 0.03, 0.035);
+          }
+        } else `;
+export function euRuralVert77(src) {
+  const C = '        vWall = wall; vRoof = roof;', D = '        vec2 q = vec2(cr * p.x - sr * (-p.z), sr * p.x + cr * (-p.z));';
+  for (const a of [C, D]) { const i = src.indexOf(a); if (i < 0 || src.indexOf(a, i + 1) >= 0) throw new Error('rural: euRuralVert77 anchor ' + JSON.stringify(a)); }
+  if (EU_SIZE77 === EU_SIZE || EU_LOOK77 === EU_LOOK) throw new Error('rural: euRuralVert77 lines');
+  const s = euRuralVertOld(src).replace(EU_SIZE, EU_SIZE77).replace(EU_LOOK, EU_LOOK77);
+  return s.replace(D, EU_SPIRE77 + D);
+}
+// Europe's fragment text with the switch on (East Asia's, and Europe's with it off, are untouched).
+export function euRuralFrag77(src) {
+  const E = '        if (vPart < 0.5) {';
+  const i = src.indexOf(E);
+  if (i < 0 || src.indexOf(E, i + 1) >= 0) throw new Error('rural: euRuralFrag77 anchor ' + JSON.stringify(E));
+  return src.replace(E, EU_FRAG77 + E.trimStart());
 }
 
 // A unit house: x along the ridge (-0.5..0.5), z across, walls y 0..1, the ridge at y 2 (the
@@ -341,6 +389,7 @@ export function createRural(scene, uniforms, chunks, { fine = null } = {}) {
       }`,
   });
   if (EUROPE) mat.vertexShader = euRuralVert(mat.vertexShader);   // v0.7.0: before its first compile
+  if (EUROPE && LANDMARKS77) mat.fragmentShader = euRuralFrag77(mat.fragmentShader);   // v0.7.4: the church's look
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   mesh.name = 'rural';

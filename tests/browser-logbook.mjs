@@ -1,7 +1,7 @@
 // Logbook and landing-score card check: loads tests/dev-logbook.html in Chrome at 1440x900,
 // takes logbook-*.png and score-*.png, and checks the row detail, the clear confirm and Esc.
 //   python3 tools/cpu-guard.py -- node tests/browser-logbook.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one
 process.argv = process.argv.filter((a) => a !== '--headed');   // so positional arguments never see it
 

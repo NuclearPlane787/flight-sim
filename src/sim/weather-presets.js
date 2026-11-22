@@ -8,7 +8,7 @@
 // The numbers are Korea's cold half of the year, and every preset's wind veers with height (clockwise, as a
 // northern-hemisphere boundary layer does): the surface wind doesn't veer by itself, the wind aloft says how much.
 
-import { calmWeather, normalizeWeather, isDefaultWeather } from './weather.js';
+import { calmWeather, normalizeWeather, isDefaultWeather, hasTwoEnds, endWeather, withEndWeather, weatherAt, samePlace } from './weather.js';
 import { magToGrid } from '../world/frame.js';
 import { rulesAt } from '../world/region.js';
 import { hpaToInHg } from './atmosphere.js';
@@ -116,10 +116,25 @@ export function presetWeather(id, ctx) {
 }
 
 // ---- A flight's context, from the airport data and the plan ----
+// v0.7.4 adds the departure's (`departure`, as `arrival` is, from plan.origin and plan.depRunway), the two ends'
+// places (`ends`: { ax, ay, bx, by }, the airports' origins, when both are known) and every airport's place by its
+// ICAO (`places`), for another airport's METAR from the air there.
 export function weatherContext(airports, plan) {
   const list = Array.isArray(airports) ? airports : Object.values(airports?.airports || airports || {}).filter((a) => a && a.icao);
   const ctx = { airports: list.filter((a) => a.origin).map((a) => ({ x: a.origin[0], y: a.origin[1] })) };
+  const places = {};
+  for (const a of list) if (a.origin && a.icao) places[a.icao] = { x: a.origin[0], y: a.origin[1] };
+  Object.defineProperty(ctx, 'places', { value: places, enumerable: false });   // (left out of the ctx's JSON)
+  const da = list.find((a) => a.icao === plan?.origin);
+  if (da) {
+    let e = null;
+    for (const r of da.runways || []) e = e || (r.ends || []).find((n) => n.ident === plan.depRunway) || null;
+    ctx.departure = e ? { icao: da.icao, x: e.x, y: e.y, hdgMagDeg: e.hdgMagDeg, hdgGridDeg: e.hdgGridDeg } : { icao: da.icao };
+    if (da.origin) ctx.departure.origin = [da.origin[0], da.origin[1]];
+  }
   const ap = list.find((a) => a.icao === plan?.dest);
+  if (ap && ap.origin && da && da.origin) ctx.ends = { ax: da.origin[0], ay: da.origin[1], bx: ap.origin[0], by: ap.origin[1] };
+  if (ctx.ends && samePlace(ctx.ends)) delete ctx.ends;   // a circuit: one place, one weather (the tab shows Both ends only)
   if (!ap) return ctx;
   if (ap.origin) { ctx.refX = ap.origin[0]; ctx.refY = ap.origin[1]; }
   for (const r of ap.runways || []) {
@@ -128,6 +143,29 @@ export function weatherContext(airports, plan) {
   }
   if (!ctx.arrival) ctx.arrival = { icao: ap.icao };
   return ctx;
+}
+
+// v0.7.4: the context of one end of the route ('dep' or 'dest'): the departure's has its airport as the
+// reference (where its wind's magnetic direction is read) and its runway as the one a microburst on final or a
+// crosswind is placed for. The destination's is the flight's context itself.
+export function endContext(ctx, end) {
+  if (end !== 'dep' || !ctx) return ctx || null;
+  const d = ctx.departure;
+  const out = { ...ctx, arrival: d || undefined };
+  if (d && d.origin) { out.refX = d.origin[0]; out.refY = d.origin[1]; }
+  else { delete out.refX; delete out.refY; }
+  if (ctx.places) Object.defineProperty(out, 'places', { value: ctx.places, enumerable: false });
+  return out;
+}
+
+// v0.7.4: a plan's weather, from its two presets (plan.weather: the departure's; plan.weatherDest: the
+// destination's, the departure's when left out). The same preset at both ends, or a route without both places,
+// is presetWeather(id, ctx) itself: one weather, exactly as before v0.7.4.
+export function routeWeather(depId, destId, ctx) {
+  const dep = depId || 'clear', dest = destId || dep;
+  // (No two places, or a circuit back to the departure's airport: one weather, the destination's.)
+  if (dest === dep || !ctx?.ends || samePlace(ctx.ends)) return presetWeather(dest, ctx);
+  return withEndWeather(presetWeather(dest, ctx), 'dep', presetWeather(dep, endContext(ctx, 'dep')), ctx.ends);
 }
 
 // ---- The microburst on final ----
@@ -285,7 +323,21 @@ function dewpoint(s) {
   return s.tempC - spread;
 }
 
+// v0.7.4: an airport's own weather under weather by place: the departure's and the destination's are their
+// ends' weathers, any other airport's the air at its place (ctx.places), as a single settings object. A
+// single weather is everywhere: itself. → { settings, ctx } (ctx that end's, for its microburst on final).
+export function airportWeather(settings, icao, ctx) {
+  if (!hasTwoEnds(settings)) return { settings, ctx };
+  const c = String(icao || '').toUpperCase();
+  if (ctx?.departure?.icao && c === ctx.departure.icao) return { settings: endWeather(settings, 'dep'), ctx: endContext(ctx, 'dep') };
+  if (ctx?.arrival?.icao && c === ctx.arrival.icao) return { settings: endWeather(settings, 'dest'), ctx };
+  const p = ctx?.places?.[c];
+  if (p) return { settings: weatherAt(settings, p.x, p.y), ctx: null };
+  return { settings: endWeather(settings, 'dest'), ctx };
+}
+
 export function metarOf(settings, icao, ctx) {
+  if (hasTwoEnds(settings)) ({ settings, ctx } = airportWeather(settings, icao, ctx));
   const s = normalizeWeather(settings);
   const form = metarFormOf(icao, ctx);
   const parts = [icao || 'ZZZZ', form === 'cn' || form === 'ru' || form === 'kp' ? windGroupMps(s.wind) : windGroup(s.wind)];   // (Russia's and North Korea's wind is in metres per second too)

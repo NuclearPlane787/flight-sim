@@ -79,10 +79,11 @@ if (inRegion('europe', import.meta.url)) {
     assert.deepEqual(ta(R(47.4647, 8.5492)), [7000, 8000]);                      // Zurich
     assert.deepEqual(ta(R(52.3086, 4.7639)), [3000, 4000]);                      // Schiphol
     assert.deepEqual(ta(R(41.8003, 12.2389)), [6000, 7000]);                     // Fiumicino
-    // Where an airport's transition altitude reaches across a border, the country and the zone stay the place's own:
-    // Singen is in Germany, 39 km from Zurich's airport.
+    // An airport's transition altitude stops at its country's border (v0.7.4, tests/v074-eu-transitions.test.mjs; v0.7.0
+    // to v0.7.3 let it reach across, and this line expected Zurich's [7000, 8000] here): Singen is in Germany, 39 km
+    // from Zurich's airport, and has Germany's own.
     const singen = R(47.76, 8.84);
-    assert.equal(singen.country, 'DE'); assert.equal(singen.timeZone, 'Europe/Berlin'); assert.deepEqual(ta(singen), [7000, 8000]);
+    assert.equal(singen.country, 'DE'); assert.equal(singen.timeZone, 'Europe/Berlin'); assert.deepEqual(ta(singen), [5000, 6000]);
     for (const r of [R(51.5, -0.12), R(48.85, 2.35), R(40.42, -3.7), R(41.9, 12.5)]) { assert.equal(r.baroUnit, 'hPa'); assert.equal(r.metricAlt, false); assert.equal(r.metar, 'eu'); }
     // Summer time: the zone's name and the clock follow the date (no fixed offsets).
     const jul = Date.UTC(2026, 6, 1, 12), nov = Date.UTC(2026, 10, 21, 12);

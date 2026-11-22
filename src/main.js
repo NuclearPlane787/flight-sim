@@ -10,7 +10,7 @@ import { createCallouts } from './audio/callouts.js';
 import { createScorer, runwayFrame, aimingPoint, landingRunway, runwayEndRefs } from './score.js';
 import { createLogbook, logTimes } from './ui/logbook.js';
 import { createWeatherWindow, WEATHER_TAB, addWeatherTab } from './ui/weather-window.js';
-import { presetWeather, weatherContext } from './sim/weather-presets.js';
+import { presetWeather, weatherContext, routeWeather } from './sim/weather-presets.js';
 import { createScorePanel } from './ui/score-panel.js';
 import { baroValueText } from './ui/fcu.js';   // v0.6.0: Shift+B's toast in the BARO's unit (inches in Japan)
 import * as store from './store.js';
@@ -27,7 +27,7 @@ import { designStore, designName } from './designs-store.js';
 import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
-import { runwayStateOf } from './sim/weather.js';
+import { runwayStateOf, moveDestination, createWeatherFollower } from './sim/weather.js';
 import { createTerrainLoader } from './world/region.js';
 import { REGION_ID, dataUrl, defaultPlan, planInRegion, regionOfSave, switchRegion, takeCarry, rememberRegion, airportShortName, regionName } from './world/regions.js';   // v0.7.0: one region a page
 
@@ -261,6 +261,7 @@ async function boot() {
   }
   const hud = hudMod.createHud($('hud'), { airports, coast });
   const map = mapMod.createMap($('map-root'), { airports, coast, urban });
+  map.loadExtras?.(base);   // v0.7.4: the map's country borders and names (its region's country-lines.json; none if missing)
   const setup = setupMod.createSetup($('setup-root'), { airports, coast });
 
   // ---- Scenarios (save slots with the whole state; src/scenarios.js) ----
@@ -278,6 +279,7 @@ async function boot() {
   let loadWin = null;  // v0.3.2: the Weight window (src/ui/load-window.js), the Sky window's second tab
   let weatherWin = null;  // v0.4.0: the Weather tab (src/ui/weather-window.js)
   let shownWeather = null;   // v0.4.0: the settings the world last drew
+  const wxLook = createWeatherFollower();   // v0.7.4: the weather where the camera is (weather by place)
   let lTab = 'sky';    // the L window's tab last shown
   // Both of the L window's tabs closed (a new flight, the menu: else an Esc handler would still catch).
   function closeLWindow() { if (skyWin?.isOpen) skyWin.close(); if (loadWin?.isOpen) loadWin.close(); if (weatherWin?.isOpen) weatherWin.close(); }
@@ -385,13 +387,19 @@ async function boot() {
   let navKey = '';
   function syncNav() {
     if (!ap.setIls) return;
-    if (dest) {
+    // v0.7.4: a localizer to every end that is landed on straight in, as the Boeings always had it (the game gives every
+    // such runway a 3 deg beam down its centreline, whether or not the real one has an ILS: Jeju's 13/31, Haneda's 04
+    // and 05, Innsbruck's 26), and now the A321's LOC and APPR too. None to a circling-only end (CIRCLING_ONLY: its
+    // straight 3 deg line meets the terrain), nor to one only taken off from or closed (ONE_WAY). Both families.
+    // (The lead: the cockpit subagent's first rule also asked for the end's own `ils`, which took LOC and APP away
+    // from the Boeings at 55 of the game's 264 ends.)
+    if (dest && !dest.end.circling && dest.end.use !== 'takeoff' && dest.end.use !== 'closed') {
       const ax = runwayAxis(dest.end, dest.other);
       ap.setIls({ x: ax.tx, y: ax.ty, hdgGrid: ax.hdg, elev: dest.end.elevM ?? dest.airport.elevM ?? 0, gsDeg: 3 });
     } else ap.setIls(null);
     const wp = map.waypoints || [];
     navKey = navKeyNow();
-    ap.setRoute(dest ? [...wp, [dest.end.x, dest.end.y]] : wp);
+    ap.setRoute?.(dest ? [...wp, [dest.end.x, dest.end.y]] : wp);   // v0.7.4: the A321 has setIls (LOC, APPR), no route
   }
   const navKeyNow = () => (map.waypoints || []).join(';') + '|' + (dest ? dest.end.x + ',' + dest.end.y : '');
   const payloadOf = (p) => (p.pax || 0) * (sim.type.limits.PAX_KG || 84) + (p.cargoKg || 0);
@@ -418,7 +426,8 @@ async function boot() {
     plan = p;
     useType(p.design || p.type);
     // v0.4.0: the plan's weather, before the aircraft is placed (the reset and the trim read the wind).
-    sim.setWeather(presetWeather(p.weather || 'clear', weatherContext(airports, p)));
+    // v0.7.4: the departure's (p.weather) and the destination's (p.weatherDest; the departure's when left out).
+    sim.setWeather(routeWeather(p.weather || 'clear', p.weatherDest, weatherContext(airports, p)));
     store.save('lastflight', p);
     map.setWaypoints(p.waypoints || []);
     // The time of day: Now (the real time in Korea), or the one picked in the setup. Restart the
@@ -451,7 +460,7 @@ async function boot() {
     rewind = []; lastSnapT = -1e9; acc = 0;
     liftoffT = null; fuelAtStart = sim.state.fuelKg;
     crashed = false; prediction = null; map.setPrediction?.([]);
-    callouts.reset();
+    callouts.reset(); synth.resetSilence?.();   // (v0.7.4: nothing silenced after a new flight, a rewind, a jump or a load)
     ui.crash.hidden = true; ui.score.hidden = true;
     setTimeScale(1);
     world.ensureNear?.(sim.state.pos.x, sim.state.pos.y);   // v0.6.0: the airports here built before the first frame shows them
@@ -562,10 +571,12 @@ async function boot() {
     if (st.camera) rig.load(st.camera);
     clock.load(st.clock);
     map.setWaypoints(plan.waypoints || []);
-    navKey = navKeyNow();                  // the save's ILS and route came with the snapshot
+    // The save's ILS and route came with the snapshot (a Boeing's); v0.7.4: the A321 doesn't save its ILS (and a save
+    // from before v0.7.4 has none), so it is derived from the plan again.
+    if (st.sim?.ap && !('ils' in st.sim.ap)) syncNav(); else navKey = navKeyNow();
     rewind = []; lastSnapT = sim.state.t; acc = 0;
     crashed = false; clearPrediction();
-    callouts.reset();
+    callouts.reset(); synth.resetSilence?.();   // (v0.7.4: nothing silenced after a new flight, a rewind, a jump or a load)
     sim.events.length = 0;
     ui.crash.hidden = true; ui.score.hidden = true;
     setTimeScale(1);
@@ -607,7 +618,7 @@ async function boot() {
     const last = store.load('lastflight', null);
     // Decision 4: a new scenario starts clear, whatever the last flight flew in. v0.5.2: from the warehouse's Fly it,
     // with that design picked.
-    const from = last && planInRegion(last) ? { ...last, weather: 'clear' } : defaultPlan();
+    const from = last && planInRegion(last) ? { ...last, weather: 'clear', weatherDest: undefined } : defaultPlan();
     const p = await setup.show(design ? { ...from, design, type: design.base } : from,
       { title: 'New scenario', name: scenarios ? scenarios.defaultName() : 'Scenario 1', nameField: true, cancel: true });
     if (!p) { menu.show(); menu.refresh(); return; }
@@ -657,7 +668,7 @@ async function boot() {
     input.lever = Math.max(sim.state.onGround ? -1 : 0, sim.controls.thrust);
     navKey = '';   // a snapshot brings its own ILS and route: back to the current ones (v0.3.0)
     clearPrediction();
-    callouts.reset();
+    callouts.reset(); synth.resetSilence?.();   // (v0.7.4: nothing silenced after a new flight, a rewind, a jump or a load)
     sim.events.length = 0;
     lastSnapT = sim.state.t;
   }
@@ -715,6 +726,9 @@ async function boot() {
     // Until the touchdown the scorer only holds the planned runway (the touchdown sets the
     // one actually landed on); the approach track it keeps isn't tied to either.
     if (!scorer.touchedDown) scorer.setRunway(d.end, d.other);
+    // v0.7.4: weather by place: the destination's weather goes with the new destination (a single weather stays).
+    const wxMoved = d.airport.origin ? moveDestination(sim.weather, d.airport.origin[0], d.airport.origin[1]) : sim.weather;
+    if (wxMoved !== sim.weather) { sim.setWeather(wxMoved); apKey = ''; }
     syncNav();
     toast(same ? `Direct to ${icao} ${ident}` : `New route: ${plan.origin} to ${icao}, runway ${ident}`, 2500);
     saveNow('route');
@@ -899,6 +913,7 @@ async function boot() {
         else toast('Pushback works from a gate start (Flight setup → At the gate)');
         break;
       case 'perf': setPerf(ui.perf.hidden); break;
+      case 'silenceWarnings': silenceWarnings(); break;   // v0.7.4: the left panel's button's key
       // v0.5.6: a wing tank's key (the warehouse): the wing tanks drop, as the Weight tab's button drops them
       case 'dropTanks': {
         if (!(sim.type?.geo?.PODS || []).length) { toast('No wing tanks to drop', 1500); break; }
@@ -935,8 +950,9 @@ async function boot() {
   function setCallouts(on) { callouts.muted = !on; saveSetting('muted', callouts.muted); }
   const settingsPage = createSettingsPage($('pages-root'), {
     keyName: (id) => keyName(id),   // v0.5.7: the readout's key as bound
-    get: () => ({ volume: callouts.volume ?? 1, callouts: !callouts.muted, showPerf: !ui.perf.hidden, panelScale: hud.panelScale, ...flightOpts }),
+    get: () => ({ volume: callouts.volume ?? 1, mix: { ...mixVols }, callouts: !callouts.muted, showPerf: !ui.perf.hidden, panelScale: hud.panelScale, ...flightOpts }),
     onVolume: (v) => { setVolume(v); previewVolume(); },
+    onMix: (k, v) => { setMix(k, v); previewVolume(); },   // v0.7.4: the volumes under the master
     onPanelScale: (k) => { hud.setPanelScale(k); saveSetting('panelScale', hud.panelScale); },   // v0.6.2
     onCallouts: (on) => setCallouts(on),
     onIndestructible: (on) => setFlightOpt('indestructible', on),
@@ -997,6 +1013,25 @@ async function boot() {
     if (save) saveSetting('volume', v);
   }
   setVolume(settings.volume ?? 1, false);
+  // v0.7.4 (Shane's item 12): the volumes under the master, each 0 to 1 of it, saved with the settings (volWarnings,
+  // volCallouts, volEngines, volFrame; missing, as in an older settings object, reads as 1: the mix as it was).
+  const MIX_KEYS = { warnings: 'volWarnings', callouts: 'volCallouts', engines: 'volEngines', frame: 'volFrame' };
+  const mixVols = {};
+  function setMix(k, v, save = true) {
+    if (!MIX_KEYS[k]) return;
+    v = Number.isFinite(+v) ? Math.max(0, Math.min(1, +v)) : 1;
+    mixVols[k] = v;
+    if (k === 'callouts') callouts.level = v; else synth?.setVolumes?.({ [k]: v });
+    if (save) saveSetting(MIX_KEYS[k], v);
+  }
+  for (const k of Object.keys(MIX_KEYS)) setMix(k, settings[MIX_KEYS[k]] ?? 1, false);
+  // v0.7.4: the left panel's button (and its key): the warnings sounding now go quiet; the screens and lights stay.
+  function silenceWarnings() {
+    const n = (synth?.silenceWarnings?.() || 0) + (callouts.silenceWarnings?.() || 0);
+    hud.setSilenced?.(!!(synth?.silenced || callouts.silenced));
+    return n;
+  }
+  hud.onsilence = () => silenceWarnings();
   // A moment after the slider stops, a blip at the new level: the audio is stopped while
   // paused or in the menu. The slider is a user gesture, so this may start the audio too.
   let previewTimer = 0, previewDelay = 0;
@@ -1058,7 +1093,7 @@ async function boot() {
         setMenu(false);   // v0.5.5
         syncPauseBtn();   // v0.5.4
         setTimeScale(1);
-        callouts.reset();
+        callouts.reset(); synth.resetSilence?.();   // (v0.7.4: nothing silenced after a new flight, a rewind, a jump or a load)
       }
       // v0.4.1: Indestructible held it together.
       if (e.type === 'damage') toast(`Indestructible: that was a crash (${e.reason})`, 3500);
@@ -1208,13 +1243,13 @@ async function boot() {
 
     if (s.t - lastSnapT >= 1) {
       lastSnapT = s.t;
-      if (ap.setRoute && navKeyNow() !== navKey) syncNav();   // a waypoint dragged on the map
+      if ((ap.setIls || ap.setRoute) && navKeyNow() !== navKey) syncNav();   // (v0.7.4: the A321's ILS too, after a rewind or a jump)   // a waypoint dragged on the map
       rewind.push({ t: s.t, snap: sim.snapshot(), clockMs: clock.ms });
       if (rewind.length > REWIND_S + 15) rewind.shift();
     }
     handleEvents();
     if (current && now - lastAutosave >= AUTOSAVE_MS) saveNow('autosave');
-    callouts.update(s, now / 1000);
+    callouts.update(s, now / 1000, !!(ap.ap && /LAND|FLARE|ROLL/.test(ap.vertical || '')));   // v0.7.4: RETARD at 10 ft in an autoland
     maybePredict(now);
     render(dt);
     cpuMs += (performance.now() - t0 - cpuMs) * 0.05;
@@ -1273,7 +1308,7 @@ async function boot() {
     aircraft.update(s, dt);
     // v0.4.2: the spray off the wheels.
     if (spray) {
-      const wx = sim.weather;
+      const wx = wxLook.at(sim.weather, s.pos.x, s.pos.y);   // v0.7.4: the runway's own weather (by place)
       spray.update({ gs: s.gs, onGround: s.onGround, runway: runwayStateOf(wx), rain: wx?.precip?.kind === 'rain' ? wx.precip.rate : 0, dt, paused });
     }
     // A Boeing's wings bend with the lift they carry (none on the wheels), eased so they rise through
@@ -1288,7 +1323,10 @@ async function boot() {
     if (!map.isOpen || ++mapSkip % 10 === 0) {
       updateSky(dt);
       const tDraw = performance.now();
-      if (sim.weather !== shownWeather) { shownWeather = sim.weather; world.setWeather(shownWeather); synth?.setWeather?.(shownWeather); }   // v0.4.0
+      // v0.4.0; v0.7.4: the weather where the aircraft (and so the camera, within a few hundred metres of it) is:
+      // a single weather is sim.weather itself; two ends' the same object until it changes by a visible step.
+      const lookWx = wxLook.at(sim.weather, s.pos.x, s.pos.y);
+      if (lookWx !== shownWeather) { shownWeather = lookWx; world.setWeather(shownWeather); synth?.setWeather?.(shownWeather); }
       world.update({ camera, origin, state: s, dt, paused });
       renderer.render(scene, camera);
       drawMs += (performance.now() - tDraw - drawMs) * 0.1;
@@ -1314,6 +1352,7 @@ async function boot() {
     synthOpts.aft = orbit ? Math.cos(lk.yaw) * Math.cos(lk.pitch) : -1;
     synthOpts.dist = orbit ? lk.dist : 0;
     synth?.update(s, synthOpts);
+    hud.setSilenced?.(!!(synth?.silenced || callouts.silenced));   // v0.7.4: the left panel's button lit
 
     fpsFrames++;
     const now = performance.now();
@@ -1490,6 +1529,7 @@ async function boot() {
     sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, scene, menu, setup, logbook, settingsPage, controlsPage, hud,   // v0.6.2: hud for checks
     get aircraft() { return aircraft; }, get cockpit() { return cockpit; }, useType,
     get synth() { return synth; },
+    silenceWarnings, setMix, get mix() { return { ...mixVols }; },   // v0.7.4
     get prediction() { return prediction; },
     get timeScale() { return timeScale; },
     get achievedScale() { return achievedScale; },
@@ -1512,6 +1552,8 @@ async function boot() {
     startFlight({ origin: params.get('origin'), depRunway: params.get('dep') || defaultPlan().depRunway, dest: params.get('dest') || defaultPlan().dest,
       arrRunway: params.get('arr') || defaultPlan().arrRunway, start: params.get('start') || 'runway', stand: params.get('stand') || null, pax: 180, cargoKg: 2000,
       fuelKg: Number(params.get('fuel')) || 7500, waypoints: [], type: params.get('type') || undefined,
+      // v0.7.4: the two ends' weather presets for the checks (&weather=clear&weatherDest=thunderstorm)
+      weather: params.get('weather') || 'clear', ...(params.get('weatherDest') ? { weatherDest: params.get('weatherDest') } : {}),
       // v0.5.0: a design for the checks, as JSON (sim/designs.js's shape)
       ...(params.get('design') ? (() => { const d = JSON.parse(params.get('design')); return { design: d, type: d.base }; })() : {}) });
   } else {

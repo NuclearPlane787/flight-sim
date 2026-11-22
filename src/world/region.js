@@ -11,11 +11,12 @@
 // departure and the arrival resident, loads ahead along the track, and tells the sim's loop
 // whether this frame's steps may run (briefs/V0-6-0.md, "The sim never sees a missing tile").
 
-import { setMagModel, toMap } from './frame.js';
+import { setMagModel, toMap, toGeo } from './frame.js';
 import { loadGeoRules } from './geo-rules.js';
+import { EDGE_BLEND } from './tilestore.js';   // v0.7.4 part 9: passed on to the workers by regionQuery()
 import { REGION, REGION_ID, DEFAULT_REGION } from './regions.js';
 import { regionExtent } from './outline.js';
-import { EUROPE_RULES, EUROPE_DEFAULT_RULES, EUROPE_AIRPORT_TRANSITIONS, AIRPORT_TRANSITION_RADIUS_M } from './rules-europe.js';
+import { EUROPE_RULES, EUROPE_DEFAULT_RULES, EUROPE_AIRPORT_TRANSITIONS, AIRPORT_TRANSITION_RADIUS_M, EUROPE_COUNTRY_OVERRIDES, airportCountries } from './rules-europe.js';
 
 // A URL parameter (the page's, or the prediction worker's own script URL, which predict.js
 // gives the same query) or, in node, an environment variable: '1' or '0', else null.
@@ -42,6 +43,7 @@ export const regionQuery = () => {
   const q = [];
   if (REGION_ID !== DEFAULT_REGION) q.push('region=' + REGION_ID);
   if (PENDING_ON) q.push('pending=1');
+  if (!EDGE_BLEND) q.push('edgeblend=0');   // v0.7.4 part 9 (tilestore.js): the prediction worker's tiles as the page's
   return q.length ? '?' + q.join('&') : '';
 };
 
@@ -127,7 +129,22 @@ export function loadLocalRules(base) {
 // 'KR' | 'KP' | 'JP' | 'CN' | 'RU' (v0.6.3) | 'other' in East Asia; an ISO code from Europe's raster in Europe
 // (the sea takes its nearest land's country). Before the rules are in: the region's default country.
 const DEFAULT_COUNTRY = REGION.defaultCountry;
-export function countryAt(x, y) { return geo ? geo.countryAt(x, y) : DEFAULT_COUNTRY; }
+// v0.7.4: ground the raster's 2 km cells give to a neighbour (rules-europe.js's EUROPE_COUNTRY_OVERRIDES: Gibraltar's
+// own) is answered first: a distance test in map metres, then the box in latitude and longitude. Europe's alone.
+const OVERRIDES = REGION_ID === DEFAULT_REGION ? [] : EUROPE_COUNTRY_OVERRIDES.map((o) => {
+  const [x, y] = toMap((o.lat0 + o.lat1) / 2, (o.lon0 + o.lon1) / 2), [cx, cy] = toMap(o.lat0, o.lon0);
+  return { ...o, x, y, r2: 1.1 * ((cx - x) ** 2 + (cy - y) ** 2) };
+});
+export function countryAt(x, y) {
+  for (let k = 0; k < OVERRIDES.length; k++) {
+    const o = OVERRIDES[k], dx = x - o.x, dy = y - o.y;
+    if (dx * dx + dy * dy <= o.r2) {
+      const g = toGeo(x, y);
+      if (g[0] >= o.lat0 && g[0] <= o.lat1 && g[1] >= o.lon0 && g[1] <= o.lon1) return o.country;
+    }
+  }
+  return geo ? geo.countryAt(x, y) : DEFAULT_COUNTRY;
+}
 const FT_M = 0.3048;
 const KR_RULES = { country: 'KR', timeZone: 'Asia/Seoul', zoneName: 'KST', baroUnit: 'hPa',
   transAltM: 14000 * FT_M, transLevelM: 14000 * FT_M, metricAlt: false, metar: 'kr' };
@@ -156,21 +173,22 @@ const RULES = HOME_REGION ? COUNTRY_RULES : EUROPE_RULES;
 const DEFAULT_RULES = HOME_REGION ? KR_RULES : EUROPE_DEFAULT_RULES;
 export const regionRulesTable = () => RULES;
 // The transition altitudes set airport by airport (rules-europe.js; East Asia has none): within the radius of
-// such an airport its altitude and level replace the country's, the nearer airport's where two reach. The zone,
+// such an airport, and in its own country (v0.7.4), its altitude and level replace the country's, the nearer airport's where two reach. The zone,
 // the units and the country stay the place's own. One object per (country, airport), made once: no garbage.
 const AIRPORT_TA = HOME_REGION ? [] : Object.entries(EUROPE_AIRPORT_TRANSITIONS).map(([icao, t]) => {
   const [x, y] = toMap(t.at[0], t.at[1]);
-  return { icao, x, y, transAltM: t.taFt * FT_M, transLevelM: t.tlFl * 100 * FT_M };
+  return { icao, x, y, transAltM: t.taFt * FT_M, transLevelM: t.tlFl * 100 * FT_M, countries: airportCountries(icao, t) };   // (v0.7.4: countries)
 });
 const TA_R2 = AIRPORT_TRANSITION_RADIUS_M * AIRPORT_TRANSITION_RADIUS_M;
 const taRules = new Map();
 export function rulesAt(x, y) {
-  const r = RULES[countryAt(x, y)] || DEFAULT_RULES;
+  const cc = countryAt(x, y), r = RULES[cc] || DEFAULT_RULES;
   if (AIRPORT_TA.length === 0) return r;
+  // v0.7.4: only an airport of the place's own country (or one whose entry lists it): the disc stops at the border.
   let best = null, bd = TA_R2;
   for (let k = 0; k < AIRPORT_TA.length; k++) {
     const a = AIRPORT_TA[k], dx = x - a.x, dy = y - a.y, d2 = dx * dx + dy * dy;
-    if (d2 < bd) { bd = d2; best = a; }
+    if (d2 < bd && a.countries.includes(cc)) { bd = d2; best = a; }
   }
   if (best === null || (best.transAltM === r.transAltM && best.transLevelM === r.transLevelM)) return r;
   const key = r.country + '|' + best.icao;

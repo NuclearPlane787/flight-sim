@@ -18,6 +18,7 @@
 import * as THREE from '../vendor/three.module.js';
 import {
   Builder, grid, slab, cylBetween, boxAt, lathe, sphereAt, foilPoint, foilPiece, plateOffset, toModel, SIGNS, SHROUD_LIFT,
+  plateBetween, wheelFaces, addWheelFaces,
 } from './aircraft.js';
 import { UV } from './livery.js';
 import { createWidebodyLivery, finBoxFor, fuseUVFor } from './livery-widebody.js';
@@ -38,6 +39,7 @@ const C = {
   core: '#767b83', plug: '#3a3d43', fanFace: '#25282e', blade: '#5a6068', pylon: '#d5d9de',
   cascade: '#3d4148', red: '#ff2a1a', green: '#22ff55', lamp: '#ffffff', glass: '#0b1117', fanCase: '#7a8189',
   doorIn: '#b9bec5',   // the inside of the gear doors (v0.3.1)
+  brake: '#4d5259',    // v0.7.4: the brake stacks
 };
 
 // The side stay's reach from the leg, inboard and up, m; its folding angle follows.
@@ -195,6 +197,9 @@ export function createWidebody(spec, opts = {}) {
   };
   const WS = spec.wing, TP = spec.tailplane, BG = G.BOGIE, GS = spec.gear, LS = spec.lights || {};
   const R_MAIN = BG.wheelRadiusMain, R_NOSE = BG.wheelRadiusNose, NAXLES = BG.axles || 2;
+  // v0.7.4: the rims' bead-seat radii, from the tyres' R numbers ([ACAP] 7-4, 7-5: 54×21.0 R23 and 40×16.0 R16 on the
+  // 787-9, 52×21 R22 and 43×17.5 R17 on the 777-300ER) [EST for another]
+  const [RIM_MAIN, RIM_NOSE] = ({ 'b787-9': [23, 16], 'b777-300er': [22, 17] }[spec.id] || [0.43 * 2 * R_MAIN / 0.0254, 0.4 * 2 * R_NOSE / 0.0254]).map((inch) => inch * 0.0254 / 2);
   const AFT_STEER = NAXLES > 2 ? GS.aftSteer || null : null;   // { maxDeg, fromDeg, atDeg } of the aft axle, against the nosewheel's
   const b = AF ? new AirframeBuilder() : new Builder();
   const bones = [], B = {};
@@ -587,37 +592,57 @@ export function createWidebody(spec, opts = {}) {
     const pivot = V(gm.x, gm.y, AF ? wingP(side, gm0.x, Math.abs(gm0.y), spec.gear.mainPivotZ).z : spec.gear.mainPivotZ);
     const LEG = bone('mainLeg' + S, 'root', pivot, V(1, 0, 0));
     const zLow = axleZ + 0.72;
-    b.add(cylBetween(pivot, V(gm.x, gm.y, zLow), 0.2, 0.19, 14), LEG, C.gear);
+    // v0.7.4 (Shane's item 6: "made with thin little rods"): the gear in real proportions, from the ACAP drawings and
+    // photographs [EST]: the shock strut's outer cylinder about 0.54 m across with its gland at the foot, a 0.4 m
+    // chrome piston, tubes for the braces, a deep forged box for the bogie beam, axles as thick as the hubs, plate
+    // torque links, and brake stacks and hub caps in the wheels. Looks only: every bone, pivot and wheel is where it was.
+    b.add(cylBetween(pivot, V(gm.x, gm.y, zLow), 0.27, 0.26, 16), LEG, C.gear);   // (inside its door, 0.28 m out)
+    b.add(cylBetween(V(gm.x, gm.y, zLow - 0.02), V(gm.x, gm.y, zLow + 0.16), 0.3, 0.3, 16), LEG, C.gear);
     // Side stay (to the fairing), drag brace (forward).
     // (A design's longer gear lengthens the leg below the wing; the stays keep their place under it.)
     const midZ = (pivot.z + zLow + EXT) / 2 - 0.3;
     // The side stay folds up against the leg as it retracts (update() rotates it), or it would
     // come out through the top of the wing.
     const STAY = bone('stay' + S, 'mainLeg' + S, V(gm.x, gm.y, midZ), V(1, 0, 0));
-    b.add(cylBetween(V(gm.x, gm.y, midZ), V(gm.x, gm.y - side * (GS.stayDY ?? STAY_DY), midZ + (GS.stayDZ ?? STAY_DZ)), 0.075, 0.075, 8), STAY, C.gear);
-    b.add(cylBetween(V(gm.x, gm.y, midZ - 0.1), V(gm.x + 1.35, gm.y, pivot.z - 0.2), 0.08, 0.08, 8), LEG, C.gear);
+    b.add(cylBetween(V(gm.x, gm.y, midZ), V(gm.x, gm.y - side * (GS.stayDY ?? STAY_DY), midZ + (GS.stayDZ ?? STAY_DZ)), 0.13, 0.13, 10), STAY, C.gear);   // v0.7.4: 0.075, 8
+    b.add(cylBetween(V(gm.x, gm.y, midZ - 0.1), V(gm.x + 1.35, gm.y, pivot.z - 0.2), 0.14, 0.14, 10), LEG, C.gear);   // v0.7.4: 0.08, 8
     // The leg's door, outboard of it.
     b.add(boxAt(gm.x, gm.y + side * 0.3, pivot.z - 0.75, 0.85, 0.035, 1.5), LEG, C.navy);
     const PIS = bone('mainPiston' + S, 'mainLeg' + S, V(gm.x, gm.y, axleZ), V(0, 0, 1));
-    b.add(cylBetween(V(gm.x, gm.y, zLow + 0.3), V(gm.x, gm.y, axleZ), 0.13, 0.13, 12), PIS, C.chrome);
+    b.add(cylBetween(V(gm.x, gm.y, zLow + 0.3), V(gm.x, gm.y, axleZ), 0.2, 0.2, 16), PIS, C.chrome);   // v0.7.4: 0.13, 12
     const TRUCK = bone('bogie' + S, 'mainPiston' + S, V(gm.x, gm.y, axleZ), V(0, 1, 0));
     const AX = (BG.axleSpacing * (NAXLES - 1)) / 2, TR = BG.tread / 2, TW = BG.wheelWidthMain;
-    b.add(cylBetween(V(gm.x + AX + 0.1, gm.y, axleZ + 0.02), V(gm.x - (BG.axleSpacingAft ?? AX) - 0.1, gm.y, axleZ + 0.02), 0.11, 0.11, 8), TRUCK, C.gear);
-    // Torque link, from the piston to the beam.
-    b.add(cylBetween(V(gm.x, gm.y, zLow + 0.15), V(gm.x + 0.4, gm.y + side * 0.14, axleZ + 0.35), 0.035, 0.035, 5), PIS, C.gear);
+    // v0.7.4: the bogie beam, a forged box 0.4 m deep and 0.3 m wide [EST] (was a rod of 0.11 m), past the end axles,
+    // with the yoke over its pivot where the piston meets it.
+    {
+      const bF = gm.x + AX + 0.3, bA = gm.x - (BG.axleSpacingAft ?? AX) - 0.3;
+      b.add(boxAt((bF + bA) / 2, gm.y, axleZ + 0.03, bF - bA, 0.3, 0.4), TRUCK, C.gear);
+      b.add(boxAt(gm.x, gm.y, axleZ + 0.28, 0.62, 0.4, 0.2), TRUCK, C.gear);
+    }
+    // Torque links, two plates hinged at a knee ahead of the strut, from the cylinder's foot to the piston's (v0.7.4: a
+    // rod of 0.035 m).
+    {
+      const top = V(gm.x + 0.2, gm.y, zLow + 0.05), knee = V(gm.x + 0.58, gm.y, (zLow + axleZ) / 2 + 0.1), foot = V(gm.x + 0.24, gm.y, axleZ + 0.34);
+      b.add(plateBetween(top, knee, 0.18, 0.07), PIS, C.gear);
+      b.add(plateBetween(knee, foot, 0.18, 0.07), PIS, C.gear);
+      b.add(cylBetween(knee.clone().add(V(0, -0.07, 0)), knee.clone().add(V(0, 0.07, 0)), 0.07, 0.07, 8), PIS, C.gear);
+    }
     for (let ia = 0; ia < NAXLES; ia++) {
       // The 777's aft axle has its own spacing from the centre one.
       const ax = BG.axleSpacingAft && ia === NAXLES - 1 ? gm.x - BG.axleSpacingAft : gm.x + AX - ia * BG.axleSpacing;
       // A steered aft axle (the 777's) turns on the beam, carrying its two wheels with it.
       const steered = AFT_STEER && ia === NAXLES - 1;
       const AXLE = steered ? bone('aftAxle' + S, 'bogie' + S, V(ax, gm.y, axleZ), V(0, 0, 1)) : TRUCK;
-      b.add(cylBetween(V(ax, gm.y - TR, axleZ), V(ax, gm.y + TR, axleZ), 0.075, 0.075, 8), AXLE, C.gear);
+      b.add(cylBetween(V(ax, gm.y - TR, axleZ), V(ax, gm.y + TR, axleZ), 0.13, 0.13, 12), AXLE, C.gear);   // v0.7.4: 0.075, 8
+      b.add(cylBetween(V(ax, gm.y - 0.21, axleZ), V(ax, gm.y + 0.21, axleZ), 0.22, 0.22, 12), AXLE, C.gear);   // the beam's end boss
       const WH = bone('mainWheel' + S + ia, steered ? 'aftAxle' + S : 'bogie' + S, V(ax, gm.y, axleZ), V(0, 1, 0));
       for (const dy of [-TR, TR]) {
         const c = V(ax, gm.y + dy, axleZ);
         b.add(tyre(c, R_MAIN, TW), WH, C.tyre);
-        b.add(new THREE.CylinderGeometry(R_MAIN * 0.68, R_MAIN * 0.68, TW - 0.04, 16).translate(c.x, c.y, c.z), WH, C.hub);
-        b.add(boxAt(c.x, c.y + Math.sign(dy) * (TW / 2 - 0.015), c.z + R_MAIN * 0.42, 0.09, 0.01, 0.14), WH, C.tyre);
+        // v0.7.4 (second pass): the rim at its real size on both faces, light against the tyre, with the brake stack
+        // inside (aircraft.js wheelFaces()); it was a dark grey disc of 0.68 R flush with the tyre (C.hub).
+        addWheelFaces(b, WH, wheelFaces(c, R_MAIN, TW, RIM_MAIN));
+        b.add(boxAt(c.x, c.y + Math.sign(dy) * TW / 2, c.z + R_MAIN * 0.57, 0.09, 0.01, 0.12), WH, C.tyre);   // a mark to show the spin
       }
     }
     // The belly door, hinged towards the centre line, curved to the fairing.
@@ -723,24 +748,34 @@ export function createWidebody(spec, opts = {}) {
   const nAxle = V(NG.x, 0, NG.z + R_NOSE), nPivot = V(NG.x, 0, spec.gear.nosePivotZ);
   const nAxis = nPivot.clone().sub(nAxle).normalize();
   const NLEG = bone('noseLeg', 'root', nPivot, V(0, 1, 0));
-  b.add(cylBetween(nPivot, nPivot.clone().lerp(nAxle, 0.6), 0.14, 0.13, 12), NLEG, C.gear);
+  // v0.7.4 (item 6): the nose gear to match the mains [EST]: a thicker strut with its gland, a braced tube, a 0.24 m
+  // piston, an axle housing, plate torque links and hub caps (was 0.14 m, 0.06 m, 0.09 m, 0.06 m and a flat plate).
+  b.add(cylBetween(nPivot, nPivot.clone().lerp(nAxle, 0.6), 0.19, 0.17, 14), NLEG, C.gear);
+  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.57), nPivot.clone().lerp(nAxle, 0.62), 0.2, 0.2, 14), NLEG, C.gear);
   // The drag brace folds up against the leg, as the main gear's side stay does.
   const nBraceAt = nPivot.clone().lerp(nAxle, 0.35);
   const NBRACE = bone('noseBrace', 'noseLeg', nBraceAt, V(0, 1, 0));
   const nBraceAngle = Math.atan2(1.25, nPivot.z - 0.05 - nBraceAt.z);
-  b.add(cylBetween(nBraceAt, V(NG.x - 1.25, 0, nPivot.z - 0.05), 0.06, 0.06, 6), NBRACE, C.gear);
+  b.add(cylBetween(nBraceAt, V(NG.x - 1.25, 0, nPivot.z - 0.05), 0.09, 0.09, 8), NBRACE, C.gear);
   b.add(sphereAt(nPivot.clone().lerp(nAxle, 0.45).add(V(0.17, 0, 0)), 0.1), NLEG, C.lamp);
   bone('noseSteer', 'noseLeg', nAxle, nAxis);
   const NPIS = bone('nosePiston', 'noseSteer', nAxle, nAxis);
-  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.5), nAxle, 0.09, 0.09, 10), NPIS, C.chrome);
-  b.add(cylBetween(V(nAxle.x, -BG.noseTread / 2, nAxle.z), V(nAxle.x, BG.noseTread / 2, nAxle.z), 0.06, 0.06, 8), NPIS, C.gear);
-  b.add(boxAt(nAxle.x + 0.06, 0, nAxle.z + 0.5, 0.55, 0.24, 0.07), NPIS, C.gear);
+  b.add(cylBetween(nPivot.clone().lerp(nAxle, 0.5), nAxle, 0.12, 0.12, 12), NPIS, C.chrome);
+  b.add(cylBetween(V(nAxle.x, -BG.noseTread / 2, nAxle.z), V(nAxle.x, BG.noseTread / 2, nAxle.z), 0.1, 0.1, 10), NPIS, C.gear);
+  b.add(cylBetween(V(nAxle.x, -0.2, nAxle.z), V(nAxle.x, 0.2, nAxle.z), 0.16, 0.16, 12), NPIS, C.gear);   // the axle's housing
+  {
+    // Torque links ahead of the strut: from the cylinder's foot to the axle housing, hinged at a knee.
+    const L = nPivot.distanceTo(nAxle), at = (d, fwd) => nAxle.clone().addScaledVector(nAxis, d).add(V(fwd, 0, 0));
+    const top = at(0.4 * L - 0.04, 0.16), knee = at(0.25 * L, 0.42), foot = at(0.16, 0.16);
+    b.add(plateBetween(top, knee, 0.14, 0.06), NPIS, C.gear);
+    b.add(plateBetween(knee, foot, 0.14, 0.06), NPIS, C.gear);
+  }
   const NWH = bone('noseWheel', 'nosePiston', nAxle, V(0, 1, 0));
   for (const dy of [-BG.noseTread / 2, BG.noseTread / 2]) {
     const c = V(nAxle.x, dy, nAxle.z), TN = BG.wheelWidthNose;
     b.add(tyre(c, R_NOSE, TN, 18), NWH, C.tyre);
-    b.add(new THREE.CylinderGeometry(R_NOSE * 0.68, R_NOSE * 0.68, TN - 0.03, 14).translate(c.x, c.y, c.z), NWH, C.hub);
-    b.add(boxAt(c.x, c.y + Math.sign(dy) * (TN / 2 - 0.01), c.z + R_NOSE * 0.42, 0.07, 0.01, 0.1), NWH, C.tyre);
+    addWheelFaces(b, NWH, wheelFaces(c, R_NOSE, TN, RIM_NOSE, { brake: false }));   // v0.7.4 (second pass): the rim, no brakes
+    b.add(boxAt(c.x, c.y + Math.sign(dy) * TN / 2, c.z + R_NOSE * 0.6, 0.07, 0.01, 0.09), NWH, C.tyre);
   }
   // Nose doors: patches of the skin, hinged along the bay's sides.
   for (const side of [1, -1]) {

@@ -1,0 +1,16 @@
+{
+ "v": 1,
+ "source": "the 1 km level (l1) of the region's terrain tiles, 2 x 2 means (tools/bake_map_relief.py)",
+ "x0": -1600000,
+ "y0": -1338000,
+ "cell": 2000,
+ "nx": 1855,
+ "ny": 1311,
+ "hmax": 5000.0,
+ "encoding": "0 sea, 1 land below sea level, 2..255 land: h = hmax * ((v - 2) / 253) ** 2 metres",
+ "planes": 2,
+ "weight": "the second plane: 0..255, how much of the tint and shade shows (faded to the plain land where the heights end)",
+ "rowOrder": "south first",
+ "sampling": "cell-centred",
+ "file": "map-relief.u8.gz"
+}

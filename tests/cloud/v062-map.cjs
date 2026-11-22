@@ -48,7 +48,7 @@ const BASE = process.env.FS_BASE || 'http://127.0.0.1:8765/games/flight-sim/';
     await page.mouse.move(leg.at[0], leg.at[1]);
     await page.waitForTimeout(800);
     const tip = await page.evaluate(() => { const t = document.querySelector('.fsui-map .fsui-tip, .fsui-tip'); return { text: t.textContent, hidden: t.hidden }; });
-    const m = /^Set HDG (\d{3})° to follow this line$/.exec(tip.text);
+    const m = /^Set HDG (\d{3}(?:\.\d)?)° to follow this line$/.exec(tip.text);   // (v0.7.4: the tip gives the heading to 0.1°, "071.5°")
     ok(!tip.hidden && m && Math.abs(Number(m[1]) - leg.want) <= 1, `over the line: "${tip.text}" (the leg's magnetic heading there: ${String(leg.want).padStart(3, '0')}°)`);
     await snap(page, browser, `${out}/v062-map-tip.png`, BASE, viewport);
     await page.mouse.move(leg.off[0], leg.off[1]);

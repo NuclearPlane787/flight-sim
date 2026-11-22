@@ -106,6 +106,8 @@ def resample(tiles, x0, y0, cell, nx, ny, sub=3, rows_per_chunk=200):
 
 
 def main():
+    import bake_common
+    bake_common.refuse_retired('bake_height.py', "data/terrain/height.i16.gz (it writes Korea's national height grid)")
     paths = sorted(glob.glob(os.path.join(RAW, 'dem90', '*.tif')))
     paths += sorted(glob.glob(os.path.join(EXTRA_DEM90, '*.tif')))
     print(f'{len(paths)} GLO-90 tiles')

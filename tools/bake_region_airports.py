@@ -399,6 +399,7 @@ HOLD_DROP_M = {}    # v0.7.0: icao -> m; OSM holds farther than this from every 
 REF_SQUEEZE = set()  # v0.7.0: airports whose OSM stand refs 'B 44' are read as B44 (Europe's block fills it)
 STAND_DROP = {}     # v0.7.0: icao -> (refs, reason): OSM stands on taxiways no route reaches (Europe's block fills it)
 AREA_EXTRA = {}     # v0.7.1: icao -> [(lon0, lat0, lon1, lat1), ...]: boxes added to the aerodrome's area (Toulouse's Airbus sites)
+PAVE_DROPPED = set()      # v0.7.4: airports whose positions left out by a STAND_EXCLUDE set of refs or by STAND_DROP_NUMBERED keep their pavement (stand_aprons())
 STAND_DROP_NUMBERED = {}  # v0.7.2: icao -> (refs, reason): unnamed stands left out by the number the bake gave them
 # - Pyongyang 17/35: ILS CAT I at both ends (17: 109.5, 35: 109.9, 3.0 deg glide paths; the nav data); 17 ALSF-I, PAPI-4R
 #   (right), 35 SALS (drawn as the game's SSALF, 420 m [EST]) and PAPI-4L, centreline lights, no TDZ (the scenery's runway
@@ -972,6 +973,13 @@ if EUROPE:
     THR_AT.update({('EDDB', e): (_dms_signed(la), _dms_signed(lo)) for e, (la, lo) in AIP_THR['EDDB'].items() if e in ('06R', '24L')})
     THR_LEN.update({('EDDB', '06L/24R'): 3600, ('EDDB', '06R/24L'): 4000})
     HOLD_DROP_M['EDDB'] = 30.0
+    # v0.7.4 ("Found while building v0.7.1"): OSM's de-icing pads (aeroway=parking_position with refs PAD1 to PADEAST,
+    # fourteen positions on the north, south and east de-icing areas) were offered as stands. STAND_EXCLUDE takes a set
+    # of OSM refs as well as a y threshold.
+    STAND_EXCLUDE['EDDB'] = (frozenset({'PAD1', 'PAD1A', 'PAD2', 'PAD3', 'PAD 3', 'PADEAST'}), "OSM's de-icing pads, not parking stands")
+    # and the three positions OSM leaves unnamed on the east pad (among PAD1-3 to PAD1A-3), by the numbers the bake gave them
+    STAND_DROP_NUMBERED['EDDB'] = ({'R2', 'R3', 'R4'}, "unnamed OSM positions on the east de-icing pad, not parking stands")
+    PAVE_DROPPED.add('EDDB')   # OSM maps no apron under the pads: they keep the pavement the bake made round them
     ICAOS = list(NAMES)
 
 # - v0.7.1, Malpensa (LIMC, nord-ovest-261121): box cut by /tmp/flight-sim/v071/airports/osm/extract.sh (8.67,45.60,8.76,
@@ -1111,14 +1119,14 @@ if EUROPE:
                    '07R': ('ALSF-I', 900, 'left', 3.0, 'I', 175.0, False, True, 45, 117),
                    '25L': ('ALSF-II', 900, 'left', 3.0, 'III', 159.0, True, True, 45, 0),
                    '01': ('ALSF-I', 900, 'left', 3.0, 'I', 183.0, False, True, 50, 44),
-                   # v0.7.1, the lead [EST]: 19's elevation 108.4 ft, not OurAirports' 113 ft. 01/19's north end crosses
-                   # 07L/25R's east end, and the game bends a runway to one longer runway only (runwayCrossings(): 07R/25L
-                   # here), so with 113 ft 01/19's surface stood 1.3 m above 07L/25R's where they cross: a trench 70 m wide
-                   # across 01/19. At 108.4 ft 01/19's straight profile passes through 07L/25R's height there (33.69 m); a lip
-                   # of 0.2 to 0.3 m is left at the crossing's edges, where a take-off from 19 would begin, so the game takes
-                   # 19 for landings only (ONE_WAY in src/world/runways.js, as its own limit, not the AIP's). Shortening 01/19
-                   # to 07L/25R's edge was tried and undone: the taxi graph lost its way to 25R's hold (1,093 m along the runway).
-                   '19': (None, 0, 'left', 3.0, None, 108.4, False, True, 50, 218)}
+                   # 19's elevation, [EST]: 110.2 ft at its pavement end. OurAirports' 113 ft is the threshold's, and 19's
+                   # threshold is displaced 218 m: it lies south of 07L/25R, which 01/19's north end crosses. The game puts
+                   # an end's elevation at the pavement end, here a stub 15 m long north of 07L/25R's edge, which is level
+                   # with that runway (33.58 m, 110.2 ft); at the threshold itself the bent profile reads 112.8 ft.
+                   # (v0.7.1 to v0.7.3: 108.4 ft, so that 01/19's straight profile met 07L/25R's height, the game then
+                   # bending a runway to one longer runway only; v0.7.4 bends it to both: runwayCrossings() in
+                   # src/world/runways.js. With 113 ft at the pavement end the stub was a 5 % ramp.)
+                   '19': (None, 0, 'left', 3.0, None, 110.2, False, True, 50, 218)}
     # Every ref'd way stops at a displaced threshold: each end at the outer end of OSM's unnamed displaced_threshold way
     # (517469019 to 517469023: 07L 287 m, 25R 297 m, 19 218 m, 01 44 m, 07R 117 m, the displacements baked), 25L at the
     # ref'd way's end; each runway trimmed evenly to OurAirports' length.
@@ -1933,8 +1941,9 @@ def bake(icao, wmm, oa_ap, oa_rw):
     if icao in STAND_EXCLUDE:
         ymin, why = STAND_EXCLUDE[icao]
         n0 = len(stands)
-        stands = [st for st in stands if st['y'] - oy >= ymin]
-        est.append(('small aircraft aprons', f'{n0 - len(stands)} OSM stands left out', why + ' (STAND_EXCLUDE)'))
+        if not isinstance(ymin, (set, frozenset)):   # (v0.7.4: a set of refs is taken further down, once the stands have their names)
+            stands = [st for st in stands if st['y'] - oy >= ymin]
+            est.append(('small aircraft aprons', f'{n0 - len(stands)} OSM stands left out', why + ' (STAND_EXCLUDE)'))
     if icao in SPOT_REFS:
         # v0.6.4: the AIP's spot numbers on OSM's stands (the nearest within SPOT_REF_M of each published position)
         named = 0
@@ -2001,6 +2010,17 @@ def bake(icao, wmm, oa_ap, oa_rw):
     stands = keep
     if dropped:
         est.append(('stands dropped', dropped, 'a second lead-in of a stand already read (same ref, within 60 m)'))
+    paved_only = []
+    if icao in STAND_EXCLUDE and isinstance(STAND_EXCLUDE[icao][0], (set, frozenset)):
+        # v0.7.4: STAND_EXCLUDE by OSM's refs (Berlin's de-icing pads), here, where every stand has the name it keeps:
+        # a ref in the set, and a second or third stand of that ref ("PAD1-2", renamed just above)
+        refs_x, why = STAND_EXCLUDE[icao]
+        n0 = len(stands)
+        out_x = [st for st in stands if st['ref'] in refs_x or st['ref'].rsplit('-', 1)[0] in refs_x]
+        stands = [st for st in stands if st['ref'] not in refs_x and st['ref'].rsplit('-', 1)[0] not in refs_x]
+        if icao in PAVE_DROPPED:
+            paved_only += out_x
+        est.append(('stands left out', f'{n0 - len(stands)} with OSM refs {", ".join(sorted(refs_x))}', why + ' (STAND_EXCLUDE)'))
     if icao in STAND_DROP:
         refs_d, why = STAND_DROP[icao]
         n0 = len(stands)
@@ -2033,6 +2053,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
     if icao in STAND_DROP_NUMBERED:
         refs_d, why = STAND_DROP_NUMBERED[icao]
         n0 = len(stands)
+        if icao in PAVE_DROPPED:
+            paved_only += [st for st in stands if st['ref'] in refs_d]
         stands = [st for st in stands if st['ref'] not in refs_d]
         est.append(('stands left out', f'{n0 - len(stands)}: {", ".join(sorted(refs_d))}', why + ' (STAND_DROP_NUMBERED)'))
 
@@ -2056,7 +2078,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
             if Point(xy).within(area):
                 holds.append(dict(ref=tags.get('ref', ''), x=r1(xy[0]), y=r1(xy[1])))
 
-    extra = stand_aprons(stands, aprons, runways, icao, taxiways)
+    # (v0.7.4: PAVE_DROPPED's positions are no stands but keep the pavement made round them: Berlin's de-icing pads)
+    extra = stand_aprons(stands + paved_only, aprons, runways, icao, taxiways)
     if extra:
         est.append(('aprons added', f'{len(extra)} pieces, {sum(Polygon(a["points"]).area for a in extra) / 1e6:.2f} km2',
                     f'stands off OSM\'s aprons ({APRON_SYNTH_REASON}): pavement made round them, "synthetic": true'))

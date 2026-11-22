@@ -2,7 +2,7 @@
 // Mac's GPU, on a runway at Gimpo in the afternoon, from a three-quarter view. No third-party images.
 //   python3 tools/cpu-guard.py --minutes 6 -- node tests/render-type-pictures.mjs [ids…]
 // Env: FS_URL (default http://127.0.0.1:8014/games/flight-sim/).
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';

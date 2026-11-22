@@ -5,7 +5,7 @@
 // Env: FS_URL (default http://localhost:8014/games/flight-sim/), SKY_OUT (default
 // GameDump's "Claude outputs/flight-sim/"). Prints sky.state for each shot.
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';

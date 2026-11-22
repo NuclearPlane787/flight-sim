@@ -77,7 +77,155 @@ export function normalizeWeather(s) {
   // (windTurnAt). Settings without the tag are v0.5.8's (a save's): their wind keeps its grid
   // direction everywhere, so an old save in weather flies as it did.
   if (s.trueWind === true) o.trueWind = true;
+  // v0.7.4, weather by place: the departure's own weather (`dep`) and the two ends' places (`ends`). The
+  // settings themselves are then the destination's. The same weather at both ends (all but the place it
+  // is referred to) is one weather: the destination's alone, as every version before v0.7.4 had it, so
+  // its numbers are those to the bit.
+  // (Two places within SAME_PLACE_M are one place, a circuit: there it is one weather, the destination's.)
+  if (s.dep && typeof s.dep === 'object' && validEnds(s.ends) && !samePlace(s.ends)) {
+    const d = normalizeWeather({ ...s.dep, dep: null, ends: null });
+    if (!sameWeather(d, o)) {
+      o.dep = d;
+      o.ends = { ax: s.ends.ax, ay: s.ends.ay, bx: s.ends.bx, by: s.ends.by };
+    }
+  }
   return o;
+}
+
+// ---- v0.7.4: weather by place ----
+// Two weathers, the departure's (`dep`) and the destination's (the settings themselves), and between them a
+// blend by position alone: a point's place along the route from the departure (ax, ay) to the destination
+// (bx, by), t = 0 at the one and 1 at the other, projected onto the line. Each end's weather holds over its
+// third of the route (exactly: w is 0 for t ≤ 1/3, 1 for t ≥ 2/3, so its numbers there are that weather's
+// alone), the blend runs smoothly across the middle third, and beyond either end the nearer end's holds.
+// No state, so the live sim, the prediction and a jump's restore read the same air.
+const validEnds = (e) => !!e && [e.ax, e.ay, e.bx, e.by].every(Number.isFinite);
+// v0.7.4 (the review): a route back to its own airport (a circuit) has one place, so one weather: the
+// destination's, what the player set for where they will land. Ends closer than this are one place.
+export const SAME_PLACE_M = 1000;
+export const samePlace = (e) => !validEnds(e) || Math.hypot(e.bx - e.ax, e.by - e.ay) < SAME_PLACE_M;
+const placeless = (s) => JSON.stringify({ ...s, refX: 0, refY: 0 });
+// The same weather, wherever each is referred to (its wind's magnetic direction is read at its own place).
+export const sameWeather = (a, b) => placeless(normalizeWeather(a)) === placeless(normalizeWeather(b));
+export const hasTwoEnds = (s) => !!(s && s.dep && s.ends);
+
+// 0 (the departure's weather) .. 1 (the destination's) at map point (x, y).
+export function blendWeight(e, x, y) {
+  const dx = e.bx - e.ax, dy = e.by - e.ay, L2 = dx * dx + dy * dy;
+  if (!(L2 > 1)) return 0;   // (one place for both: the departure's)
+  const t = ((x - e.ax) * dx + (y - e.ay) * dy) / L2;
+  return t <= 1 / 3 ? 0 : t >= 2 / 3 ? 1 : smooth((t - 1 / 3) * 3);
+}
+
+// One end's weather alone, as a single settings object: 'dep' or 'dest'. A single weather is both ends'.
+export function endWeather(s, end) {
+  if (!s) return null;
+  if (!hasTwoEnds(s)) return s;
+  if (end === 'dep') return s.dep;
+  const { dep, ends, ...dest } = s;
+  return dest;
+}
+
+// The settings with one end's weather set (`w`, a single weather, or null for calm), the other end's kept,
+// at the places `ends` ({ ax, ay, bx, by }; the settings' own if left out). Normalized: equal ends become one.
+export function withEndWeather(s, end, w, ends) {
+  const e = validEnds(ends) ? ends : s && s.ends;
+  const one = normalizeWeather(w);
+  const other = normalizeWeather(endWeather(s, end === 'dep' ? 'dest' : 'dep'));
+  if (!validEnds(e)) return one;   // no places to blend between: the one weather everywhere
+  const dep = end === 'dep' ? one : other, dest = end === 'dep' ? other : one;
+  delete dep.dep; delete dep.ends; delete dest.dep; delete dest.ends;
+  return normalizeWeather({ ...dest, dep, ends: e });
+}
+
+// A route changed in flight: the destination's weather goes with the new destination (its place, and the
+// place its wind's magnetic direction is read at). A single weather is everywhere, and stays as it is.
+export function moveDestination(s, x, y) {
+  if (!hasTwoEnds(s) || !Number.isFinite(x) || !Number.isFinite(y)) return s;
+  return normalizeWeather({ ...s, refX: x, refY: y, ends: { ...s.ends, bx: x, by: y } });
+}
+
+const wrapDeg = (d) => ((d % 360) + 360) % 360;
+// A single weather between two (a at w = 0, b at w = 1): what the air at a point of the blend is, for the
+// look, the sound and another airport's METAR. a or b itself at the ends. The wind blends as vectors (the
+// two ends' magnetic directions taken as one: their variations differ by a few degrees at most), the
+// visibility by its logarithm, the cloud layers in order of their bases, the turbulence by its level.
+export function blendSettings(a, b, w) {
+  const A = normalizeWeather(a), B = normalizeWeather(b);
+  if (!(w > 0)) return A;
+  if (w >= 1) return B;
+  const near = w < 0.5 ? A : B;
+  const lerp = (p, q) => p + (q - p) * w;
+  const mixDir = (fa, ka, fb, kb, keep) => {
+    const n = lerp(ka * Math.cos(fa * DEG), kb * Math.cos(fb * DEG)), e = lerp(ka * Math.sin(fa * DEG), kb * Math.sin(fb * DEG));
+    const kt = Math.hypot(n, e);
+    return { fromDeg: kt > 1e-6 ? wrapDeg(Math.atan2(e, n) / DEG) : keep, kt };
+  };
+  const sw = mixDir(A.wind.fromDeg, A.wind.kt, B.wind.fromDeg, B.wind.kt, near.wind.fromDeg);
+  const exA = A.wind.gustKt > A.wind.kt ? A.wind.gustKt - A.wind.kt : 0, exB = B.wind.gustKt > B.wind.kt ? B.wind.gustKt - B.wind.kt : 0;
+  const ex = lerp(exA, exB);
+  const al = mixDir(A.aloft.fromDeg, A.aloft.kt, B.aloft.fromDeg, B.aloft.kt, near.aloft.fromDeg);
+  const ti = Math.round(lerp(TURBULENCE_LEVELS.indexOf(A.turbulence), TURBULENCE_LEVELS.indexOf(B.turbulence)));
+  const la = A.clouds.slice().sort((p, q) => p.baseFt - q.baseFt), lb = B.clouds.slice().sort((p, q) => p.baseFt - q.baseFt);
+  const clouds = [];
+  for (let i = 0; i < Math.max(la.length, lb.length); i++) {
+    const p = la[i] || { okta: 0, baseFt: lb[i].baseFt, topFt: lb[i].topFt }, q = lb[i] || { okta: 0, baseFt: p.baseFt, topFt: p.topFt };
+    const okta = Math.round(lerp(p.okta, q.okta));
+    if (okta > 0) clouds.push({ okta, baseFt: lerp(p.baseFt, q.baseFt), topFt: lerp(p.topFt, q.topFt) });
+  }
+  const ra = A.precip.kind === 'none' ? 0 : A.precip.rate * (1 - w), rb = B.precip.kind === 'none' ? 0 : B.precip.rate * w;
+  const kind = ra + rb > 0 ? (ra >= rb ? A.precip.kind : B.precip.kind) : 'none';
+  const o = {
+    seed: near.seed, preset: near.preset, refX: near.refX, refY: near.refY,
+    wind: { ...sw, gustKt: ex > 0 ? sw.kt + ex : 0 }, aloft: al,
+    turbulence: TURBULENCE_LEVELS[ti] || 'none', shear: near.shear,
+    microbursts: [...A.microbursts, ...B.microbursts].slice(0, 24),
+    visM: Math.exp(lerp(Math.log(A.visM), Math.log(B.visM))), fogTopFt: lerp(A.fogTopFt, B.fogTopFt),
+    clouds, precip: { kind, rate: kind === 'none' ? 0 : ra + rb },
+    lightning: lerp(A.lightning, B.lightning), runway: near.runway,
+    tempC: lerp(A.tempC, B.tempC), qnh: lerp(A.qnh, B.qnh),
+  };
+  if (A.trueWind || B.trueWind) o.trueWind = true;
+  return normalizeWeather(o);
+}
+
+// The weather at map point (x, y), as a single settings object: a single weather is itself (the very
+// object), an end's third that end's, the middle a blend. Each end's microbursts are kept only where its
+// weather reaches (the departure's where the weight is under 1, the destination's where it is over 0).
+// step > 0 rounds the weight to that step (the look's: it changes only by a visible step).
+export function weatherAt(s, x, y, step = 0) {
+  if (!hasTwoEnds(s)) return s || null;
+  let w = blendWeight(s.ends, x, y);
+  if (step > 0) w = Math.round(w / step) * step;
+  const keep = (list, mine) => list.filter((m) => { const k = blendWeight(s.ends, m.x, m.y); return mine === 'dep' ? k < 1 : k > 0; });
+  const a = endWeather(s, 'dep'), b = endWeather(s, 'dest');
+  const o = blendSettings({ ...a, microbursts: keep(a.microbursts, 'dep') }, { ...b, microbursts: keep(b.microbursts, 'dest') }, w);
+  // v0.7.4 (the review): for the look, the clouds' pattern (seed) and their drift (the wind aloft and the place it
+  // is read at) are one for the whole flight, the destination's, at every point of the route: crossing the blend
+  // changes how much cloud there is and where its layers sit, never where the whole field is or which pattern it
+  // has. (clouds.js reads `cloud` before the weather's own seed and aloft; the sim never reads it.)
+  // (The seed too, so the rain's particles and the strikes keep theirs across the blend.)
+  return { ...o, seed: b.seed, cloud: { seed: b.seed, aloft: { ...b.aloft }, refX: b.refX, refY: b.refY, trueWind: b.trueWind === true } };
+}
+
+// For the look and the sound: the weather where the camera is, the same object until the settings change
+// or the blend's weight moves by a visible step (1/24 of the middle third's change), so the world's and
+// the synth's setWeather() run a few dozen times across a route, not every frame. A single weather is
+// passed through as it is.
+export const LOOK_STEP = 1 / 24;
+export function createWeatherFollower(step = LOOK_STEP) {
+  let lastS, lastW = NaN, out = null;
+  return {
+    at(s, x, y) {
+      if (!hasTwoEnds(s)) { lastS = s; lastW = NaN; out = s || null; return out; }
+      const w = Math.round(blendWeight(s.ends, x, y) / step) * step;
+      if (s !== lastS || w !== lastW) {
+        lastS = s; lastW = w; out = weatherAt(s, x, y, step);
+        if (isDefaultWeather({ ...out, seed: calmWeather().seed })) out = null;   // (the look's seed is the flight's)   // a calm end draws and sounds as the default weather does (null)
+      }
+      return out;
+    },
+  };
 }
 
 // The runway's state: as set on the panel, or from the precipitation and the temperature. 'dry' | 'wet' | 'snow' | 'ice'.
@@ -258,6 +406,7 @@ export const microburstLambda = (dvMs, R) => dvMs / (MB_RSHAPE * R * MB_ZSHAPE);
 // ---- compiled settings: what the sim reads every step ----
 export function compileWeather(settings) {
   const s = normalizeWeather(settings);
+  if (hasTwoEnds(s)) return compileTwoEnds(s);
   const vec = (fromDeg, kt) => {
     const a = magToGrid(fromDeg * DEG, s.refX, s.refY), v = kt * KT;
     return { n: -v * Math.cos(a), e: -v * Math.sin(a) };   // "from" → the way the air is going
@@ -274,7 +423,8 @@ export function compileWeather(settings) {
     gustAmp: Math.max(0, s.wind.gustKt - s.wind.kt) * KT, gustN, gustE,
     advSpeed: adv, advN: gustN * adv, advE: gustE * adv,
     shear: null, level: s.turbulence, modes: null, bursts: null, w20: sp * W20_FROM_10M,
-    dT: s.tempC - ISA_TEMP_C, qnhPa: s.qnh * 100,
+    dT: s.tempC - ISA_TEMP_C, qnhPa: s.qnh * 100, qnh: s.qnh,
+    gustKt: s.wind.gustKt > s.wind.kt ? s.wind.gustKt : 0,   // v0.7.4: the screens' gust peak (0: none)
     windOn: false, atmOn: s.tempC !== ISA_TEMP_C || s.qnh !== STD_QNH,
     tyres: runwayTyresOf(s),
   };
@@ -302,6 +452,59 @@ export function compileWeather(settings) {
   }
   C.windOn = sp > 0 || al.n !== 0 || al.e !== 0 || C.gustAmp > 0 || !!C.shear || C.bursts.length > 0 || !!C.modes;
   return C;
+}
+
+// v0.7.4: two ends. A and B are each end's own compiled weather; windAt() blends their winds and
+// localWeather() the rest. The fields the sim reads without a place (windOn, atmOn, modes as a flag,
+// bursts for the predictive windshear's scan) cover both: each end's microbursts are weighted by how much of
+// that end's weather is at the burst (so a storm's cells stay with the end that has the storm).
+function compileTwoEnds(s) {
+  const { dep, ends, ...dest } = s;
+  const A = compileWeather(dep), B = compileWeather(dest);
+  const e = { ax: ends.ax, ay: ends.ay, bx: ends.bx, by: ends.by };
+  const weigh = (list, mine) => list.map((b) => {
+    const k = blendWeight(e, b.x, b.y);
+    return { ...b, lambda: b.lambda * (mine === 'dep' ? 1 - k : k) };
+  }).filter((b) => b.lambda > 0);
+  return {
+    two: true, settings: s, A, B, ends: e, seed: B.seed,
+    trueWind: false, refConv: 0,
+    windOn: A.windOn || B.windOn, atmOn: A.atmOn || B.atmOn,
+    modes: A.modes || B.modes, bursts: [...weigh(A.bursts, 'dep'), ...weigh(B.bursts, 'dest')],
+    dT: B.dT, qnhPa: B.qnhPa, qnh: B.qnh, tyres: B.tyres, sfN: B.sfN, sfE: B.sfE, gustKt: B.gustKt,
+    memo: { x: NaN, y: NaN, L: null },
+  };
+}
+
+// v0.7.4: the compiled weather's place-bound parts at map point (x, y): { dT, qnhPa, qnh, atmOn, tyres, sfN,
+// sfE, gustKt, trueWind, refConv } as the sim reads them. A single weather is itself; an end's third that
+// end's own compiled weather; the middle a blend (sfN, sfE already turned to the place: windTurnAt() of it
+// is 0). The runway's state is the nearer end's. A pure function of (x, y): the memo only saves the sums.
+export function localWeather(C, x, y) {
+  if (!C.two) return C;
+  const w = blendWeight(C.ends, x, y);
+  if (w === 0) return C.A;
+  if (w === 1) return C.B;
+  const m = C.memo;
+  if (m.x === x && m.y === y && m.L) return m.L;
+  const A = C.A, B = C.B, L = m.L || (m.L = { two: false, trueWind: false, refConv: 0 });
+  const lerp = (p, q) => p + (q - p) * w;
+  const turned = (K) => {
+    const r = windTurnAt(K, x, y);
+    if (r === 0) return [K.sfN, K.sfE];
+    const c = Math.cos(r), sn = Math.sin(r);
+    return [K.sfN * c - K.sfE * sn, K.sfE * c + K.sfN * sn];
+  };
+  const a = turned(A), b = turned(B);
+  L.sfN = lerp(a[0], b[0]); L.sfE = lerp(a[1], b[1]);
+  L.dT = lerp(A.dT, B.dT); L.qnhPa = lerp(A.qnhPa, B.qnhPa); L.qnh = lerp(A.qnh, B.qnh);
+  L.atmOn = L.dT !== 0 || L.qnhPa !== STD_QNH * 100;
+  L.tyres = w < 0.5 ? A.tyres : B.tyres;
+  L.gustKt = lerp(A.gustKt, B.gustKt);
+  L.windOn = A.windOn || B.windOn; L.modes = A.modes || B.modes;
+  L.w = w;
+  m.x = x; m.y = y;
+  return L;
 }
 
 const scales = { su: 0, sw: 0, Lu: 1, Lw: 1 };
@@ -339,6 +542,7 @@ export function windTurnAt(C, x, y) {
 // ground, at sim time t: n, e, d (the whole wind), meanN, meanE (without gusts, turbulence and bursts),
 // and p, the roll-rate gust (rad/s) across a span `span` whose right wing points along (rn, re).
 export function windAt(C, x, y, z, agl, t, rn, re, span, W) {
+  if (C.two) return windAtTwo(C, x, y, z, agl, t, rn, re, span, W);
   const turn = windTurnAt(C, x, y);
   const tc = turn === 0 ? 1 : Math.cos(turn), ts = turn === 0 ? 0 : Math.sin(turn);
   const h = agl > 0 ? agl : 0;
@@ -396,3 +600,17 @@ export function windAt(C, x, y, z, agl, t, rn, re, span, W) {
 }
 
 export const newWind = () => ({ n: 0, e: 0, d: 0, p: 0, meanN: 0, meanE: 0, sn: 0, se: 0, sd: 0 });
+
+// v0.7.4: two ends' air. In an end's third that end's wind alone (the very same sums); across the middle
+// both, blended by the weight (the gusts and the turbulence too: where the two are alike, half of each).
+const WA = newWind(), WB = newWind();
+const WIND_KEYS = ['n', 'e', 'd', 'p', 'meanN', 'meanE', 'sn', 'se', 'sd'];
+function windAtTwo(C, x, y, z, agl, t, rn, re, span, W) {
+  const w = blendWeight(C.ends, x, y);
+  if (w === 0) return windAt(C.A, x, y, z, agl, t, rn, re, span, W);
+  if (w === 1) return windAt(C.B, x, y, z, agl, t, rn, re, span, W);
+  windAt(C.A, x, y, z, agl, t, rn, re, span, WA);
+  windAt(C.B, x, y, z, agl, t, rn, re, span, WB);
+  for (const k of WIND_KEYS) W[k] = WA[k] + (WB[k] - WA[k]) * w;
+  return W;
+}

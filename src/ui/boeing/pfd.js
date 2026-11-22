@@ -7,7 +7,7 @@
 // One square Canvas 2D, all lengths are fractions of `s`. B612's digits are wide: anything in a fixed
 // window goes through fitSize. Check at FL350 and on final after a change (tests/dev-ui-boeing.html).
 
-import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation } from '../common.js';
+import { C, font, KT, FT, FPM, DEG, clamp, wrap360, angDiff, magDeg, ilsDeviation, courseText } from '../common.js';
 import { fmaModes, createBoxes, altAlert, speedLow, speedText, machText } from './logic.js';
 import { shownAltFt, shownGroundFt, baroLabel, baroInchesText, metricAlt } from '../pfd.js';
 
@@ -570,7 +570,7 @@ export function createBoeingPfd(cv) {
     if (!ils) return;
     ctx.fillStyle = C.white; ctx.textAlign = 'left'; ctx.font = font(s * 0.028);
     ctx.fillText(`${ils.icao} ${ils.ident}`.trim(), 0.012 * s, 0.84 * s);
-    ctx.fillText(`${String(Math.round(ils.courseMag) || 360).padStart(3, '0')}°`, 0.012 * s, 0.88 * s);
+    ctx.fillText(`${courseText(ils.courseMag)}°`, 0.012 * s, 0.88 * s);
     ctx.fillStyle = C.magenta; ctx.fillText(`${ils.distNm < 100 ? ils.distNm.toFixed(1) : Math.round(ils.distNm)} NM`, 0.012 * s, 0.92 * s);
   }
 

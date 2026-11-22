@@ -56,6 +56,9 @@
 .fsm-set-row .lab small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; color: #8a9097; }
 .fsm-set-row .ctl { display: flex; align-items: center; gap: 10px; flex: none; }
 .fsm-set-row input[type=range] { width: 200px; accent-color: #2fe3ff; cursor: pointer; }
+/* v0.7.4: the volumes under the master, indented under it */
+.fsm-set-row.fsm-set-sub { margin-left: 28px; padding-top: 6px; padding-bottom: 6px; }
+.fsm-set-row.fsm-set-sub .lab { font-size: 14px; }
 .fsm-set-row output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; color: #c9ced2; font-size: 14px; }
 .fsm-keys { width: 100%; font-size: 13.5px; color: #a9b4bd; }
 .fsm-keys td { padding: 4px 12px 4px 0; vertical-align: top; }

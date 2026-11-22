@@ -714,13 +714,19 @@ export function createClouds(scene, uniforms) {
 
   return {
     setWeather(s) {
+      // v0.7.4: a step of weather by place's look (the same flight's `cloud`, weather.js's weatherAt()) keeps the
+      // clouds' pattern and drift, and the flashes in progress; any other change starts afresh, as before.
+      const lookStep = !!(s?.cloud && settings?.cloud && s.cloud.seed === settings.cloud.seed);
       settings = s || null;
-      layers = (s?.clouds || []).map((c, i) => layerParams(c, i, s.seed)).filter(Boolean).slice(0, MAX_LAYERS)
+      const cloudSeed = s?.cloud ? s.cloud.seed : s?.seed;
+      layers = (s?.clouds || []).map((c, i) => layerParams(c, i, cloudSeed)).filter(Boolean).slice(0, MAX_LAYERS)
         .sort((a, b) => a.baseM - b.baseM);
       lightningOn = !!s && s.lightning > 0;
-      lastT = NaN;
-      active.length = 0;
-      boltStrike = null;
+      if (!lookStep || !lightningOn) {
+        lastT = NaN;
+        active.length = 0;
+        boltStrike = null;
+      }
       buildShafts(s?.microbursts || []);
       shaftU.uShaftTop.value = shaftTopM(layers);
       if (!layers.length && !lightningOn && !shaftCount) hideAll();
@@ -736,13 +742,15 @@ export function createClouds(scene, uniforms) {
 
       // The clouds drift with the wind aloft, by sim time: a pure function of it.
       let driftX = 0, driftY = 0;
-      const a = settings?.aloft;
+      // (v0.7.4: weather by place's look carries one drift wind for the whole flight, `cloud`.)
+      const D = settings?.cloud || settings;
+      const a = D?.aloft;
       if (a && a.kt > 0) {
-        const rx = settings.refX || 0, ry = settings.refY || 0;
+        const rx = D.refX || 0, ry = D.refY || 0;
         let r = magToGrid(a.fromDeg * Math.PI / 180, rx, ry);   // the wind's magnetic direction, on the map
         // v0.6.0 (briefs/V0-6-0.md, "The wind, true everywhere"): the drift keeps the wind's
         // true direction and turns by the convergence at the camera, as weather.js's windTurnAt() does.
-        if (settings.trueWind) r += convergenceAt(rx, ry) - convergenceAt(mapX, mapY);
+        if (D.trueWind) r += convergenceAt(rx, ry) - convergenceAt(mapX, mapY);
         const v = a.kt * 0.5144 * 0.7;
         driftX = -Math.sin(r) * v * t;
         driftY = -Math.cos(r) * v * t;

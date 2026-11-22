@@ -1,7 +1,7 @@
 // The Boeing screens' check: loads tests/dev-ui-boeing.html in Chrome at 1440x900, takes the
 // v030-boeing-*.png screenshots and pokes the MCP. No WebGL.
 //   FS_BASE=http://127.0.0.1:8014 python3 tools/cpu-guard.py -- node tests/browser-boeing-ui.mjs
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

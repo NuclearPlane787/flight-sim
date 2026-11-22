@@ -12,6 +12,8 @@ import { createEngines } from './engines.js';
 import { RHO0 } from './atmosphere.js';
 import { magToGrid } from '../world/frame.js';
 import { gainFor } from './fbw.js';
+import { hdg1000 } from './autopilot.js';   // v0.7.4: headings to 0.001°
+import { LOC_L, beamInto, locCaptures, gsCaptures, locCourse, gsVs, ilsCopy } from './approach-laws.js';   // v0.7.4: shared with the A321
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -41,9 +43,8 @@ export function createAutopilotBoeing(A) {
   const SPD_CLIMB_LOW = 250, SPD_DES_LOW = 240, SPD_CLIMB = 310, MACH_CLIMB = 0.85; // VNAV's schedule [brief]
   const NM = 1852;
   const WPT_RADIUS = 2 * NM;
-  const LOC_L = 1100;             // m: the localiser's heading law, Δψ = atan(xte / L)
-  const GS_K = 0.22;              // 1/s: the glideslope's path gain
-  const TCH = 50 * FT;            // the beam crosses the threshold at 50 ft (ref point ≈ the antenna)
+  // The localiser's and glideslope's laws (LOC_L, GS_K, TCH and the captures) are in approach-laws.js since v0.7.4.
+  const BEAM = { along: 0, xte: 0, beamD: 0, dev: 0 };
   const ROLLOUT_END = 30 * KT;    // m/s
   // The runway alignment [the 777's begins at 500 ft with a forward slip (TAIC's Auckland report); the 5° is the 747's
   // figure, EST for these two]. Gains EST, tuned in tests/weather-autoland.test.mjs.
@@ -73,7 +74,7 @@ export function createAutopilotBoeing(A) {
     };
     const clearCapture = () => { const X = core.X; X.boCapture = false; X.capVs = 0; };
     const ap = Object.assign(target, {
-      ap: false, athr: false, athrArmed: true,
+      ap: false, athr: false, athrArmed: true, athrWake: false,
       spdKt: 250, hdgDeg: 0, altFt: 5000, vsFpm: 0,
       lateral: 'HDG HOLD', vertical: 'V/S', thrustMode: '',
       armedLateral: '', armedVertical: '',
@@ -126,7 +127,7 @@ export function createAutopilotBoeing(A) {
       // To 45,000 ft, past the 43,100 ft ceiling on purpose (v0.3.2; the MCP's ALT_TOP is the same).
       setAlt(ft) { ap.altFt = clamp(Math.round(ft), 100, 45000); },
       // The heading window. It's the mode only if it's in HDG SEL already: hdgSel() selects it.
-      setHdg(deg) { ap.hdgDeg = ((Math.round(deg) % 360) + 360) % 360; if (ap.lateral === 'HDG SEL') X0().hdgTimer = 0; },
+      setHdg(deg) { ap.hdgDeg = hdg1000(deg); if (ap.lateral === 'HDG SEL') X0().hdgTimer = 0; },
       setSpd(kt) { ap.spdKt = clamp(Math.round(kt), 100, 399); },
       setVs(fpm) {
         ap.vsFpm = clamp(Math.round(fpm / 100) * 100, -6000, 6000);
@@ -212,7 +213,7 @@ export function createAutopilotBoeing(A) {
         return true;
       },
       setIls(ils) {
-        ap.ils = ils ? { x: ils.x, y: ils.y, hdgGrid: ils.hdgGrid, elev: ils.elev, gsDeg: ils.gsDeg ?? 3 } : null;
+        ap.ils = ilsCopy(ils);
         if (ap.ils) return;
         if (ap.armedLateral === 'LOC') ap.armedLateral = '';
         if (ap.armedVertical === 'G/S') ap.armedVertical = '';
@@ -336,25 +337,16 @@ export function createAutopilotBoeing(A) {
     const ils = ap.ils;
     let along = 0, xte = 0, dev = 0, beamD = 0;
     if (ils) {
-      const sh = Math.sin(ils.hdgGrid), ch = Math.cos(ils.hdgGrid);
-      const rx = S.pos.x - ils.x, ry = S.pos.y - ils.y;
-      along = rx * sh + ry * ch;
-      xte = rx * ch - ry * sh;
-      beamD = Math.max(0, -along);
-      dev = S.pos.z - (ils.elev + TCH + beamD * Math.tan((ils.gsDeg ?? 3) * DEG));
+      beamInto(ils, S, BEAM);
+      along = BEAM.along; xte = BEAM.xte; beamD = BEAM.beamD; dev = BEAM.dev;
 
       if (ap.armedLateral === 'LOC' && along < 0 && !E.onGround) {
         // Capture early enough to roll out on the beam at the turn's radius.
-        const dh = wrapPi(ils.hdgGrid - E.psi);
-        const turnR = E.tas * E.tas / (G * Math.tan(25 * DEG));
-        const inbound = -xte * Math.sin(dh) >= 0 || Math.abs(xte) < 300;
-        const lead = Math.max(300, turnR * (1 - Math.cos(Math.min(Math.abs(dh), Math.PI / 2))));
-        if (Math.abs(xte) < lead && inbound && Math.abs(dh) < 100 * DEG) { ap.lateral = 'LOC'; ap.armedLateral = ''; }
+        if (locCaptures(ils, E, xte)) { ap.lateral = 'LOC'; ap.armedLateral = ''; }
       }
       if (ap.armedVertical === 'G/S' && !E.onGround && along < 0 && Math.abs(xte) < 1500) {
         // From below or nearly so: the beam comes down on the aircraft.
-        const lead = 12 * FT + 0.15 * E.gs * Math.tan((ils.gsDeg ?? 3) * DEG) / 0.22;
-        if (dev > -lead && dev < 150 * FT) {
+        if (gsCaptures(ils, E, dev)) {
           ap.vertical = 'G/S'; ap.armedVertical = ''; X.boCapture = false; X.capVs = 0;
           X.boVnavDes = false;
           if (ap.athr) ap.thrustMode = 'SPD';
@@ -364,8 +356,7 @@ export function createAutopilotBoeing(A) {
       ap.lateral = 'HDG HOLD'; X.boHoldLatched = false; X.boHoldHdg = E.psi;
     }
     if (ap.lateral === 'LOC' || ap.lateral === 'ROLLOUT') {
-      psiCmd = ils ? ils.hdgGrid - Math.atan(xte / LOC_L) : E.psi;
-      if (ils && Math.abs(xte) > 2000) psiCmd = ils.hdgGrid - Math.sign(xte) * 30 * DEG;
+      psiCmd = ils ? locCourse(ils, xte) : E.psi;
     }
     // v0.4.0: the track modes fly the track, so they come out right in a crosswind (the drift is 0 in calm air).
     // HDG SEL and HDG HOLD stay headings, and drift with the wind as they should.
@@ -475,11 +466,9 @@ export function createAutopilotBoeing(A) {
       case 'TO/GA':
         vsCmd = speedOnElevator(X, E, V, X.boSpdCmd, 200 * FPM, 6000 * FPM, dt);
         break;
-      case 'G/S': {
-        const slope = Math.tan((ils ? ils.gsDeg ?? 3 : 3) * DEG);
-        vsCmd = -E.gs * slope + clamp(-GS_K * dev, -8, 8);
+      case 'G/S':
+        vsCmd = gsVs(ils, E, dev);
         break;
-      }
       case 'FLARE': {
         // A shallow exponential down to FLARE_SINK_FPS at the wheels, from the rate at 50 ft.
         const hFt = S.agl / FT;
@@ -536,9 +525,12 @@ export function createAutopilotBoeing(A) {
         ap.athr = true;
         ap.thrustMode = ap.vertical === 'VNAV SPD' || ap.vertical === 'TO/GA' ? 'THR REF' : 'SPD';
         X.boWake = true;
+        // v0.7.4 (Shane's item 7): awake, it never sets less than the levers had when it woke.
+        X.boWakePhi = leverPhi;
         ap._wake();
       }
     } else X.boWakeT = 0;
+    ap.athrWake = !!(X.boWake && ap.athr);   // v0.7.4: the EICAS's reference reads full thrust while awake
 
     if (!ap.athr) { X.athrDriving = false; X.athrPhi = leverPhi; return leverPhi; }
 
@@ -575,13 +567,22 @@ export function createAutopilotBoeing(A) {
         break;
       }
       default: {
-        // SPD: the A321's loop, up to the rating; awake from low speed, up to max continuous.
-        const limit = X.boWake ? Math.max(A.RATING.MCT, ref) : ref;
+        // SPD: the A321's loop, up to the rating.
+        // v0.7.4 (Shane's item 7: "the automatic low speed activation actually slows the plane sometimes"): awake from
+        // low speed it goes to full thrust (it was capped at max continuous, and took the lever from where it was, so a
+        // wake-up with the levers at full pulled them back), and never below what the levers had when it woke. Once the
+        // speed is back within 2 kt of its target, the loop takes over from full, up to the reference again.
         const err = X.boSpdCmd - E.ias;
+        if (X.boWake && err < 2 * KT) { X.boWake = false; ap.athrWake = false; }
+        if (X.boWake) {
+          X.athrPhi = A.RATING.TOGA;
+          phi = Math.max(A.RATING.TOGA, X.boWakePhi || 0);
+          break;
+        }
+        const limit = ref;
         const aErr = clamp(0.07 * err, -0.6, 0.6) - E.iasDot;
         X.athrPhi = clamp(X.athrPhi + 0.12 * aErr * dt, 0, limit);
         phi = clamp(X.athrPhi + 0.08 * aErr, 0, limit);
-        if (X.boWake && err < 2 * KT) X.boWake = false;
       }
     }
     // The servo: the lever moves at its rate, and the thrust is what the lever says.

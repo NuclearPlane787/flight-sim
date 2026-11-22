@@ -1,6 +1,6 @@
 // The Boeings' wings bending with the lift: a 3rd-person look from ahead, on the ground and in cruise,
 // with the tip lamp staying on the tip.  python3 tools/cpu-guard.py --minutes 4 -- node tests/browser-wing-flex.mjs [type]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const HEADED = process.argv.includes('--headed') || process.env.FS_HEADLESS === '0';   // headless by default (no window on Shane's screen); --headed or FS_HEADLESS=0 for one

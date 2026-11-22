@@ -27,6 +27,23 @@ export const angDiff = (a, b) => ((a - b + 540) % 360) - 180; // a - b in -180..
 
 // Magnetic heading (deg) from a grid heading (rad) at a map point.
 export const magDeg = (hdgGrid, x, y) => wrap360(gridToMag(hdgGrid, x, y) / DEG);
+// v0.7.4 (Shane's item 9): a runway end's course, magnetic, as the game flies it: its ends' line (hdgGridDeg) turned
+// by the game's magnetic model at the threshold, the conversion the autopilots make the other way. (The AIPs'
+// published bearings, in tools/bake_region_airports.py's PUBLISHED_MAG, stay in the bake's notes: most carry an older
+// variation or are whole degrees, up to 9° off the runway the game draws, so a typed AIP course wouldn't fly it.)
+// The course is taken 5 nm out on the extended centreline, the middle of a 10 nm final: a held magnetic heading is a
+// rhumb line and the centreline nearly a great circle, so a course taken at the threshold leaves a 10 nm final 15 to
+// 35 m off by the threshold in Europe's latitudes; taken mid-final, a few metres at most (tests/v074-hdg-course.test.mjs).
+// The two differ by under 0.1°. courseText(): to 0.1°, three figures before the point, 360.0 for north.
+export const FINAL_COURSE_M = 5 * NM;
+// `other`, the runway's other end when the caller has it: the line between the two thresholds, the one the ILS
+// follows (main.js's runwayAxis()); else the end's own baked grid heading (to 0.01°).
+export function runwayCourseMag(end, other) {
+  const h = other && other !== end ? Math.atan2(other.x - end.x, other.y - end.y) : (end?.hdgGridDeg ?? 0) * DEG;
+  const x = (end?.x ?? 0) - Math.sin(h) * FINAL_COURSE_M, y = (end?.y ?? 0) - Math.cos(h) * FINAL_COURSE_M;
+  return wrap360(gridToMag(h, x, y) / DEG);
+}
+export const courseText = (deg) => { const t = Math.round(wrap360(deg) * 10) / 10; return (t === 0 || t >= 360 ? 360 : t).toFixed(1).padStart(5, '0'); };
 // v0.6.2: the heading (grid, rad) that holds a track (grid, rad) in a wind (windX, windY: the air's motion in map m/s)
 // at a true airspeed (m/s), crabbing into the wind's push across the track (the map's leg tip). No correction below
 // 40 m/s (on the ground, say), nor in a crosswind faster than the aircraft.
@@ -138,7 +155,7 @@ export function ilsDeviation(state, endInfo) {
   const gx = tx + ux * 300, gy = ty + uy * 300;
   const dGs = -((px - gx) * ux + (py - gy) * uy);
   const gsDeg = Math.atan2((state.pos.z - elev), Math.max(1, dGs)) / DEG - 3; // + = above the path
-  const courseMag = wrap360(gridToMag(h, end.x, end.y) / DEG);
+  const courseMag = runwayCourseMag(end, endInfo.other);   // v0.7.4: the one helper
   return {
     visible,
     locDots: -locDeg / 0.8,       // + = the diamond sits right (fly right)

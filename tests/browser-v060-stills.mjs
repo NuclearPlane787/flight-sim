@@ -16,7 +16,7 @@
 // every run. The clock is fixed by world.sky.setTime() (dev-world never calls it), the exposure as main.js sets
 // it; the weather is dev-world's default (clear). Only after the capture does the page run on real frames, for
 // the fps.
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { toMap } from '../src/world/frame.js';
 
@@ -251,6 +251,14 @@ SHOTS['eu-fields-fl350-ireland'] = { q: 'lat=53.4&lon=-5.6&alt=35000&hdg=270&pit
 // v0.7.1: Airbus's halls at Toulouse (the airport's own buildings), and where Brussels's 01/19 meets 07L/25R's east end.
 SHOTS['eu-toulouse-airbus-north'] = { q: look(43.645, 1.385, 1200, 300, -14), ms: EU_DAY };                // the Lagardère plant
 SHOTS['eu-toulouse-airbus-west'] = { q: look(43.625, 1.378, 1200, 250, -14), ms: EU_DAY };                 // Saint-Martin-du-Touch and the Clément Ader halls
+// v0.7.4 (fix 4, Europe's aurora "North only"): the northern sky by night from 10,000 ft over the brief's seven places
+// (full at 56 N and north of it, nothing at 50 N and south of it).
+for (const [n, la, lo] of [['edinburgh', 55.95, -3.37], ['copenhagen', 55.62, 12.65], ['manchester', 53.35, -2.28], ['amsterdam', 52.31, 4.76],
+  ['london', 51.47, -0.46], ['paris', 49.01, 2.55], ['lisbon', 38.77, -9.13]]) SHOTS[`eu-aurora-${n}`] = { q: `lat=${la}&lon=${lo}&alt=10000&hdg=0&pitch=14`, ms: Date.UTC(2026, 10, 19, 21, 0) };
+// v0.7.4 (fix 1): Brussels's two crossings from close above 01/19: over its north end looking south across 07L/25R, and
+// from 300 m past 01's threshold looking north across 07R/25L.
+SHOTS['eu-ebbr-cross-north'] = { q: 'rwy=EBBR:19&back=280&eye=14&pitch=-12&hdg=194', ms: EU_DAY };
+SHOTS['eu-ebbr-cross-south'] = { q: 'rwy=EBBR:01&back=-300&eye=14&pitch=-12&hdg=14', ms: EU_DAY };
 SHOTS['eu-ebbr-19-low'] = { q: 'app=EBBR:19&ft=300&pitch=-8', ms: EU_DAY };
 SHOTS['eu-ebbr-25R-low'] = { q: 'app=EBBR:25R&ft=300&pitch=-8', ms: EU_DAY };
 GROUPS['eu-fields'] = Object.keys(SHOTS).filter((k) => k.startsWith('eu-fields-')).concat(['eu-1000-polders', 'eu-3000-polders', 'eu-3000-nofine-dijon']);
@@ -281,11 +289,13 @@ GROUPS['europe-centres-071'] = Object.keys(EU_CENTRES_071).map((k) => `eu-centre
 // v0.7.2: nine more centres, each from 3,000 ft by day, and Prague, Edinburgh and Cologne by night; Edinburgh with the
 // Forth and Geneva with its lake from 3,000 ft (the brief's two views).
 const EU_CENTRES_072 = { duesseldorf: [51.212, 6.800, 300], cologne: [50.930, 6.985, 300], prague: [50.078, 14.445, 300], geneva: [46.195, 6.170, 320], nice: [43.690, 7.300, 300],
-  edinburgh: [55.940, -3.165, 300], glasgow: [55.852, -4.230, 300], nantes: [47.205, -1.530, 300], santiago: [42.870, -8.525, 320] };
+  edinburgh: [55.940, -3.165, 300], glasgow: [55.852, -4.230, 300], nantes: [47.205, -1.530, 300], santiago: [42.8790, -8.5440, 320] };   // (v0.7.4 part 9: Santiago's was [42.870, -8.525], 2 km south-east of the old town: now the cathedral's)
 for (const [k, [la, lo, h]] of Object.entries(EU_CENTRES_072)) {
   SHOTS[`eu-centre-${k}-3000-day`] = { q: look(la, lo, 3000, h, -12), ms: EU_DAY };
   SHOTS[`eu-centre-${k}-3000-night`] = { q: look(la, lo, 3000, h, -12), ms: EU_NIGHT };
 }
+// (v0.7.4 part 9: Santiago's centre is small: its view from 2.5 km, at -20°, not 4.3 km.)
+for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-centre-santiago-3000-${tod}`] = { q: look(...EU_CENTRES_072.santiago.slice(0, 2), 3000, 320, -20), ms };
 SHOTS['eu-3000-edinburgh-forth'] = { q: look(55.93, -3.20, 3000, 310, -10), ms: EU_DAY };                  // over the city, the Forth and its bridges ahead
 SHOTS['eu-3000-edinburgh-forth-night'] = { q: look(55.93, -3.20, 3000, 310, -10), ms: EU_NIGHT };
 SHOTS['eu-3000-geneva-lake'] = { q: look(46.17, 6.10, 3000, 40, -10), ms: EU_DAY };                        // the city at the lake's end, the lake and the Alps beyond
@@ -343,6 +353,22 @@ for (const [k, [la, lo, H, h]] of Object.entries(EU_LANDMARKS_071)) {
   for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q: near(la, lo, H, h), ms };
   SHOTS[`eu-landmark-${k}-above-day`] = { q: look(la, lo, 1300, h, -28), ms: EU_DAY };
 }
+// v0.7.4 part 9, item 5: three of these points were the camera's, given to near() as the landmark's ("Found while building
+// v0.7.1"): the Brandenburg Gate's, the Riesenrad's and the rocket's. Their views now look at the landmark itself (landmarks.js's
+// position) at half its height, from D m off along the table's own line of sight (the Gate: from due east, over Unter den
+// Linden's axis), the eye hM above the ground there; their views from above look down on the landmark, not on the camera's point.
+const P9_AIM = { brandenburg: [52.5163, 13.3777, 60, 230, 90], riesenrad: [48.21665, 16.39595, 55, 260, null], rocket: [43.58696, 1.49316, 35, 220, null] };
+for (const [k, [la, lo, hM, D, from]] of Object.entries(P9_AIM)) {
+  const [cla, clo, H] = EU_LANDMARKS_071[k];
+  const [px, py] = toMap(cla, clo), [tx, ty] = toMap(la, lo);
+  const b = from === null ? Math.atan2(px - tx, py - ty) : from * DEG;   // from the landmark towards the camera
+  const cx = tx + D * Math.sin(b), cy = ty + D * Math.cos(b);
+  const hdg = ((Math.atan2(tx - cx, ty - cy) / DEG) + 360) % 360, pitch = Math.atan2(0.5 * H - hM, D) / DEG;
+  const q = `x=${cx.toFixed(1)}&y=${cy.toFixed(1)}&agl=${Math.round(hM / FT)}&hdg=${hdg.toFixed(1)}&pitch=${pitch.toFixed(2)}&aglAt=${cx.toFixed(1)},${cy.toFixed(1)}`;
+  for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q, ms };
+  SHOTS[`eu-landmark-${k}-above-day`] = { q: look(la, lo, 1300, Math.round(hdg), -28), ms: EU_DAY };
+}
+GROUPS['p9-aim'] = Object.keys(P9_AIM).flatMap((k) => [`eu-landmark-${k}-day`, `eu-landmark-${k}-above-day`]).concat(['eu-centre-santiago-3000-day']);
 SHOTS['eu-landmark-brandenburg-close-day'] = { q: look(52.5163, 13.3822, 450, 270, -14), ms: EU_DAY };   // from over Unter den Linden, 300 m east of the gate (the level view sits on a roof)
 GROUPS['europe-landmarks-071'] = Object.keys(EU_LANDMARKS_071).flatMap((k) => [`eu-landmark-${k}-day`, `eu-landmark-${k}-above-day`]).concat(['fernsehturm', 'ponte25', 'oresund', 'riesenrad', 'poolbeg'].map((k) => `eu-landmark-${k}-night`));
 // v0.7.2: ten more, each from the camera point its subagent gave ([lat, lon, height above the ground in m, heading]: a
@@ -393,6 +419,97 @@ GROUPS['europe-morning'] = ['arc', 'colosseum', 'westminster', 'towerbridge', 'n
 GROUPS['europe-landmarks'] = Object.keys(EU_LANDMARKS).map((k) => `eu-landmark-${k}-day`).concat(['shard', 'westminster', 'eye', 'eiffel', 'europaturm', 'cristal', 'sagrada', 'stpeters'].map((k) => `eu-landmark-${k}-night`));
 GROUPS['europe-flight'] = ['eu-fl350-london-south', 'eu-fl350-biscay-madrid', 'eu-3000-london', 'eu-3000-alps-zurich'];
 GROUPS.europe = Object.keys(SHOTS).filter((n) => n.startsWith('eu-') && !n.includes('fine') && !n.includes('centre') && !n.includes('landmark'));
+// v0.7.4 part 9 (after GROUPS.europe, so that group stays as it was). Item 1: where the 250 m data's edge (fineOutline())
+// meets the 1 km level in hills, the points on the seam with the largest step (/tmp probe over every covered tile's
+// open side), from FL350 and 10,000 ft, by day. Item 2: towns with WorldCover's bare ground. Each region's shots mean
+// something only in that region's frame (FS_REGION), as above.
+const P9_EDGES = { 'eu-edge-cantabria': [43.154, -4.838, 180], 'eu-edge-connemara': [53.477, -9.578, 270], 'eu-edge-tatra': [49.529, 19.199, 180], 'eu-edge-nevada': [37.129, -3.179, 90],
+  'ea-edge-taihang': [41.132, 116.272, 0], 'ea-edge-anhui': [29.952, 118.072, 270], 'ea-edge-primorye': [43.619, 133.591, 90], 'ea-edge-hokkaido': [43.926, 144.977, 0] };
+for (const [k, [la, lo, h]] of Object.entries(P9_EDGES)) {
+  const ms = k.startsWith('eu-') ? EU_DAY : DAY;
+  SHOTS[`${k}-fl350`] = { q: look(la, lo, 35000, h, -12), ms };
+  SHOTS[`${k}-10000`] = { q: look(la, lo, 10000, h, -20), ms };
+}
+SHOTS['eu-bare-lyon-3000'] = { q: look(45.735, 4.850, 3000, 340, -14), ms: EU_DAY };        // the v0.7.3 centre view's
+SHOTS['ea-bare-nakdong-500'] = { q: look(35.13, 128.90, 500, 200, -18), ms: DAY };          // v0.6.1's bare-nakdong-500
+SHOTS['ea-bare-nakdong-1500'] = { q: look(35.13, 128.90, 1500, 200, -20), ms: DAY };
+GROUPS['p9-edge-eu'] = Object.keys(P9_EDGES).filter((k) => k.startsWith('eu-')).flatMap((k) => [`${k}-fl350`, `${k}-10000`]);
+GROUPS['p9-edge-ea'] = Object.keys(P9_EDGES).filter((k) => k.startsWith('ea-')).flatMap((k) => [`${k}-fl350`, `${k}-10000`]);
+GROUPS['p9-bare-eu'] = ['eu-bare-lyon-3000'];
+GROUPS['p9-bare-ea'] = ['ea-bare-nakdong-500', 'ea-bare-nakdong-1500'];
+// Item 4 (the patches subagent): Venice's lagoon at v0.7.3's LAND_FLOOR box's edges, where the water stepped by up to 3 m
+// (tests/v074-venice-floor.test.mjs's lines): the west edge from 1,500 ft and 700 ft looking along its line, the north
+// edge from 1,000 ft. With the old city from 1,500 ft and 3,000 ft (v0.7.3's views) in group p9-venice.
+SHOTS['eu-venice-edge-west-1500'] = { q: look(45.4255, 12.2679, 1500, 90, -18), ms: EU_DAY };
+SHOTS['eu-venice-edge-west-700'] = { q: look(45.4255, 12.2679, 700, 90, -12), ms: EU_DAY };
+SHOTS['eu-venice-edge-north-1000'] = { q: look(45.4681, 12.3550, 1000, 180, -15), ms: EU_DAY };
+GROUPS['p9-venice'] = ['eu-1500-venice', 'eu-3000-venice', 'eu-centre-venice-3000-day', 'eu-venice-edge-west-1500', 'eu-venice-edge-west-700', 'eu-venice-edge-north-1000'];
+// Item 6 (look2: v0.7.7's landmarks). The seven low landmarks from above, as the Sapporo TV Tower's -high and P9_AIM's: the
+// camera D m off the landmark (landmarks.js's point) on the side of its level view's camera point (EU_LANDMARKS), hM above
+// the ground there, looking down at 0.4 of its height, by day. Tower Bridge (a bridge with v0.7.4's LANDMARKS77) from the
+// river's level 160 m off, from 1,000 ft and from above, by day and by night; Madrid's four towers by night from the
+// west and the east; three villages with a church from 500 ft, looking at the nave's cell (found on the CPU from rural.js's
+// EU_PLACE hashes and the 31 m cover: a nave and a tower cell both built-up, a village round them): Hampshire (Britain's
+// mix), the Brie east of Paris (France's, north of 46 N: slate; the Oise's point stood in a town's blocks) and Lazio near Viterbo (the south's: a low tiled cap).
+const P9_LOW = { arc: [48.873778, 2.295028, 49.54, 250, 150], colosseum: [41.8903, 12.4922, 48, 260, 150], westminster: [51.49952, -0.12497, 98.5, 300, 190],
+  towerbridge: [51.5056, -0.0753, 65, 280, 160], notredame: [48.85306, 2.35, 96, 280, 180], stpauls: [51.5138, -0.0983, 111, 300, 190], grossmunster: [47.37014, 8.54399, 64, 250, 150] };
+const aimAt = (la, lo, H, D, hM, fromLa, fromLo, frac = 0.4) => {
+  const [tx, ty] = toMap(la, lo), [px, py] = toMap(fromLa, fromLo), b = Math.atan2(px - tx, py - ty);
+  const cx = tx + D * Math.sin(b), cy = ty + D * Math.cos(b);
+  const hdg = ((Math.atan2(tx - cx, ty - cy) / DEG) + 360) % 360, pitch = Math.atan2(frac * H - hM, D) / DEG;
+  return `x=${cx.toFixed(1)}&y=${cy.toFixed(1)}&agl=${Math.round(hM / FT)}&hdg=${hdg.toFixed(1)}&pitch=${pitch.toFixed(2)}&aglAt=${cx.toFixed(1)},${cy.toFixed(1)}`;
+};
+// (the Arc from down the Champs-Élysées, on its axis, so the great arch shows: its level view's point is side on)
+const P9_FROM = { arc: [48.8718, 2.3012] };
+for (const [k, [la, lo, H, D, hM]] of Object.entries(P9_LOW)) { const [fla, flo] = P9_FROM[k] || EU_LANDMARKS[k]; SHOTS[`eu-landmark-${k}-p9above-day`] = { q: aimAt(la, lo, H, D, hM, fla, flo), ms: EU_DAY }; }
+SHOTS['eu-landmark-towerbridge-p9above-night'] = { q: SHOTS['eu-landmark-towerbridge-p9above-day'].q, ms: EU_NIGHT };
+for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) {
+  SHOTS[`eu-towerbridge-river-${tod}`] = { q: aimAt(51.5056, -0.0753, 65, 160, 10, 51.50515, -0.07747, 0.4), ms };   // (160 m off to the west-south-west, over the water the 250 m field holds there: farther off, upstream or downstream, the camera stood in the blocks the centres put in the river)
+  SHOTS[`eu-towerbridge-1000-${tod}`] = { q: look(51.5056, -0.0753, 1000, 60, -14), ms };
+}
+SHOTS['eu-madrid-towers-west-night'] = { q: aimAt(40.4772, -3.6875, 249, 900, 120, 40.4772, -3.70, 0.5), ms: EU_NIGHT };
+SHOTS['eu-madrid-towers-east-night'] = { q: aimAt(40.4772, -3.6875, 249, 900, 120, 40.4772, -3.67, 0.5), ms: EU_NIGHT };
+SHOTS['eu-madrid-towers-west-day'] = { q: SHOTS['eu-madrid-towers-west-night'].q, ms: EU_DAY };   // (Torre Cepsa's day look, unchanged by its night fix)
+const P9_VILLAGES = { 'gb-hampshire': [51.25713, -1.06788, 20], 'fr-brie': [48.94976, 2.74461, 200], 'it-lazio': [42.43769, 12.13596, 300] };
+for (const [k, [la, lo, h]] of Object.entries(P9_VILLAGES)) SHOTS[`eu-village-${k}-500`] = { q: look(la, lo, 500, h, -24), ms: EU_DAY };
+GROUPS['p9-landmarks77'] = Object.keys(P9_LOW).map((k) => `eu-landmark-${k}-p9above-day`).concat(['eu-landmark-towerbridge-p9above-night',
+  'eu-towerbridge-river-day', 'eu-towerbridge-river-night', 'eu-towerbridge-1000-day', 'eu-towerbridge-1000-night', 'eu-madrid-towers-west-night', 'eu-madrid-towers-east-night'],
+  Object.keys(P9_VILLAGES).map((k) => `eu-village-${k}-500`));
+// Item 6 (look1: v0.7.7's terminals at night and grass through the aprons). Points in each region's own map metres
+// (from the airports' files), so these mean something only with that region's page (FS_REGION and --q '&region=europe'
+// for Europe's, as above). p9n: a terminal from the apron (the camera 300 m out from a gate's jet-bridge root along the
+// bridge, 200 m at Heathrow's T5A, where T5B stands 300 m off, 150 m at Frankfurt; 10 m up, looking at the wall) and from 1,000 ft (the
+// wall 1,222 m ahead at -14°), by night; the apron views by day too (by day nothing should change). p9g: the aprons from
+// 700 ft at -35° by day, over the longest slivers of grass found between the pavement's pieces (/tmp/flight-sim/v074/look1).
+const lookXY = (tx, ty, aglFt, hdg, pitch) => {
+  const d = (aglFt * FT) / Math.tan(-pitch * DEG), x = tx - d * Math.sin(hdg * DEG), y = ty - d * Math.cos(hdg * DEG);
+  return `x=${x.toFixed(1)}&y=${y.toFixed(1)}&agl=${aglFt}&hdg=${hdg}&pitch=${pitch}&aglAt=${tx.toFixed(1)},${ty.toFixed(1)}`;
+};
+const P9_TERM = { rksi: [-92776.9, 161330.5, 158.9, -92884.8, 161610.4, 'ea'], rjtt: [1109721.5, 19359.7, 323.1, 1109901.7, 19119.8, 'ea'],
+  egll: [-310037.8, 502548.5, 279.0, -309840.2, 502517.2, 'eu'], eddf: [324758.2, 345605.2, 114.4, 324621.6, 345667.2, 'eu'] };   // (Frankfurt's 150 m: at 300 m a 16 m terminal block stood in front)
+for (const [k, [rx, ry, hdg, ax, ay, reg]] of Object.entries(P9_TERM)) {
+  const [day, night] = reg === 'eu' ? [EU_DAY, EU_NIGHT] : [DAY, NIGHT];
+  const apron = `x=${ax}&y=${ay}&agl=33&hdg=${hdg}&pitch=2&aglAt=${ax},${ay}`;
+  SHOTS[`p9n-${k}-apron-night`] = { q: apron, ms: night };
+  SHOTS[`p9n-${k}-apron-day`] = { q: apron, ms: day };
+  SHOTS[`p9n-${k}-1000-night`] = { q: lookXY(rx, ry, 1000, hdg, -14), ms: night };
+}
+const P9_GRASS = { lemd: [-639030, -689800, 'eu'], egkk: [-290008, 466830, 'eu'], 'egkk-south': [-289764, 466304, 'eu'], egll: [-308401, 502466, 'eu'], eddf: [324594, 345425, 'eu'],
+  rksi: [-94895, 163275, 'ea'], rjtt: [1110640, 17783, 'ea'] };
+for (const [k, [tx, ty, reg]] of Object.entries(P9_GRASS)) SHOTS[`p9g-${k}-700`] = { q: lookXY(tx, ty, 700, 0, -35), ms: reg === 'eu' ? EU_DAY : DAY };
+// The shimmer check: two of these views again with the camera 3 m further along its line of sight.
+const along3 = (q) => {
+  const p = new URLSearchParams(q), h = +p.get('hdg') * DEG, pt = +p.get('pitch') * DEG, hz = 3 * Math.cos(pt);
+  p.set('x', (+p.get('x') + hz * Math.sin(h)).toFixed(2)); p.set('y', (+p.get('y') + hz * Math.cos(h)).toFixed(2));
+  p.set('agl', (+p.get('agl') + (3 * Math.sin(pt)) / FT).toFixed(2));
+  return decodeURIComponent(p.toString());
+};
+SHOTS['p9n-rksi-1000-night-m3'] = { q: along3(SHOTS['p9n-rksi-1000-night'].q), ms: NIGHT };
+SHOTS['p9n-egll-apron-night-m3'] = { q: along3(SHOTS['p9n-egll-apron-night'].q), ms: EU_NIGHT };
+GROUPS['p9n-ea'] = ['rksi', 'rjtt'].flatMap((k) => [`p9n-${k}-apron-night`, `p9n-${k}-1000-night`, `p9n-${k}-apron-day`]).concat(['RJTT-final-night', 'ZSPD-final-night']);
+GROUPS['p9n-eu'] = ['egll', 'eddf'].flatMap((k) => [`p9n-${k}-apron-night`, `p9n-${k}-1000-night`, `p9n-${k}-apron-day`]).concat(['EGLL-final-night']);
+GROUPS['p9g-eu'] = Object.keys(P9_GRASS).filter((k) => P9_GRASS[k][2] === 'eu').map((k) => `p9g-${k}-700`);
+GROUPS['p9g-ea'] = Object.keys(P9_GRASS).filter((k) => P9_GRASS[k][2] === 'ea').map((k) => `p9g-${k}-700`);
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {
@@ -511,6 +628,10 @@ try {
       }
       const { toGeo } = await import(new URL('../src/world/frame.js', location.href).href);
       const q = new URLSearchParams(location.search);
+      // v0.7.4 part 9, item 5: the target's tiles resident first, in every run (without --region nothing waited for them,
+      // so a target whose tile wasn't loaded yet, the 1 km level's beyond the 250 m data above all, read as 0 m: the
+      // views over León's plateau). A wait on the loader only: no frame is stepped.
+      if (aglAt && q.has('agl') && w.heightfield.tiles) await w.heightfield.tiles.whenReady(aglAt[0], aglAt[1], 5000, 'target');
       if (aglAt && q.has('agl')) cam.z = w.heightAt(aglAt[0], aglAt[1]) + parseFloat(q.get('agl')) * 0.3048;
       const [lat, lon] = toGeo(cam.x, cam.y);
       w.sky.setTime(ms, lat, lon);

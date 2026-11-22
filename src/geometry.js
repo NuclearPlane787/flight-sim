@@ -26,6 +26,10 @@ export const GEAR = {
   right: { x: -1.2,             y: -TRACK / 2, z: -GROUND_Z },
 };
 
+// v0.7.4: the main wheels across one leg, as the model draws them (aircraft.js: two wheels 0.465 m either side of the
+// leg, tyres 0.44 m wide), for the landing score's centreline part (score.js, gearOuterM()). The Boeings' are their BOGIE.
+export const MAIN_WHEELS = { tread: 0.93, wheelWidthMain: 0.44 };
+
 // The tail's underside, for tail-strike detection: with the main gear it gives the A321's
 // tail-strike pitch, about 9.7° with the struts compressed and 11.2° extended.
 export const TAIL_STRIKE_POINT = { x: -17.5, y: 0, z: -1.1 };

@@ -20,6 +20,26 @@
 const DEFAULT_MAX_TILES = 96;
 const RETRY_MS_DEFAULT = 500;   // (to at most 8 s) a failed tile's next tries: 0.5 s, 1 s, 2 s … 8 s
 
+// v0.7.4 part 9, item 1 ("Found while building v0.7.2": the 250 m data's edge showed as pale wedges in mountains, where
+// the 1 km level and the 250 m tiles disagree by up to about 230 m: a wall one 250 m cell wide). A covered 250 m tile
+// beside ground read from the 1 km level (an unbaked tile in the extent, or beyond the extent) has its height cells
+// within EDGE_BLEND_M of that ground blended towards the 1 km level's height at each cell's centre: the 1 km level's
+// own value at the edge, the 250 m data's from EDGE_BLEND_M in. Done once, in place, as the tile loads, so the sim,
+// the prediction worker and the GPU's clip window (which copies these arrays) all read the same cells. On by default;
+// ?edgeblend=0 on the page (the workers get it through region.js's regionQuery()) or FS_EDGEBLEND=0 in node: every
+// tile exactly as baked, as before v0.7.4. Read once, at import.
+export const EDGE_BLEND_M = 4000;
+export const EDGE_BLEND = (() => {
+  try {
+    const q = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = /[?&]edgeblend=([01])\b/.exec(q);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { const v = typeof process !== 'undefined' && process.env ? process.env.FS_EDGEBLEND : undefined; if (v === '0') return false; } catch (e) { /* no process */ }
+  return true;
+})();
+const smooth01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
 export function createTileStore(spec, opts = {}) {
   if (!spec || !spec.levels || !spec.levels.length) throw new Error('tilestore: no tiles in the manifest');
   const X0 = spec.x0, Y0 = spec.y0;
@@ -50,6 +70,53 @@ export function createTileStore(spec, opts = {}) {
   const TILE = lv0.TILE, B = lv0.B, S = lv0.S, CELL = lv0.CELL;
   const I0 = lv0.I0, J0 = lv0.J0, I1 = lv0.I1, J1 = lv0.J1;
   const ext = spec.extent;
+  // v0.7.4 (item 1, EDGE_BLEND above): only where there is a 1 km level to blend to.
+  const edgeBlend = (opts.edgeBlend ?? EDGE_BLEND) && !!lv1;
+  const zeroSea = sea.h === 0;   // (blendEdge: the sea stored as exactly 0, as in a lowLand region)
+  // The neighbours of l0 tile (ti, tj) whose ground is read from the 1 km level, as map rectangles [x0, y0, x1, y1].
+  function seamRects(ti, tj) {
+    const out = [];
+    for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) {
+      if (!a && !b) continue;
+      const ni = ti + a, nj = tj + b;
+      const outside = ni * TILE < I0 || (ni + 1) * TILE > I1 || nj * TILE < J0 || (nj + 1) * TILE > J1;
+      if (outside || (lv0.covered && !lv0.covered.has(ni + '_' + nj))) {
+        out.push([X0 + ni * TILE * CELL, Y0 + nj * TILE * CELL, X0 + (ni + 1) * TILE * CELL, Y0 + (nj + 1) * TILE * CELL, outside]);
+      }
+    }
+    return out;
+  }
+  // Blend a loaded l0 tile's height cells (its border too) within EDGE_BLEND_M of those rectangles, in place.
+  function blendEdge(t, seams) {
+    const gx0 = X0 + (t.ti * TILE - B) * CELL, gy0 = Y0 + (t.tj * TILE - B) * CELL, h = t.h;
+    for (let r = 0; r < S; r++) {
+      const cy = gy0 + (r + 0.5) * CELL;
+      for (let c = 0; c < S; c++) {
+        const cx = gx0 + (c + 0.5) * CELL;
+        let d = Infinity, near = null;
+        for (const q of seams) {
+          const dx = Math.max(q[0] - cx, 0, cx - q[2]), dy = Math.max(q[1] - cy, 0, cy - q[3]);
+          const e = Math.hypot(dx, dy);
+          if (e < d) { d = e; near = q; }
+        }
+        if (d >= EDGE_BLEND_M) continue;
+        // (At the extent's own edge the samples clamp to the last cell's centre, half a cell short of where the 1 km
+        // level takes over: that last cell takes the 1 km level's height at the edge itself, so nothing steps there.)
+        const atEdge = near[4] && d > 0 && d <= CELL / 2 + 1e-6;
+        const sx = atEdge ? Math.min(Math.max(cx, near[0]), near[2]) : cx, sy = atEdge ? Math.min(Math.max(cy, near[1]), near[3]) : cy;
+        const k = r * S + c, h1 = bilinLv(lv1, sx, sy, 'h', 1, 0, sea.h), h0 = h[k];
+        let v = Math.round(h1 + (h0 - h1) * smooth01(d / EDGE_BLEND_M));
+        // Each cell keeps its land or sea class (the lead's follow-up: the 1 km level's coast is not the 250 m one's).
+        // A region whose sea is stored as exactly 0 (sea.h 0: Europe, regions.js's lowLand) reads a stored 0 as sea and
+        // anything else as land: its sea cells stay 0, and a land cell the blend would bring to 0 takes 1 or -1 (its
+        // sign). Elsewhere (East Asia) the sea is stored at or below 0 and the ground clamps at 0: land (> 0) stays at
+        // 1 or more, sea (<= 0) at 0 or less.
+        if (zeroSea) { if (h0 === 0) v = 0; else if (v === 0) v = h0 > 0 ? 1 : -1; }
+        else if (h0 > 0) { if (v < 1) v = 1; } else if (v > 0) v = 0;
+        h[k] = v;
+      }
+    }
+  }
 
   const tiles = new Map();              // key ('ti_tj' for l0, 'l1:ti_tj') → { lv, ti, tj, state, h, w, c, promise, stamp }
   let clock = 0;
@@ -90,12 +157,31 @@ export function createTileStore(spec, opts = {}) {
           const wait = Math.min(RETRY_MS * 2 ** (t.tries - 1), RETRY_MAX_MS);
           return new Promise((res) => { const id = setTimeout(res, wait); if (id && id.unref) id.unref(); }).then(() => (tiles.get(k) === t ? attempt() : t));
         }
-        t.state = 'ready';
-        store.loads++;
-        if (onTile && t.c && lv === lv0) onTile(tileGrid(t));
-        trim();
-        return t;
+        if (edgeBlend && lv === lv0 && t.h) {
+          const seams = seamRects(ti, tj);
+          if (seams.length) {
+            // The 1 km tiles under the tile and its border, then the blend (tiles.get(k) checked again: evicted meanwhile?).
+            const keys = [];
+            const half = (TILE / 2 + B + 2) * CELL;
+            levelKeys(lv1, X0 + (ti * TILE + TILE / 2) * CELL, Y0 + (tj * TILE + TILE / 2) * CELL, half, keys);
+            return Promise.all(keys.map(([l, a, b]) => load(l, a, b))).then((got) => {
+              if (tiles.get(k) !== t) return t;
+              // (one the cache let go meanwhile is put back for the blend: it must never read as a miss)
+              for (const g of got) { const gk = keyOf(g.lv, g.ti, g.tj); if (g.state === 'ready' && tiles.get(gk) !== g) tiles.set(gk, g); }
+              blendEdge(t, seams);
+              return finish();
+            });
+          }
+        }
+        return finish();
       });
+    };
+    const finish = () => {
+      t.state = 'ready';
+      store.loads++;
+      if (onTile && t.c && lv === lv0) onTile(tileGrid(t));
+      trim();
+      return t;
     };
     t.promise = attempt();
     return t.promise;
@@ -179,7 +265,7 @@ export function createTileStore(spec, opts = {}) {
     const tx = fx - i, ty = fy - j;
     const T = lv.TILE, ti = Math.floor(i / T), tj = Math.floor(j / T);
     const t = tiles.get(lv.pre + ti + '_' + tj);
-    if (t && t.state === 'l1' && lv1) return bilinLv(lv1, x, y, layer, stride, ch, seaV);   // an unbaked l0 tile
+    if (t && t.state === 'l1' && lv1 && lv !== lv1) return bilinLv(lv1, x, y, layer, stride, ch, seaV);   // an unbaked l0 tile (v0.7.4: never from l1 itself)
     let a, b, c, d;
     const arr = t && t[layer];
     if (arr) {

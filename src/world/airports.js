@@ -18,7 +18,7 @@
 // fights the terrain under it.
 
 import * as THREE from '../../vendor/three.module.js';
-import { pavementEnd, profileAt, RUNWAY_SHOULDER_M } from './runways.js';
+import { pavementEnd, profileAt, RUNWAY_SHOULDER_M, knotPairs, knotChainGlsl } from './runways.js';
 
 const SHOULDER = RUNWAY_SHOULDER_M;   // m of paved shoulder each side, beyond the edge lines
 const SEG = 40;           // m per segment along the runway (for the Earth's curvature)
@@ -315,6 +315,40 @@ function runwayGeometry(len, wid) {
   return g;
 }
 
+// v0.7.4: the runway's own shaders for a runway that crosses two longer runways (Brussels's 01/19: eight bends, two
+// cuts). They are made from the texts above by replacing three places; every other runway keeps those texts character
+// for character, so its program is v0.7.3's. (A first version gave every runway the longer chain: the same arithmetic,
+// but six of East Asia's sixteen stills came out one pixel off by one level, the compiler's doing.)
+function variant(text, pairs) {
+  for (const [a, b] of pairs) { if (!text.includes(a)) throw new Error('airports.js: the runway shader lost a line its v0.7.4 variant replaces'); text = text.replace(a, b); }
+  return text;
+}
+const RUNWAY_VERT_MANY = variant(RUNWAY_VERT, [
+  ['  uniform vec4 uKnots;', '  uniform vec4 uKnots, uKnots2, uKnots3, uKnots4;   // up to eight (s, h) bends (s >= 1e8: none)\n  //'],
+  [`    if (uKnots.x > 1e8) h = mix(uE0, uE1, clamp(s / uLen, 0.0, 1.0));
+    else if (s < uKnots.x) h = mix(uE0, uKnots.y, clamp(s / max(uKnots.x, 1e-3), 0.0, 1.0));
+    else if (s < uKnots.z) h = mix(uKnots.y, uKnots.w, (s - uKnots.x) / max(uKnots.z - uKnots.x, 1e-3));
+    else h = mix(uKnots.w, uE1, clamp((s - uKnots.z) / max(uLen - uKnots.z, 1e-3), 0.0, 1.0));
+`, '    ' + knotChainGlsl({ pos: 's', k: ['uKnots', 'uKnots2', 'uKnots3', 'uKnots4'], set: (e) => `h = ${e};`,
+    none: 'mix(uE0, uE1, clamp(s / uLen, 0.0, 1.0))',
+    first: (K) => `mix(uE0, ${K}.y, clamp(s / max(${K}.x, 1e-3), 0.0, 1.0))`,
+    last: (K) => `mix(${K}.w, uE1, clamp((s - ${K}.z) / max(uLen - ${K}.z, 1e-3), 0.0, 1.0))` })],
+]);
+const RUNWAY_FRAG_CUT2 = variant(RUNWAY_FRAG, [
+  ['  uniform vec2 uCutB;', '  uniform vec4 uCutA2; uniform vec2 uCutB2;   // a second longer runway crossing this one, the same way\n  uniform vec2 uCutB;'],
+  [`      if (abs(dot(dc, uCutA.zw)) < uCutB.x && abs(-dc.x * uCutA.w + dc.y * uCutA.z) < uCutB.y) discard;
+    }
+`, `      if (abs(dot(dc, uCutA.zw)) < uCutB.x && abs(-dc.x * uCutA.w + dc.y * uCutA.z) < uCutB.y) discard;
+    }
+    if (uCutB2.x > 0.0) {
+      vec2 dc = vRw - uCutA2.xy;
+      if (abs(dot(dc, uCutA2.zw)) < uCutB2.x && abs(-dc.x * uCutA2.w + dc.y * uCutA2.z) < uCutB2.y) discard;
+    }
+`],
+]);
+// Which texts a runway takes: the variant only with more than two bends or more than one cut.
+const runwayVariant = (r) => (r.knots || []).length > 2 || (r.cutBy || []).length > 1;
+
 // The bends of a runway's profile (runways.js → runwayCrossings) for its shader: two (s, h).
 function knotsU(r) {
   const k = r.knots || [];
@@ -326,8 +360,8 @@ function knotsU(r) {
 // Where a longer runway crosses this one, this one is cut away on that runway's drawn pavement:
 // its centre and direction in this runway's frame (u along from end 0's pavement end, v to the
 // left), and its drawn half length and half width.
-function cutOf(r, p0, p1, len) {
-  const P = r.cutBy && r.cutBy[0];
+function cutOf(r, p0, p1, len, which = 0) {   // (v0.7.4: `which`, for a second longer runway's cut)
+  const P = r.cutBy && r.cutBy[which];
   if (!P) return { a: new THREE.Vector4(0, 0, 1, 0), b: new THREE.Vector2(0, 0) };
   const q0 = pavementEnd(P.ends[0]), q1 = pavementEnd(P.ends[1]);
   const plen = Math.hypot(q1.x - q0.x, q1.y - q0.y);
@@ -336,6 +370,13 @@ function cutOf(r, p0, p1, len) {
   const cx = (q0.x + q1.x) / 2 - p0.x, cy = (q0.y + q1.y) / 2 - p0.y;
   return { a: new THREE.Vector4(cx * ux + cy * uy, -cx * uy + cy * ux, px * ux + py * uy, -px * uy + py * ux),
     b: new THREE.Vector2(plen / 2, P.widthM / 2 + SHOULDER) };
+}
+
+// v0.7.4: the variant's uniforms: the bends as four vec4s (uKnots itself replaced: with more than two bends the first
+// vector holds the first two) and the second cut.
+function manyUniforms(r, p0, p1, len) {
+  const k = knotPairs(r.knots).map((v) => new THREE.Vector4(v[0], v[1], v[2], v[3])), c2 = cutOf(r, p0, p1, len, 1);
+  return { uKnots: { value: k[0] }, uKnots2: { value: k[1] }, uKnots3: { value: k[2] }, uKnots4: { value: k[3] }, uCutA2: { value: c2.a }, uCutB2: { value: c2.b } };
 }
 
 // Is (x, y) on runway P's drawn pavement (shoulders included)?
@@ -559,13 +600,14 @@ export function createRunways(scene, uniforms, chunks, airports, renderer, hf = 
         const d = designator(e.ident);
         return new THREE.Vector4(Math.hypot(e.x - p.x, e.y - p.y), d[0], d[1], d[2]);
       };
-      const cut = cutOf(r, p0, p1, len);
+      const cut = cutOf(r, p0, p1, len), many = runwayVariant(r);
       const u = Object.assign({}, uniforms, {
         uRelC: { value: new THREE.Vector2() },
         uDir: { value: new THREE.Vector2((p1.x - p0.x) / len, (p1.y - p0.y) / len) },
         uLen: { value: len }, uWid: { value: r.widthM },
         uE0: { value: r.ends[0].elevM }, uE1: { value: r.ends[1].elevM },
         uKnots: { value: knotsU(r) }, uCutA: { value: cut.a }, uCutB: { value: cut.b },
+        ...(many ? manyUniforms(r, p0, p1, len) : {}),   // v0.7.4: the variant's own (Brussels's 01/19)
         uEnd0: { value: endU(0) }, uEnd1: { value: endU(1) },
         uStripes: { value: thresholdStripes(r.widthM) },
         uGlyphs: { value: glyphs },
@@ -573,8 +615,8 @@ export function createRunways(scene, uniforms, chunks, airports, renderer, hf = 
       });
       const mat = new THREE.ShaderMaterial({
         uniforms: u,
-        vertexShader: `${chunks.UNIFORMS_GLSL}\n${chunks.HEIGHT_GLSL}\n${RUNWAY_VERT}`,
-        fragmentShader: `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.ATMOS_GLSL}\n${chunks.AIRCRAFT_LIGHTS_GLSL}\n${RUNWAY_FRAG}`,
+        vertexShader: `${chunks.UNIFORMS_GLSL}\n${chunks.HEIGHT_GLSL}\n${many ? RUNWAY_VERT_MANY : RUNWAY_VERT}`,
+        fragmentShader: `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.ATMOS_GLSL}\n${chunks.AIRCRAFT_LIGHTS_GLSL}\n${many ? RUNWAY_FRAG_CUT2 : RUNWAY_FRAG}`,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;

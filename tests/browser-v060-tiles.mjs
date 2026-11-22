@@ -4,7 +4,7 @@
 // Boots a test flight at Gimpo, checks the sim runs (the loader never holds a step over Korea),
 // no console errors, the WebGL renderer, the prediction over the terrain, and the frame numbers.
 //   python3 games/flight-sim/tools/cpu-guard.py --minutes 4 -- node games/flight-sim/tests/browser-v060-tiles.mjs [rootUrl]
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 const ROOT = process.argv[2] || process.env.E2E_ROOT || 'http://127.0.0.1:8014/';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${detail}`); };

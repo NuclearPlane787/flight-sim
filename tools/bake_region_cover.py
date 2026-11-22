@@ -270,6 +270,7 @@ def main():
     ap.add_argument('--step', type=int, default=4)
     a = ap.parse_args()
     if a.validate:
+        bc.refuse_retired('bake_region_cover.py --validate', "data/terrain/l0/ (Korea's own cover tiles, which it compares against)", 'Its other modes run as before.')
         cmd_validate(a)
     elif a.seams:
         cmd_seams(a)

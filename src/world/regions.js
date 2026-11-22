@@ -51,6 +51,9 @@ export const REGIONS = {
     // 0 m and land never as 0, so the ground is the stored height with no clamp, and exactly 0 is the sea
     // (its manifest says "lowLand": true; tests/v070-eu-terrain.test.mjs checks the two agree).
     lowLand: true,
+    // v0.7.4 (Shane, 2026-11-21: "North only"): the aurora by latitude: full at 56 N and north of it (Scotland,
+    // Denmark), nothing at 50 N and south of it, smooth between (sky.js). East Asia has no entry: its aurora is as it was.
+    aurora: { fadeLat: 50, fullLat: 56 },
     extent: null,              // the outline's bounding rectangle (region.js works it out)
     // The outline, [lat, lon], its edges straight in latitude and longitude (region.js densifies them
     // every 0.25 degrees and projects them): the 1 km land's edge, the map's, and where a predicted path ends.

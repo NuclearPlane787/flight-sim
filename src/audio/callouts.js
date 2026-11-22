@@ -8,6 +8,10 @@ const CALLS = [
   [100, 'one hundred'], [50, 'fifty'], [40, 'forty'], [30, 'thirty'], [20, 'twenty'], [10, 'ten'],
 ];
 const WARNINGS = [['pullUp', 'pull up'], ['tooLowGear', 'too low, gear'], ['sinkRate', 'sink rate']];
+// v0.7.4: the voice's warnings the left panel's button can silence (silence.js), with the windshear warnings.
+const SILENCEABLE = ['pullUp', 'tooLowGear', 'sinkRate', 'windshear', 'windshearAhead'];
+
+import { createSilencer } from './silence.js';
 
 export function createCallouts() {
   // The speech voice is the system's (the Web Speech API), which a browser's own mute doesn't
@@ -27,6 +31,10 @@ export function createCallouts() {
   let aheadOn = false;  // v0.4.2: the predictive warning has been said
   let muted = false;
   let volume = 1;    // the pause menu's master volume
+  let level = 1;     // v0.7.4: Settings' Callouts volume, 0 to 1 of the master
+  const hush = createSilencer();
+  const sounding = {};   // v0.7.4: the voice's warnings heard now (for the button)
+  let warnSaidAt = -Infinity;
   const heard = []; // the most recent calls, for tests and the log
 
   function pickVoice() {
@@ -43,13 +51,13 @@ export function createCallouts() {
   function say(text, urgent) {
     heard.push(text);
     if (heard.length > 30) heard.shift();
-    if (!synth || muted || volume <= 0) return;
+    if (!synth || muted || volume <= 0 || level <= 0) return;
     if (urgent) synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.rate = 1.35;
     u.pitch = 0.9;
-    u.volume = 0.9 * volume;
+    u.volume = 0.9 * volume * level;
     synth.speak(u);
   }
 
@@ -73,25 +81,30 @@ export function createCallouts() {
     if (!s.onGround && ft > 50 && s.vs < 0) retardArmed = true;
     if (!leversUp || (s.onGround && s.gs < 40 / 1.944) || (!s.onGround && s.vs > 2.5 && ft > 100)) retardArmed = false;
     if (retardOn && retardArmed && leversUp && ft <= retardFt && now - retardAt > 1.2) { say('retard', true); retardAt = now; }
-    const w = s.warnings || {};
+    // v0.7.4: the warnings as heard: one the button silenced stays quiet while its condition holds.
+    const w0 = s.warnings || {}, w = {};
+    for (const k of SILENCEABLE) w[k] = hush.allow(!!w0[k], k);
+    for (const k of SILENCEABLE) sounding[k] = w[k] && (k !== 'windshearAhead' || now - warnSaidAt < 4);
     // v0.4.0: the windshear warning comes first: Airbus's says it three times, a Boeing's once (after its
     // siren, 1.6 s, in synth.js).
     if (w.windshear && now - shearAt > 6) {
       shearAt = now; warnAt = now;
       if (retardOn) say('windshear, windshear, windshear', true); else shearCallAt = now + 1.6;
+      warnSaidAt = now;
     }
-    if (shearCallAt && now >= shearCallAt) { shearCallAt = 0; say('windshear', true); warnAt = now; }
+    if (shearCallAt && hush.has('windshear')) shearCallAt = 0;   // v0.7.4: silenced before the Boeing's voice
+    if (shearCallAt && now >= shearCallAt) { shearCallAt = 0; say('windshear', true); warnAt = now; warnSaidAt = now; }
     // v0.4.2: the predictive warning, once a time it comes on (the reactive one stops it): on an approach
     // "go around, windshear ahead" (a Boeing) or "windshear ahead" twice (an Airbus); on the take-off roll or
     // climbing away, "windshear ahead" twice on both.
     if (w.windshearAhead && !w.windshear && !aheadOn && now - shearAt > 6) {
-      aheadOn = true; warnAt = now;
+      aheadOn = true; warnAt = now; warnSaidAt = now;
       const approach = !s.onGround && s.vs < 0;
       say(!retardOn && approach ? 'go around, windshear ahead' : 'windshear ahead, windshear ahead', true);
     }
     if (!w.windshearAhead) aheadOn = false;
     if (now - warnAt > 2.5 && !s.onGround) {
-      for (const [k, text] of WARNINGS) if (w[k]) { say(text, true); warnAt = now; break; }
+      for (const [k, text] of WARNINGS) if (w[k]) { say(text, true); warnAt = now; warnSaidAt = now; break; }
     }
     lastFt = ft;
   }
@@ -105,6 +118,18 @@ export function createCallouts() {
     get muted() { return muted; },
     set volume(v) { volume = Math.max(0, Math.min(1, v)); },
     get volume() { return volume; },
-    reset() { lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; shearAt = -Infinity; shearCallAt = 0; aheadOn = false; if (synth) synth.cancel(); },
+    // v0.7.4: Settings' Callouts volume (0 to 1 of the master; the voice's warnings too).
+    set level(v) { level = Number.isFinite(+v) ? Math.max(0, Math.min(1, +v)) : 1; },
+    get level() { return level; },
+    // v0.7.4: the left panel's button: the voice's warnings heard now go quiet until their condition ends and comes back.
+    silenceWarnings() {
+      const k = hush.press(sounding);
+      if (k && synth) synth.cancel();   // what is being said stops
+      for (const key of SILENCEABLE) if (hush.has(key)) sounding[key] = false;
+      return k;
+    },
+    get silenced() { return hush.any; },
+    get sounding() { return { ...sounding }; },
+    reset() { hush.reset(); lastFt = Infinity; armed.clear(); retardAt = -Infinity; retardArmed = false; shearAt = -Infinity; shearCallAt = 0; aheadOn = false; if (synth) synth.cancel(); },
   };
 }

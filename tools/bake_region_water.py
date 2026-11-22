@@ -590,6 +590,7 @@ def main():
     if a.plan:
         cmd_plan(a)
     elif a.validate:
+        bc.refuse_retired('bake_region_water.py --validate', "data/terrain/l0/ (Korea's own water tiles, which it compares against)", 'Its other modes run as before.')
         cmd_validate(a)
     elif a.seams:
         cmd_seams(a)

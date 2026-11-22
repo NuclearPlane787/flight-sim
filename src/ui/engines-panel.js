@@ -20,6 +20,24 @@
 
 import { C, font, DEG, clamp } from './common.js';
 import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO } from './engine-row.js';
+import { createEngines, LEVER_CL } from '../sim/engines.js';
+import * as A321 from '../sim/a321neo.js';
+
+// v0.7.4 (Shane's item 7): the thrust limit above the dials, as the real E/WD has it ("TOGA 96.5"): the
+// mode the levers' detent gives (TOGA at full, on the ground and in alpha floor; MCT above CL; CLB in CL or
+// below in flight) and its N1 here and now, from the sim's own idle N1 (state.n1Idle), the figure the lever's
+// ring uses, so a ring at full sits on it and a needle at 96.5 reads full. No DOM: tests run it in node.
+export function thrustLimit(st, ap, A = A321, eng = null) {
+  const lever = st.thrustLever ?? 0, tm = ap?.thrustMode || '';
+  let mode;
+  if (st.alphaFloor || tm === 'A.FLOOR' || tm === 'TOGA LK' || lever >= 0.98) mode = 'TOGA';
+  else if (lever > LEVER_CL + 0.02) mode = 'MCT';
+  else mode = st.onGround ? 'TOGA' : 'CLB';
+  const phi = mode === 'CLB' ? A.RATING.CL : mode === 'MCT' ? A.RATING.MCT : A.RATING.TOGA;
+  const k = eng || createEngines(A);
+  const idle = st.n1Idle > 0 ? st.n1Idle : k.idleN1(1, 0);
+  return { mode, n1: k.n1ForPhi(phi, idle) };
+}
 
 // Thrust lever position (−1…1) to the N1 it commands at take-off conditions, for a state
 // without leverN1 (the dev pages' mocks). Rough LEAP-1A values: IDLE ~20 %, CL ~89 %,
@@ -39,8 +57,8 @@ const CONF_TARGET = { '0': [0, 0], '1': [18, 0], '1+F': [18, 10], '2': [22, 14],
 
 export function createEnginesPanel(cv) {
   const { ctx } = cv;
-  let def = null;
-  function setType(d) { def = d || null; }
+  let def = null, eng = createEngines(A321);
+  function setType(d) { def = d || null; eng = createEngines(def?.data || A321); }
   const tanksMemo = dropMemo(20);   // v0.5.6
 
   function draw(view) {
@@ -48,15 +66,18 @@ export function createEnginesPanel(cv) {
     cv.begin();
     ctx.textBaseline = 'middle';
     const eng = st.engines || [], n = engineCountOf(st, def);
-    if (n !== 2) engineRowBlock(s, st, eng, n);
+    if (n !== 2) engineRowBlock(s, st, eng, n, view);
     else {
     // N1 dials.
     for (let i = 0; i < 2; i++) dial(s, 0.135 * s + i * 0.25 * s, 0.135 * s, 0.095 * s, eng[i] || {}, st, i);
     ctx.fillStyle = C.white; ctx.font = font(s * 0.032); ctx.textAlign = 'center';
     ctx.fillText('N1', 0.26 * s, 0.13 * s); ctx.fillStyle = C.cyan; ctx.font = font(s * 0.026); ctx.fillText('%', 0.26 * s, 0.165 * s);
-    // Thrust lever detent (cyan) between the dials, or A/THR while it moves the lever.
-    ctx.fillStyle = C.cyan; ctx.font = font(s * 0.034, true);
-    ctx.fillText(st.athrActive ? 'A/THR' : st.detent || '', 0.26 * s, 0.03 * s);
+    // v0.7.4: the thrust limit at the top, where the lever's detent was; under it, between the dials, A/THR while it
+    // moves the lever, or the lever at IDLE or in REV (the other detents are the limit's own names: TOGA, MCT, CLB).
+    limitLine(s, st, view, 0.26 * s, 0.026 * s, 0.24 * s, 'center');
+    const under = st.athrActive ? 'A/THR' : st.detent === 'IDLE' || st.detent === 'REV' ? st.detent : '';
+    ctx.fillStyle = C.cyan; ctx.font = font(s * 0.026, true); ctx.textAlign = 'center';
+    ctx.fillText(under, 0.26 * s, 0.07 * s);
     // Fuel flow under the dials.
     ctx.font = font(s * 0.04); ctx.fillStyle = C.green;
     for (let i = 0; i < 2; i++) {
@@ -97,6 +118,21 @@ export function createEnginesPanel(cv) {
       ctx.fillStyle = C.white; ctx.textAlign = 'left';
       fitText(DROP_MEMO, 0.03 * s, 0.598 * s, s * 0.03, 0.42 * s, s * 0.02, true);
     }
+  }
+
+  // The thrust limit: its mode in cyan and its N1 in green, with the unit, fitted to maxW.
+  function limitLine(s, st, view, x, y, maxW, align) {
+    const lim = thrustLimit(st, view.ap, def?.data || A321, eng);
+    const a = lim.mode + ' ', b = lim.n1.toFixed(1), c = ' %';
+    let size = s * 0.032;
+    ctx.font = font(size, true);
+    let w = ctx.measureText(a + b + c).width;
+    if (w > maxW) { size *= maxW / w; ctx.font = font(size, true); w = ctx.measureText(a + b + c).width; }
+    let left = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = C.cyan; ctx.fillText(a, left, y); left += ctx.measureText(a).width;
+    ctx.fillStyle = C.green; ctx.fillText(b, left, y); left += ctx.measureText(b).width;
+    ctx.fillStyle = C.cyan; ctx.fillText(c, left, y);
   }
 
   const fmt = (v) => (v === undefined || v === null || !isFinite(v) ? '--' : String(Math.round(v / 10) * 10).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
@@ -152,7 +188,7 @@ export function createEnginesPanel(cv) {
 
   // 3, 4 or 6 engines: the dials in a row, each readout under its dial, the fuel flows at the same
   // height as two engines' (0.29 s), and the labels between the wings' engines (engine-row.js).
-  function engineRowBlock(s, st, eng, n) {
+  function engineRowBlock(s, st, eng, n, view) {
     const x0 = 0.005 * s, x1 = 0.545 * s, gap = (n >= 6 ? 0.06 : 0.075) * s;
     const row = engineRow(n, { x0, x1, gap }), w = row.w, lx = row.labelX;
     const r = Math.min(0.095 * s, 0.42 * w), k = r / (0.095 * s), kk = Math.max(0.6, k);
@@ -176,8 +212,9 @@ export function createEnginesPanel(cv) {
     ctx.textAlign = 'center';
     ctx.fillStyle = C.white; fitText('N1', lx, y - 0.005 * s, s * 0.032, gap - 0.008 * s, s * 0.02);
     ctx.fillStyle = C.cyan; fitText('%', lx, y + 0.03 * s, s * 0.026, gap - 0.008 * s, s * 0.018);
-    ctx.fillStyle = C.cyan; ctx.font = font(s * 0.034, true);
-    ctx.fillText(st.athrActive ? 'A/THR' : st.detent || '', (x0 + x1) / 2, 0.03 * s);
+    ctx.fillStyle = C.cyan; ctx.font = font(s * 0.03, true); ctx.textAlign = 'left';
+    ctx.fillText(st.athrActive ? 'A/THR' : st.detent || '', x0 + 0.01 * s, 0.026 * s);
+    limitLine(s, st, view, x1, 0.026 * s, 0.3 * s, 'right');   // v0.7.4: the thrust limit
     // Fuel flow, at two engines' height, all at one size: four figures' fitted to the slot (more shrink further).
     ctx.font = font(s * 0.04);
     const fs = Math.max(0.022 * s, Math.min(0.04 * s, 0.04 * s * (w - 0.01 * s) / ctx.measureText('0000').width));

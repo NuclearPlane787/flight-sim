@@ -27,6 +27,11 @@ const f = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 // height is the ground, with no clamp. Every shader that puts something on the ground takes it from here, so
 // East Asia's shaders read as they did.
 export const LOW_LAND = !!REGION.lowLand;
+// v0.7.4 (fix 6, "Found while building v0.7.0"): seaDistance()'s fallback, used only when there is no water texture.
+// East Asia's reads a height below 0 as sea (its bake pushes the sea under 0): the text it always had. A low-land
+// region's takes the CPU's branch (heightfield.js's seaDistance()): exactly 0 is the sea, anything else is land, so a
+// polder below sea level isn't drawn as sea.
+export const SEA_FALLBACK = LOW_LAND ? '(rawH != 0.0 ? 1000.0 : -1000.0)' : 'rawH * 20.0';
 export const seaFloor = (expr) => (LOW_LAND ? `(${expr})` : `max(${expr}, 0.0)`);
 // The tiles' lattice origin as GLSL takes it from the clip window's (ground.js's cellH()): "+ 400000.0" in East Asia.
 export const LATTICE_BACK_GLSL = (() => { const { x0, y0 } = REGION.lattice; return x0 === y0 ? `+ ${f(-x0)}` : `- vec2(${f(x0)}, ${f(y0)})`; })();
@@ -403,6 +408,8 @@ function buildCoastAtlas(coast) {
 }
 
 // Runway flattening rects (the same list heightAt uses, in rank order, as heightAt runs them).
+// (v0.7.4: a runway with more than two bends, Brussels's 01/19, comes in that list as several rects of two bends each:
+// runways.js's runwayRects(). So this shader's text, rwyElev() and its uniforms are v0.7.3's, character for character.)
 // rwyC: a runway's two bends where it meets a longer one. Writes the uniforms' vectors in place.
 function fillRunways(rects, rwyA, rwyB, rwyC) {
   for (let k = 0; k < MAX_RUNWAYS; k++) {
@@ -714,7 +721,7 @@ vec2 waterField(vec2 m) {
 }
 
 float seaDistance(vec2 m, float rawH) {
-  float dn = uHasWater > 0.5 ? waterField(m).r : rawH * 20.0;
+  float dn = uHasWater > 0.5 ? waterField(m).r : ${SEA_FALLBACK};
   for (int k = 0; k < ${MAX_PATCHES}; k++) {
     if (k >= uCoastCount) break;
     vec4 r = uCoastRect[k], dim = uCoastDim[k];

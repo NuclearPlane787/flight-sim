@@ -28,10 +28,11 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
       '07R': { ...E, ...C1, displacedM: 117, elevFt: 175, thr: [50.8894083, 4.48203] },
       '25L': { ...E, ...C3, elevFt: 159, thr: [50.898926, 4.5232505] },
       '01': { ...E, ...C1, displacedM: 44, elevFt: 183, thr: [50.8873182, 4.4915718] },
-      // 19's elevation [EST], the lead's: 108.4 ft, not OurAirports' 113 ft, so that 01/19's surface meets 07L/25R's where its
-      // north end crosses it (the game shapes one crossing a runway; tools/bake_region_airports.py says why). The game takes 19
-      // for landings only (ONE_WAY), its own limit.
-      '19': { ...E, ils: null, approachLights: null, approachLightsM: 0, tdz: false, displacedM: 218, elevFt: 108.4, thr: [50.9110179, 4.5012443] },
+      // 19's elevation [EST]: 110.2 ft at its pavement end, a 15 m stub north of 07L/25R and level with it; OurAirports'
+      // 113 ft is the threshold's, 218 m in and south of that runway, where the game's bent profile reads 112.8 ft
+      // (tests/v074-eu-ebbr-crossings.test.mjs). v0.7.1 to v0.7.3 had 108.4 ft and 19 for landings only: the game shaped
+      // one crossing a runway then; v0.7.4 shapes both.
+      '19': { ...E, ils: null, approachLights: null, approachLightsM: 0, tdz: false, displacedM: 218, elevFt: 110.2, thr: [50.9110179, 4.5012443] },
     },
     fieldSurface: 'runways', fieldPavement: true, crossingProfile: true,
     // 07L/25R reads 063/243 M against its ident 07/25 (WMM2025's 2.5 E; the runway kept its name): 8 deg allowed

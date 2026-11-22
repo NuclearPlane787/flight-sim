@@ -10,7 +10,7 @@
 // and (test-only mock) sky.js is served with its sky and haze colours darkened by uNight, so
 // the night isn't drawn under a day-blue sky.
 
-import { chromium } from '/tmp/flight-sim/pw/node_modules/playwright/index.mjs';
+import { chromium } from './pw.mjs';   // (v0.7.4: Playwright with every close on a timeout; the module itself is PW or /tmp/flight-sim/pw's)
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
