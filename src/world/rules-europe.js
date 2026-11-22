@@ -103,6 +103,11 @@ export const EUROPE_AIRPORT_TRANSITIONS = Object.freeze({
   LFMN: { at: [43.6584, 7.2159], taFt: 5000, tlFl: 60, also: ['MC'], note: 'France AIP LFMN AD 2.20: "The transition altitude in NICE TMA is 5000 ft."' },
   LSGG: { at: [46.2381, 6.1089], taFt: 7000, tlFl: 80, note: 'Switzerland: Geneva 7,000 ft [EST] (skyguide\'s eAIP asks for a login)' },
   LIMC: { at: [45.6306, 8.7281], taFt: 6000, tlFl: 70, note: 'Italy: Malpensa 6,000 ft [EST] (ENAV\'s eAIP asks for a login; from a public pilot briefing)' },
+  // v0.7.6: the two Spanish bases, read from ENAIRE's AIP (the same as Spain's own 6,000 ft). Ramstein takes Germany's
+  // 5,000 ft and the three RAF bases the UK's 3,000 ft: no military AIP could be read (v0.7.4's fix 3 keeps each disc
+  // inside its country).
+  LEZG: { at: [41.6662, -1.0416], taFt: 6000, tlFl: 70, note: 'Spain AIP LEZG AD 2.17 (WEF 01-OCT-26): "1850 m/6000 ft" (CTR ZARAGOZA)' },
+  LERT: { at: [36.6452, -6.3495], taFt: 6000, tlFl: 70, note: 'Spain AIP LERT AD 2.17: "Transition altitude 6000 ft."' },
 });
 
 // ICAO prefixes to zones, where no position is at hand (a saved plan's airport): clock.js's zoneOfIcao().
@@ -122,5 +127,5 @@ export const EUROPE_COUNTRY_ORDER = ['GB', 'FR', 'DE', 'ES', 'CH', 'NL', 'IT', '
 // v0.7.1: Toulouse to Manchester (airports 12 to 20), each after its country's earlier ones; the new countries after Italy.
 // v0.7.2: Düsseldorf to Santiago (airports 21 to 29), the same way; Czechia after Denmark.
 // v0.7.3: Innsbruck to Naples (airports 30 to 37), the same way; Gibraltar last.
-export const EUROPE_AIRPORT_ORDER = ['EGLL', 'EGKK', 'EGCC', 'EGPH', 'EGPF', 'LFPG', 'LFPO', 'LFBO', 'LFMN', 'LFRS', 'LFML', 'LFLL', 'EDDF', 'EDDM', 'EDDB', 'EDDL', 'EDDK', 'EDDH',
-  'LEMD', 'LEBL', 'LEST', 'LSZH', 'LSGG', 'EHAM', 'LIRF', 'LIMC', 'LIPZ', 'LIRN', 'EIDW', 'LPPT', 'LPPR', 'EBBR', 'LOWW', 'LOWI', 'EKCH', 'LKPR', 'LXGB'];
+export const EUROPE_AIRPORT_ORDER = ['EGLL', 'EGKK', 'EGCC', 'EGPH', 'EGPF', 'EGUL', 'EGVA', 'EGQS', 'LFPG', 'LFPO', 'LFBO', 'LFMN', 'LFRS', 'LFML', 'LFLL', 'EDDF', 'EDDM', 'EDDB', 'EDDL', 'EDDK', 'EDDH', 'ETAR',
+  'LEMD', 'LEBL', 'LEST', 'LEZG', 'LERT', 'LSZH', 'LSGG', 'EHAM', 'LIRF', 'LIMC', 'LIPZ', 'LIRN', 'EIDW', 'LPPT', 'LPPR', 'EBBR', 'LOWW', 'LOWI', 'EKCH', 'LKPR', 'LXGB'];

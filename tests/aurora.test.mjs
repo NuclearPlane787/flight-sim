@@ -8,6 +8,10 @@ import * as THREE from '../vendor/three.module.js';
 import { createSky, AURORA_GAIN } from '../src/world/sky.js';
 
 const kstMs = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h - 9, mi);
+// v0.7.6: East Asia's aurora has a band by latitude (full from 44 N, none from 40 N south: tests/v076-aurora.test.mjs),
+// so these checks of the clock and the cloud moved from Seoul's 37.56 N to 44.5 N, north of the band, where the aurora is
+// what v0.4.3 drew everywhere. The clock times read the same there (14:00 day, 18:00 early twilight, 23:00 night).
+const LAT = 44.5;
 function makeSky() {
   const uniforms = { uSunDir: { value: new THREE.Vector3() }, uSunColor: { value: new THREE.Color() },
     uSkyAmb: { value: new THREE.Color() }, uNight: { value: 0 } };
@@ -17,18 +21,20 @@ function makeSky() {
 
 test('none by day, all of it on a clear night, as the stars', () => {
   const { sky, u } = makeSky();
-  sky.setTime(kstMs(2026, 11, 12, 14), 37.56, 126.8);
+  sky.setTime(kstMs(2026, 11, 12, 14), LAT, 126.8);
   assert.equal(u.uAurora.value, 0, 'by day');
-  sky.setTime(kstMs(2026, 11, 12, 18, 0), 37.56, 126.8);   // sunset about 17:25: early twilight
+  sky.setTime(kstMs(2026, 11, 12, 18, 0), LAT, 126.8);   // sunset about 17:25: early twilight
   assert.ok(u.uAurora.value < 0.5, `twilight: ${u.uAurora.value.toFixed(2)}`);
-  sky.setTime(kstMs(2026, 11, 12, 23), 37.56, 126.8);
+  sky.setTime(kstMs(2026, 11, 12, 23), LAT, 126.8);
   assert.ok(u.uAurora.value > 0.99, `night: ${u.uAurora.value.toFixed(2)}`);
   assert.equal(u.uAurora.value, u.uStarVis.value);
+  sky.setTime(kstMs(2026, 11, 12, 23), 37.56, 126.8);     // v0.7.6: Seoul, south of the band: the stars and no aurora
+  assert.equal(u.uAurora.value, 0); assert.ok(u.uStarVis.value > 0.99);
 });
 
 test('an overcast sky takes most of it', () => {
   const { sky, u } = makeSky();
-  sky.setTime(kstMs(2026, 11, 12, 23), 37.56, 126.8);
+  sky.setTime(kstMs(2026, 11, 12, 23), LAT, 126.8);
   sky.setWeather({ visM: 20000, clouds: [{ okta: 8, baseFt: 3000, topFt: 6000, baseM: 914, topM: 1829 }] });
   const cam = new THREE.PerspectiveCamera();
   sky.update(cam, 300);
@@ -40,6 +46,6 @@ test('it is in the dome\'s shader, adds no draw call, and has a brightness', () 
   const fs = sky.mesh.material.fragmentShader;
   assert.ok(/vec3 aurora\(vec3 d\)/.test(fs) && /aurora\(d\) \* uAurora/.test(fs));
   assert.ok(AURORA_GAIN > 0 && AURORA_GAIN < 0.5);
-  sky.setTime(kstMs(2026, 11, 12, 23), 37.56, 126.8);
+  sky.setTime(kstMs(2026, 11, 12, 23), LAT, 126.8);
   assert.equal(sky.drawCalls, 1 + (sky.stars && sky.stars.visible ? 1 : 0));
 });

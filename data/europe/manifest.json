@@ -337,6 +337,60 @@
       "nx": 1179,
       "ny": 1073,
       "height": "terrain/patch-naples.i16.gz"
+    },
+    {
+      "id": "ramstein",
+      "x0": 241410.0,
+      "y0": 265440.0,
+      "cell": 30.0,
+      "nx": 1179,
+      "ny": 642,
+      "height": "terrain/patch-ramstein.i16.gz"
+    },
+    {
+      "id": "lossiemouth",
+      "x0": -458790.0,
+      "y0": 1196400.0,
+      "cell": 30.0,
+      "nx": 1118,
+      "ny": 921,
+      "height": "terrain/patch-lossiemouth.i16.gz"
+    },
+    {
+      "id": "lakenheath",
+      "x0": -247260.0,
+      "y0": 592200.0,
+      "cell": 30.0,
+      "nx": 934,
+      "ny": 705,
+      "height": "terrain/patch-lakenheath.i16.gz"
+    },
+    {
+      "id": "fairford",
+      "x0": -414750.0,
+      "y0": 521430.0,
+      "cell": 30.0,
+      "nx": 1100,
+      "ny": 704,
+      "height": "terrain/patch-fairford.i16.gz"
+    },
+    {
+      "id": "zaragoza",
+      "x0": -435510.0,
+      "y0": -586620.0,
+      "cell": 30.0,
+      "nx": 1176,
+      "ny": 772,
+      "height": "terrain/patch-zaragoza.i16.gz"
+    },
+    {
+      "id": "rota",
+      "x0": -948510.0,
+      "y0": -1097400.0,
+      "cell": 30.0,
+      "nx": 1288,
+      "ny": 896,
+      "height": "terrain/patch-rota.i16.gz"
     }
   ],
   "coastPatchesRegion": [
@@ -447,6 +501,24 @@
       "nx": 1600,
       "ny": 1600,
       "coast": "terrain/coast-LIRN.u8.gz"
+    },
+    {
+      "id": "EGQS",
+      "x0": -449980.0,
+      "y0": 1201650.0,
+      "cell": 10.0,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-EGQS.u8.gz"
+    },
+    {
+      "id": "LERT",
+      "x0": -936300.0,
+      "y0": -1092620.0,
+      "cell": 10.0,
+      "nx": 1600,
+      "ny": 1600,
+      "coast": "terrain/coast-LERT.u8.gz"
     }
   ],
   "airportsRegion": [
@@ -486,7 +558,13 @@
     "airports/LPPR.json",
     "airports/LOWI.json",
     "airports/LIPZ.json",
-    "airports/LIRN.json"
+    "airports/LIRN.json",
+    "airports/ETAR.json",
+    "airports/EGQS.json",
+    "airports/EGUL.json",
+    "airports/EGVA.json",
+    "airports/LEZG.json",
+    "airports/LERT.json"
   ],
   "tilesRegion": {
     "version": 1,
@@ -497,7 +575,7 @@
       "i0": -5120,
       "j0": -5632,
       "i1": 4608,
-      "j1": 5120
+      "j1": 5632
     },
     "sea": {
       "h": 0,
@@ -523,7 +601,7 @@
           "i0": -5120,
           "j0": -5632,
           "i1": 4608,
-          "j1": 5120
+          "j1": 5632
         },
         "tiles": [
           "-10_-6",
@@ -562,6 +640,7 @@
           "-3_-7",
           "-3_0",
           "-3_1",
+          "-3_10",
           "-3_2",
           "-3_3",
           "-3_4",
@@ -579,6 +658,7 @@
           "-4_-7",
           "-4_0",
           "-4_1",
+          "-4_10",
           "-4_2",
           "-4_3",
           "-4_4",
@@ -593,6 +673,8 @@
           "-5_-7",
           "-5_0",
           "-5_1",
+          "-5_10",
+          "-5_3",
           "-5_4",
           "-5_5",
           "-5_6",
@@ -640,6 +722,7 @@
           "-9_-6",
           "-9_-7",
           "-9_-8",
+          "-9_-9",
           "0_-1",
           "0_-2",
           "0_-3",
@@ -783,6 +866,7 @@
           "-3_-7",
           "-3_0",
           "-3_1",
+          "-3_10",
           "-3_2",
           "-3_3",
           "-3_4",
@@ -800,6 +884,7 @@
           "-4_-7",
           "-4_0",
           "-4_1",
+          "-4_10",
           "-4_2",
           "-4_3",
           "-4_4",
@@ -814,6 +899,8 @@
           "-5_-7",
           "-5_0",
           "-5_1",
+          "-5_10",
+          "-5_3",
           "-5_4",
           "-5_5",
           "-5_6",
@@ -861,6 +948,7 @@
           "-9_-6",
           "-9_-7",
           "-9_-8",
+          "-9_-9",
           "0_-1",
           "0_-2",
           "0_-3",

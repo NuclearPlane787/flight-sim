@@ -395,6 +395,7 @@ NOTES_DIRS.update({i: '/tmp/flight-sim/v064/airports/bake' for i in ('ZKPY', 'ZK
 # 02/20 (a 500 x 30 m strip by the terminal apron, no lights, no procedure).
 RUNWAY_SKIP = {('ZKPY', '01/19'), ('ZKWS', '02/20')}
 REF_ALIAS = {}      # v0.7.0: OSM runway ref -> 'A/B' for a runway OSM tags one way only (Europe's block fills it)
+RUNWAY_WAY_SKIP = set()   # v0.7.6 (airports subagent apc): OSM runway way ids not read as runway (Rota's heliport strip, ref'd as the runway's own 10/28)
 HOLD_DROP_M = {}    # v0.7.0: icao -> m; OSM holds farther than this from every taxiway are left out (Europe's block fills it)
 REF_SQUEEZE = set()  # v0.7.0: airports whose OSM stand refs 'B 44' are read as B44 (Europe's block fills it)
 STAND_DROP = {}     # v0.7.0: icao -> (refs, reason): OSM stands on taxiways no route reaches (Europe's block fills it)
@@ -696,6 +697,10 @@ TWY_REF_REASONS['RJNK'] = ("OSM maps no taxiway ref at Komatsu: named from AIP J
                            "parallel (its loop's ends C1 at 24 and C5 at 06 kept in P's way), C2 to C4 its links NE to SW")
 # The JASDF's shelters: OSM's twenty hangars of about 25 x 23 m on the south side, no height in OSM: low vaults [EST] 9 m
 # (public photographs: an F-15's shelter stands about 8 to 10 m), not the 20 m of a hangar (SHELTERS, building loop).
+# v0.7.6 (the lead, after the pictures-only review: "airliner wing inside a building" at Lakenheath): buildings not
+# drawn, each named by a map point inside it, with the reason. Only where a building stands in the way of the player's
+# own taxi routes and is not what the game would draw it as. Empty for every other airport.
+BUILDING_SKIP_AT = {}
 SHELTERS = {'RJNK': (frozenset({1435071180, 1435071181, 1435071184, 1435071185, 1435071186, 1435071187, 1435071188,
                                 1435071189, 1435071191, 1435071192, 1435071193, 1435071194, 1435071195, 1435071196,
                                 1435071197, 1435071198, 318940517, 318940521, 318940522, 318940529}), 9.0,
@@ -1780,6 +1785,274 @@ if EUROPE:
                     ('LIRN', '06/24'): 2628})
     ICAOS = list(NAMES)
 
+# ---- v0.7.6 (airports subagent apc): Zaragoza (LEZG), a joint civil and air force field, pending. OSM: OpenStreetMap
+#   France's mirror of the Aragon extract (data of 2026-11-19; Geofabrik's aragon path answered 502, then 301 to a 404),
+#   its box cut by /tmp/flight-sim/v076/airports/apc/extract.sh. Spain's ENAIRE AIP, AD 2-LEZG (WEF 01-OCT-26, AIRAC AMDT
+#   09/26; read with pypdf, no page kept in the repository): AD 2.12 12L/30R 3032 x 45, true 120.03 / 300.05 (MAG 119 /
+#   299), 12R/30L 3718 x 45, true 120.00 / 300.03 (MAG 119 / 299); THR PSN at each end, none displaced (AD 2.13: LDA =
+#   TORA at all four); THR elevations 823 / 834 / 834 / 862 ft. AD 2.14: 12L "Simple, 427 m" (the game's SSALF), PAPI 2.5
+#   deg; 30R "Precision CAT II/III, 600 m" (ALSF-II), PAPI 3 deg, TDZ 900 m; centreline lights on 12L/30R; 12R "Precision
+#   CAT I, 581 m" (ALSF-I), PAPI 3 deg; 30L no approach lights, PAPI 3 deg; no TDZ or centreline lights on 12R/30L. PAPI
+#   side not stated: left [EST]. AD 2.19: one ILS, LOC 30R IZZA "ILS CAT II/III". AD 2.17: "Transition altitude 1850
+#   m/6000 ft" (CTR ZARAGOZA). The air force's side: OSM's second aerodrome "Base Aérea de Zaragoza" (aeroway=aerodrome +
+#   landuse=military) covers the military aprons (Este, Sur, Oeste) and not the civil apron: LEZG in MILITARY keeps any
+#   stand out of it (none of OSM's stands lie there); its taxiways (TB, TC, B-1 to B-5, C-3, C-4) stay in the graph.
+if EUROPE:
+    NAMES['LEZG'] = ('Zaragoza', 'Zaragoza Airport')
+    OSM_DIRS['LEZG'] = '/tmp/flight-sim/v076/airports/osm'
+    NOTES_DIRS['LEZG'] = '/tmp/flight-sim/v076/airports'
+    HOLD_DROP_M['LEZG'] = 30.0
+    AIP_SOURCE['LEZG'] = "Spain's ENAIRE AIP, AD 2-LEZG (WEF 01-OCT-26) AD 2.12-2.14, 2.17, 2.19 and 2.20"
+    AIP['LEZG'] = {'12L': ('SSALF', 427, 'left', 2.5, None, 823.0, False, True, 45, 0),
+                   '30R': ('ALSF-II', 600, 'left', 3.0, 'III', 834.0, True, True, 45, 0),
+                   '12R': ('ALSF-I', 581, 'left', 3.0, None, 834.0, False, False, 45, 0),
+                   '30L': (None, 0, 'left', 3.0, None, 862.0, False, False, 45, 0)}
+    PUBLISHED_MAG['LEZG'] = {'12L': 119.0, '30R': 299.0, '12R': 119.0, '30L': 299.0}
+    AIP_THR['LEZG'] = {'12L': ('414008.62N', '0010223.40W'), '30R': ('413919.42N', '0010029.94W'),
+                       '12R': ('414048.74N', '0010456.54W'), '30L': ('413948.46N', '0010237.37W')}
+    # every end at AD 2.12's threshold (no displacement: the runway's end), trimmed evenly to AD 2.12's length
+    THR_AT.update({('LEZG', e): (_dms_signed(la), _dms_signed(lo)) for e, (la, lo) in AIP_THR['LEZG'].items()})
+    THR_LEN.update({('LEZG', '12L/30R'): 3032, ('LEZG', '12R/30L'): 3718})
+    MILITARY = MILITARY | {'LEZG'}
+    # AD 2.8: PRKG 20 to 23 "(General Aviation)" and 30 to 34 "(Hangar apron)", the latter "13.56 m MAX wingspan": not an
+    # airliner's stands
+    STAND_EXCLUDE['LEZG'] = (frozenset({'20', '21', '22', '23', '30', '31', '32', '33', '34'}),
+                             "AD 2.8's PRKG 20 to 23 (general aviation) and 30 to 34 (the hangar apron, 13.56 m max wingspan)")
+    # The air force's shelters: OSM maps no bunker or hangar on the military aprons; its two rows of three like parallel
+    # sheds at the south apron's west end (82 x 22 m, ways 936374823 to 936374825; 53 x 20 m, 936374831 to 936374833;
+    # building=yes, no height) are taken as the aircraft shelters: low vaults 9 m [EST], as v0.7.5's
+    SHELTERS['LEZG'] = (frozenset({936374823, 936374824, 936374825, 936374831, 936374832, 936374833}), 9.0,
+                        "the air force's aircraft shelters (OSM's two rows of three like sheds, 82 x 22 m and 53 x 20 m, "
+                        "at the south military apron's west end, no height): low vaults 9 m")
+    ICAOS = list(NAMES)
+
+# ---- v0.7.6 (airports subagent apc): Rota (LERT), Naval Station Rota, pending. OSM: andalucia-261121, its box cut by
+#   /tmp/flight-sim/v076/airports/apc/extract.sh. Spain's ENAIRE AIP lists it: AD 2-LERT (CÁDIZ/Rota; read with pypdf, no
+#   page kept in the repository): "Spain-USA joint use aerodrome. Military use only." AD 2.12 10/28 3690 x 61, true
+#   096.87 / 276.90 (MAG 098 / 278), THR PSN at both ends, none displaced (AD 2.13: LDA = TORA = 3690); THR elevations
+#   64 / 62 ft. AD 2.14: no approach lights at either end; PAPI 10 3 deg "north of the runway", 28 2.75 deg "south of the
+#   runway" (both on the left as flown); no TDZ or centreline lights. AD 2.19: LOC 10 IAOG "ILS CAT I"; none to 28. AD
+#   2.17: "Transition altitude 6000 ft." AD 2.23: "Circuit south of RWY 10/28 not authorised."
+# - OSM's second runway way ref'd 10/28 (329992919, 558 m) is the heliport's 10H/28H (AD 2.16: 558 x 40 m): not read as
+#   the runway (RUNWAY_WAY_SKIP).
+# - The whole aerodrome lies inside OSM's landuse=military "Base Naval de Rota": not in MILITARY (no stand would be left);
+#   OSM's parking positions (the heliport's spots and small aircraft rows on the north apron) not read (STAND_POINTS_ONLY).
+#   The player's five ramp spots on the main (west) apron [EST]: 100 m apart along the apron's north taxilane, each nose
+#   100 m south of it, nosed in to 186.9 deg true (square to the runway): room for the 777-300ER.
+# - Shelters: none. Rota has no hardened aircraft shelters; OSM's 81 building=bunker north and east of the runway are the
+#   base's magazines (igloos), drawn as the bake's buildings.
+if EUROPE:
+    NAMES['LERT'] = ('Rota', 'Naval Station Rota')
+    OSM_DIRS['LERT'] = '/tmp/flight-sim/v076/airports/osm'
+    NOTES_DIRS['LERT'] = '/tmp/flight-sim/v076/airports'
+    HOLD_DROP_M['LERT'] = 30.0
+    AIP_SOURCE['LERT'] = "Spain's ENAIRE AIP, AD 2-LERT AD 2.12-2.14, 2.17, 2.19, 2.20 and 2.23"
+    AIP['LERT'] = {'10': (None, 0, 'left', 3.0, 'I', 64.0, False, False, 61, 0),
+                   '28': (None, 0, 'left', 2.75, None, 62.0, False, False, 61, 0)}
+    PUBLISHED_MAG['LERT'] = {'10': 98.0, '28': 278.0}
+    AIP_THR['LERT'] = {'10': ('363849.93N', '0062211.86W'), '28': ('363835.58N', '0061944.40W')}
+    THR_AT.update({('LERT', e): (_dms_signed(la), _dms_signed(lo)) for e, (la, lo) in AIP_THR['LERT'].items()})
+    THR_LEN.update({('LERT', '10/28'): 3690})
+    RUNWAY_WAY_SKIP.add(329992919)
+    STAND_POINTS['LERT'] = [('1', 36.6428533, -6.3568513, 186.9), ('2', 36.6427444, -6.3557317, 186.9),
+                            ('3', 36.6427108, -6.3546122, 186.9), ('4', 36.6425257, -6.3534926, 186.9),
+                            ('5', 36.642417, -6.352373, 186.9)]
+    STAND_POINTS_ONLY.add('LERT')
+    STAND_POINTS_REASONS['LERT'] = ("the player's ramp spots, placed: five on the main apron, 100 m apart, each nose 100 m "
+                                    "south of the apron's north taxilane, nosed in to 186.9 deg true [EST]; the whole base "
+                                    "is military in OSM, its own parking positions not read; a 60 m lead-in behind each")
+    ICAOS = list(NAMES)
+
+
+# ---- v0.7.6 (airports subagent apb): Lossiemouth (EGQS, scotland-261121), pending: its box cut by /tmp/flight-sim/v076/
+# airports/osm/extract-apb.sh, notes in /tmp/flight-sim/v076/airports. No AIP read: the UK Military AIP's site
+# (aidu.mod.uk) answered with a firewall's self-signed certificate and reset the plain connection (16:38 KST): every
+# published value [EST]. OurAirports' ends, displacements (23 305 ft, 10 321 ft) and elevations (05 20, 23 24, 10 39,
+# 28 37 ft); the lengths the UK Military AIP's as Wikipedia cites them (05/23 2,764 m, 10/28 1,850 m); the widths OSM's
+# 46 m. OSM's 10/28 way stops ~100 m short of 10's end (the displaced part not mapped): every end at OurAirports' end on
+# OSM's axis, trimmed evenly to the length. Lights and ILS from general knowledge of the field [EST]: an ILS (CAT I) and
+# 900 m approach lights to 05 and 23, none to 10/28; PAPI left 3 deg everywhere; no TDZ or centreline lights.
+# - The whole aerodrome is landuse=military in OSM (its aerodrome polygon is one): not in MILITARY (no stand would be
+#   left); OSM's seven parking positions (P-8 and small aircraft spots) are not read (STAND_POINTS_ONLY). The player's
+#   four ramp spots on D Apron's south-west block [EST]: 75 m apart along the apron (048.5 deg true), each nose 16 m
+#   short of the apron's north-west taxilane, nosed in to 318.5 deg true, taxiway D 100 m behind: room for the 777-300ER.
+# - The two hardened aircraft shelter sites (nine shelters each, north-west and south of the runway crossing): OSM's
+#   aeroway=hangar of 1,130 to 1,280 m2 (33-36 x 50-53 m), each beside its own small apron: low vaults 9 m [EST].
+if EUROPE:
+    NAMES['EGQS'] = ('Lossiemouth', 'RAF Lossiemouth')
+    OSM_DIRS['EGQS'] = '/tmp/flight-sim/v076/airports/osm'
+    NOTES_DIRS['EGQS'] = '/tmp/flight-sim/v076/airports'
+    HOLD_DROP_M['EGQS'] = 30.0
+    AIP_SOURCE['EGQS'] = ("no AIP (the UK Military AIP's site did not answer): OurAirports' ends, elevations and displacements, "
+                          "the UK Military AIP's lengths as published secondhand, the lights and ILS from general knowledge "
+                          "of the field, all [EST]")
+    AIP['EGQS'] = {'05': ('ALSF-I', 900, 'left', 3.0, 'I', 20.0, False, False, 46, 0),
+                   '23': ('ALSF-I', 900, 'left', 3.0, 'I', 24.0, False, False, 46, 93),
+                   '10': (None, 0, 'left', 3.0, None, 39.0, False, False, 46, 98),
+                   '28': (None, 0, 'left', 3.0, None, 37.0, False, False, 46, 0)}
+    THR_AT.update({('EGQS', '05'): (57.698001861572266, -3.3534200191497803),
+                   ('EGQS', '23'): (57.715999603271484, -3.321310043334961),
+                   ('EGQS', '10'): (57.707298278808594, -3.3438398838043213),
+                   ('EGQS', '28'): (57.70539855957031, -3.3130099773406982)})
+    # (10/28 at 1,845 m, 5 m short of the published 1,850: at 1,850 the bake's older over-length rule, which compares with
+    # OurAirports' 6,066 ft (1,849 m) without the frame's scale, trims the 10 end 23 m back)
+    THR_LEN.update({('EGQS', '05/23'): 2764, ('EGQS', '10/28'): 1845})
+    STAND_POINTS['EGQS'] = [('1', 57.711406, -3.3374643, 318.5), ('2', 57.7118524, -3.3365196, 318.5),
+                            ('3', 57.7122988, -3.3355749, 318.5), ('4', 57.7127453, -3.3346303, 318.5)]
+    STAND_POINTS_ONLY.add('EGQS')
+    STAND_POINTS_REASONS['EGQS'] = ("the player's ramp spots, placed: four on D Apron's south-west block, 75 m apart, nosed "
+                                    "in to 318.5 deg true with taxiway D 100 m behind [EST]; the whole base is military in "
+                                    "OSM, its own parking positions not read; a 60 m lead-in behind each")
+    SHELTERS['EGQS'] = (frozenset({78045956, 78045176, 78045196, 78045965, 78045962, 78045955, 78045173, 78045960,
+                                   78045198, 1087341048, 1087341049, 1087341050, 1087341051, 1087341052, 1087341053,
+                                   1087341054, 1087341057, 78036467}), 9.0,
+                        "the two hardened aircraft shelter sites, nine each (OSM aeroway=hangar of 33-36 x 50-53 m beside "
+                        "their own small aprons, no height): low vaults 9 m")
+    ICAOS = list(NAMES)
+
+# ---- v0.7.6 (airports subagent apb): Lakenheath (EGUL, england-east-261122 from OpenStreetMap France's mirror: Geofabrik
+# answered 404), pending: its box cut by the same script. No AIP read (the UK Military AIP's site did not answer): every
+# published value [EST]. One runway, 05/23 in OSM's main way and in OurAirports (OSM's 17 m piece tagged 06/24 at the 23
+# end, a newer designation [EST], left out: RUNWAY_SKIP); 2,743 m (OurAirports' 8,998 ft; OSM's length tag 2,742.59 m)
+# x 46 m, the ends at OurAirports', no displacement, elevations 27 / 28 ft. An ILS (CAT I) and 900 m approach lights at
+# both ends, PAPI left 3 deg, no TDZ or centreline lights (general knowledge of the field). RAF Mildenhall, 8 km
+# south-west, is not built.
+# - The whole aerodrome is landuse=military in OSM: not in MILITARY; OSM's parking positions (the fighters' rows on
+#   Alpha Ramp, the arm/de-arm areas) are not read (STAND_POINTS_ONLY). The player's three ramp spots on Victor Ramp
+#   [EST]: 70 m apart along it (123.7 deg true), nosed in to 213.7 deg true away from taxiway V, which runs 145 m behind.
+# - The shelters: OSM's building=yes of 20-28 x 44-55 m within 60 m of a small apron (under 2,500 m2: each shelter's own
+#   pad), 43 of them: low vaults 9 m [EST].
+if EUROPE:
+    NAMES['EGUL'] = ('Lakenheath', 'RAF Lakenheath')
+    OSM_DIRS['EGUL'] = '/tmp/flight-sim/v076/airports/osm'
+    NOTES_DIRS['EGUL'] = '/tmp/flight-sim/v076/airports'
+    HOLD_DROP_M['EGUL'] = 30.0
+    AIP_SOURCE['EGUL'] = ("no AIP (the UK Military AIP's site did not answer): OurAirports' ends, length and elevations, "
+                          "OSM's runway, the lights and ILS from general knowledge of the field, all [EST]")
+    AIP['EGUL'] = {'05': ('ALSF-I', 900, 'left', 3.0, 'I', 27.0, False, False, 46, 0),
+                   '23': ('ALSF-I', 900, 'left', 3.0, 'I', 28.0, False, False, 46, 0)}
+    THR_AT.update({('EGUL', '05'): (52.4025, 0.544383), ('EGUL', '23'): (52.416401, 0.577647)})
+    THR_LEN.update({('EGUL', '05/23'): 2743})
+    RUNWAY_SKIP = RUNWAY_SKIP | {('EGUL', '06/24')}
+    STAND_POINTS['EGUL'] = [('1', 52.4063126, 0.5612648, 213.7), ('2', 52.4059637, 0.5621223, 213.7),
+                            ('3', 52.4056148, 0.5629799, 213.7)]
+    STAND_POINTS_ONLY.add('EGUL')
+    # (the first day run: the pushback crossed 12.5 m of grass between Victor Ramp and taxiway V, which bends away
+    # from the ramp there: the ground under each spot's pushback paved, 35 m each side, as Munich's)
+    APRON_PUSH['EGUL'] = 35.0
+    STAND_POINTS_REASONS['EGUL'] = ("the player's ramp spots, placed: three on Victor Ramp, 70 m apart, nosed in to 213.7 "
+                                    "deg true with taxiway V 145 m behind [EST]; the whole base is military in OSM, its "
+                                    "own parking positions not read; a 60 m lead-in behind each")
+    SHELTERS['EGUL'] = (frozenset({
+        1450034050, 1450034051, 1450092254, 1450092255, 1450092256, 1450092257, 1450092258, 1450092261, 1450092262,
+        1450092263, 1450105483, 1450105484, 1450105485, 1450105486, 1450105501, 1450126203, 1450126206, 1484326704,
+        1484397811, 1486988190, 1486988194, 1486988199, 1488963843, 1488963844, 1489202436, 1489253752, 1489253760,
+        1489253763, 1489253764, 1491084928, 1491084929, 1491084930, 1491084931, 1491084940, 1491084941, 1493933109,
+        1493933110, 1493933111, 1493933112, 1493959204, 1493959207, 1493959208, 1493959209}), 9.0,
+        "the hardened aircraft shelters (OSM building=yes of 20-28 x 44-55 m beside their own small aprons, no height): "
+        "low vaults 9 m")
+    # v0.7.6 (the lead): Victor Ramp's four long sun shelters (OSM hangars of 166 to 183 by 35 m, open-sided canopies
+    # over the fighter rows, which the game would draw as solid 20 m blocks) stand 22 m either side of the one taxilane
+    # from the player's ramp spots: clear of an A321's wing by 4 m, not of a 787's or a 777's, and the spots take code
+    # E. And one flow-through shelter that OSM's taxi line runs through, on the route from spot 3 to 05. Left out.
+    BUILDING_SKIP_AT['EGUL'] = (((-232845, 601815), (-232657, 601775), (-232838, 601754), (-232664, 601835),
+                                 (-232940, 602228)),
+                                "Victor Ramp's four sun shelters (open canopies in fact) beside the taxilane from the "
+                                "player's spots, and a flow-through shelter the taxi line runs through: not drawn, so "
+                                "that no route from a ramp spot passes within a 777's half span of a building")
+    ICAOS = list(NAMES)
+
+
+# ---- v0.7.6 (airports subagent apa): Ramstein (ETAR), pending. OSM: Geofabrik's rheinland-pfalz extract answered 503
+#   (its download proxy timed out) and overpass-api.de refused the generic client (406), so the box came from the public
+#   Overpass mirror overpass.kumi.systems (data of 2026-07-24; aeroway, building, highway=service and landuse=military in
+#   49.41-49.47 N, 7.50-7.69 E), notes in /tmp/flight-sim/v076/airports. No AIP read: the MIL AIP Germany site
+#   (mil-aip.de) gave no answer (an HTTP/2 protocol error, then an empty reply): every published value [EST].
+#   - 08/26: OurAirports' ends (THR_AT; within 6 m of OSM's way ends), trimmed evenly to OurAirports' and OSM's length tag,
+#     3,200 m; 09/27 OSM's way (2,974 m; OSM's length tag 3,000 m) cut to OurAirports' 9,278 ft (2,828 m, the length
+#     public sources give) at its 09 end: 27 at OSM's end, 09 on OSM's axis 2,828 m west of it (THR_AT, THR_LEN;
+#     OurAirports' own ends lie ~380 m and ~200 m east of OSM's, so not used as ends). No displacements. Elevations OurAirports' 761 / 776 / 769 / 782 ft. Both runways are
+#     about 083 deg magnetic today: 09/27 keeps its old name (7 deg off its ident).
+#   - Lights and ILS [EST], from OSM's mapped lights and general knowledge of the field: approach lights as OSM maps
+#     them (about 900 m at 26, 09 and 27, about 500 m at 08: the game's SSALF), an ILS CAT I to all four ends, PAPI 3 deg
+#     (08's on the right and 09's on the left as OSM's PAPI nodes, the others left), no TDZ or centreline lights.
+#   - The whole aerodrome is landuse=military in OSM (its aerodrome polygon is one): not in MILITARY (no stand would be
+#     left). OSM maps no parking position there; the player's ramp spots are placed on Ramp 1 (STAND_POINTS, alone).
+if EUROPE:
+    NAMES['ETAR'] = ('Ramstein', 'Ramstein Air Base')
+    OSM_DIRS['ETAR'] = '/tmp/flight-sim/v076/airports/osm'
+    NOTES_DIRS['ETAR'] = '/tmp/flight-sim/v076/airports'
+    HOLD_DROP_M['ETAR'] = 30.0
+    AIP_SOURCE['ETAR'] = ("no AIP (the MIL AIP Germany site did not answer): OurAirports' ends and elevations, OSM's runways, "
+                          "the lights and ILS from OSM's mapped lights and general knowledge of the field, all [EST]")
+    AIP['ETAR'] = {'08': ('SSALF', 510, 'right', 3.0, 'I', 761.0, False, False, 45, 0),
+                   '26': ('ALSF-I', 900, 'left', 3.0, 'I', 776.0, False, False, 45, 0),
+                   '09': ('ALSF-I', 900, 'left', 3.0, 'I', 769.0, False, False, 45, 0),
+                   '27': ('ALSF-I', 900, 'left', 3.0, 'I', 782.0, False, False, 45, 0)}
+    THR_AT.update({('ETAR', '08'): (49.43259811401367, 7.578829765319824),
+                   ('ETAR', '26'): (49.4364013671875, 7.62253999710083),
+                   # 27 at OSM's way's east end, 09 on OSM's axis 2,828 m (times the frame's scale) west of it [EST]
+                   ('ETAR', '27'): (49.4376001, 7.6168661), ('ETAR', '09'): (49.4359721, 7.5779504)})
+    THR_LEN.update({('ETAR', '08/26'): 3200, ('ETAR', '09/27'): 2828})
+    # The player's ramp spots on Ramp 1 (OSM's apron 24620884, 467 x 432 m, east of the field), where OSM maps the ramp's
+    # parking rows as short east-west taxilanes about 46 m apart: a spot on every other row (92 m apart, room for the
+    # 777-300ER's 64.8 m span) in the west two of its three columns, the nose 8 m in from the lane's west end, along the
+    # lane (266 to 267 deg true), the lane behind it [EST]; spot 2's nose 3 m in (the 777's pushback
+    # ended 11 m off the taxi lines from 8 m in). The base's only stands.
+    STAND_POINTS['ETAR'] = [('1', 49.4417086, 7.6145888, 266.0), ('2', 49.4425422, 7.6144397, 266.0),
+                            ('3', 49.4417812, 7.6160542, 267.1), ('4', 49.4426184, 7.6159602, 267.0)]
+    STAND_POINTS_ONLY.add('ETAR')
+    STAND_POINTS_REASONS['ETAR'] = ("the player's ramp spots, placed: four on Ramp 1, on every other one of OSM's parking-row "
+                                    "taxilanes (92 m apart), nosed west along the lane [EST]; the whole base is military in "
+                                    "OSM, which maps no parking position; a 60 m lead-in behind each")
+    # The shelters: OSM's group of 37 building=hangar (about 14-23 x 29-46 m) and two military=bunker (25 x 35 m) in the
+    # field's south-west corner (the old fighter area), no height in OSM: low vaults 9 m [EST], as v0.7.5's
+    SHELTERS['ETAR'] = (frozenset({
+        255042169, 255042170, 255042177, 255042179, 255042180, 255042184, 255042187, 255042190, 255042191, 255042194,
+        255042198, 255042202, 255042204, 255042212, 255042214, 255042218, 255042223, 255042226, 255042230, 255042231,
+        255042232, 255042234, 255042245, 255042253, 255042256, 255042257, 255042260, 255042262, 255042270, 255042272,
+        255042275, 255042278, 255042281, 255042283, 255042284, 255042286, 255042301, 271725065, 292119767}), 9.0,
+        "the south-west group of small hangars and bunkers (OSM building=hangar of 14-23 x 29-46 m and two military=bunker "
+        "of 25 x 35 m, no height): low vaults 9 m")
+    ICAOS = list(NAMES)
+
+# ---- v0.7.6 (airports subagent apa): Fairford (EGVA), pending. OSM: OpenStreetMap France's mirror of England's south-west
+#   (england-south-west-261122, the lead's; Geofabrik's county paths answered 404/503), its box cut by osmium (-1.87,
+#   51.655, -1.71, 51.71; /tmp/flight-sim/v076/airports/osm/EGVA), notes in /tmp/flight-sim/v076/airports. No AIP read:
+#   the UK Military AIP's site (aidu.mod.uk) did not answer the other subagents today (a firewall's certificate and a
+#   reset): every published value [EST].
+#   - 09/27 at OurAirports' ends (THR_AT; within 3 m of OSM's way ends) trimmed evenly to OurAirports' and OSM's length
+#     tag, 9,994 ft (3,046 m); 61 m wide (OurAirports' 200 ft; OSM's width tag 46 m, the keel); no displacements;
+#     elevations OurAirports' 286 / 255 ft.
+#   - Lights and ILS [EST]: about 900 m of approach lights at both ends as OSM maps them, an ILS (CAT I) to both, PAPI
+#     left 3 deg, no TDZ lights, centreline lights (61 m wide).
+#   - The whole aerodrome is landuse=military in OSM: not in MILITARY; OSM maps no parking position; the player's ramp
+#     spots placed (STAND_POINTS, alone). No hardened shelter at Fairford (a bomber base of open hardstands): OSM's three
+#     hangars stay hangars.
+if EUROPE:
+    NAMES['EGVA'] = ('Fairford', 'RAF Fairford')
+    OSM_DIRS['EGVA'] = '/tmp/flight-sim/v076/airports/osm'
+    NOTES_DIRS['EGVA'] = '/tmp/flight-sim/v076/airports'
+    HOLD_DROP_M['EGVA'] = 30.0
+    AIP_SOURCE['EGVA'] = ("no AIP (the UK Military AIP's site did not answer): OurAirports' ends, length, width and elevations, "
+                          "OSM's runway, the lights and ILS from OSM's mapped lights and general knowledge of the field, all [EST]")
+    AIP['EGVA'] = {'09': ('ALSF-I', 900, 'left', 3.0, 'I', 286.0, False, True, 61, 0),
+                   '27': ('ALSF-I', 900, 'left', 3.0, 'I', 255.0, False, True, 61, 0)}
+    THR_AT.update({('EGVA', '09'): (51.68299865722656, -1.812000036239624),
+                   ('EGVA', '27'): (51.683998107910156, -1.7680000066757202)})
+    THR_LEN.update({('EGVA', '09/27'): 3046})
+    # The player's ramp spots on the north-east apron by the base's hangars (OSM's apron 1354468543, ~300 x 220 m, its
+    # taxilane along the south-east side and across the north): three in a row 75 m apart, nosed in to the north-west
+    # (305 deg true), the taxilane 10 to 20 m behind each tail [EST] (spot 2 set 6 m back: the 787's pushback ended 9 m off the lines); each the 777-300ER's (the game's own fit, searched
+    # over the apron: /tmp/flight-sim/v076/apa/search.mjs). The base's only stands.
+    STAND_POINTS['EGVA'] = [('1', 51.6869487, -1.7715763, 304.9), ('2', 51.6874482, -1.7708239, 304.9),
+                            ('3', 51.6880864, -1.7703929, 304.9)]
+    STAND_POINTS_ONLY.add('EGVA')
+    STAND_POINTS_REASONS['EGVA'] = ("the player's ramp spots, placed: three on the north-east apron, 75 m apart, nosed in to "
+                                    "305 deg true with its taxilane behind [EST]; the whole base is military in OSM, which "
+                                    "maps no parking position; a 60 m lead-in behind each")
+    ICAOS = list(NAMES)
+
 
 class WmmPoint:
     """v0.7.0, Europe: WMM2025 at epoch 2026.0 at the point itself (tools/bake_wmm.py's routine), Wmm's interface."""
@@ -1899,8 +2172,8 @@ def is_live(tags):
 def merged_runways(d, area):
     """One (ref, a, b) per runway: its ways (OSM often splits one) merged to the two extreme points."""
     groups = {}
-    for _, tags, coords in d['ways']:
-        if tags.get('aeroway') != 'runway' or not is_live(tags) or coords[0] == coords[-1]:
+    for _wid, tags, coords in d['ways']:
+        if tags.get('aeroway') != 'runway' or not is_live(tags) or coords[0] == coords[-1] or _wid in RUNWAY_WAY_SKIP:
             continue
         ref = tags.get('ref', '').replace('-', '/').replace(' ', '')
         ref = REF_ALIAS.get(ref, ref)       # v0.7.0: a one-way runway's single ref (Frankfurt's 18); empty in East Asia
@@ -2367,6 +2640,8 @@ def bake(icao, wmm, oa_ap, oa_rw):
     buildings = []
     shelter_ids, shelter_h, shelter_why = SHELTERS.get(icao, (frozenset(), None, ''))    # (v0.7.5: Komatsu's only)
     n_shelters = 0
+    skip_at, skip_why = BUILDING_SKIP_AT.get(icao, ((), ''))      # (v0.7.6: Lakenheath's only)
+    n_skipped = 0
     for oid, from_way, tags, g in d['areas']:
         kind = tags.get('aeroway') if tags.get('aeroway') in ('terminal', 'hangar') else (
             'hangar' if tags.get('building') == 'hangar' else
@@ -2381,12 +2656,17 @@ def bake(icao, wmm, oa_ap, oa_rw):
                 continue
             if EUROPE:      # v0.7.0: Europe's big fields, kept to East Asia's biggest JSON's size (EU_SIMPLIFY_M)
                 xy = np.asarray(pp.simplify(EU_SIMPLIFY_M).exterior.coords)
+            if skip_at and any(pp.contains(Point(q)) for q in skip_at):
+                n_skipped += 1
+                continue
             shelter = bool(from_way and oid in shelter_ids)
             n_shelters += shelter
             buildings.append(dict(kind=kind, heightM=round(shelter_h if shelter else building_height(tags, kind), 1),
                                   name='' if EUROPE else (tags.get('name:en') or tags.get('name') or ''), points=pts(xy)))
     if n_shelters:
         est.append(('shelters', f'{n_shelters} at {shelter_h:.0f} m', shelter_why + ' (SHELTERS)'))
+    if n_skipped:
+        est.append(('buildings left out', f'{n_skipped} of {len(skip_at)} points', skip_why + ' (BUILDING_SKIP_AT)'))
 
     roads = []
     for _, tags, coords in d['ways']:

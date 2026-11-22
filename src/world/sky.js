@@ -34,6 +34,10 @@ const RAD = Math.PI / 180;
 // Scene frame: X east, Y up, Z south (−map y). Azimuth from north, clockwise.
 // v0.7.4: how much of the aurora a latitude gets under a region's band ({ fadeLat, fullLat }): 0 at fadeLat and south
 // of it, 1 at fullLat and north of it, a smoothstep between; 1 with no band.
+const AURORA_BAND_OFF = (() => {
+  try { if (typeof location !== 'undefined' && location && /[?&]auroraband=0(&|$)/.test(location.search || '')) return true; } catch (e) { /* no location */ }
+  try { return typeof process !== 'undefined' && !!process.env && process.env.FS_AURORABAND === '0'; } catch (e) { return false; }
+})();
 export function auroraByLatitude(latDeg, band) {
   if (!band) return 1;
   const t = Math.min(1, Math.max(0, (latDeg - band.fadeLat) / (band.fullLat - band.fadeLat)));
@@ -734,8 +738,11 @@ export function createSky(scene, uniforms, chunks) {
   // Apply the light for the sun's and the Moon's altitudes (lightingAt) to every uniform and light.
   // v0.7.4 (Shane: Europe's aurora "North only"): where the region says so (regions.js's `aurora`), the aurora is
   // scaled by the camera's latitude: nothing at fadeLat and south of it, full at fullLat and north of it, smooth
-  // between. A region without the entry (East Asia) keeps v0.4.3's: the stars' visibility alone.
-  const AURORA_BAND = REGION.aurora || null;
+  // between. A region without the entry keeps v0.4.3's: the stars' visibility alone (East Asia until v0.7.6, which
+  // gave it its own band, 40 to 44 N).
+  // v0.7.6: ?auroraband=0 (node: FS_AURORABAND=0) is v0.7.5's East Asian sky, the aurora on every clear night, for
+  // the stills' before and after; Europe's band doesn't take the switch.
+  const AURORA_BAND = (REGION.id === 'east-asia' && AURORA_BAND_OFF) ? null : (REGION.aurora || null);
   let auroraByLat = 1;
   const auroraLatFactor = (latDeg) => auroraByLatitude(latDeg, AURORA_BAND);
   function applyLight(sunAlt, moonAlt, illum) {

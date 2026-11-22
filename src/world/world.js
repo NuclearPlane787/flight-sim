@@ -69,7 +69,11 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
     const [lmMod, ceMod] = await Promise.all([import('./landmarks.js').catch(() => null), import('./centres.js').catch(() => null)]);
     if (lmMod?.createLandmarks) landmarks = optional('landmarks', () => lmMod.createLandmarks(scene, uniforms, chunks, { heightfield: hf, renderer }));
     if (ceMod?.createCentres) centres = optional('centres', () => ceMod.createCentres(scene, uniforms, chunks, { heightfield: hf, renderer, baseUrl }));
-    if (centres && cities.setMask) cities.setMask(centres.maskAt, centres.maskVersion);
+    // v0.7.6: and the ground of the landmarks that stand in a generated town (landmarks.js's BLOCKS_CLEAR). Where the
+    // region has none (East Asia), the mask is the centres' own function as before.
+    const lmMask = lmMod?.landmarkBlockMask ? lmMod.landmarkBlockMask() : null;
+    if (cities.setMask && lmMask) cities.setMask((x, y) => (centres ? centres.maskAt(x, y) : false) || lmMask(x, y), centres ? centres.maskVersion : null);
+    else if (centres && cities.setMask) cities.setMask(centres.maskAt, centres.maskVersion);
   }
   let runways, aprons, traffic, cityLights, taxiLights, airportSet = null, streamView = null;
   {

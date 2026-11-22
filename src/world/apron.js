@@ -28,7 +28,7 @@
 import * as THREE from '../../vendor/three.module.js';
 import {
   TAXI_W, DOOR_SILL, openRing, signedArea, densify, dedupePolys, segmentIndex,
-  holdShortSites, taxiwayEdges, standMarks, jetBridge, strokeTriangles, subdivideSoup, hdgVec,
+  holdShortSites, taxiwayEdges, standMarks, jetBridge, gateFit, strokeTriangles, subdivideSoup, hdgVec,
   drawnRunwayRects, clipSoupOutside, splitPolyline, refineSoup, refineLine,
 } from './apron-geom.js';
 import { floodMasts } from './taxilights.js';
@@ -530,7 +530,7 @@ export function* buildPavementInSteps(a, ox, oy, groundAt, aprons, tick = sliceT
     const p = [c(-28, -20), c(-28, 20), c(24, 20), c(24, -20)];
     yield* add(subdivideSoup([...p[0], ...p[1], ...p[2], ...p[0], ...p[2], ...p[3]], 30), 1, 1);
     // At a gate, pave on to the terminal wall under the jet bridge.
-    const jb = s.gate ? jetBridge(s, terminals) : null;
+    const jb = s.gate ? jetBridge(s, terminals, 80, gateFit(a.icao)) : null;
     if (jb) {
       const ux = (jb.root.x - jb.cab.x) / jb.length, uy = (jb.root.y - jb.cab.y) / jb.length;
       const nx = -uy * 25, ny = ux * 25, ex = jb.root.x + ux * 4, ey = jb.root.y + uy * 4;
@@ -629,7 +629,7 @@ export function* buildPaintInSteps(a, ox, oy, groundAt, aprons, chars, signs = n
   let stands = 0;
   const labels = [];
   for (const s of a.stands || []) {
-    const m = standMarks(s);
+    const m = standMarks(s, gateFit(a.icao));
     line(refineLine(m.lead, groundAt), LINE_HW);
     const { stop } = m;
     const rx = stop.dy, ry = -stop.dx;
@@ -878,7 +878,7 @@ function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false) {
   for (const s of a.stands || []) {
     if (tick()) yield 'buildings: bridges';
     if (!s.gate) continue;
-    const jb = jetBridge(s, terminals);
+    const jb = jetBridge(s, terminals, 80, gateFit(a.icao));
     if (!jb) continue;
     const g0 = groundAt(jb.root.x, jb.root.y), g1 = groundAt(jb.cab.x, jb.cab.y);
     const floorRoot = g0 + 4.6, floorCab = g1 + DOOR_SILL;

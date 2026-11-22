@@ -40,6 +40,10 @@ export const REGIONS = {
     // A first flight, and what a plan falls back to when its airports aren't this region's.
     defaultPlan: { origin: 'RKSS', depRunway: '14R', dest: 'RKPC', arrRunway: '07' },
     krMask: true,              // data/krmask.*: South Korea keeps its plane exactly (geo-rules.js)
+    // v0.7.6 (Shane, 2026-11-22: "Band it", as Europe's): the aurora by latitude: full at 44 N and north of it
+    // (Hokkaido's north, Vladivostok's coast nearly), nothing at 40 N and south of it (Sendai, Tokyo, Seoul), smooth
+    // between (Aomori faint). Until v0.7.5 it showed on every clear night, as far south as Osaka.
+    aurora: { fadeLat: 40, fullLat: 44 },
   },
   europe: {
     id: 'europe', name: 'Europe', data: 'data/europe/', blurb: 'London to Rome, Madrid to Munich',
@@ -52,7 +56,7 @@ export const REGIONS = {
     // (its manifest says "lowLand": true; tests/v070-eu-terrain.test.mjs checks the two agree).
     lowLand: true,
     // v0.7.4 (Shane, 2026-11-21: "North only"): the aurora by latitude: full at 56 N and north of it (Scotland,
-    // Denmark), nothing at 50 N and south of it, smooth between (sky.js). East Asia has no entry: its aurora is as it was.
+    // Denmark), nothing at 50 N and south of it, smooth between (sky.js). East Asia's own band is v0.7.6's, above.
     aurora: { fadeLat: 50, fullLat: 56 },
     extent: null,              // the outline's bounding rectangle (region.js works it out)
     // The outline, [lat, lon], its edges straight in latitude and longitude (region.js densifies them
@@ -166,6 +170,9 @@ export const AIRPORT_INDEX = {
   // v0.7.3: the last eight of Update 7's thirty-seven
   LOWI: ['Innsbruck', 'europe'], LXGB: ['Gibraltar', 'europe'], EDDH: ['Hamburg', 'europe'], LIPZ: ['Venice', 'europe'],
   LFML: ['Marseille', 'europe'], LFLL: ['Lyon', 'europe'], LPPR: ['Porto', 'europe'], LIRN: ['Naples', 'europe'],
+  // v0.7.6: Europe's six military bases (Zaragoza a joint civil airport)
+  ETAR: ['Ramstein', 'europe'], EGQS: ['Lossiemouth', 'europe'], EGUL: ['Lakenheath', 'europe'], EGVA: ['Fairford', 'europe'],
+  LEZG: ['Zaragoza', 'europe'], LERT: ['Rota', 'europe'],
 };
 export const airportShortName = (icao) => (AIRPORT_INDEX[icao] ? AIRPORT_INDEX[icao][0] : icao || '');
 export const airportRegion = (icao) => (AIRPORT_INDEX[icao] ? AIRPORT_INDEX[icao][1] : null);

@@ -926,6 +926,34 @@
    "maxHeightM": 101.0,
    "minKeepHeightM": 9.0,
    "bytes": 85403
+  },
+  {
+   "id": "zaragoza",
+   "name": "Zaragoza",
+   "file": "zaragoza.bin.gz",
+   "origin": [
+    -404148,
+    -577245
+   ],
+   "box": [
+    -405513,
+    -578679,
+    -402783,
+    -575811
+   ],
+   "latlon": [
+    41.63929,
+    -0.89601,
+    41.66671,
+    -0.861
+   ],
+   "cols": 6,
+   "rows": 6,
+   "count": 4875,
+   "vertices": 34680,
+   "maxHeightM": 98.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 110920
   }
  ]
 }

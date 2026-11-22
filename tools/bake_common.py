@@ -38,7 +38,7 @@ def refuse_retired(tool, files, note=''):
              f"(Korea's old national files and tiles; the repository's history before v0.7.0 has them)."
              + (' ' + note if note else ''))
 EU_BATCH = os.environ.get('FS_EUROPE_BATCH', 'B').strip().upper() if EUROPE else None   # v0.7.1: the Europe batch baked
-CACHE = ({'A': '/tmp/flight-sim/v070/work/cache', 'C': '/tmp/flight-sim/v072/work/cache', 'D': '/tmp/flight-sim/v073/work/cache'}.get(EU_BATCH, '/tmp/flight-sim/v071/work/cache') if EUROPE else '/tmp/flight-sim/bake')   # v0.7.2: batch C's own   # intermediate results (resumable pieces)
+CACHE = ({'A': '/tmp/flight-sim/v070/work/cache', 'C': '/tmp/flight-sim/v072/work/cache', 'D': '/tmp/flight-sim/v073/work/cache', 'E': '/tmp/flight-sim/v076/work/cache'}.get(EU_BATCH, '/tmp/flight-sim/v071/work/cache') if EUROPE else '/tmp/flight-sim/bake')   # v0.7.2: batch C's own   # intermediate results (resumable pieces)
 EXTRA_DEM90 = os.path.join(CACHE, 'dem90extra')  # N32 and N39 GLO-90 tiles, fetched by the bake
 SHOTS = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'Claude outputs', 'flight-sim'))  # GameDump/Claude outputs/flight-sim
 

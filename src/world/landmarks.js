@@ -416,8 +416,36 @@ if (LANDMARKS77) {
   const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
   L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
 }
+// v0.7.6 (briefs/V0-7-6.md part 5): three landmarks by the new air bases, appended after the sixty-one. Figures read on
+// 2026-11-22 from each Wikipedia article (its infobox, text and coordinates); [EST] marks what is estimated. Each one's
+// place (the centre of its outline's least rectangle) and axis (that rectangle's long side, true 103.3, 119.8 and 17.5
+// degrees, turned to the grid) from its OSM outline (the extracts on disk: England East and Aragón of 2026-11-22,
+// Andalucía of 2026-11-21): Ely 160.4 x 57.3 m, the Pilar 131.1 x 69.6 m, Cádiz 96.7 x 64.2 m.
+EUROPE_LANDMARKS.push(
+  EU({ id: 'ely', city: 'ely', country: 'GB', lat: 52.398681, lon: 0.263558, heightM: 66, footprintM: 84, brg: 16,
+    source: 'Wikipedia "Ely Cathedral" (read 2026-11-22, with its coordinates): 163.7 m long, the west tower 66 m, the Octagon\'s lantern 52 m, the Octagon 23 m across, the nave over 75 m long, Barnack stone; the widths, the other heights and the stages [EST]' }),
+  EU({ id: 'pilar', city: 'zaragoza', country: 'ES', lat: 41.656771, lon: -0.878523, heightM: 92, footprintM: 74, brg: 33.3,
+    source: 'Wikipedia "Cathedral-Basilica of Our Lady of the Pillar" and "Basílica del Pilar" (es; read 2026-11-22, with their coordinates): 130 x 67 m, eleven domes, four towers (98 m in the Spanish article; about 92 m the brief\'s, used), brick, glazed tiles of green, yellow, blue and white; the domes\' sizes and plan, the stages and the walls\' height [EST]' }),
+  EU({ id: 'cadiz', city: 'cadiz', country: 'ES', lat: 36.528932, lon: -6.295312, heightM: 54, footprintM: 54, brg: 115,
+    source: 'Wikipedia "Cádiz Cathedral" and "Catedral de Cádiz" (es; read 2026-11-22, with their coordinates): the towers about 54 m from the ground (58 m above the sea), the dome covered in golden tiles, limestone and shell stone, at the sea\'s edge; the dome\'s height (about 52 m, the brief), the plan\'s sizes and the walls\' heights [EST]' }),
+);
+Object.assign(EUROPE_CITY_BOXES, { ely: [52.36, 0.22, 52.43, 0.30], zaragoza: [41.60, -0.95, 41.70, -0.82], cadiz: [36.49, -6.32, 36.55, -6.25] });
+for (const L of EUROPE_LANDMARKS.slice(61)) { const [x, y] = toMap(L.lat, L.lon); L.x = x; L.y = y; }
 // The page's region's list: what the runtime builds and the real centres leave out (East Asia's: LANDMARKS itself).
 export const REGION_LANDMARKS = REGION_ID === 'europe' ? EUROPE_LANDMARKS : LANDMARKS;
+
+// v0.7.6: landmarks that stand in a generated town (no real centre round them), whose ground the town's blocks leave
+// free: a generated block ran through Cádiz Cathedral's east end, and others crowded Ely's. Only v0.7.6's two are in the
+// table, so every earlier view keeps its blocks; the older landmarks in generated towns are the look pass's to add.
+export const BLOCKS_CLEAR = new Set(['ely', 'cadiz']);
+// A mask for cities.js's blocks (squares of `block` m, asked at their centres): true where the block's square comes
+// within the landmark's footprint radius and 10 m of its centre. Null where the page's region has no such landmark.
+export function landmarkBlockMask(block = 400) {
+  const L = REGION_LANDMARKS.filter((l) => BLOCKS_CLEAR.has(l.id) && Number.isFinite(l.x));
+  if (!L.length) return null;
+  const h = block / 2;
+  return (x, y) => L.some((l) => Math.hypot(Math.max(Math.abs(x - l.x) - h, 0), Math.max(Math.abs(y - l.y) - h, 0)) < l.footprintM / 2 + 10);
+}
 
 // The real centres' extrusion leaves these out: one circle per tower, in map metres.
 export function landmarkFootprints() {

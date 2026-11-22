@@ -4,6 +4,25 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.7.6 · 2026-11-22 · Ramstein, Lossiemouth, Lakenheath, Fairford, Zaragoza and Rota
+
+- **Six military bases in Europe, forty-three airports there and seventy-two in all,** each about 95 km or more from any other airport in the game:
+  - **Ramstein** (ETAR), the US Air Force's base by Kaiserslautern in Germany, 95 km from Frankfurt: two runways side by side, 08/26, 3.2 km, and 09/27, 2.8 km (its numbers are old: it points about 7° from what they say), with an ILS to all four ends. Four ramp spots on Ramp 1.
+  - **Lossiemouth** (EGQS), the Royal Air Force's base on the Moray coast in the north of Scotland: 05/23, 2.8 km, with an ILS both ways, and 10/28, 1.85 km, crossing it. Two groups of nine hardened shelters. Four ramp spots on D Apron.
+  - **Lakenheath** (EGUL), in Suffolk, 125 km from Heathrow: one runway, 05/23, 2.7 km, with an ILS both ways, and 43 hardened shelters. Three ramp spots on Victor Ramp. Its neighbour Mildenhall, 8 km off, is not built.
+  - **Fairford** (EGVA), in Gloucestershire, 95 km from Heathrow: 09/27, 3.0 km long and 61 m wide, one of Europe's longest runways, with an ILS both ways; no shelters, only open hardstands, as the real field has. Three ramp spots on the north-east apron.
+  - **Zaragoza** (LEZG), Spain's air force base shared with Zaragoza's airport: two parallel runways, 12R/30L, 3.7 km, and 12L/30R, 3.0 km, with a category III ILS to 30R, the only one. Its civil apron has 22 stands and its airliners, as at any airport; the air force's side is empty.
+  - **Rota** (LERT), the Spanish and US Navy's base on the Bay of Cádiz: one runway, 10/28, 3.7 km long and 61 m wide, with an ILS to 10 and no approach lights at either end. Five ramp spots on the main apron.
+
+  Zaragoza and Rota are from Spain's AIP (their runways, lights, PAPIs, ILS and transition altitudes, 6,000 ft at both). The four others' military AIPs couldn't be read, so their lights, ILS categories and threshold heights are estimates; their runways are OpenStreetMap's, checked against OurAirports.
+- **The military sides are empty,** as Cheongju's, Komatsu's and Kunsan's are: the hardened shelters (drawn as plain blocks 9 m high, an estimate) and hangars from OpenStreetMap's buildings, the ramps and taxiways, and no parked aircraft, no ground vehicles and no gate. At each base but Zaragoza a few ramp spots are for you alone, to start from. The military taxiways are kept, so a route can cross them.
+- **New ground round the bases:** 250 m terrain over Scotland's far north (Lewis, Caithness and Orkney), Devon and the Bristol Channel, and the Gulf of Cádiz with the Algarve's east, and 30 m land cover within 100 km of each base.
+- **Zaragoza has a real city centre** from OpenStreetMap: the old town between the Ebro and the Paseo de la Independencia, La Seo, and both banks at the stone bridge.
+- **Three new landmarks by the bases,** sixty-four in Europe: Ely Cathedral, near Lakenheath, with its west tower and the Octagon's lantern over the fens; Zaragoza's Basílica del Pilar on the Ebro, with its four towers and eleven domes tiled in green, yellow, blue and white, floodlit at night; and Cádiz Cathedral on the sea front across the bay from Rota, with its golden dome and two towers.
+- **East Asia's aurora is in the north only,** as Europe's has been since v0.7.4: full from 44° N (Hokkaido's north), fading to none at 40° N. Over Sapporo it is strong, over Aomori faint, and over Sendai, Tokyo, Nagoya, Osaka, Seoul and Jeju there is none. `?auroraband=0` on the page's address brings back the old sky.
+- **The jet bridges and stop bars meet the aircraft** at Centrair, Itami, Hiroshima and Cheongju. The aircraft was always parked in the right place; the bridge's door and the stop bar were laid out about 21 m ahead of its nose. Now the stop bar is under the nose wheel and the bridge comes to the door behind the nose. The same is true at every other airport, where nothing has changed yet: `?gatefit=1` shows them all laid out the new way, `?gatefit=0` none.
+- **Against v0.7.5:** with the aurora's band and the gates' fit switched off, East Asia's sixteen standard views match the last version pixel for pixel. With them on, six night views differ in their skies alone (Seoul by night and from 3,000 ft, Tokyo from 3,000 ft, and Haneda's, Pudong's and Beijing's finals), and no standard view shows one of the four airports' gates. In Europe twenty-four of the twenty-six standard views match pixel for pixel; the other two differ only in a thin band at the horizon where a new base's ground lies (Fairford, from 10,000 ft over the Thames looking west; Zaragoza, from FL350 over the Bay of Biscay).
+
 ## v0.7.5 · 2026-11-22 · Cheongju, Hiroshima, Centrair, Itami, Komatsu and Kunsan, and every runway end
 
 - **Six more airports in East Asia, twenty-nine there and sixty-six in all:**

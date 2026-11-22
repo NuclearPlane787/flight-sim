@@ -63,6 +63,13 @@ if bc.EU_BATCH == 'D':   # v0.7.3, batch D's crops
         'naples-vesuvius': (40.55, 41.0, 13.95, 14.65),
         'porto-douro': (40.95, 41.35, -8.85, -8.4),
     }
+if bc.EU_BATCH == 'E':   # v0.7.6, batch E's crops
+    PFX = 'v076'
+    CROPS = {
+        'moray-lossiemouth': (57.35, 57.95, -4.3, -2.6),
+        'east-anglia-coast': (52.0, 53.05, 0.6, 1.9),
+        'cadiz-bay': (36.3, 36.85, -6.55, -5.95),
+    }
 
 
 def read(d, name):

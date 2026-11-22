@@ -214,7 +214,8 @@ const EU_DAY = Date.UTC(2026, 10, 19, 12, 0), EU_NIGHT = Date.UTC(2026, 10, 19, 
 const EU_FINALS = { EGLL: '27R', LFPG: '26L', EDDF: '25C', LEMD: '32L', LSZH: '14', EGKK: '26L', LFPO: '25', EHAM: '18R', EDDM: '26R', LEBL: '24R', LIRF: '16R',
   LFBO: '14R', EDDB: '24L', LIMC: '35R', LOWW: '29', EBBR: '25L', EIDW: '28L', LPPT: '02', EKCH: '22L', EGCC: '23R',   // v0.7.1: Toulouse to Manchester
   EDDL: '23L', EDDK: '31R', LKPR: '24', LSGG: '22', LFMN: '04L', EGPH: '24', EGPF: '23', LFRS: '03', LEST: '17',     // v0.7.2: Düsseldorf to Santiago
-  LOWI: '26', LXGB: '09', EDDH: '23', LIPZ: '04R', LFML: '31R', LFLL: '35R', LPPR: '17', LIRN: '24' };                // v0.7.3: Innsbruck to Naples
+  LOWI: '26', LXGB: '09', EDDH: '23', LIPZ: '04R', LFML: '31R', LFLL: '35R', LPPR: '17', LIRN: '24',                  // v0.7.3: Innsbruck to Naples
+  ETAR: '26', EGQS: '23', EGUL: '23', EGVA: '27', LEZG: '30R', LERT: '10' };                                          // v0.7.6: the six bases
 for (const [icao, end] of Object.entries(EU_FINALS)) {
   SHOTS[`${icao}-final`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_DAY };
   SHOTS[`${icao}-final-night`] = { q: `app=${icao}:${end}&ft=1000&pitch=-4`, ms: EU_NIGHT };
@@ -255,6 +256,11 @@ SHOTS['eu-toulouse-airbus-west'] = { q: look(43.625, 1.378, 1200, 250, -14), ms:
 // (full at 56 N and north of it, nothing at 50 N and south of it).
 for (const [n, la, lo] of [['edinburgh', 55.95, -3.37], ['copenhagen', 55.62, 12.65], ['manchester', 53.35, -2.28], ['amsterdam', 52.31, 4.76],
   ['london', 51.47, -0.46], ['paris', 49.01, 2.55], ['lisbon', 38.77, -9.13]]) SHOTS[`eu-aurora-${n}`] = { q: `lat=${la}&lon=${lo}&alt=10000&hdg=0&pitch=14`, ms: Date.UTC(2026, 10, 19, 21, 0) };
+// v0.7.6 (part 6, East Asia's aurora "Band it": full at 44 N and north of it, nothing at 40 N and south of it): the
+// northern sky by night from 10,000 ft over the brief's seven places. Run without &region (East Asia is the default).
+for (const [n, la, lo] of [['sapporo', 43.06, 141.35], ['vladivostok', 43.12, 131.90], ['aomori', 40.82, 140.75], ['sendai', 38.27, 140.87],
+  ['tokyo', 35.68, 139.77], ['nagoya', 35.17, 136.90], ['seoul', 37.57, 126.98]]) SHOTS[`ea-aurora-${n}`] = { q: `lat=${la}&lon=${lo}&alt=10000&hdg=0&pitch=14`, ms: NIGHT };
+GROUPS['ea-aurora-076'] = ['sapporo', 'vladivostok', 'aomori', 'sendai', 'tokyo', 'nagoya', 'seoul'].map((n) => `ea-aurora-${n}`);
 // v0.7.4 (fix 1): Brussels's two crossings from close above 01/19: over its north end looking south across 07L/25R, and
 // from 300 m past 01's threshold looking north across 07R/25L.
 SHOTS['eu-ebbr-cross-north'] = { q: 'rwy=EBBR:19&back=280&eye=14&pitch=-12&hdg=194', ms: EU_DAY };
@@ -518,6 +524,37 @@ for (const [k, [cx, cy, mx, my, hdg]] of Object.entries(MIL075)) {
   SHOTS[`mil-${k}-apron`] = { q: `x=${cx}&y=${cy}&agl=40&hdg=${hdg}&pitch=-3&aglAt=${cx},${cy}`, ms: DAY };
 }
 GROUPS['mil-075'] = Object.keys(MIL075).flatMap((k) => [`mil-${k}-above`, `mil-${k}-apron`]);
+// v0.7.6, part 3: the six bases' military sides (Shane: "Empty": shelters, hangars and bare ramps, no parked aircraft):
+// each from above (2,500 ft at -35 deg, looking from the longest runway's middle towards the shelters, or the ramp
+// spots where there are none) and from that runway's middle (40 ft up, level). [the runway's middle x, y; the
+// shelters' or the ramp's x, y; the heading from the one to the other], from the airports' files. Run with &region=europe.
+const MIL076 = { etar: [259151.8, 274430.8, 257423.6, 273397.9, 239.1], egqs: [-441890.3, 1209807.1, -442077.1, 1210043.8, 321.7],
+  egul: [-233154.4, 602688.2, -232488.8, 602243.6, 123.7], egva: [-398229.5, 531795.9, -396888.1, 532138.7, 75.7],
+  lezg: [-419280.8, -574202.5, -418592.3, -575130.2, 143.4], lert: [-928304.6, -1084621.9, -928799.8, -1084844.5, 245.8] };
+for (const [k, [cx, cy, tx, ty, hdg]] of Object.entries(MIL076)) {
+  SHOTS[`mil-${k}-above`] = { q: lookXY(tx, ty, 2500, hdg, -35), ms: EU_DAY };
+  SHOTS[`mil-${k}-runway`] = { q: `x=${cx}&y=${cy}&agl=40&hdg=${hdg}&pitch=-3&aglAt=${cx},${cy}`, ms: EU_DAY };
+}
+GROUPS['mil-076'] = Object.keys(MIL076).flatMap((k) => [`mil-${k}-above`, `mil-${k}-runway`]);
+// Zaragoza's civil apron and terminal (its parked airliners), from 600 ft looking north-north-east at the stands' middle.
+SHOTS['lezg-civil-apron'] = { q: lookXY(-414750, -575560, 600, 20, -28), ms: EU_DAY };
+SHOTS['lezg-civil-apron-night'] = { q: lookXY(-414750, -575560, 600, 20, -28), ms: EU_NIGHT };
+// v0.7.6: batch E's new ground: the Moray coast with Lossiemouth from 10,000 ft (looking east along the firth's south
+// shore), Caithness and Orkney from FL350, the Bay of Cádiz with Rota from 10,000 ft, Devon from FL350.
+SHOTS['eu-10000-moray'] = { q: 'lat=57.62&lon=-4.05&alt=10000&hdg=85&pitch=-12', ms: EU_DAY };
+SHOTS['eu-fl350-orkney'] = { q: 'lat=57.9&lon=-3.6&alt=35000&hdg=10&pitch=-12', ms: EU_DAY };
+SHOTS['eu-10000-cadiz'] = { q: 'lat=36.75&lon=-6.45&alt=10000&hdg=150&pitch=-12', ms: EU_DAY };
+SHOTS['eu-fl350-devon'] = { q: 'lat=51.7&lon=-3.0&alt=35000&hdg=230&pitch=-12', ms: EU_DAY };
+GROUPS['europe-batch-e-076'] = ['eu-10000-moray', 'eu-fl350-orkney', 'eu-10000-cadiz', 'eu-fl350-devon'];
+// v0.7.6, part 7: a gate at each of the four airports whose jet bridges and stop bars are laid out for the nose on the
+// stand point (apron-geom.js gateFit()): from 45 m up, 95 m behind and 55 m right of a bridged gate with bridged
+// neighbours, looking at it. [the camera's x, y; its heading; the stand]. With &gatefit=0 the same view is v0.7.5's.
+const GATE076 = { rjgg: [849815.3, -87256.8, 44.5, '73'], rjoo: [725746.8, -105162, 297.6, '5'], rjoa: [497567, -159425.9, 328.1, '3'], rktu: [-190.1, 79957.4, 298.7, '5'] };
+for (const [k, [cx, cy, hdg]] of Object.entries(GATE076)) {
+  SHOTS[`gate-${k}`] = { q: `x=${cx}&y=${cy}&agl=45&hdg=${hdg}&pitch=-20&aglAt=${cx},${cy}`, ms: DAY };
+  SHOTS[`gate-${k}-night`] = { q: `x=${cx}&y=${cy}&agl=45&hdg=${hdg}&pitch=-20&aglAt=${cx},${cy}`, ms: NIGHT };
+}
+GROUPS['gates-076'] = Object.keys(GATE076).map((k) => `gate-${k}`).concat(['gate-rjgg-night']);
 // v0.7.5, part 7: the parked aircraft whose tails stood over a taxiway behind (traffic-layout.js tailOverLine()), from
 // 500 ft at -50 deg, looking along each stand's heading: Naples's 45 (the finding) and Vienna's A55 in Europe's page,
 // Narita's 431 and Gimpo's 914 in East Asia's. Taken with and without `&tailfit=0` (--q), as before and after.
@@ -557,6 +594,25 @@ for (const [k, [la, lo, H, fla, flo, D, hM]] of Object.entries(LANDMARK075)) {
 GROUPS['ea-centres-075'] = Object.keys(CITY075).flatMap((k) => [`cities-${k}-3000-day`, `cities-${k}-3000-night`]).concat(['rjoo-32l-final-osaka-day', 'rjoo-32l-final-osaka-night']);
 GROUPS['ea-landmarks-075'] = Object.keys(LANDMARK075).flatMap((k) => [`landmark-${k}-day`, `landmark-${k}-above-day`])
   .concat(['nagoyacastle', 'nagoyatv', 'osakacastle'].map((k) => `landmark-${k}-night`));
+// v0.7.6 part 5 (--q '&region=europe'): Zaragoza's centre from 3,000 ft by day and by night, from the north across the
+// Ebro; the three landmarks level (D m off, the eye hM above the ground there, looking at half the height) and from above
+// (aimAt's, 250 m off and 150 m up), from the side of a clear line [lat, lon of a point that way]: Ely Cathedral from
+// the park to the south, the Pilar from across the Ebro to the north, Cádiz Cathedral from the sea to the south-east;
+// the Pilar by night too. (Ely's level view 70 m up: at 40 m the park's trees filled the lower half.)
+const EU_CENTRES_076 = { zaragoza: [41.6535, -0.8790, 185] };
+for (const [k, [la, lo, h]] of Object.entries(EU_CENTRES_076)) {
+  SHOTS[`eu-centre-${k}-3000-day`] = { q: look(la, lo, 3000, h, -14), ms: EU_DAY };
+  SHOTS[`eu-centre-${k}-3000-night`] = { q: look(la, lo, 3000, h, -14), ms: EU_NIGHT };
+}
+const EU_LANDMARKS_076 = { // id: [lat, lon, H, from lat, from lon, level D, level hM]
+  ely: [52.398681, 0.263558, 66, 52.3950, 0.2625, 500, 70], pilar: [41.656771, -0.878523, 92, 41.6610, -0.8783, 420, 40],
+  cadiz: [36.528932, -6.295312, 54, 36.5265, -6.2925, 380, 30] };
+for (const [k, [la, lo, H, fla, flo, D, hM]] of Object.entries(EU_LANDMARKS_076)) {
+  for (const [tod, ms] of [['day', EU_DAY], ['night', EU_NIGHT]]) SHOTS[`eu-landmark-${k}-${tod}`] = { q: aimAt(la, lo, H, D, hM, fla, flo, 0.5), ms };
+  SHOTS[`eu-landmark-${k}-above-day`] = { q: aimAt(la, lo, H, 250, 150, fla, flo, 0.4), ms: EU_DAY };
+}
+GROUPS['europe-centres-076'] = Object.keys(EU_CENTRES_076).flatMap((k) => [`eu-centre-${k}-3000-day`, `eu-centre-${k}-3000-night`]);
+GROUPS['europe-landmarks-076'] = Object.keys(EU_LANDMARKS_076).flatMap((k) => [`eu-landmark-${k}-day`, `eu-landmark-${k}-above-day`]).concat(['eu-landmark-pilar-night']);
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {

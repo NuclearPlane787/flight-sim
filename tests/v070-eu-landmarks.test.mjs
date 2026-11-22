@@ -17,7 +17,8 @@ const COUNTRY = { london: 'GB', paris: 'FR', frankfurt: 'DE', madrid: 'ES', zuri
   berlin: 'DE', vienna: 'AT', milan: 'IT', lisbon: 'PT', oresund: 'DK', malmo: 'SE', dublin: 'IE', brussels: 'BE', manchester: 'GB', toulouse: 'FR',
   // v0.7.2's cities
   cologne: 'DE', dusseldorf: 'DE', prague: 'CZ', geneva: 'CH', edinburgh: 'GB', santiago: 'ES',
-  hamburg: 'DE', venice: 'IT', marseille: 'FR', lyon: 'FR', porto: 'PT', innsbruck: 'AT' };   // v0.7.3's cities
+  hamburg: 'DE', venice: 'IT', marseille: 'FR', lyon: 'FR', porto: 'PT', innsbruck: 'AT',   // v0.7.3's cities
+  ely: 'GB', zaragoza: 'ES', cadiz: 'ES' };   // v0.7.6's cities
 const TRI_BUDGET = 6000, TOTAL_BUDGET = 60000;
 
 if (inRegion('europe', import.meta.url)) {

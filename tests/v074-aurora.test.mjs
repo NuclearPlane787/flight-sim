@@ -8,13 +8,15 @@ import { REGIONS } from '../src/world/regions.js';
 const EU = REGIONS.find ? REGIONS.find((r) => r.id === 'europe') : REGIONS.europe;
 const EA = REGIONS.find ? REGIONS.find((r) => r.id !== 'europe') : REGIONS['east-asia'];
 
-test('Europe has the band, 50 to 56 N; East Asia has none', () => {
+// v0.7.6: East Asia has its own band since (Shane: "Band it"; tests/v076-aurora.test.mjs), so "East Asia has none"
+// became "a region with no band".
+test('Europe has the band, 50 to 56 N', () => {
   assert.deepEqual(EU.aurora, { fadeLat: 50, fullLat: 56 });
-  assert.equal(EA.aurora, undefined);
+  assert.ok(EA);
 });
 
-test('no band: exactly 1 everywhere (East Asia draws what it drew)', () => {
-  for (const lat of [29, 37.5, 43, 60]) assert.equal(auroraByLatitude(lat, EA.aurora), 1);
+test('no band: exactly 1 everywhere (a region without the entry draws what v0.4.3 drew)', () => {
+  for (const lat of [29, 37.5, 43, 60]) { assert.equal(auroraByLatitude(lat, undefined), 1); assert.equal(auroraByLatitude(lat, null), 1); }
 });
 
 test("Europe: full at 56 N and north, nothing at 50 N and south, smooth and rising between", () => {

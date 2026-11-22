@@ -53,11 +53,14 @@ EU_BATCH_B = ('-10_-8 -10_-7 -10_-6 -9_-8 -9_-7 -9_-6 -9_-5 -8_-8 -8_-7 -8_-6 -7
 EU_BATCH_C = ('-9_-4 -9_-3 -8_-5 -8_-4 -8_-3 -7_-4 -7_-3 -6_8 -6_9 -5_0 -5_1 -5_8 -5_9 -4_-2 -4_-1 -4_0 -4_1 -4_8 -4_9 -3_-1 -3_8 -3_9 0_-4 0_-3 0_-2 0_-1 1_-4 2_-5 2_-4 2_5 3_-5').split()   # 31: tools/bake_europe_tilelist.py
 # v0.7.3: batch D: the rule over all thirty-seven airports (briefs/V0-7-3.md part 1), less batches A, B and C.
 EU_BATCH_D = ('-8_-10 -8_-9 -7_-11 -7_-10 -7_-9 -7_-8 -6_-11 -6_-10 -6_-9 -6_-8 1_6 5_-2 6_-2 7_-6 7_-5 7_-4 8_-6 8_-5').split()   # 18: tools/bake_europe_tilelist.py
+# v0.7.6: batch E: the rule over all forty-three (the thirty-seven and the six bases; briefs/V0-7-6.md part 1), less A to D.
+EU_BATCH_E = ('-9_-9 -5_3 -5_10 -4_10 -3_10').split()   # 5: tools/bake_europe_tilelist.py
 EU_BATCHES = [
     ('A', '/tmp/flight-sim/v070/bake', '/tmp/flight-sim/v070/work', EU_BATCH_A),
     ('B', '/tmp/flight-sim/v071/bake', '/tmp/flight-sim/v071/work', EU_BATCH_B),
     ('C', '/tmp/flight-sim/v072/bake', '/tmp/flight-sim/v072/work', EU_BATCH_C),
     ('D', '/tmp/flight-sim/v073/bake', '/tmp/flight-sim/v073/work', EU_BATCH_D),
+    ('E', '/tmp/flight-sim/v076/bake', '/tmp/flight-sim/v076/work', EU_BATCH_E),
 ]
 if REGION == 'europe':
     BATCHES = EU_BATCHES

@@ -7126,3 +7126,225 @@ The worst frame is 16.8 ms in every one of the twenty-four.
 - **One thing is left running on purpose, by Shane's word at 03:16:** a background command of the session's that reads `GIT_OPTIONAL_LOCKS=0 git log --oneline -1` once a minute and ends when the top line is `v0.7.5`; its end wakes the session to start v0.7.6. It reads only.
 - The scratch is `/tmp/flight-sim/v075/` (the frozen pushed v0.7.4, the scripts, the subagents' briefs and reports, the checks' output; gone at a restart). 369 pictures `v075-*.png` are in `Claude outputs/flight-sim/`.
 - No path with a user's name in `src/`, `tools/` or `tests/` (grep: none).
+
+## 2026-11-22, 16:40 KST: v0.7.5 pushed; v0.7.6 started (Claude Code, the same session; `briefs/V0-7-6.md`)
+
+`date`: Sun Nov 22 16:33 KST 2026; `pmset -g batt`: "Now drawing from 'Battery Power'", 93 %, discharging. The push watch ended at 16:33:01: `GIT_OPTIONAL_LOCKS=0 git log --oneline -3`: `14fd8d7 v0.7.5`, `76ea922 v0.7.4`, `08f63c6 v0.7.3`. `python3 tools/build-log.py`: "Wrote data/log.js: 101 entries". The brief copied from `Claude outputs/flight-sim/V0-7-6.md` to `briefs/V0-7-6.md` and read whole: the Cowork session revised it at about 16:30 with Shane's answers.
+
+**The stop (Shane, about 16:30, in the brief): ready to push "By 22:00"; the write-up from 21:15.** Nothing is carried over from v0.7.5. Two parts are new against the 03:05 draft: East Asia's aurora by latitude (Shane's "Band it": part 6) and the stands at Centrair, Itami, Hiroshima and Cheongju (part 7).
+
+### Started
+
+- **A frozen copy of the pushed v0.7.5** (APFS clones, taken at 16:34 before any edit; it holds the brief's copy too, which came after the push): `/tmp/flight-sim/v076/base/GameDump/games/flight-sim/`, version 0.7.5; the server on 8014 (PID in `/tmp/flight-sim/pids`) serves the tree and `/base/`.
+- **The scratch `/tmp/flight-sim/v076/`:** v0.7.5's lock and scripts with the paths changed (`excl.py`, `g.sh`, `gk.sh`, `cp.sh`, `sheet.sh`, `wait-push.sh`), `manifest-add.py` pointed at `data/europe/manifest.json`, `rules.md` with this run's lines, `brief-bake.md` and `brief-airports.md`.
+- **Geofabrik's extracts not on disk,** downloading with a generic client (`/tmp/flight-sim/v076/dl-gf.sh`, log `logs/dl-geofabrik.log`): `rheinland-pfalz` (Ramstein), `aragon` (Zaragoza), `suffolk` (Lakenheath), `gloucestershire` and `wiltshire` (Fairford). `scotland` and `andalucia` are on disk.
+- **Four Opus subagents, from 16:38:** `bake` (part 0 and batch E into staging; stop 17:30), `apa` (Ramstein, then Fairford), `apb` (Lossiemouth, then Lakenheath), `apc` (Zaragoza, then Rota), the three with a stop at 19:20 and their own day, night and taxi-in runs in Chrome. The lead takes parts 6 and 7 now, then the install, the promotion, the flights, the views and the frame rates.
+- A notification to Shane at 16:34: the Mac is on battery, and the frame-rate checks wait for mains.
+
+### Decisions made in the run (v0.7.6)
+
+1. **Four subagents at once, not the brief's two.** The brief's "The rules stand" lists two; Shane's own word to this session at 03:20 was "the subagent quota is increased to 4 for this entire session until v0.7.6 is finished". His word to the session is the later and the more specific about this run, so: four, all on Opus. The other heat rules are as the brief has them, and the lock keeps the battery's (one Chrome, no frame-rate check).
+2. **Three airports subagents with two bases each,** not two with three: 2 h 40 min to their stop, and v0.7.5's pairs took about 2 h 25 min each. The order within the brief's: Ramstein and Zaragoza first (they stand on installed tiles), Lossiemouth first of the four that wait for batch E.
+3. **No parked aircraft at a base by a table** (`traffic-layout.js`), not by leaving the bake without stands: the player's ramp spots are stands in the data, and the share rule would park airliners on the free ones. Zaragoza is not in the table (its civil apron gets airliners; its military side has no stand).
+
+## 2026-11-22, 17:10 KST: v0.7.6 checkpoint 1: batch E installed (224 tiles); the aurora's band and the gates' fit built; mains back (Claude Code)
+
+`date`: Sun Nov 22 17:06 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'", 100 % (mains since about 16:47; the lock lets two Chromes run). The guard's sweep: nothing above 50 % for over five minutes. Out: `apa`, `apb`, `apc` (their first Chrome runs of Zaragoza, Lossiemouth and Lakenheath queued at 17:00 to 17:06) and, since 16:57, `city` (Zaragoza's centre and the three landmarks; stop 19:15).
+
+### The extracts (a pitfall)
+
+Geofabrik answered 503, 502 and then 404 for all five extracts at 16:35 to 16:48, at the paths its own index pages list (`…/aragon/aragon-latest.osm.pbf` answers a ranged request with a redirect and a whole one with 404 today). The same ground came from OpenStreetMap France's public mirror in two minutes, with a generic client: `aragon-261122.osm.pbf` (108 MB), `england-east-261122.osm.pbf` (261 MB, Suffolk) and `england-south-west-261122.osm.pbf` (300 MB, Gloucestershire and Wiltshire). It has no Rhineland-Palatinate; `apa` had fetched Ramstein's small box itself by 16:43. `overpass-api.de` refuses a generic client (406): not worked round.
+
+### Part 0 and batch E (the `bake` subagent, 16:38 to 16:51; notes `/tmp/flight-sim/v076/bake-notes.md`)
+
+- **Part 0:** the height tool prints "waiting for sources N" on every run (N is 0 when nothing waits) and one "  waiting <tile>: …" line per waiting tile; the chain grepped "waits", which never appears. The mend is the chain's own gate (`/tmp/flight-sim/v076/scripts/gate.sh`: a waiting tile's line or a count above 0 for the heights; "waiting for water [1-9]" for the cover, new; "waits for WorldCover" for the 31 m cover), called after each of the three steps. **Seen to fire:** a height step for `-7_-11` into scratch with GLO-90 N32 W006 hidden inside that process printed "  waiting -7_-11: 32/-6", and the gate printed "HEIGHTS WAIT", exit 1; the old grep stayed silent on the same log, and the new gate stays silent on batch D's clean log. The tools in `tools/` are unchanged by it (the chain lives in the run's scratch, as every batch's has).
+- **The rule gives 5 tiles, not the planning's 15:** `-9_-9 -5_3 -5_10 -4_10 -3_10` (the Algarve's and Cádiz's side, Devon and the Bristol Channel, Lewis, Caithness, Orkney). 225 tiles have land within 200 km of one of the forty-three in Natural Earth's 1:10 m land, in OSM's and in their union; 219 were installed. `-8_-11` lies wholly outside the outline again (logged, not baked, as in batch D). The planning's other nine (`-2_6 -1_5 -1_6 -5_2 -4_11 -2_8 -2_9 -2_10 -9_-10`) are open sea in both land sources: the planning counted every tile within 200 km, the rule asks for land.
+- **Steps, one locked and guarded command, 499 s:** the tile list 23 s (3.5 GB), heights 2 s, water 12 s (2.8 GB), cover 0 s, the 31 m cover 88 s, compose and seal 2 s, 1 km 1 s, urban 2 s, coast 356 s (2.9 GB). Fetched: GLO-90 N60 W004 and W003, WorldCover N60W003.
+- **Seams:** 250 m, 224 tiles, 760 pairs, 2,438,784 values, 0 differ (two border cells of the new `-5_10` rewritten first, the old tile's value winning); 1 km, 110 pairs, 373,920 values, 0 differ.
+- **Old cores: 219 of 219 identical by SHA-256 of each layer;** 212 tiles byte-identical, 7 changed at their borders only (21 files: `-4_3 -4_4 -5_4 -4_9 -5_9 -6_9 -9_-8`). The 1,215 installed 31 m sub-files unchanged by hash; 147 new (1,362; each base's 100 km whole: 18, 31, 20, 19, 46 and 14 were missing at Ramstein, Lossiemouth, Lakenheath, Fairford, Zaragoza and Rota).
+- **Encoding:** the five new cores have no land cell at 0 and no sea cell off 0.
+- **Weak, its own:** `-5_3` has a pit to −33.5 m in GLO-90, not checked.
+
+**Installed (mine, 16:56, through the lock):** `python3 tools/install-region.py europe /tmp/flight-sim/v076/install/europe /tmp/flight-sim/v076/install/europe.sha256`: "217 staged files checked against the list; 216 to install (25.9 MB): 162 new, 0 already there with the same bytes, 54 replaced"; "manifest: l0 224 tiles (224 covered), l1 30 tiles (36 covered); airports listed 37, pending 0". **`data/` 515 MB, Europe 309 MB** (`du -sm`; 502 and 296 before: +13 MB, where the brief expected about 530 from fifteen tiles). `tests/v070-eu-terrain.test.mjs` takes 224 tiles, batch E's five by name and the 250 m rectangle one row further north (4 of 4). `tests/v074-p9-edge.test.mjs`: Europe's last walls at the 250 m data's edge were Scotland's north (113 m at y = 1,280 km in v0.7.5's data), which batch E covered; the worst step left with the blend off is 6 m, so the test's "before: walls over 100 m" is asserted for East Asia alone now, with the reason in its comment (9 of 9).
+
+### Part 6: East Asia's aurora by latitude (mine)
+
+`src/world/regions.js`: East Asia's `aurora: { fadeLat: 40, fullLat: 44 }`; `sky.js` reads it as it reads Europe's. `?auroraband=0` (node `FS_AURORABAND=0`) is v0.7.5's East Asian sky, for the stills' before and after; Europe's band doesn't take the switch. `tests/v076-aurora.test.mjs` (4): the band; exactly 0 at Sendai, Tokyo, Nagoya, Osaka, Seoul and Jeju; Aomori 0.09, New Chitose 0.78, Vladivostok 0.94, 1 from 44 N; smooth and rising. `tests/v074-aurora.test.mjs` no longer says East Asia has no band; `tests/aurora.test.mjs`'s clock and cloud checks moved from Seoul's latitude to 44.5 N, and it now asserts the stars and no aurora at Seoul (10 of 10 over the three). The stills script has the seven places' night views (`ea-aurora-076`).
+
+### Part 7: the stands at Centrair, Itami, Hiroshima and Cheongju (mine): the cause is the game's own, and at every airport
+
+- **Measured first:** the nose's distance to the nearest terminal wall at each airport's gates (`/tmp/flight-sim/v076/lead/gates.mjs`), medians: Centrair 28 m, Hiroshima 29 m, Itami 36 m, Cheongju 47 m (34 m over those within 60 m), against Komatsu 41 m, Haneda 27 m, New Chitose 24 m, Incheon 32 m, Gimpo 34 m, Heathrow 21 m, Madrid 28 m, Charles de Gaulle 26 m. **The four are not further out than the rest;** their AIP points are right (the nose-gear stops, where OSM's stand nodes sit too).
+- **The cause:** `apron-geom.js` (v0.1.0) lays the stop bar (`NOSE_WHEEL`, 15.7 m ahead of the stand point) and the jet bridge's door (`DOOR_FWD`, 17 m ahead) out for an aircraft whose reference point is on the stand point; `gate-flow.js` and `traffic-layout.js` park every aircraft with its **nose** on the point. So the bridge's cab and the stop bar lie 21 m ahead of the aircraft they are for, at all sixty-six airports (plain in v0.7.4's own picture of Incheon, `v074-rksi-gate.png`: the cab beside the stop bar, a fuselage-half ahead of the nose). It shows most where the terminal is straight ahead of the stand, as at the four.
+- **Built:** `gateFit(icao)` in `src/world/apron-geom.js` (`GATE_FIT`: RJGG, RJOO, RJOA, RKTU): there `standMarks(stand, fit)` puts the stop bar under the nose wheel (5.3 m behind the nose) and `jetBridge(stand, terminals, maxLen, fit)` takes the door 4 m behind the nose on the left, looks for its wall from 9 m out to the left of the door (so a bridge from a wall straight ahead comes past the nose at an angle) and keeps its root clear of the nose. No stand moves, so no pushback or taxi route changes and nothing is re-baked. `?gatefit=1` (node `FS_GATEFIT=1`) lays every airport out so and `?gatefit=0` none, for the look pass to decide.
+- **Checked so far:** `tests/v076-gate-fit.test.mjs` (5): the table; the default arguments give v0.7.5's values; the fitted geometry; at the four every gate that had a bridge keeps one, none over 82 m, each to the door behind the nose. Bridges before and with the fit: Centrair 29 and 29 (median 18 m and 27 m), Itami 15 and 17 (27 and 35 m), Hiroshima 6 and 6 (20 and 28 m), Cheongju 4 and 4 (19 and 38 m, one of 70 m at stand 7). The day runs again: Centrair 13 of 13 (A 90), Itami 13 of 13 (A 91), each pushback on pavement; Hiroshima's and Cheongju's are in the queue, with the gates' views old and new (`gates-076`).
+
+### Decisions made in the run (v0.7.6), continued
+
+4. **The band's figures are the brief's (40 and 44 N), and its "Sapporo and Vladivostok: full" reads 0.78 and 0.94 by them** (New Chitose is at 42.78 N, Vladivostok's airport at 43.40 N). I kept the figures: they are what Shane was told, and a strong aurora over Hokkaido is the point.
+5. **Part 7 by the bridge and the stop bar, not by moving the stop marks forward** as the brief suggests: moving a stand forward moves its bridge's door with it, so the gap stays; and the points are right. The table is the four airports of the brief; the same fault at the other sixty-two is logged for v0.7.7's look pass with the switch that shows it, since it changes every gate's look and Shane hasn't seen it.
+6. **Batch E is the rule's five tiles.** Nine of the planning's fifteen are open sea, which the 1 km level and the sea draw already.
+
+## 2026-11-22, 18:50 KST: v0.7.6 checkpoint 2: the six bases listed (forty-three in Europe), each through its whole check and at 60 fps; Zaragoza's centre and the three landmarks in; the gates and the aurora looked at (Claude Code)
+
+`date`: Sun Nov 22 18:47 KST 2026; "Now drawing from 'AC Power'", 100 %, charged. The guard's sweep: nothing above 50 % for over five minutes. Out: `docs` (the documents' drafts, since 18:19; stop 20:30) and `code` (the diff's review, since 18:48; stop 19:40). In Chrome: Heathrow to Lossiemouth end to end, and the finals.
+
+### The six bases (subagents `apa`, `apb`, `apc`, 16:38 to 18:44; reports `/tmp/flight-sim/v076/reports/ap[abc].md`, notes `/tmp/flight-sim/v076/airports/<ICAO>.md` and `<ICAO>-sources.md`)
+
+| Base | Runways (baked against published) | Lights and ILS | Ramp spots | Military side | Sources |
+|---|---|---|---|---|---|
+| Ramstein (ETAR) | 08/26 3,200 m; 09/27 2,828 m (OSM draws 2,974 m) | ILS CAT I at all four ends; ALSF-I 900 m at 26, 09, 27, SSALF at 08, as OSM's light nodes; all `[EST]` | 4 on Ramp 1, placed, all code E | all military in OSM: placed points alone; 39 shelters, 9 m | OurAirports, OSM (a small box from a public Overpass mirror); MIL AIP Germany's site gave a protocol error |
+| Lossiemouth (EGQS) | 05/23 2,764 m (2,764); 10/28 1,845 m (1,850) | ILS CAT I and ALSF-I at 05 and 23; none on 10/28; `[EST]` | 4 on D Apron, placed, all code E | all military: placed points; 18 shelters (two sites of nine) | OurAirports, OSM, Wikipedia's citation of the Military AIP; the UK Military AIP's site refused the connection |
+| Lakenheath (EGUL) | 05/23 2,743 m (8,998 ft) | ILS CAT I and ALSF-I both ends; `[EST]` | 3 on Victor Ramp, placed, all code E | all military: placed points; 43 shelters | as Lossiemouth's |
+| Fairford (EGVA) | 09/27 3,046 m, 61 m wide | ILS CAT I and ALSF-I both ends, centreline lights; `[EST]` | 3 on the north-east apron, placed, all code E | all military: placed points; no shelters (open hardstands), three hangars | OurAirports, OSM |
+| Zaragoza (LEZG) | 12L/30R 3,032 m (3,032); 12R/30L 3,718 m (3,718) | 30R ILS CAT II/III, ALSF-II, TDZ; 12R ALSF-I; 12L simple; centreline on 12L/30R | none of its own: 22 civil stands (code E at 6 to 9, 12, 13), no jet bridge | OSM's air base polygon in `MILITARY` (no civil stand inside it); 6 shelters `[EST]` | **ENAIRE's AIP AD 2-LEZG, read in full** |
+| Rota (LERT) | 10/28 3,690 m (3,690), 61 m wide | ILS CAT I to 10; PAPIs; no approach lights | 5 on the main apron, placed, all code E | all military: placed points; no aircraft shelters (OSM's 81 bunkers are magazines) | **ENAIRE's AIP AD 2-LERT, read** |
+
+- **Each base's own check, by its subagent, in Chrome** (`/tmp/flight-sim/v076/out/ap/<icao>-*.txt`): day 13 of 13 and night 13 of 13 at all six (the landing's grade: Ramstein A 91, Lossiemouth A 92, Lakenheath A 90, Fairford A 90, Zaragoza A 93, Rota A 92), taxi-in from each end (Ramstein's four, Lossiemouth's four, the others' two). Lakenheath's first day run failed its pushback (12.5 m of grass: `APRON_PUSH` 35 m, then 13 of 13).
+- **Frame rates, mine, alone on mains (the lock's `ex`), 18:25 to 18:47,** at a ramp spot by day and by night, worst frame 16.8 ms in every figure: Ramstein 60.1 / 60.1 fps (875k triangles), Lossiemouth 60.1 / 60.1 (504k), Lakenheath 60.0 / 60.1 (633k), Fairford 60.0 / 60.1 (645k), Zaragoza 60.1 / 60.1 (786k), Rota 60.1 / 60.1 (577k). **On the final,** day and night: 60.0 fps each at all six, worst frame 16.8 ms (Ramstein 735k triangles, Lossiemouth 373k, Lakenheath 702k, Fairford 489k, Zaragoza 499k, Rota 371k; `out/fps-summary.txt`).
+- **Each test file 11 of 11** (`tests/v076-eu-<icao>.test.mjs`); the finals clear the ground by 94 to 128 m at every end, so no end is circling-only; no one-way use (Zaragoza's AD 2.20.8 limits only the B748 and the AN124).
+- **Byte identity, by each subagent with its edits in:** EGLL and LXGB identical to `data/europe/`, RJNK identical to the frozen v0.7.5.
+- **Promoted at 18:45:** `python3 tools/promote-airport.py europe ETAR:ramstein EGQS:lossiemouth EGUL:lakenheath EGVA:fairford LEZG:zaragoza LERT:rota`: "listed 43 airports, 43 patches, 14 coasts; pending left None []". `AIRPORT_INDEX` and `EUROPE_AIRPORT_ORDER` have the six (the three RAF bases after Glasgow, Ramstein after Hamburg, Zaragoza and Rota after Santiago); `EUROPE_AIRPORT_TRANSITIONS` gains Zaragoza's and Rota's 6,000 ft, read from their AD 2.17; Ramstein takes Germany's 5,000 ft and the three RAF bases the UK's 3,000 ft (no military AIP could be read).
+- **No parked aircraft at a base:** `NO_PARKED` in `src/world/traffic-layout.js` (ETAR, EGQS, EGUL, EGVA, LERT; `placeParkedInSteps()` returns none there); `tests/v076-bases-empty.test.mjs` (7): each base has 3 to 8 spots, no gate and no parked aircraft even at a fill of 1; Zaragoza parks airliners (15 by the subagent's probe, all on civil stands).
+- **The suite after the promotion, 18:46:** 1,699 of 1,701; the two were the promotion's own (the index's count 37 to 43 in `tests/v070-regions.test.mjs`; `tests/v074-map-terminals.test.mjs`, where the three RAF bases have no passenger terminal and are now listed by name as such), both mended: those files and the Europe list tests 34 of 34.
+- **`data/` 519 MB, Europe 314 MB** (`du -sm`).
+
+### Zaragoza's centre and the landmarks (subagent `city`, 16:57 to 18:18; report `reports/city.md`)
+
+- **Zaragoza's centre:** 4,875 buildings, 94,224 triangles, 111 KB (`data/europe/centres/zaragoza.bin.gz`; thirty-four centres in Europe; the 33 older files pinned by hash against the frozen v0.7.5). From 3,000 ft 571k triangles (667k with `?cull=0`).
+- **Three landmarks, sixty-four in Europe:** Ely Cathedral (west tower 66 m, the Octagon's lantern 52 m; 820 triangles), the Basílica del Pilar (four towers 92 m, eleven tiled domes; 1,662), Cádiz Cathedral (two towers 54 m, the golden dome 52 m `[EST]`; 648). The 61 older European models and East Asia's 35 identical by digest. `tests/v076-eu-centres.test.mjs` (5), `tests/v076-eu-landmarks.test.mjs` (12).
+- **Not done: Kaiserslautern's centre** (no extract: Geofabrik's 404, and the Overpass server the subagent asked refused a generic client).
+- **Looked at (mine, the contact sheet `out/pics/city.png`):** Zaragoza from 3,000 ft by day and night reads as a dense old town on the Ebro with the Pilar on its bank; the Pilar's towers and coloured domes read at once, floodlit at night; Ely's long nave, west tower and octagon read; Cádiz's golden dome and towers stand on the shore. **Weak:** at Cádiz a generated town block runs through the cathedral's east end, and at Ely blocks crowd it (the generated towns don't leave landmarks out where no real centre stands: ROADMAP).
+
+### Parts 6 and 7, looked at (mine)
+
+- **The aurora's seven night views, v0.7.5's sky against this tree's** (`v076-old-ea-aurora-*`, `v076-new-ea-aurora-*`; sheet `out/pics/aurora.png`): Sapporo and Vladivostok strong as before, Aomori a faint glow, Sendai, Tokyo, Nagoya and Seoul stars alone.
+- **The four gates, before and with the fit** (`v076-old-gate-*`, `v076-new-gate-*`; sheet `out/pics/gates.png`): before, each bridge ends in mid-apron ahead of the nose; with the fit each reaches the parked aircraft's front left door, at all four. **The four day runs again:** Centrair 13 of 13 (A 90), Itami 13 of 13 (A 91), Hiroshima 13 of 13 (A 92), Cheongju 13 of 13 (A 91), each pushback on pavement (`out/p7/`).
+- **East Asia's sixteen views, the pushed v0.7.5 against this tree with `&auroraband=0&gatefit=0`, `--total 2400`: all sixteen at max diff 0** (`v076-eaas1-*`, `v076-eabs1-*`). The tree's own run (the switches on) is in the queue.
+
+### Decisions made in the run (v0.7.6), continued
+
+7. **Lakenheath's runway is 05/23,** as OSM's main way and OurAirports both name it. OSM also has a 17 m piece tagged 06/24, which may be the painted name today; without the Military AIP there is nothing to settle it by. ROADMAP.
+8. **The frame rates were taken while each base was still pending,** as `check-airport.sh`'s own order has it (pending, the whole check, then the promotion), and as soon as its three runs had passed rather than in one block at the end: the alone checks first was v0.7.5's lesson.
+9. **Zaragoza has no player-only spots:** its civil stands serve, as the brief's exception reads.
+10. **The three RAF bases are named in the map's terminal test as having no passenger terminal,** rather than given one.
+
+## 2026-11-22, 19:25 KST: v0.7.6 checkpoint 3: the flights; the code review and its mends; the military sides looked at; 1,702 of 1,702 (Claude Code)
+
+`date`: Sun Nov 22 19:20 KST 2026; "Now drawing from 'AC Power'", 100 %. Out: `docs` (stop 20:30) and `pictures` (the pictures-only review, since 19:12; stop 20:05). In Chrome: Europe's standard views, this tree's run.
+
+### The flights (mine, 18:47 to 19:07; `/tmp/flight-sim/v076/out/flights/`)
+
+- **Heathrow 27R to Lossiemouth 23, end to end, 12 of 12 at FL300** (`browser-v060-flight.mjs EGLL:27R-EGQS:23 --fl 300`): lift-off at 172 kt, the cruise level reached, 16× (8,118 frames, median 16.7 ms, p99 16.8 ms, worst 16.8 ms, none over 25 ms, with a second Chrome running beside it), no missing tile (105 tiles resident, 155 loaded), the jump 0.00 m off the predicted path, the skip to a 14.9 nm final, landed on 23, **A 90**, no console errors.
+- **From a 15 nm final to a landing, 17 of 17 checks over five legs:** Frankfurt to Ramstein's 26 (A 91), Gatwick to Lakenheath's 23 (A 92), Heathrow to Fairford's 27 (A 92), Barcelona to Zaragoza's 30R (A 93), Gibraltar to Rota's 10 (A 92).
+- **The setup, the Load list and the home page's ticket** take the six from `AIRPORT_INDEX` and `EUROPE_AIRPORT_ORDER` (`tests/v070-eu-lists.test.mjs`, `v070-regions.test.mjs` pass in both regions); the hub's blurb names Lossiemouth, Ramstein and Rota and says seventy-two airports (GameDump's `data/games.js`, my entry alone, edited in place).
+
+### The code review (a fresh Opus reader of the diff against the frozen v0.7.5, 18:48 to 19:01; no correctness fault in parts 7, 6 or 3; five findings)
+
+1. **Ground vehicles still drove at the five bases** (`createVehicles()` had no such check: 82 at Ramstein, 52 at Lossiemouth, 73 at Lakenheath, 53 at Fairford, 8 at Rota, by its count; one showed beside Lossiemouth's runway in my first still). **Mended:** `createVehicles()` makes none where `NO_PARKED` has the airport (an explicit `count`, the tests', still does); `tests/v076-bases-empty.test.mjs` asserts none at each base and a fleet at Zaragoza.
+2. **The fitted cab would cut into a 787's or a 777's nose** (its face 2.4 m from the centreline, where a 777's skin is 2.3 to 2.8 m out; only the player's widebody at a code E gate of the four meets it). **Mended:** `GATE_FIT_HALF = 3.0` m for the fitted cab's face (an A321's door is then about a metre from it). The widebodies' own doors lie further back than the A321's 4 m: logged for v0.7.7.
+3. **Under `?gatefit=1` five of Munich's bridges ran from a root right of the centreline across the nose** (2,306 bridges, 5 crossing; none at the four tabled airports). **Mended:** a fitted root is never right of the centreline; `tests/v076-gate-fit.test.mjs` gains a test over every gate of both regions with the fit on: no tunnel within 2.3 m of its aircraft's centreline (6 of 6).
+4. **Tests:** the Europe branch of `v074-p9-edge` can't catch a broken blend any more (East Asia's, the same code, does: the comment now says so); the silent skips in `v076-bases-empty` are gone (every base is installed); `v076-gate-fit`'s nose-gear lookup asserts instead of skipping. (`v076-eu-centres`'s skip for a missing Zaragoza file is left: the file is installed.)
+5. **With the fit, a lead-in line that ends on the stand point runs 5.3 m past the stop bar:** cosmetic, left, logged.
+
+Sound, by its reading: with the fit off both functions give v0.7.5's values exactly; the stand geometry runs on the main thread, so `?gatefit=` needs nothing from the worker; only `sky.js` reads the region's aurora; the bake tables add only the six's entries (and `RUNWAY_WAY_SKIP`, empty elsewhere); batch E's tool changes sit behind the batch; no user path in `src/`, `tools/` or `tests/`.
+
+### The military sides, looked at (mine; `v076-m2-mil-*`, sheet `out/pics/mil.png`, re-taken at 19:10 after the vehicles' mend)
+
+From above and from the longest runway's middle, by day: Ramstein's shelters on their taxi loops south-west of the runways, Lossiemouth's two shelter sites and its hangars by the Moray coast, Lakenheath's loops of shelters and its ramps, Fairford's hardstand loops and three hangars, Zaragoza's long military apron with a few sheds, Rota's ramp and hangars by the bay. **No aircraft and, in the second set, no vehicle at any of them.** The shelters are flat 9 m blocks, not vaults (as v0.7.5's: logged). The bases' own pictures (each on its ramp and on its final, by day and by night; sheets `out/pics/bases1.png`, `bases2.png`): the player's airliner alone on a bare ramp at the five, by Zaragoza's terminal at the sixth; Lossiemouth's final over the firth, Rota's over the bay, Fairford's over the Cotswold lakes.
+
+### East Asia's night views change only in their skies
+
+This tree against itself with `&auroraband=0&gatefit=0` (`v076-eabs1-*`, `v076-eacs1-*`, `--total 2400`): the ten day views and Beijing's from FL350 by night at max diff 0; six night views differ (Seoul by night, Seoul from 3,000 ft by night, Haneda's, Pudong's and Beijing's finals by night, Tokyo from 3,000 ft by night), and in each every pixel that differs by more than 2 levels lies above the horizon (rows 0 to 216, 248, 389, 390, 383 and 251 of 900; none in the lower half). None of the sixteen shows one of the four airports' gates.
+
+### The suite
+
+`node --test games/flight-sim/tests/*.test.mjs` through the lock and the guard at 19:20: **tests 1,702, pass 1,702** (1,676 at v0.7.5; the reviewer's own run at 19:01, before the mends, 1,701 of 1,701). Europe's files run directly (`FS_REGION=europe node --test tests/v07*-eu-*.test.mjs tests/v070-regions.test.mjs tests/v074-map-*.test.mjs`): 604 of 605; the one is `v074-map-relief`'s East Asian case run under Europe's frame, the file pattern's artifact that v0.7.5 logged.
+
+### Decisions made in the run (v0.7.6), continued
+
+11. **No ground vehicles at the five bases either:** the brief says no parked aircraft and empty ramps; an airline's tugs and buses on an air base's roads read as wrong as its airliners would. Zaragoza keeps its fleet.
+12. **The fitted cab stands 3.0 m from the centreline for every type,** not by the stand's largest type: the game has one bridge shape a stand, and a metre's gap at an A321 is better than a cab inside a 777.
+
+## 2026-11-22, 19:50 KST: v0.7.6 checkpoint 4: the pictures-only review and its mends; Europe's views against the pushed v0.7.5; batch E's ground looked at (Claude Code)
+
+`date`: Sun Nov 22 19:44 KST 2026; "Now drawing from 'AC Power'", 100 %. Out: `docs` (stop 20:30).
+
+### Europe's standard views against the pushed v0.7.5 (`--total 2400`, `v076-euas1-*` and `v076-eucs1-*`, 19:10 to 19:28)
+
+**Twenty-four of the twenty-six at max diff 0.** Two differ at the horizon, each where a new base's 30 m patch lies: from 10,000 ft over the Thames looking west, 127 pixels in rows 165 to 167 (max 2 levels; Fairford, about 150 km west); from FL350 over the Bay of Biscay looking to Madrid, 239 pixels in rows 368 to 374 at the left edge (max 14 levels; Zaragoza, 328 km at bearing 141°, 49° left of the view's heading). None of the standard views looks at batch E's border tiles.
+
+### Batch E's ground, looked at (mine; `v076-e1-eu-*`, sheet `out/pics/batch-e.png`)
+
+The Moray coast from 10,000 ft (Findhorn Bay, the spits, Lossiemouth's shore), Caithness with Orkney beyond from FL350, the Bay of Cádiz from 10,000 ft (the city's spit, the bay, Rota's shore), the Bristol Channel with Devon and Wales from FL350: land where it should be, no wall or step at a tile's edge.
+
+### The pictures-only review (an Opus reader of the pictures alone, 19:13 to 19:36; 321 pictures; its marks: Ramstein 6, Lossiemouth 6, Lakenheath 4, Fairford 6, Zaragoza 5, Rota 6, Zaragoza's centre 6, Ely 6, the Pilar 7, Cádiz 6, out of 10)
+
+It confirmed what was promised for the aurora (strong at Sapporo and Vladivostok, faint at Aomori, none at the other four) and for the jet bridges where the picture is close enough (`v076-rjoo-gate`, `-rjoa-gate`, `-rjgg-gate`: the cab at the front left door), and saw no parked aircraft at any base. Its findings, and what was done:
+
+1. **"Airliner wing inside a building" at Lakenheath** (`v076-egul-taxiway.png`: the taxilane from Victor Ramp between long white slabs). **Measured** (`/tmp/flight-sim/v076/lead/clear.mjs`: every stand's route to every hold against every building, at all six bases): the four slabs (OSM hangars of 166 to 183 by 35 m, in fact open sun shelters over the fighter rows, drawn as solid 20 m blocks) stand 21.8 to 22.2 m from the route's centreline, clear of an A321's wing by 4 m (the picture's overlap is perspective) but not of a 787's or a 777's, and the spots take code E; and the route from spot 3 to 05 ran **through** one flow-through shelter. **Mended:** `BUILDING_SKIP_AT` in `tools/bake_region_airports.py` (buildings not drawn, each named by a map point inside it, with the reason; Lakenheath's five; empty elsewhere); Lakenheath re-baked through the lock (403 buildings to 398, everything else in its file equal; LXGB, EGQS and RJNK byte-identical with the table in); **`tests/v076-eu-bases-clear.test.mjs`** (6): at each base no building within an A321's half span of any route, and none within a 777's, but for Lossiemouth's routes to 28. Lakenheath's day run again 13 of 13, and its picture is clear.
+   - **Left, logged:** Lossiemouth's routes to its short runway's 28 end pass the corners of two hangars at 18.3 and 19.7 m: clear for an A321 by 0.4 m, not for a widebody.
+2. **"A white box under the aircraft at take-off" at Lossiemouth** (`v076-egqs-runway.png`): a baggage train crossing the runway on a service road, from before the vehicles' mend (checkpoint 3). Lossiemouth's and Ramstein's day runs taken again for their pictures (Lossiemouth 13 of 13; Ramstein's in hand).
+3. **Zaragoza's parked airliners shown only as specks:** a view of its civil apron taken (`v076-m2-lezg-civil-apron.png`, and by night): the terminal and nine airliners on their stands.
+4. **A generated town block through Cádiz Cathedral, and blocks crowding Ely** (it judged the second try, taken after my mend, as fixed but bare): `BLOCKS_CLEAR` and `landmarkBlockMask()` in `src/world/landmarks.js`, set with the centres' mask in `world.js`: the town's 400 m blocks leave the ground of v0.7.6's two landmarks that stand in generated towns free (one to four blocks each; no older landmark is in the table, so no earlier view loses a block; East Asia's mask is the centres' own function as before). `tests/v076-eu-landmarks.test.mjs` gains the case in both regions. The cathedrals now stand in a block of bare street grid: logged for the look pass.
+5. **Logged for the look pass, not mended** (ROADMAP's "Found while building v0.7.6"): the bases read as generic (bare ramps and office-like blocks; the shelters flat boxes, not vaults); hangars and pads not joined to a taxiway (Zaragoza's military side, a pad at Lossiemouth) and stepped apron edges (Fairford); the airfield's green grass a hard-edged rectangle on Zaragoza's dry ground; the aurora drawn over the far ridges' outlines (the sky's own, as before); Zaragoza's far bank a carpet of the same courtyard block; the Ebro wide and soft-edged close up; the gate pairs' camera too far to show the stop bar; Zaragoza's stands 1 and 2 overlap as OSM maps them.
+6. **Not confirmed:** a thin grass strip where Lossiemouth's runways meet (`v076-m2-mil-egqs-runway.png`; medium confidence by its own word): the take-off picture across the same crossing shows one surface, and `tests/v072-eu-crossings.test.mjs` passes for it. Logged.
+7. **It couldn't judge the flights:** `browser-v060-flight.mjs` wrote its pictures under another prefix than the reviewer listed. Looked at by the lead instead (below, in the last entry).
+
+### Zaragoza's taxi-in from its other two ends (the definition of done's "from each end")
+
+`check-airport.sh europe LEZG 12L 30L taxi-in` (19:33): from 12L to stand 10B via A-4, C-1.1 (1,487 m); from 30L via B-4, TB, B-1, C-1, A-1, TA, C-1.1, crossing both runways (7,407 m); no console errors. With the subagent's 30R and 12R, all four.
+
+### Decisions made in the run (v0.7.6), continued
+
+13. **Lakenheath's five buildings are left out rather than the ramp spots moved:** the sun shelters are open canopies in fact, the game has one way to draw a building (a solid block), and the spots, their routes and their checks stay as they passed.
+14. **The town blocks' ground rule is for v0.7.6's two landmarks only.** The older landmarks that stand in generated towns keep their blocks until the look pass, so every earlier view is unchanged.
+
+## 2026-11-22, 19:55 KST: v0.7.6 ready to push (Claude Code)
+
+`date`: Sun Nov 22 19:54 KST 2026; `pmset -g batt`: "Now drawing from 'AC Power'", 100 %, charged. The game shows `Flight Sim v0.7.6 · CL#261122`. **`sh tools/push.sh v0.7.6`**, from `games/flight-sim/`. The brief's stop was 22:00.
+
+### The definition of done (`briefs/V0-7-6.md`), item by item
+
+| Item | Result | Evidence |
+|---|---|---|
+| Forty-three airports listed in Europe; nothing pending | **done** | `promote-airport.py`'s last line, 18:45: "listed 43 airports, 43 patches, 14 coasts; pending left None []"; seventy-two in all |
+| Batch E: seams bit-identical, old cores by hash, sizes | **done, five tiles by the rule** (the planning counted fifteen; nine are open sea, one outside the outline) | checkpoint 1: 760 pairs at 250 m and 110 at 1 km, 0 differ; 219 of 219 old cores by SHA-256; 147 new 31 m sub-files; `data/` 519 MB, Europe 314 MB |
+| Part 0: the chain's waiting check | **done** | checkpoint 1: seen to fire on a tile that waits |
+| East Asia's sixteen views at max diff 0 against the pushed v0.7.5 (`--total 2400`) | **done** | checkpoints 2 and 3: all sixteen at max diff 0 with `&auroraband=0&gatefit=0`; with the switches on, six night views differ, each above its horizon only; no view of the four airports' gates among the sixteen |
+| East Asia's aurora banded | **done** | 40 to 44 N; the seven places' night views old and new; `tests/v076-aurora.test.mjs` |
+| The four airports' stands at their bridges | **done, by the bridge and the stop bar** (the cause was the game's own, at every airport: decision 5) | `gateFit()`; the four gates old and new; the four day runs again 13 of 13; `tests/v076-gate-fit.test.mjs` (6) |
+| Europe's earlier views unchanged away from batch E | **done** | checkpoint 4: twenty-four of twenty-six at max diff 0; two differ at the horizon where Fairford's and Zaragoza's patches lie |
+| Each base through the whole check: day, night, taxi-in from each end, 60 fps at a ramp spot and on the final, on mains and alone | **done** | checkpoints 2 and 4: 13 of 13 by day and by night at all six, taxi-in from every end (Zaragoza's four), 60.0 to 60.1 fps at a spot and 60.0 on the final by day and night, worst frame 16.8 ms, alone on mains |
+| The military sides empty, no stand offered there | **done** | no parked aircraft and no ground vehicle at the five bases (`NO_PARKED`), no gate; Zaragoza's military side has no stand (`MILITARY`); the stills from above and from the runway; `tests/v076-bases-empty.test.mjs` (7) |
+| The flights | **done** | checkpoint 3: Heathrow to Lossiemouth end to end 12 of 12 at FL300 (A 90); the five finals landed, A 91 to A 93 |
+| The unit suite through the guard | **1,704 of 1,704** (19:54) | `/tmp/flight-sim/v076/out/lead/suite5.txt`; Europe's files directly 611 of 612 (v0.7.5's known file-pattern artifact) |
+| The pictures looked at | **done** | each base on its ramp and final by day and night; the landmarks; Zaragoza from 3,000 ft; the Moray coast; the aurora's seven; a gate at each of the four; the flights (sheets in `/tmp/flight-sim/v076/out/pics/`) |
+| The two reviews | **done** | checkpoint 3 (the diff: five findings, four mended, one logged) and checkpoint 4 (the pictures: Lakenheath's sheds, the vehicles, Cádiz's block mended; the looks logged) |
+| Zaragoza's centre; the three landmarks | **done**; **Kaiserslautern's centre not done** ("if time is left": no extract could be had) | checkpoint 2 |
+| Written up by the stop, lid-closeable | this entry; "Lid-closeable", below | |
+
+### After checkpoint 4 (19:44 to 19:54)
+
+- **Ramstein's day run again 13 of 13** (A 91), Lossiemouth's 13 of 13 (A 92), Lakenheath's 13 of 13 (A 92): their pictures are from after the vehicles' mend and Lakenheath's re-bake (`out/ap3/`).
+- **The flights' pictures, looked at by the lead** (`v060-flight-v076-*`, sheet `out/pics/flights.png`): the cruise over Britain, the short final over the firth into Lossiemouth and its landing card (A 90, "Taxi to stand 1 via D, crossing 10/28"), the short finals over Ramstein's town, Lakenheath's forest, Fairford's fields, Zaragoza's dry country and Rota's bay, and Rota's card (A 92).
+- **The suite, last: tests 1,704, pass 1,704** (through the lock and the guard, 19:54).
+
+### What Shane should know
+
+1. **Only Zaragoza and Rota come from an AIP** (ENAIRE's). Germany's and the UK's military AIP sites refused the connection today, so Ramstein's, Lossiemouth's, Lakenheath's and Fairford's lights, ILS categories and approach lights are `[EST]` from OurAirports, OSM and public figures; their runways' places and lengths match the published ones.
+2. **The jet bridges' fault was the game's own and is at every airport:** the stop bar and the bridge are drawn 21 m ahead of every parked nose. v0.7.6 fits them at the brief's four airports; `?gatefit=1` shows all sixty-six fitted, for v0.7.7's look pass to decide.
+3. **Batch E is five tiles, not fifteen** (`data/` 519 MB, where the brief expected about 530): the rule asks for land, and nine of the planning's tiles are open sea.
+4. **Each base has three to five ramp spots for the player, all taking the 777,** no gate, no parked aircraft and no ground vehicles; Zaragoza's civil apron has its airliners.
+5. **Lakenheath's runway is 05/23 here** (OSM's and OurAirports' name; 06/24 may be the painted one today), and five of its buildings are left out so that no taxi route from a ramp spot passes within a wing of one.
+6. **The pictures-only reviewer's marks are 4 to 7 out of 10:** the bases read as bare concrete with plain blocks (the shelters are flat 9 m boxes, not vaults). That is the look pass's, and it is in ROADMAP.
+7. **Not done:** Kaiserslautern's centre.
+
+### Lid-closeable
+
+- **The documents** (drafted by the `docs` subagent, 18:19 to 19:56, from these entries and the five reports; read and finished by the lead): `Updates.md` (the v0.7.6 entry), `ROADMAP.md` (row 13, the version plan, "Found while building v0.7.6", the size, the fixed findings struck through), `AGENTS.md` (seventy-two airports; State; Next), `HANDOFF.md` (its first section rewritten for v0.7.7, which has no brief and is planned with Shane first), `README.md`, `PLAN.md`; `src/version.js` (0.7.6, CL#261122); the hub's blurb. No marker left in any of them (`grep -c "\[\[TODO"`: 0 in all six).
+- **`date`: Sun Nov 22 19:59 KST 2026; "Now drawing from 'AC Power'", 100 %, charged.** `cpu-guard.py --sweep`: nothing above 50 % CPU for more than five minutes; `--status`: no slots in use.
+- **Everything running out of `/tmp/flight-sim`, the game's `tests/` or its `tools/`, or headless: nothing,** at 19:59 (`ps -Ao pid,lstart,command | grep -E "/tmp/flight-sim|flight-sim/tests|flight-sim/tools|--headless|playwright"`). The server on 8014 stopped by its PID (23332); the port answers nothing. No `.part` file left in `reference/raw/osm/`. The Chrome processes still listed are Shane's own browser: none was started or stopped by the run.
+- **One thing is left running on purpose, by Shane's word at 03:16:** a background command of the session's that reads `GIT_OPTIONAL_LOCKS=0 git log --oneline -1` once a minute and ends when the top line is `v0.7.6`; then `python3 tools/build-log.py`, and the final hand-over ends the run (v0.7.7 has no brief). It reads only.
+- The scratch is `/tmp/flight-sim/v076/` (the frozen pushed v0.7.5, the lock and scripts, the subagents' briefs and reports, the checks' output, the contact sheets; gone at a restart). 348 pictures `v076-*` and `v060-flight-v076-*` are in `Claude outputs/flight-sim/`. Three OSM extracts were added to `reference/raw/osm/` (git-ignored): `aragon-261122`, `england-east-261122`, `england-south-west-261122`.
+- No path with a user's name in `src/`, `tools/` or `tests/` (grep: none).
+- **The subagents of v0.7.6, all Opus, four at once at most:** `bake`, `apa`, `apb`, `apc`, `city`, `docs`, the code reviewer and the pictures reviewer; all reported, none running.

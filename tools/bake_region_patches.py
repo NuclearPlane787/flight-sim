@@ -399,6 +399,27 @@ if bc.EUROPE:
     FIELD_RUNWAYS = FIELD_RUNWAYS | {'LXGB', 'LIPZ', 'LPPR', 'LIRN'}
     FIELD_PAVEMENT = FIELD_PAVEMENT | {'LXGB', 'LIPZ', 'LPPR', 'LIRN'}
 
+# ---- v0.7.6 (airports subagent apc): Zaragoza (LEZG), pending (staged with FS_PATCH_OUT=/tmp/flight-sim/v076/apc/
+# patches): ~35 x 23 km along the Ebro valley (12L/30R's and 12R/30L's finals at 120 deg true, ~15 km out each way: 12R's
+# to the north-west over the plateau, 30R's to the south-east towards the city; GLO-30 N41 W002 and N41 W001, every grid
+# corner inside them). Flattened to its runways' own profiles between the pavement's ends. Inland: coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LEZG']
+    PATCHES['zaragoza'] = (-1.25, 41.57, -0.84, 41.76)
+    COAST += ['LEZG']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LEZG'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LEZG'}
+# ---- v0.7.6 (airports subagent apc): Rota (LERT), pending (the same staging): ~39 x 27 km over the Bay of Cádiz's north
+# shore (10/28's finals at 097 deg true, ~15 km out each way: 10's over the sea west of Rota, 28's over the campiña towards
+# El Puerto de Santa María; Cádiz across the bay; GLO-30 N36 W007 alone, every grid corner inside it). Flattened to its
+# runway's own profile between the pavement's ends. A 10 m coast patch: the field's 16 km square takes in the sea.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['LERT']
+    PATCHES['rota'] = (-6.56, 36.55, -6.16, 36.75)
+    COAST += ['LERT']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'LERT'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'LERT'}
+
 
 def field_plane(icao, x0, y0, cell, nx, ny):
     """The plane through the runway ends (x, y, elevM) of data/airports/<icao>.json, at the grid's cell centres."""
@@ -419,6 +440,50 @@ def field_plane(icao, x0, y0, cell, nx, ny):
 # the game can't drift apart; each profile is then profileAt()'s piecewise line through them, from end 0's pavement end.
 # Only these airports: every other field keeps its straight profiles (its patch bakes byte-identical to v0.7.3's).
 FIELD_BENT = {'LKPR'} if bc.EUROPE else set()
+
+# ---- v0.7.6 (airports subagent apb): Lossiemouth (EGQS), pending (staged with FS_PATCH_OUT=/tmp/flight-sim/v076/apb/
+# patches): ~32 x 24 km on the Moray coast (05/23's finals at 044 deg true, 05's over the Laich of Moray to the south-west,
+# 23's over the Moray Firth; 10/28's at 096 deg; GLO-30 N57 W004 and N57 W003). Flattened to its runways' profiles between
+# the pavement's ends as the game bends them where 10/28 crosses 05/23 (FIELD_BENT, as Prague's: OurAirports' ends put
+# 10/28 about 5 m over 05/23's straight line there). A 10 m coast patch (the sea 2 km north of the field).
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EGQS']
+    PATCHES['lossiemouth'] = (-3.60, 57.60, -3.08, 57.82)
+    COAST += ['EGQS']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EGQS'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EGQS'}
+    FIELD_BENT = FIELD_BENT | {'EGQS'}
+
+# ---- v0.7.6 (airports subagent apa): Ramstein (ETAR), pending (staged with FS_PATCH_OUT=/tmp/flight-sim/v076/apa/
+# patches): ~35 x 18 km over the Westpfalz (08/26's and 09/27's finals at 083 to 087 deg true, ~15 km out each way: west
+# towards Landstuhl and the Sickinger Höhe, east towards Kaiserslautern; GLO-30 N49 E007, every grid corner inside it).
+# Flattened to its two parallel runways' own profiles between the pavement's ends. Inland: coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['ETAR']
+    PATCHES['ramstein'] = (7.36, 49.36, 7.84, 49.52)
+    COAST += ['ETAR']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'ETAR'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'ETAR'}
+
+# ---- v0.7.6 (airports subagent apa): Fairford (EGVA), pending (staged with FS_PATCH_OUT=/tmp/flight-sim/v076/apa/
+# patches): ~32 x 19 km over the upper Thames vale and the Cotswolds' south edge (09/27's finals at 088 deg true, ~15 km
+# out each way; GLO-30 N51 W003 and N51 W002, the grid's west corners past 2 W). Flattened to its runway's own profile
+# between the pavement's ends. Inland: coast says.
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EGVA']
+    PATCHES['fairford'] = (-2.02, 51.60, -1.56, 51.77)
+    COAST += ['EGVA']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EGVA'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EGVA'}
+# ---- v0.7.6 (apb): Lakenheath (EGUL), pending (staged the same way): ~27 x 20 km over the Breckland and the Fens' edge
+# (05/23's finals at 056 deg true, ~15 km out each way; GLO-30 N52 E000 alone). Flattened to its runway's profile between
+# the pavement's ends. Coast: bake_region_patches.py coast says (the Wash is ~45 km north).
+if bc.EUROPE:
+    NEW_AIRPORTS += ['EGUL']
+    PATCHES['lakenheath'] = (0.36, 52.32, 0.76, 52.50)
+    COAST += ['EGUL']
+    FIELD_RUNWAYS = FIELD_RUNWAYS | {'EGUL'}
+    FIELD_PAVEMENT = FIELD_PAVEMENT | {'EGUL'}
 
 
 def runway_knots(icao):

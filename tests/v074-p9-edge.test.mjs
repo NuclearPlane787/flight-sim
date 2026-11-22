@@ -88,7 +88,13 @@ for (const id of Object.keys(REGIONS)) {
       if (dOff > 10) midOff++;
     }
     // Before: walls of tens to hundreds of metres (Europe's Cantabrian edge 229 m, East Asia's Taihang 128 m).
-    assert.ok(worstOff > 100 && bigOff > 5, `before: worst ${worstOff.toFixed(0)} m, ${bigOff} over 50 m`);
+    // v0.7.6: Europe's batch E covered Scotland's north (Lewis, Caithness, Orkney), where Europe's last walls were (113 m
+    // at y = 1,280 km in v0.7.5's data); every 250 m edge left in Europe lies in the sea or on low ground (worst 6 m,
+    // on the east edge at x = 1,152 km). So the "before" walls are asserted for East Asia alone; Europe's is that the
+    // blend leaves nothing worse than it found, which a blend that did nothing would pass too: East Asia's case (the
+    // same code) is the one that catches a broken blend now.
+    if (id === 'europe') assert.ok(worstOff < 30 && bigOff === 0 && worstOn <= worstOff + 1, `europe: before ${worstOff.toFixed(1)} m, after ${worstOn.toFixed(1)} m`);
+    else assert.ok(worstOff > 100 && bigOff > 5, `before: worst ${worstOff.toFixed(0)} m, ${bigOff} over 50 m`);
     // After: what is left 2 m across is the difference between the 1 km level's bilinear and the bilinear of its values
     // at the 250 m cells' centres, the 1 km field's kinks at its own cell centres sampled 250 m apart: under a few
     // metres almost everywhere, up to about 27 m on the steepest 1 km slopes (Scotland's north edge, a 150 m/km climb).

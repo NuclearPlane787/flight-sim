@@ -3359,3 +3359,169 @@ export function osakacastle(brg = 1) {
 }
 
 Object.assign(MODELS, { nagoyacastle, nagoyatv, torii, abombdome, osakacastle });
+
+// ================================================================== v0.7.6: three landmarks by the air bases (briefs/V0-7-6.md part 5)
+// The same rules: our own massing from public figures, no logos, lettering or names. Added to EUROPE_MODELS below.
+
+// (Linear colours, darker than they read: the first stills drew 0.6 stone and 0.34 lead nearly white in the sun.)
+const ELY_STONE = [0.40, 0.36, 0.27], ELY_LEAD = [0.12, 0.13, 0.14], PILAR_BRICK = [0.44, 0.25, 0.15], CADIZ_STONE = [0.42, 0.38, 0.28];
+const TILE_GREEN = [0.08, 0.30, 0.16], TILE_YELLOW = [0.66, 0.50, 0.10], TILE_BLUE = [0.10, 0.20, 0.46], TILE_WHITE = [0.66, 0.66, 0.63];
+const TILE_GOLD = [0.62, 0.40, 0.06];
+
+// A dome from y0 of radius r and height h in k gores (meridian strips), each gore's material from mats in turn (one
+// material: a plain dome in k segments); smooth normals from the dome's centre.
+function goredDome(b, x, n, y0, r, h, mats, k = 16, rings = 4) {
+  const pt = (i, j) => { const a = (i / k) * TAU, t = (j / rings) * Math.PI / 2, rr = Math.max(r * Math.cos(t), j === rings ? 0 : 0.3); return [x + rr * Math.cos(a), y0 + h * Math.sin(t), n + rr * Math.sin(a)]; };
+  const inside = b.T([x, y0 + h * 0.3, n]);
+  const nrm = (p) => { const q = b.T(p), c = b.T([x, y0, n]); return [(q[0] - c[0]) / r, (q[1] - c[1]) / h, (q[2] - c[2]) / r]; };
+  for (let i = 0; i < k; i++) {
+    b.set(mats[i % mats.length]);
+    for (let j = 0; j < rings; j++) {
+      const p00 = pt(i, j), p10 = pt(i + 1, j), p01 = pt(i, j + 1), p11 = pt(i + 1, j + 1);
+      b.tri(b.T(p00), b.T(p10), b.T(p11), inside, nrm(p00), nrm(p10), nrm(p11));
+      if (j < rings - 1) b.tri(b.T(p00), b.T(p11), b.T(p01), inside, nrm(p00), nrm(p11), nrm(p01));
+    }
+  }
+}
+const oct = (r, x = 0, n = 0) => shift(circle(r, 8, Math.PI / 8), x, n);
+
+// ------------------------------------------------------------------ Ely
+
+// Ely Cathedral: 163.7 m long (the article), on an east-west axis (local x east). The west tower 66 m (the article) over the
+// Galilee porch, square to its octagonal belfry with four corner turrets [EST: the stages' heights]; the south-west transept
+// beside it with its corner turrets (the north-west transept long fallen); the Norman nave (over 75 m, the article) with its
+// aisles; the Octagon over the crossing, 23 m across inside (the article), its lead roof and the timber lantern to 52 m (the
+// article); the transepts and the long choir to the flat east end; the Lady Chapel to the north-east. The widths and every
+// height but the two towers' [EST]. Barnack stone (pale), lead roofs; floodlit at night.
+export function ely(brg = 0) {
+  const b = new Builder(0.43).frame(0, 0, brg);
+  const stone = GLASS(ELY_STONE, 6.0, 4.0, 0.0, 0.06, { glow: flood(1.0) }), lead = PLAIN(ELY_LEAD, 0.3, { glow: flood(0.3) });
+  b.set(stone);
+  box(b, -78, 0, 0, 14, 4, 6);                                  // the Galilee porch
+  box(b, -37, 0, 0, 12, 23, 12);                                // the nave's aisles
+  box(b, -37, 0, 12, 23, 23, 6.5);                              // the nave's clerestory
+  box(b, 0, 0, 0, 22, 9, 27);                                   // the transepts
+  box(b, 46, 0, 0, 12, 34, 12);                                 // the choir's aisles
+  box(b, 46, 0, 12, 24, 34, 6.5);                               // the choir
+  box(b, 24, 21, 0, 16, 15, 7);                                 // the Lady Chapel
+  b.set(lead);
+  gable(b, -78, 0, 14, 18, 4, 6, true);
+  gable(b, -37, 0, 23, 29, 23, 6.5, true);
+  gable(b, 0, 0, 22, 28, 9, 27);
+  gable(b, 46, 0, 24, 30, 34, 6.5, true);
+  gable(b, 24, 21, 16, 21, 15, 7, true);
+  // the Octagon: the stone octagon over the crossing, its corner pinnacles, the lead roof and the lantern
+  b.set(stone);
+  b.loft([at(oct(15.5), 0), at(oct(15.5), 27)]);
+  for (const [x, n] of oct(15.5)) spire(b, x, n, 27, 34, 1.0, 4);
+  b.set(lead);
+  b.loft([at(oct(15.5), 27), at(oct(7.2), 33)], { capTop: false });
+  b.set(GLASS([0.36, 0.33, 0.26], 3.0, 1.6, 0.4, 0.2, { glow: flood(1.1) }));
+  b.loft([at(oct(6.6), 33), at(oct(6.6), 48)]);
+  for (const [x, n] of oct(6.6)) spire(b, x, n, 48, 52, 0.6, 4);
+  b.set(lead);
+  b.loft([at(oct(6.6), 48), at(oct(1.5), 49.5)]);
+  // the west tower: square to 42 m, its octagon to 63 m, the four turrets to 66 m
+  const TX = -68;
+  b.set(stone);
+  box(b, TX, 0, 0, 42, 7.5, 7.5);
+  for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) b.loft([at(oct(1.8, TX + dx * 7, dn * 7), 0), at(oct(1.6, TX + dx * 7, dn * 7), 46)]);
+  b.loft([at(oct(7.0, TX, 0), 42), at(oct(6.6, TX, 0), 63)]);
+  for (const [dx, dn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) { const x = TX + dx * 4.6, n = dn * 4.6; b.loft([at(oct(1.1, x, n), 56), at(oct(1.0, x, n), 64.5), at(oct(0.15, x, n), 66)]); }
+  // the south-west transept, with its octagonal corner turrets
+  box(b, TX, -16.5, 0, 30, 7.5, 9);
+  for (const dx of [-1, 1]) b.loft([at(oct(2.4, TX + dx * 7.5, -25.5), 0), at(oct(2.2, TX + dx * 7.5, -25.5), 40), at(oct(0.2, TX + dx * 7.5, -25.5), 45)]);
+  box(b, TX, 14, 0, 9, 7.5, 6.5);                               // what stands of the north-west transept
+  b.light([TX, 66, 0], 0);
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Zaragoza
+
+// The Basílica del Pilar: 130 by 67 m (the article), its long axis along the Ebro (local x), brick walls (the article); the
+// four corner towers about 92 m (the brief; the Spanish article says 98), each square to its belfry, an octagonal stage, a
+// small dome and a spire [EST: the stages]; the great dome over the centre on its drum and the ten smaller domes round it,
+// eleven in all (the article), their caps in glazed tiles of green, yellow, blue and white (the article) as gores; the
+// domes' sizes and heights, the walls' and the roof's heights and the domes' plan [EST]. Floodlit at night.
+export function pilar(brg = 0) {
+  const b = new Builder(0.47).frame(0, 0, brg);
+  const brick = GLASS(PILAR_BRICK, 5.0, 4.0, 0.0, 0.05, { glow: flood(1.0) }), plain = GLASS([0.40, 0.37, 0.30], 5.0, 4.0, 0.0, 0.05, { glow: flood(0.9) });
+  const tiles = [TILE_GREEN, TILE_YELLOW, TILE_BLUE, TILE_WHITE].map((c) => PLAIN(c, 0.55, { glow: flood(0.5) }));
+  const HX = 65, HN = 33.5, WALL = 27;
+  b.set(brick);
+  box(b, 0, 0, 0, WALL, HX - 2, HN - 2);
+  b.set(PLAIN([0.22, 0.15, 0.10], 0.15, { glow: flood(0.3) }));
+  box(b, 0, 0, WALL, WALL + 3, HX - 3, HN - 3);                    // the roofs between the domes
+  // the great dome: its drum, the cap in gores, the lantern
+  b.set(brick);
+  cyl(b, 0, 0, WALL + 3, 46, 12, 12, 16);
+  goredDome(b, 0, 0, 46, 12, 15, tiles, 16, 4);
+  b.set(plain);
+  cyl(b, 0, 0, 61, 67, 2.4, 2.0, 8);
+  spire(b, 0, 0, 67, 72, 1.2, 6);
+  // the ten smaller domes: four on the axis, three along each side [EST: the plan]
+  for (const [x, n] of [[-46, 0], [-24, 0], [24, 0], [46, 0], [-42, 19], [0, 21], [42, 19], [-42, -19], [0, -21], [42, -19]]) {
+    b.set(brick);
+    cyl(b, x, n, WALL + 3, 36, 5.5, 5.5, 12);
+    goredDome(b, x, n, 36, 5.5, 6.5, tiles, 8, 3);
+    b.set(plain);
+    cyl(b, x, n, 42.5, 46, 1.2, 1.0, 6);
+  }
+  // the four towers at the corners
+  for (const [sx, sn] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    const x = sx * (HX - 5.5), n = sn * (HN - 5.5);
+    b.set(brick);
+    box(b, x, n, 0, 52, 5.5, 5.5);
+    box(b, x, n, 52, 64, 4.6, 4.6);                                    // the belfry
+    b.set(plain);
+    b.loft([at(oct(4.0, x, n), 64), at(oct(3.6, x, n), 74)]);
+    b.set(tiles[(sx + 1) / 2 + (sn + 1)]);
+    b.loft([at(oct(3.6, x, n), 74), at(oct(2.8, x, n), 78), at(oct(1.2, x, n), 80.5)]);
+    b.set(plain);
+    cyl(b, x, n, 80.5, 85, 1.0, 0.8, 6);
+    spire(b, x, n, 85, 92, 0.7, 6);
+    b.light([x, 92, n], 0);
+  }
+  return b.result();
+}
+
+// ------------------------------------------------------------------ Cádiz
+
+// Cádiz Cathedral: on the sea front (the Campo del Sur behind its apse), the main front to the north-west (local -x) between
+// its two towers, about 54 m from the ground (the Spanish article; about 56 m the brief); the crossing's dome on its drum,
+// covered in golden tiles (the article), about 52 m to its lantern (the brief) [EST]; the nave, the transept and the
+// ambulatory round the apse; the plan's sizes and the walls' heights [EST]. Limestone and shell stone (the article: pale).
+export function cadiz(brg = 0) {
+  const b = new Builder(0.53).frame(0, 0, brg);
+  const stone = GLASS(CADIZ_STONE, 6.0, 4.0, 0.0, 0.06, { glow: flood(1.0) });
+  b.set(stone);
+  box(b, -6, 0, 0, 18, 34, 26);                                    // the aisles and chapels
+  box(b, -6, 0, 18, 28, 34, 10);                                   // the nave
+  box(b, 8, 0, 0, 28, 10, 30);                                     // the transept
+  profile(b, 26, 0, [[0, 24], [18, 24], [18, 11], [26, 11]], 14, false);   // the ambulatory and the apse
+  b.set(PLAIN([0.30, 0.27, 0.21], 0.15, { glow: flood(0.4) }));
+  box(b, -6, 0, 28, 30, 34, 10); box(b, 8, 0, 28, 30, 10, 30);      // the flat roofs and their balustrades
+  profile(b, 26, 0, [[26, 11], [30, 4], [31, 0.5]], 14);
+  // the dome over the crossing
+  b.set(stone);
+  cyl(b, 8, 0, 30, 37, 12, 12, 16);
+  goredDome(b, 8, 0, 37, 12, 11, [PLAIN(TILE_GOLD, 0.6, { glow: [0.45, 0.33, 0.10] })], 16, 4);
+  b.set(stone);
+  cyl(b, 8, 0, 48, 51, 2.4, 2.0, 8);
+  goredDome(b, 8, 0, 51, 2.0, 1.0, [PLAIN(TILE_GOLD, 0.6, { glow: [0.45, 0.33, 0.10] })], 8, 2);
+  // the front between the towers and the two towers: square to 36 m, the belfry, the octagonal lantern and its cap
+  b.set(stone);
+  box(b, -42, 0, 0, 30, 4, 12);
+  for (const s of [-1, 1]) {
+    const tn = s * 17;
+    box(b, -40, tn, 0, 36, 5.5, 5.5);
+    box(b, -40, tn, 36, 44, 4.6, 4.6);
+    b.loft([at(oct(4.0, -40, tn), 44), at(oct(3.6, -40, tn), 49)]);
+    goredDome(b, -40, tn, 49, 3.6, 4.0, [PLAIN([0.38, 0.35, 0.28], 0.3, { glow: flood(0.8) })], 8, 3);
+    spire(b, -40, tn, 53, 54, 0.5, 4);
+    b.light([-40, 54, tn], 0);
+  }
+  return b.result();
+}
+
+Object.assign(EUROPE_MODELS, { ely, pilar, cadiz });

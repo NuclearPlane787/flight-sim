@@ -61,5 +61,9 @@ test('every airport in both regions has terminal shapes to draw', () => {
     }
   }
   // (Gimhae's file has no building tagged as a terminal: its shapes are drawn from nothing, and it gets no label.)
-  assert.deepEqual(none.filter((i) => i !== 'RKPK'), []);
+  // v0.7.6: the three RAF bases have no passenger terminal at all (Ramstein's and Rota's air terminals and Zaragoza's
+  // civil one are in their files): hangars, shelters and ramps are what the map has to draw there.
+  const BASES = ['EGQS', 'EGUL', 'EGVA'];
+  assert.deepEqual(none.filter((i) => i !== 'RKPK' && !BASES.includes(i)), []);
+  for (const i of BASES) assert.ok(none.includes(i), `${i} has a terminal now: take it off this list`);
 });

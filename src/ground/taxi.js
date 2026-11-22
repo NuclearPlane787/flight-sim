@@ -666,6 +666,24 @@ const AIP_STANDS = {
   // and 5 to 8 (AD 2.9); AD 2.4 handles freighters up to the B747. Spots 9 and 10 stand 58 m apart, code D's spacing.
   // Code E at 1, 2, 3 and 5 to 8 only, the middle of the terminal first [EST: which spots take code E isn't published].
   RJOA: { exclude: (ref, span) => span > 52 && !['1', '2', '3', '5', '6', '7', '8'].includes(ref), prefer: ['5', '6', '3', '7'] },
+  // v0.7.6 (airports subagent apc): Zaragoza (pending), the civil apron only (the air force's side has no stand). Spain's
+  // ENAIRE AIP (LEZG AD 2.8, 2.20): PRKG 9 and 9A PCN 107 and 12 and 13 PCN 99 (the rest 62 to 64); AD 2.20.9 has code E
+  // and F four-engined aircraft into 12 and 13 and in and out of 6 to 9A on two engines. Code E at 6 to 9A, 12 and 13
+  // only, 12, 13 and 9 first [EST: no list of code E stands is published].
+  LEZG: { exclude: (ref, span) => span > 52 && !['6', '6A', '7', '7A', '8', '8A', '9', '9A', '12', '13'].includes(ref), prefer: ['12', '13', '9'] },
+  // v0.7.6 (airports subagent apc): Rota (pending), a naval air station: its only stands are the player's five ramp
+  // spots on the main apron, placed 100 m apart with room for the 777-300ER (64.8 m span): code E at all five [EST].
+  LERT: { exclude: () => false, prefer: ['1', '2', '3', '4', '5'] },
+  // v0.7.6 (airports subagent apb): Lossiemouth and Lakenheath (pending): the player's own ramp spots, placed by the bake
+  // with room for the 777-300ER (64.8 m span, 73.9 m long) [EST]; code E at every one, the only stands there.
+  EGQS: { exclude: () => false, prefer: ['1', '2', '3', '4'] },
+  EGUL: { exclude: () => false, prefer: ['1', '2', '3'] },
+  // v0.7.6 (airports subagent apa): Ramstein (pending), the player's four ramp spots on Ramp 1, 92 m apart on OSM's
+  // parking-row taxilanes [EST]: code E at all four (a C-5's and a 747's ramp), 1 first.
+  ETAR: { exclude: () => false, prefer: ['1', '3', '2', '4'] },
+  // v0.7.6 (airports subagent apa): Fairford (pending), the player's three ramp spots on the north-east apron, 75 m apart
+  // [EST]: code E at all three (the B-52's and the tankers' field), 1 first.
+  EGVA: { exclude: () => false, prefer: ['1', '2', '3'] },
   // Frankfurt (v0.7.0, pending): the DFS AIP's stand charts aren't read; the geometry decides which stands take code E.
   // Offered first: the bridge stands of the widebody piers that the geometry gives the 777 (Terminal 1's A pier's south
   // side, the B pier's B26 to B48, Terminal 2's D and E). [EST]

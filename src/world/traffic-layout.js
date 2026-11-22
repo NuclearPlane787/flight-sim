@@ -292,7 +292,13 @@ export function placeParked(airport, opts = {}) {
 
 // v0.6.0: placeParked in slices (yields inside its stand loop when tick() says; returns the same list),
 // for the airports built near the camera (traffic.js trafficInSteps).
+// v0.7.6 (Shane, 2026-11-22: the military aprons "Empty"): Europe's bases, where every stand in the data is one of the
+// player's own ramp spots (no gate, no parked traffic). Zaragoza isn't here: its civil apron gets airliners, and its
+// military side has no stand to park on.
+export const NO_PARKED = new Set(['ETAR', 'EGQS', 'EGUL', 'EGVA', 'LERT']);
+
 export function* placeParkedInSteps(airport, { heightAt = null, wide = airport.icao === 'RKSI', fill = FILL } = {}, tick = () => false) {
+  if (NO_PARKED.has(airport.icao)) { yield 'parked: ready'; return []; }
   const R = rng(hashString(`parked:${airport.icao}`));
   const stands = (airport.stands || []).slice();
   // Seeded shuffle (Fisher–Yates).
@@ -479,6 +485,9 @@ const CART_GAP = 3.6;     // m between a baggage train's hitch points
 // pulling 3 carts) and fuel truck. Each drives one chained road: round and round if it's
 // closed, back and forth if not, at 5–10 m/s, keeping to the right.
 export function createVehicles(airport, { heightAt = null, count = null } = {}) {
+  // v0.7.6: no tugs, buses or baggage trains at a base either (NO_PARKED): an airline's ground fleet on an air base's
+  // roads isn't "empty". An explicit count (the tests') still makes a fleet.
+  if (count == null && NO_PARKED.has(airport.icao)) count = 0;
   const R = rng(hashString(`vehicles:${airport.icao}`));
   // Prefer the roads on the aprons (a third of their points on one), then those within
   // 250 m of a stand, and the landside and perimeter roads only if there aren't enough.

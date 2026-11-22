@@ -141,6 +141,8 @@ EU_SOURCES = {
     'nord-est': 'osm/nord-est-261121.osm.pbf',
     'rhone-alpes': 'osm/rhone-alpes-261121.osm.pbf',
     'sud': 'osm/sud-261121.osm.pbf',
+    # v0.7.6
+    'aragon': 'osm/aragon-261122.osm.pbf',
 }
 EU_CENTRES = {
     # the City, Westminster and the South Bank, east to Canary Wharf (one box: the river's bend between is thin)
@@ -212,6 +214,9 @@ EU_CENTRES = {
     'porto': ('Porto', 'portugal', (-8.623, 41.133, -8.600, 41.150), (41.142, -8.612, 3.0)),
     # the old centre (the Spanish Quarter, the decumani) down to the port and the Castel Nuovo
     'naples': ('Naples', 'sud', (14.240, 40.834, 14.265, 40.856), (40.845, 14.252, 3.0)),
+    # v0.7.6 (briefs/V0-7-6.md part 5): one more tight core, held to EU_CORE_VERTS
+    # the old town between the Ebro and the Paseo de la Independencia: the Plaza del Pilar, La Seo, the stone bridge's two banks
+    'zaragoza': ('Zaragoza', 'aragon', (-0.895, 41.640, -0.862, 41.666), (41.655, -0.879, 3.0)),
 }
 EU_MAX_COUNT = 40000
 EU_MAX_VERTS = 271578
@@ -225,14 +230,16 @@ EU_EST_FLOORS = {'london': 4, 'paris': 5, 'frankfurt': 4, 'madrid': 5, 'zurich':
                  'copenhagen': 5, 'manchester': 4,
                  'duesseldorf': 4, 'cologne': 4, 'prague': 5, 'geneva': 5, 'nice': 5, 'edinburgh': 4, 'glasgow': 4,
                  'nantes': 4, 'santiago': 3,
-                 'hamburg': 5, 'venice': 4, 'marseille': 5, 'lyon': 5, 'porto': 4, 'naples': 5}
+                 'hamburg': 5, 'venice': 4, 'marseille': 5, 'lyon': 5, 'porto': 4, 'naples': 5,
+                 'zaragoza': 5}
 # v0.7.1: the new nine's own vertex budget (Zurich's size: 45,747 vertices built to 122,830 triangles, so about
 # 55,000 vertices is about 150,000 triangles). Last night's nine keep EU_MAX_VERTS.
 EU_CORE_VERTS = {c: 55000 for c in ('toulouse', 'berlin', 'milan', 'vienna', 'brussels', 'dublin', 'lisbon',
                                     'copenhagen', 'manchester',
                                     'duesseldorf', 'cologne', 'prague', 'geneva', 'nice', 'edinburgh', 'glasgow',
                                     'nantes', 'santiago',
-                                    'hamburg', 'venice', 'marseille', 'lyon', 'porto', 'naples')}
+                                    'hamburg', 'venice', 'marseille', 'lyon', 'porto', 'naples',
+                                    'zaragoza')}
 if EUROPE:
     SOURCES, CENTRES = EU_SOURCES, EU_CENTRES
 

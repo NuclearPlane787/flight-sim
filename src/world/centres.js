@@ -77,6 +77,8 @@ const COUNTRY = {
   duesseldorf: 3, cologne: 3, prague: 4, geneva: 3, nice: 4, edinburgh: 3, glasgow: 5, nantes: 3, santiago: 4,
   // v0.7.3: six more. Hamburg's brick; Lyon's pale stone under grey roofs; Venice, Marseille, Porto and Naples plaster under terracotta.
   hamburg: 5, venice: 4, marseille: 4, lyon: 3, porto: 4, naples: 4,
+  // v0.7.6: Zaragoza's plaster and brick under terracotta, the south's look as Madrid's.
+  zaragoza: 4,
 };
 // Every centre stands since v0.7.0 (v0.6.0's flags allowed only Seoul, Songdo and Busan with the region off).
 export function centreAllowed(id) { return true; }
