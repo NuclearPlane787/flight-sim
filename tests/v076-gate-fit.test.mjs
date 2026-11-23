@@ -15,7 +15,8 @@ const terms = (a) => (a.buildings || []).filter((b) => b.kind === 'terminal').ma
 test('the table: the four airports, and nothing else without the switch', () => {
   assert.deepEqual([...G.GATE_FIT].sort(), ['RJGG', 'RJOA', 'RJOO', 'RKTU']);
   for (const i of ['RJGG', 'RJOO', 'RJOA', 'RKTU']) assert.equal(G.gateFit(i), true, i);
-  for (const i of ['RJNK', 'RKJK', 'RJTT', 'RKSI', 'EGLL', 'LEZG']) assert.equal(G.gateFit(i), false, i);
+  // v0.7.8 (changed on purpose): the fit is at every airport by default (GATES78); with FS_GATES78=0 the table alone, as it was.
+  for (const i of ['RJNK', 'RKJK', 'RJTT', 'RKSI', 'EGLL', 'LEZG']) assert.equal(G.gateFit(i), G.GATES78, i);
   assert.equal(G.NOSE_AT, NOSE_X);
 });
 

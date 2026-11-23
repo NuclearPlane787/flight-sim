@@ -31,6 +31,18 @@ export const LANDMARKS77 = (() => {
   try { const v = typeof process !== 'undefined' && process.env ? process.env.FS_LANDMARKS77 : undefined; if (v === '0') return false; } catch (e) { /* no process */ }
   return true;
 })();
+// v0.7.8 part 3 (briefs/V0-7-8.md; the `marks` subagent): the castles' colours, Tower Bridge's ends on its banks, the
+// Elbphilharmonie's wave-topped glass, the Bergisel jump down its hill. On by default; ?landmarks78=0 on the page or
+// FS_LANDMARKS78=0 in node: every model and entry exactly as the pushed v0.7.7's (the `...77` functions). Read once.
+export const LANDMARKS78 = (() => {
+  try {
+    const q = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = /[?&]landmarks78=([01])\b/.exec(q);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { const v = typeof process !== 'undefined' && process.env ? process.env.FS_LANDMARKS78 : undefined; if (v === '0') return false; } catch (e) { /* no process */ }
+  return true;
+})();
 
 // ------------------------------------------------------------------ the builder
 
@@ -1500,7 +1512,7 @@ export function stpauls(brg = 0) {
 // bascules between them, the high walkways at about 42 m, the side spans hung from chains to the
 // shore towers. Stone towers floodlit at night, the steel painted blue and white.
 // v0.7.4 (LANDMARKS77): the bridge itself (towerbridge77 below); with the switch off v0.7.3's plain model (towerbridgeOld).
-export function towerbridge(brg = 0, geo = {}) { return LANDMARKS77 ? towerbridge77(brg, geo) : towerbridgeOld(brg); }
+export function towerbridge(brg = 0, geo = {}) { return LANDMARKS77 ? towerbridge77(brg, geo, LANDMARKS78) : towerbridgeOld(brg); }
 
 // Tower Bridge as a bridge (v0.7.4, `kind: 'bridge'` in landmarks.js: y 0 the Thames). 244 m between the abutments' ends,
 // the two towers 65 m to their pinnacles on piers in the river, the central span 61 m between the towers' faces closed by
@@ -1509,7 +1521,12 @@ export function towerbridge(brg = 0, geo = {}) { return LANDMARKS77 ? towerbridg
 // towers 65 m, the central span 61 m, the walkways 44 m). The towers' plan (22 x 16 m), the piers' cutwaters, the road's
 // height (10 m), the side spans' length (65.5 m here, the article's 82 m measured from the towers' centres), the chains'
 // curve and the abutment towers (26 m) [EST]. Stone towers with windows, floodlit at night; the steel in light blue.
-function towerbridge77(brg = 0, geo = {}) {
+// v0.7.8 (LANDMARKS78, `approaches`): the approaches on to the banks. The river the game draws by the bridge (the 31 m
+// cover's water, in a town) reaches about 137 m south of the centre and 115 to 140 m north, so the abutments' ends at
+// 122 m stood at or in the water's edge, the south one short of its bank. Each end now runs on as the real bridge's
+// does, a granite-faced approach at the road's height (30 m south, 18 m north [EST]) and a ramp down to the bank's
+// ground (bridgeEnds()'s heights, h0 and h1) over 45 m [EST]: the south end on land 197 m out, the north 185 m.
+function towerbridge77(brg = 0, geo = {}, approaches = false) {
   void geo;     // (the ends are the abutments' own, at +-122 m; bridgeEnds()'s heights aren't needed: no ramp)
   const b = new Builder(0.19).frame(0, 0, brg);
   const TN = 38.5, TH = 8, FACE = TN - TH, DECK = 10, AB = 117, ABH = 5, END = AB + ABH, WALK = 42;
@@ -1592,8 +1609,27 @@ function towerbridge77(brg = 0, geo = {}) {
     box(b, 0, s * (FACE + S0) / 2, DECK - 2.4, DECK, 5, (S0 - FACE) / 2, 0, { capBottom: true });
     box(b, 0, s * (S1 + END) / 2, DECK - 2.4, DECK, 5, (END - S1) / 2, 0, { capBottom: true });
   }
+  if (approaches) {
+    const HX = 8, RAMP = 45;
+    for (const s of [-1, 1]) {
+      // (geo's h0 is the south end's ground, at n0 < 0; h1 the north's; 3 m without them)
+      const L1 = s < 0 ? TB_APPROACH_S : TB_APPROACH_N, hEnd = Math.max((s < 0 ? geo.h0 : geo.h1) ?? 3, 1) + 0.3;
+      const n0 = s * END, n1 = s * (END + L1), n2 = s * (END + L1 + RAMP);
+      const sec = (n, top, hx = HX, y0 = 0) => [[-hx, y0, n], [hx, y0, n], [hx, top, n], [-hx, top, n]];
+      b.set(granite);
+      b.loft([sec(n0, DECK - 0.3), sec(n1, DECK - 0.3), sec(n2, hEnd - 0.3)], { capTop: true });
+      b.set(road);
+      b.loft([sec(n0, DECK, 6.5, DECK - 0.4), sec(n1, DECK, 6.5, DECK - 0.4), sec(n2, hEnd, 6.5, hEnd - 0.4)], { capTop: true });
+      b.set(plainStone);
+      for (const sx of [-1, 1]) {
+        const par = (n, top) => [[sx * HX - 0.5, top - 1.4, n], [sx * HX, top - 1.4, n], [sx * HX, top, n], [sx * HX - 0.5, top, n]];
+        b.loft([par(n0, DECK + 1.1), par(n1, DECK + 1.1), par(n2, hEnd + 1.1)], { capTop: true });
+      }
+    }
+  }
   return b.result();
 }
+export const TB_APPROACH_S = 30, TB_APPROACH_N = 18;
 
 function towerbridgeOld(brg = 0) {
   const b = new Builder(0.19).frame(0, 0, brg);
@@ -2923,7 +2959,67 @@ const MARS_PALE = [0.50, 0.47, 0.40], MARS_GREEN = [0.16, 0.20, 0.17], LYON_WHIT
 // floors in the brick facade, about 37 m [EST]) on a plan narrowing to the point at the west (local -x), about 110 m long
 // [EST]; the glass body above it, the roof rising in waves to its peaks at the western tip; the plan's sizes and the
 // waves [EST]. Lit inside at night.
-export function elbphil(brg = 0) {
+// v0.7.8 (LANDMARKS78): elbphil78() below, the roof as a surface of waves; switch off, v0.7.3's model (elbphil77).
+export function elbphil(brg = 0) { return LANDMARKS78 ? elbphil78(brg) : elbphil77(brg); }
+
+// v0.7.8: the Elbphilharmonie's glass top as it reads from the river and the air ("Found while building v0.7.3": coarse).
+// The same brick warehouse and plan (v0.7.3's). Over the brick, the Plaza's dark recessed band (37 to 41 m: the public
+// terrace between the old and the new, the article); the glass body above it to the roof's edge; the roof a surface of
+// five crests across the building, falling from the 108 m peak at the western tip to about 80 m in the east, each crest
+// sharp and each trough between them a broad concave saddle, and a little higher at the long sides than along the middle
+// (the crests' heights and places, the saddles' depth and the Plaza's height [EST], from public photographs). The glass
+// with its floors and a warm light at night; the roof pale.
+function elbphil78(brg = 0) {
+  const b = new Builder(0.83).frame(0, 0, brg);
+  const plan = resample([[56, -21], [56, 19], [-40, 11], [-56, 2], [-54, -9], [-36, -18]], 48);
+  const BRICKTOP = 37, PLAZA = 41, TOP = 108;
+  b.set(GLASS(HH_BRICK, 4.6, 3.2, 0.25, 0.15, { glow: [0.10, 0.06, 0.04] }));
+  b.loft([at(plan, 0), at(plan, BRICKTOP)], { capTop: true });
+  // the Plaza: a dark band set 1.5 m in
+  const cxp = plan.reduce((s, p) => s + p[0], 0) / plan.length, cnp = plan.reduce((s, p) => s + p[1], 0) / plan.length;
+  const inset = (ring, d) => ring.map(([x, n]) => { const dx = x - cxp, dn = n - cnp, l = Math.hypot(dx, dn) || 1; return [x - dx / l * d, n - dn / l * d]; });
+  b.set(GLASS([0.06, 0.065, 0.07], 4.0, 6.0, 0.5, 0.5, { glow: [0.32, 0.27, 0.20] }));
+  b.loft([at(inset(plan, 1.5), BRICKTOP), at(inset(plan, 1.5), PLAZA)], { capTop: false });
+  // the roof's height: crests [t from the west tip (0) to the east end (1), height], saddles between them 13 m below the
+  // lower crest; the long sides up to 3 m higher than the middle
+  const CRESTS = [[0, TOP], [0.24, 99], [0.47, 93], [0.71, 87], [1, 82]];
+  const hw = 21;
+  const roofH = (x, n) => {
+    const t = Math.min(Math.max((x + 56) / 112, 0), 1);     // (0 at the western tip, local -x)
+    let i = 0;
+    while (i < CRESTS.length - 2 && t > CRESTS[i + 1][0]) i++;
+    const [t0, h0] = CRESTS[i], [t1, h1] = CRESTS[i + 1], u = (t - t0) / (t1 - t0);
+    const sad = Math.min(h0, h1) - 13, w = (1 - Math.cos(2 * Math.PI * u)) / 2;
+    const h = lerp(h0, h1, u) - (lerp(h0, h1, u) - sad) * Math.sqrt(w);
+    return Math.min(h + 3 * Math.min((n / hw) ** 2, 1), TOP);
+  };
+  const tip = plan.reduce((a, p) => (p[0] < a[0] ? p : a), plan[0]);
+  const edge = plan.map((p) => (p === tip ? TOP : roofH(p[0], p[1])));
+  b.set(GLASS([0.30, 0.35, 0.40], 4.0, 3.0, 0.85, 0.35, { glow: [0.30, 0.27, 0.22] }));
+  b.loft([at(plan, PLAZA), at(plan, PLAZA + 2), plan.map((p, i) => [p[0], edge[i], p[1]])], { capTop: false });
+  // the roof: rings drawn in from the edge to the middle, each point at the roof's height there
+  b.set(PLAIN([0.60, 0.61, 0.60], 0.3, { glow: [0.08, 0.08, 0.09] }));
+  const K = 6, rings = [];
+  for (let k = 0; k <= K; k++) {
+    const s = 1 - k / K * 0.96;
+    rings.push(plan.map((p, i) => {
+      const x = cxp + (p[0] - cxp) * s, n = cnp + (p[1] - cnp) * s;
+      return k === 0 ? [p[0], edge[i], p[1]] : [x, roofH(x, n), n];
+    }));
+  }
+  for (let k = 0; k < K; k++) for (let i = 0; i < plan.length; i++) {
+    const j = (i + 1) % plan.length, A = rings[k][i], B = rings[k][j], C = rings[k + 1][j], D = rings[k + 1][i];
+    const below = (p) => b.T([p[0], p[1] - 20, p[2]]);
+    b.tri(b.T(A), b.T(B), b.T(C), below(A));
+    b.tri(b.T(A), b.T(C), b.T(D), below(A));
+  }
+  const last = rings[K], mid = [cxp, roofH(cxp, cnp), cnp];
+  for (let i = 0; i < plan.length; i++) b.tri(b.T(last[i]), b.T(last[(i + 1) % plan.length]), b.T(mid), b.T([cxp, mid[1] - 20, cnp]));
+  b.light([tip[0], TOP, tip[1]], 0);
+  return b.result();
+}
+
+function elbphil77(brg = 0) {
   const b = new Builder(0.83).frame(0, 0, brg);
   const plan = resample([[56, -21], [56, 19], [-40, 11], [-56, 2], [-54, -9], [-36, -18]], 28);
   const BRICKTOP = 37;
@@ -3098,7 +3194,43 @@ export function domluis(brg = -10, geo = {}) {
 // The Bergisel ski jump: the concrete tower about 50 m (the brief) with the restaurant's pod on its top, cantilevered over
 // the in-run, and the in-run sloping down from it (local +n, north) to the take-off table about 95 m out [EST]; the landing
 // slope is the hill. The tower's and pod's sizes, the in-run's line and its supports [EST]. Lit at night.
-export function bergisel(brg = 0) {
+// v0.7.8 (LANDMARKS78): bergisel78() below, the tower at the top of the hill and the in-run down it; off, v0.7.3's.
+export function bergisel(brg = 0, geo = {}) { return LANDMARKS78 ? bergisel78(brg, geo) : bergisel77(brg); }
+
+// v0.7.8: the Bergisel jump on its hill ("Found while building v0.7.3": a small tower at the slope's foot). Its entry
+// (landmarks.js) stands 105 m south of the article's point, the middle of the jump, and is `slope: true`: the model is
+// given the ground along its axis, prof (m above its base, every 10 m of local n from -120 to +120, slopeProfile()); without
+// one, BERGISEL_PROF, read from the installed 250 m ground (2026-11-23). The ground there: a crest about 43 m up at
+// n = -90 to -120, falling about 25 degrees to the article's point (n = +105, 39 m below the base), the outrun's side.
+// The tower (50 m, its pod) at n = -90 on the crest; the in-run from 34 m up its north face down to the take-off table
+// 3 m over the slope at n = +5, steep at the top and flattening to the table (its curve, the table's place and height
+// [EST]); its supports down to the ground every 12 m. The landing slope is the hill itself.
+export const BERGISEL_PROF = [42.4, 43.2, 43.4, 43.1, 42.8, 40.4, 36, 31.5, 26.9, 22.2, 17.4, 12.4, 7.2, 2, -2.8, -7, -11.3, -16.2, -21.9, -27.6, -31.9, -34.7, -37.5, -39.2, -39.8];
+export const BERGISEL_TOWER_N = -90, BERGISEL_TABLE_N = 5;
+export const profAt = (prof, n) => { const f = Math.min(Math.max((n + 120) / 10, 0), prof.length - 1), i = Math.min(Math.floor(f), prof.length - 2); return lerp(prof[i], prof[i + 1], f - i); };
+export const bergiselTop = (prof = BERGISEL_PROF) => profAt(prof, BERGISEL_TOWER_N) + 50;
+function bergisel78(brg = 0, geo = {}) {
+  const prof = geo.prof || BERGISEL_PROF, g = (n) => profAt(prof, n);
+  const b = new Builder(0.95).frame(0, 0, brg);
+  const H = 50, TN = BERGISEL_TOWER_N, y0 = g(TN), gMin = Math.min(...[-4.5, 0, 4.5].map((d) => g(TN + d))) - 1;
+  // the tower: from below the ground on its crest (the lowest of its plan, less a metre) to 40 m, then the pod
+  b.set(PLAIN([0.46, 0.46, 0.44], 0.1, { glow: [0.10, 0.10, 0.12] }));
+  b.loft([at(shift(roundedRect(4.5, 4.5, 1.5, 2), 0, TN), gMin), at(shift(roundedRect(4.0, 4.0, 1.3, 2), 0, TN), y0 + 40)], { capTop: false });
+  b.set(GLASS([0.28, 0.31, 0.33], 4.0, 2.5, 0.7, 0.4, { glow: [0.30, 0.28, 0.24] }));
+  const pod = (s) => shift(superellipse(7 * s, 15 * s, 2.6, 16), 0, TN + 4);
+  b.loft([at(pod(0.55), y0 + 40), at(pod(1), y0 + 43), at(pod(1), y0 + 47.5), at(pod(0.7), y0 + H)], { smooth: false });
+  // the in-run
+  const n0 = TN + 6, n1 = BERGISEL_TABLE_N, yTop = y0 + 34, yEnd = g(n1) + 3;
+  const runY = (n) => { const t = Math.min(Math.max((n - n0) / (n1 - n0), 0), 1); return Math.max(lerp(yTop, yEnd, 1 - (1 - t) ** 1.35), g(n) + 1.8); };
+  b.set(PLAIN([0.56, 0.56, 0.54], 0.15, { glow: [0.14, 0.14, 0.16] }));
+  deckAlong(b, runY, n0, n1, 2.2, 1.6, 5);
+  b.set(PLAIN([0.40, 0.40, 0.38], 0.1));
+  for (let n = n0 + 10; n < n1 - 2; n += 12) { const yb = Math.min(...[-1, 0, 1].map((d) => g(n + d))) - 1, yt = runY(n) - 1.6; if (yt - yb > 1.5) box(b, 0, n, yb, yt, 1.0, 1.0, 0, { capTop: false }); }
+  b.light([0, y0 + H, TN + 4], 0);
+  return b.result();
+}
+
+function bergisel77(brg = 0) {
   const b = new Builder(0.95).frame(0, 0, brg);
   const H = 50;
   b.set(PLAIN([0.46, 0.46, 0.44], 0.1, { glow: [0.10, 0.10, 0.12] }));
@@ -3141,7 +3273,15 @@ Object.assign(EUROPE_MODELS, { elbphil, hht, campanile, ndg, fourviere, fourvier
 // briefs/V0-7-5.md part 6. Our own massing from public figures, [EST] where not published; no logos, lettering, names
 // or the shrine's plaque text on anything. Added to East Asia's MODELS (the list's entries in landmarks.js).
 
-const KEEP_WALL = [0.72, 0.72, 0.69], KEEP_ROOF = [0.10, 0.31, 0.23], KEEP_STONE = [0.19, 0.18, 0.16], KEEP_GOLD = [0.80, 0.62, 0.22];   // (darkened after the first stills: the shading lifts them)
+const KEEP_WALL = [0.72, 0.72, 0.69], KEEP_GOLD = [0.80, 0.62, 0.22];   // (darkened after the first stills: the shading lifts them)
+// v0.7.8 (LANDMARKS78): the roofs' green copper and the stone base, chosen for what the shader makes of them. The
+// landmarks' shader lights an albedo by the sun at 2.2 and the sky at 1.1 before the tone map (every one of the ninety-odd
+// models is tuned to that, so it stays), and v0.7.5's 0.31 green copper came out at sRGB (164, 210, 197), pale mint, the
+// 0.19 stone at (186, 182, 173), pale grey (read from v075-c3-landmark-osakacastle-above-day.png's sunlit faces). These
+// aim at about (96, 148, 122), the weathered copper's darker green, and (150, 144, 130), the granite's mid grey, in sun.
+const KEEP_ROOF = LANDMARKS78 ? [0.042, 0.114, 0.071] : [0.10, 0.31, 0.23];   // (0.026, 0.15, 0.09 at first: (77, 168, 136), too vivid)
+const KEEP_STONE = LANDMARKS78 ? [0.09, 0.085, 0.074] : [0.19, 0.18, 0.16];   // (0.095, then 0.115: near black in the shade, pale in the sun; now with CASTLE_BASE_UP)
+const CASTLE_BASE_UP = 0.85;
 const KEEP_GLOW = [0.40, 0.38, 0.33];          // floodlit white plaster at night
 const rect4 = (hx, hn, x = 0, n = 0) => [[x + hx, n - hn], [x + hx, n + hn], [x - hx, n + hn], [x - hx, n - hn]];
 
@@ -3154,7 +3294,16 @@ function castleKeep(b, cx, cn, { base, tiers, H, fish = true, topWall = null, gl
   const [hx0, hn0, hx1, hn1, hb] = base;
   b.set(PLAIN(KEEP_STONE, 0.05, { glow: glow.map((v) => v * 0.45) }));
   const ts = [0, 0.3, 0.6, 1];
+  const n0 = b.N.length;
   b.loft(ts.map((t) => { const k = (1 - t) * (1 - t); return at(rect4(hx1 + (hx0 - hx1) * k, hn1 + (hn0 - hn1) * k, cx, cn), hb * t); }), { capTop: true });
+  // v0.7.8 (LANDMARKS78): the stone base's shading evened out. The same albedo read near-black on Nagoya's base (its views
+  // look south at the north faces, in shade: the shader's sky light alone) and pale on Osaka's (seen from the sunlit
+  // south-west). The base's normals are turned most of the way up (CASTLE_BASE_UP of the way to straight up), so every
+  // face takes the sun and the sky about as the base's top does: one mid grey from any side, the batter still shaded a little.
+  if (LANDMARKS78) for (let i = n0; i < b.N.length; i += 3) {
+    const x = b.N[i] * (1 - CASTLE_BASE_UP), y = b.N[i + 1] * (1 - CASTLE_BASE_UP) + CASTLE_BASE_UP, z = b.N[i + 2] * (1 - CASTLE_BASE_UP), l = Math.hypot(x, y, z) || 1;
+    b.N[i] = x / l; b.N[i + 1] = y / l; b.N[i + 2] = z / l;
+  }
   const wall = PLAIN(KEEP_WALL, 0.08, { glow });
   const roof = PLAIN(KEEP_ROOF, 0.2, { glow: glow.map((v) => v * 0.35) });
   let y = hb;

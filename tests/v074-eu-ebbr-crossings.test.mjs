@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { inRegion } from './region-run.mjs';
 
 if (inRegion('europe', import.meta.url)) {
-  const { runwayCrossings, runwayRects, rectElev, profileAt, knotPairs, knotChainGlsl, MAX_KNOTS, CROSSING_LEVEL, pavementEnd, ONE_WAY, aipTakesOff, aipLands, RUNWAY_SHOULDER_M } = await import('../src/world/runways.js');
+  const { runwayCrossings, runwayRects, rectElev, profileAt, knotPairs, knotChainGlsl, MAX_KNOTS, CROSSING_LEVEL, CROSSINGS78, pavementEnd, ONE_WAY, aipTakesOff, aipLands, RUNWAY_SHOULDER_M } = await import('../src/world/runways.js');
   const { createTiledHeightfield } = await import('../src/world/heightfield.js');
   const { DATA, readGz, readJson, manifest } = await import('./tile-terrain.mjs');
   const load = () => JSON.parse(readFileSync(new URL('airports/EBBR.json', DATA)));
@@ -103,7 +103,9 @@ if (inRegion('europe', import.meta.url)) {
       const ap = JSON.parse(readFileSync(new URL(f, DATA)));
       runwayCrossings(ap);
       for (const r of ap.runways) {
-        if (r.cutBy.length === 1) { one++; assert.ok(r.knots.length <= 2 + (CROSSING_LEVEL[ap.icao]?.[r.id] ? 1 : 0), `${ap.icao} ${r.id}: ${r.knots.length}`); }
+        // (v0.7.8, changed on purpose: with CROSSINGS78 a single crossing has four bends too, and two more where the longer
+        // runway bends inside it, Prague's; with FS_CROSSINGS78=0 the two it had)
+        if (r.cutBy.length === 1) { one++; assert.ok(r.knots.length <= (CROSSINGS78 ? 6 : 2) + (CROSSING_LEVEL[ap.icao]?.[r.id] ? 1 : 0), `${ap.icao} ${r.id}: ${r.knots.length}`); }
         if (r.cutBy.length > 1) { many++; assert.equal(`${ap.icao} ${r.id}`, 'EBBR 01/19'); }
       }
     }

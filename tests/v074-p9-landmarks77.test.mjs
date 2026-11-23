@@ -33,7 +33,10 @@ if (inRegion('europe', import.meta.url) && !OFF) {
     const L = byId('towerbridge');
     assert.equal(L.kind, 'bridge');
     assert.equal(baseHeight(L, () => 2.4), 0, 'based at the water');
-    assert.ok(Math.abs(L.geo.n1 - L.geo.n0 - 244) < 2, `ends ${L.geo.n0.toFixed(1)} .. ${L.geo.n1.toFixed(1)}`);
+    // (v0.7.8, FS_LANDMARKS78 on: the entry's ends are the approaches' ramps' feet, 197 m south and 185 m north, so the
+    // ground is read where they come down; tests/v078-landmarks.test.mjs checks them. Off: the abutments' 244 m.)
+    const L78 = process.env.FS_LANDMARKS78 !== '0';
+    assert.ok(Math.abs(L.geo.n1 - L.geo.n0 - (L78 ? 382 : 244)) < 2, `ends ${L.geo.n0.toFixed(1)} .. ${L.geo.n1.toFixed(1)}`);
     assert.ok(Math.abs(L.geo.s * 2 - 77) < 1, `towers ${(L.geo.s * 2).toFixed(1)} m apart`);
     assert.ok(Math.abs(L.brg - 3) < 1, `true north is about 3 degrees east of grid north in London: ${L.brg.toFixed(2)}`);
     // the centres leave out the same 122 m circle as before
@@ -60,7 +63,8 @@ if (inRegion('europe', import.meta.url) && !OFF) {
     assert.ok(walkE > 50 && walkW > 50, `two walkways (${walkE}, ${walkW})`);
     assert.ok(deck > 10, 'the bascules\' deck at 10 m');
     assert.ok(abut > 20, 'the abutment towers on the banks');
-    assert.ok(reach > 120 && reach < 124, `the ends at ${reach.toFixed(1)} m`);
+    if (L78) assert.ok(reach > 196 && reach < 198, `the approaches' ends at ${reach.toFixed(1)} m (v0.7.8)`);
+    else assert.ok(reach > 120 && reach < 124, `the ends at ${reach.toFixed(1)} m`);
   });
 
   test("Madrid: Torre Cepsa's cores carry lit windows, as its three neighbours' faces do", () => {

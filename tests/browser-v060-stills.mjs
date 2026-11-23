@@ -555,6 +555,22 @@ for (const [k, [cx, cy, hdg]] of Object.entries(GATE076)) {
   SHOTS[`gate-${k}-night`] = { q: `x=${cx}&y=${cy}&agl=45&hdg=${hdg}&pitch=-20&aglAt=${cx},${cy}`, ms: NIGHT };
 }
 GROUPS['gates-076'] = Object.keys(GATE076).map((k) => `gate-${k}`).concat(['gate-rjgg-night']);
+// v0.7.8 lead, part 1: the same four gates from beside the nose, so that the stop bar, the lead-in line's end and the
+// bridge's cab show (the pictures-only review of v0.7.6: "the gate pairs' camera too far"). GATE076's camera stands 95 m
+// behind and 55 m right of the stand point looking at it, so the point is 110 m along its view and the stand's heading
+// 30 degrees right of it; this camera is 34 m to the right of the nose, 5 m behind it and 9 m up, looking across at it.
+// With &gates78=0 the same view is v0.7.7's. (The player's own aircraft at a gate: tests/browser-v078-gates.mjs.)
+for (const [k, [cx, cy, hdg]] of Object.entries(GATE076)) {
+  const sx = cx + 109.8 * Math.sin(hdg * DEG), sy = cy + 109.8 * Math.cos(hdg * DEG), hs = (hdg + 30.07) * DEG;
+  const x = (sx + 34 * Math.cos(hs) - 5 * Math.sin(hs)).toFixed(1), y = (sy - 34 * Math.sin(hs) - 5 * Math.cos(hs)).toFixed(1);
+  SHOTS[`gate78-${k}`] = { q: `x=${x}&y=${y}&agl=9&hdg=${((hdg + 30.07 + 270) % 360).toFixed(1)}&pitch=-13&aglAt=${x},${y}`, ms: DAY };
+}
+GROUPS['gates-078'] = Object.keys(GATE076).map((k) => `gate78-${k}`);
+// v0.7.8 lead (--q '&region=europe'): Kaiserslautern's centre from 3,000 ft, from the south over the Betzenberg looking
+// north across the station to the old town, and from the west as from Ramstein's side.
+SHOTS['kl78-south-3000'] = { q: look(49.418, 7.772, 3000, 0, -14), ms: EU_DAY };
+SHOTS['kl78-west-3000'] = { q: look(49.444, 7.725, 3000, 90, -14), ms: EU_DAY };
+GROUPS['kl-078'] = ['kl78-south-3000', 'kl78-west-3000'];
 // v0.7.5, part 7: the parked aircraft whose tails stood over a taxiway behind (traffic-layout.js tailOverLine()), from
 // 500 ft at -50 deg, looking along each stand's heading: Naples's 45 (the finding) and Vienna's A55 in Europe's page,
 // Narita's 431 and Gimpo's 914 in East Asia's. Taken with and without `&tailfit=0` (--q), as before and after.
@@ -650,6 +666,69 @@ SHOTS['ground77-cristorei-close'] = { q: look(38.67861, -9.17134, 250, 180, -6),
 SHOTS['ground77-ponte25-east'] = { q: look(38.6885, -9.1772, 300, 262, -4), ms: EU_DAY };
 GROUPS['ground-077'] = ['ground77-ijsselmeer-3000', 'ground77-ijsselmeer-shore', 'ground77-lochness-3000', 'ground77-lucerne-3000',
   'ground77-arena-1500', 'ground77-cristorei-river', 'ground77-ponte25-east', 'EHAM-final', 'eu-3000-polders'];
+// v0.7.8 trees (part 4: trees and towers). Hiroshima's Peace Park from 400 ft south of the museum looking north (the
+// Dome beyond), and from 1,500 ft; Itami's 32L close in (1.5 km out, 400 ft, over the fence) and Kunsan's final to 18
+// (4 km out at 700 ft, and 8 km out at 1,500 ft), from the airports' files (grid x, y of the threshold; the grid
+// heading of the landing); with v0.7.5's Dome, castles, Hiroshima and Itami views. Europe's (--q '&region=europe'):
+// London, Paris and Frankfurt from 3,000 ft, to show nothing else moved.
+SHOTS['trees78-peacepark-400'] = { q: look(34.3935, 132.4527, 400, 0, -12), ms: DAY };
+SHOTS['trees78-peacepark-1500'] = { q: look(34.3935, 132.4527, 1500, 0, -18), ms: DAY };
+{
+  const fin = (tx, ty, hdg, outM, ft) => {
+    const x = tx - outM * Math.sin(hdg * DEG), y = ty - outM * Math.cos(hdg * DEG), pitch = -Math.atan2(ft * FT, outM) / DEG;
+    return `x=${x.toFixed(1)}&y=${y.toFixed(1)}&agl=${ft}&hdg=${hdg}&pitch=${pitch.toFixed(2)}&aglAt=${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  SHOTS['trees78-rjoo-32l-fence'] = { q: fin(726501.1, -106794.7, 310.4, 1500, 400), ms: DAY };
+  SHOTS['trees78-rkjk-18-final'] = { q: fin(-79980.1, -8960.9, 169.56, 4000, 700), ms: DAY };
+  SHOTS['trees78-rkjk-18-far'] = { q: fin(-79980.1, -8960.9, 169.56, 8000, 1500), ms: DAY };
+}
+GROUPS['trees-078-ea'] = ['trees78-peacepark-400', 'trees78-peacepark-1500', 'landmark-abombdome-day', 'landmark-abombdome-above-day',
+  'landmark-nagoyacastle-above-day', 'landmark-osakacastle-above-day', 'trees78-rjoo-32l-fence', 'rjoo-32l-final-osaka-day',
+  'trees78-rkjk-18-final', 'trees78-rkjk-18-far', 'cities-hiroshima-3000-day'];
+GROUPS['trees-078-eu'] = ['eu-3000-london', 'eu-3000-paris', 'eu-centre-frankfurt-3000-day'];
+// v0.7.8 trees, second job: Kanazawa's new real centre from 3,000 ft by day, from the south-west (the castle and Kenrokuen
+// ahead, the station beyond), and from 1,500 ft.
+SHOTS['trees78-kanazawa-3000'] = { q: look(36.566, 136.657, 3000, 30, -12), ms: DAY };
+SHOTS['trees78-kanazawa-1500'] = { q: look(36.566, 136.657, 1500, 30, -14), ms: DAY };
+GROUPS['trees-078-kanazawa'] = ['trees78-kanazawa-3000', 'trees78-kanazawa-1500'];
+// v0.7.8 trees, second job (FS_REGION=europe, --q '&region=europe'): the Fens round Ely from 3,000 ft and 10,000 ft looking
+// north towards the Wash, and the Thames from 10,000 ft (which must not change).
+SHOTS['fens78-ely-3000'] = { q: look(52.42, 0.26, 3000, 0, -12), ms: EU_DAY };
+SHOTS['fens78-ely-10000'] = { q: look(52.50, 0.20, 10000, 0, -20), ms: EU_DAY };
+GROUPS['fens-078'] = ['fens78-ely-3000', 'fens78-ely-10000', 'eu-10000-thames'];
+// v0.7.8 trees, third job (FS_REGION=europe, --q '&region=europe'): the Alps' snow. Mont Blanc from over Geneva's south
+// (10,000 ft, looking south-east), with the older Alps views; East Asia's Fuji from the west to show nothing moved there.
+SHOTS['snow78-geneva-montblanc'] = { q: 'lat=46.12&lon=6.20&alt=10000&hdg=125&pitch=-3', ms: EU_DAY };
+GROUPS['snow-078-eu'] = ['eu-3000-alps-zurich', 'eu-fl350-alps', 'eu-lowi-valley-26', 'snow78-geneva-montblanc'];
+GROUPS['snow-078-ea'] = ['world-fuji-15000'];
+// v0.7.8 marks (part 3: landmarks and bases; ?landmarks78=0 and ?bases78=0 for the old). East Asia: the two castles level
+// and from above (v0.7.5's views) and the three bases' military sides from above (v0.7.5's). Europe (--q '&region=europe'):
+// Tower Bridge from above (v0.7.4's) and from over the river, and its south end from above, looking north along the bridge
+// (300 m off, 120 m up); the Elbphilharmonie level from across the Elbe to the south-south-east (400 m off, 40 m up) and
+// from above (250 m off, 150 m up); the Bergisel jump from the town's side to the north (450 m off, 40 m up, its new point
+// 105 m south of the article's: the base copy's tower stands at the slope's foot in the same frame) and from the west
+// (side on, 400 m off, 60 m up), and from above; the four European bases with shelters from above (v0.7.6's), and
+// Lossiemouth's shelters closer (800 ft at -30, looking at their site).
+const BG78 = [47.24889 - 105 / 111195, 11.39917];
+const TBS78 = [51.5056 - 197 / 111195, -0.0753];
+SHOTS['mk78-towerbridge-south-above'] = { q: aimAt(TBS78[0], TBS78[1], 20, 300, 120, 51.5056 - 600 / 111195, -0.0760, 0.4), ms: EU_DAY };
+SHOTS['mk78-elbphil-level'] = { q: aimAt(53.54139, 9.98417, 108, 400, 40, 53.5380, 9.9870, 0.5), ms: EU_DAY };
+SHOTS['mk78-elbphil-above'] = { q: aimAt(53.54139, 9.98417, 108, 250, 150, 53.5380, 9.9870, 0.4), ms: EU_DAY };
+SHOTS['mk78-bergisel-north'] = { q: aimAt(BG78[0], BG78[1], 93, 450, 40, 47.2560, 11.3995, 0.4), ms: EU_DAY };
+SHOTS['mk78-bergisel-west'] = { q: aimAt(BG78[0], BG78[1], 93, 400, 60, BG78[0], 11.3900, 0.4), ms: EU_DAY };
+SHOTS['mk78-bergisel-above'] = { q: aimAt(BG78[0], BG78[1], 93, 300, 200, 47.2530, 11.3940, 0.3), ms: EU_DAY };
+SHOTS['mk78-egqs-shelters'] = { q: lookXY(-442077.1, 1210043.8, 800, 321.7, -30), ms: EU_DAY };
+GROUPS['marks-078-ea'] = ['landmark-nagoyacastle-day', 'landmark-nagoyacastle-above-day', 'landmark-osakacastle-day', 'landmark-osakacastle-above-day',
+  'mil-rktu-above', 'mil-rjnk-above', 'mil-rkjk-above'];
+GROUPS['marks-078-eu'] = ['eu-landmark-towerbridge-p9above-day', 'eu-towerbridge-river-day', 'mk78-towerbridge-south-above', 'mk78-elbphil-level', 'mk78-elbphil-above',
+  'mk78-bergisel-north', 'mk78-bergisel-west', 'mk78-bergisel-above', 'mil-etar-above', 'mil-egqs-above', 'mil-egul-above', 'mil-lezg-above', 'mk78-egqs-shelters'];
+// The baked items (Europe): Zaragoza's civil apron (stands 1 and 2) and its shelters closer (800 ft at -30, looking at
+// the north-west row), Fairford from above (v0.7.6's) and its hardstands closer, Notre-Dame de la Garde level (v0.7.3's)
+// and from above (300 m off, 200 m up, from the Vieux-Port's side to the north), the Rock from both finals (v0.7.3's).
+SHOTS['mk78-lezg-shelters'] = { q: lookXY(-419537.4, -575074.2, 800, 120, -30), ms: EU_DAY };
+SHOTS['mk78-egva-hardstands'] = { q: lookXY(-398465, 531567, 1000, 90, -35), ms: EU_DAY };
+SHOTS['mk78-ndg-above'] = { q: aimAt(43.2841, 5.3710, 72.7, 300, 200, 43.2950, 5.3700, 0.3), ms: EU_DAY };
+GROUPS['marks-078-eu2'] = ['lezg-civil-apron', 'mk78-lezg-shelters', 'mil-egva-above', 'mk78-egva-hardstands', 'eu-landmark-ndg-day', 'mk78-ndg-above', 'eu-lxgb-rock-09', 'eu-lxgb-rock-27'];
 
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {

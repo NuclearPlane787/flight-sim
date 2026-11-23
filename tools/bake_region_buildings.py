@@ -107,6 +107,12 @@ CENTRES = {
     # station's towers; Hiroshima round the Peace Memorial Park, the castle and the station.
     'nagoya': ('Nagoya', 'chubu', (136.875, 35.160, 136.915, 35.192), (35.176, 136.895, 4.0)),
     'hiroshima': ('Hiroshima', 'chugoku', (132.445, 34.385, 132.482, 34.408), (34.396, 132.463, 4.0)),
+    # v0.7.8 (briefs/V0-7-8.md part 5, item 3; the trees subagent's): boxed tightly. Cheongju's downtown round
+    # Sangdang-ro, the city hall and Seongan-gil; Kanazawa from the station to the castle, Kenrokuen and Korinbo.
+    # (Cheongju left out: the Korea extract on disk, south-korea-latest of 2026-10-31, maps 562 buildings in this box and
+    # the keep rule keeps 164, nearly all estimated 12 m blocks, no downtown; baked once into the run's staging, not shipped.)
+    # 'cheongju': ('Cheongju', 'korea', (127.472, 36.622, 127.505, 36.650), (36.636, 127.489, 3.0)),
+    'kanazawa': ('Kanazawa', 'chubu', (136.640, 36.553, 136.673, 36.583), (36.567, 136.656, 3.0)),
 }
 # v0.7.5: published heights for towers whose OSM parts carry only levels (x 3.2 m reads far short for office floors of
 # about 4.5 m): by OSM way id, per centre (Wikipedia: Midland Square 247 m; JR Central Towers' office tower 245 m, its
@@ -154,6 +160,8 @@ EU_SOURCES = {
     'sud': 'osm/sud-261121.osm.pbf',
     # v0.7.6
     'aragon': 'osm/aragon-261122.osm.pbf',
+    # v0.7.8 (Kaiserslautern; Geofabrik's europe/germany/rheinland-pfalz/, which gave v0.7.6 a 404)
+    'rheinland-pfalz': 'osm/rheinland-pfalz-261121.osm.pbf',
 }
 EU_CENTRES = {
     # the City, Westminster and the South Bank, east to Canary Wharf (one box: the river's bend between is thin)
@@ -228,6 +236,9 @@ EU_CENTRES = {
     # v0.7.6 (briefs/V0-7-6.md part 5): one more tight core, held to EU_CORE_VERTS
     # the old town between the Ebro and the Paseo de la Independencia: the Plaza del Pilar, La Seo, the stone bridge's two banks
     'zaragoza': ('Zaragoza', 'aragon', (-0.895, 41.640, -0.862, 41.666), (41.655, -0.879, 3.0)),
+    # v0.7.8 (briefs/V0-7-8.md part 6, item 6; v0.7.6's "if time is left"): one more tight core, held to EU_CORE_VERTS
+    # the old town round the Stiftskirche and the town hall's tower, the station, and the Betzenberg with its stadium
+    'kaiserslautern': ('Kaiserslautern', 'rheinland-pfalz', (7.750, 49.431, 7.790, 49.455), (49.444, 7.769, 3.0)),
 }
 EU_MAX_COUNT = 40000
 EU_MAX_VERTS = 271578
@@ -242,7 +253,7 @@ EU_EST_FLOORS = {'london': 4, 'paris': 5, 'frankfurt': 4, 'madrid': 5, 'zurich':
                  'duesseldorf': 4, 'cologne': 4, 'prague': 5, 'geneva': 5, 'nice': 5, 'edinburgh': 4, 'glasgow': 4,
                  'nantes': 4, 'santiago': 3,
                  'hamburg': 5, 'venice': 4, 'marseille': 5, 'lyon': 5, 'porto': 4, 'naples': 5,
-                 'zaragoza': 5}
+                 'zaragoza': 5, 'kaiserslautern': 4}
 # v0.7.1: the new nine's own vertex budget (Zurich's size: 45,747 vertices built to 122,830 triangles, so about
 # 55,000 vertices is about 150,000 triangles). Last night's nine keep EU_MAX_VERTS.
 EU_CORE_VERTS = {c: 55000 for c in ('toulouse', 'berlin', 'milan', 'vienna', 'brussels', 'dublin', 'lisbon',
@@ -250,7 +261,7 @@ EU_CORE_VERTS = {c: 55000 for c in ('toulouse', 'berlin', 'milan', 'vienna', 'br
                                     'duesseldorf', 'cologne', 'prague', 'geneva', 'nice', 'edinburgh', 'glasgow',
                                     'nantes', 'santiago',
                                     'hamburg', 'venice', 'marseille', 'lyon', 'porto', 'naples',
-                                    'zaragoza')}
+                                    'zaragoza', 'kaiserslautern')}
 if EUROPE:
     SOURCES, CENTRES = EU_SOURCES, EU_CENTRES
 

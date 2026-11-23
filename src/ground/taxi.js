@@ -415,11 +415,13 @@ function route(graph, from, to) {
   const ordered = [fe, ...edgesUsed.slice(1, to.edge ? -1 : undefined).reverse(), ...(to.edge ? [to.edge] : [])];
   const refs = [];
   const crossings = [];
+  const refLens = [];   // v0.7.8 (the taxi instructions): each named run's length (m), for gate-flow.js's taxiText()
   for (const e of ordered) {
-    if (e.ref && refs[refs.length - 1] !== e.ref) refs.push(e.ref);
+    if (e.ref && refs[refs.length - 1] !== e.ref) { refs.push(e.ref); refLens.push(0); }
+    if (e.ref) refLens[refLens.length - 1] += e.lengthM || 0;
     if (e.runway && crossings[crossings.length - 1] !== e.runway) crossings.push(e.runway);
   }
-  return { points, refs, lengthM, crossings };
+  return { points, refs, lengthM, crossings, refLens };
 }
 
 // Dijkstra from an attachment (a point on an edge) over the whole graph: { d, prev, prevEdge } per node.

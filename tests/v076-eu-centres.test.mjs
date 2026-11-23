@@ -43,8 +43,9 @@ if (inRegion('europe', import.meta.url)) {
   const skip = !c && 'Zaragoza not installed yet';
 
   test("v0.7.6: thirty-four centres, Zaragoza last, Spain's look", { skip }, () => {
-    assert.equal(INDEX.centres.length, 34);
-    assert.equal(INDEX.centres.at(-1).id, 'zaragoza');
+    // (v0.7.8: thirty-five with Kaiserslautern, after Zaragoza)
+    assert.equal(INDEX.centres.length, 35);
+    assert.equal(INDEX.centres.at(-2).id, 'zaragoza');
     const ids = INDEX.centres.map((e) => e.id);
     assert.equal(new Set(ids).size, ids.length, 'one entry per id');
     assert.deepEqual(ids.slice(0, 33).sort(), Object.keys(OLD).sort());

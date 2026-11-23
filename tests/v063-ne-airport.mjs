@@ -206,7 +206,8 @@ export function airportSuite(cfg) {
       assert.ok(f, `${e.ident}: findRunwayEnd`);
       assert.ok(Math.abs(e.displacedM - c.displacedM) < 0.5, `${e.ident}: displaced ${e.displacedM} m, want ${c.displacedM}`);
       assert.ok(Math.abs(f.ldaM - (r.lengthM - e.displacedM)) < 0.2);
-      assert.ok(Math.abs(e.elevM - c.elevFt * FT) < 0.06, `${e.ident}: ${e.elevM} m, ${c.elevFt} ft`);
+      // (v0.7.8: an end that runwayCrossings() levelled to a bend within 10 m of it, Prague's 12, keeps the published figure as elevAipM)
+      assert.ok(Math.abs((e.elevAipM ?? e.elevM) - c.elevFt * FT) < 0.06, `${e.ident}: ${e.elevAipM ?? e.elevM} m, ${c.elevFt} ft`);
       assert.ok(Math.abs(wrapd(e.hdgGridDeg - (e.hdgTrueDeg - convergence(e.lon) / DEG))) < 0.02, `${e.ident}: grid vs true`);
       assert.ok(Math.abs(wrapd(e.hdgMagDeg - (e.hdgTrueDeg - varAt(ap, e.x, e.y, e)))) < varTol, `${e.ident}: mag = true - ${cfg.koreaPlane ? 'the plane' : 'WMM'}`);
       assert.ok(Math.abs(wrapd(e.hdgTrueDeg - o.hdgTrueDeg - 180)) < 0.2, 'reciprocal');

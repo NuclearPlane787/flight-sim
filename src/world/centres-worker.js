@@ -24,6 +24,7 @@
 // index range per chunk, chunk-row-major, so the chunks of one row within reach are one range.
 
 import { ShapeUtils, Vector2 } from '../../vendor/three.core.js';   // v0.7.7: earcut, for a roof round its courtyards only
+import { raster78 } from './parks78.js';   // v0.7.8 trees: the centre's footprints as the trees' mask (only when the job asks)
 
 export const MAGIC = 0x31425346;          // 'F','S','B','1' read as a little-endian u32
 // v0.7.7 (towns77): 'FSB2' is FSB1 with each record's inner rings (courtyards) appended (tools/bake_region_buildings.py's
@@ -485,7 +486,7 @@ async function fetchGz(url) {
 
 // Fetch, parse and build one centre: { url, info, exclude, runways } -> buildCentre()'s result plus
 // the timings (ms: fetch, parse, triangulate, build).
-export async function loadAndBuild({ url, info, exclude, runways, holes = false }) {
+export async function loadAndBuild({ url, info, exclude, runways, holes = false, parks78 = false }) {
   const t0 = now();
   const buf = await fetchGz(url);
   const t1 = now();
@@ -493,6 +494,7 @@ export async function loadAndBuild({ url, info, exclude, runways, holes = false 
   const t2 = now();
   const r = buildCentre(p, info, { exclude, runways, holes });
   r.ms.fetch = t1 - t0; r.ms.parse = t2 - t1;
+  if (parks78) { const t3 = now(); r.park78 = raster78(p, info); r.ms.park78 = now() - t3; }   // v0.7.8 trees (parks78.js): the footprints' mask
   r.bytes = buf.byteLength;
   return r;
 }

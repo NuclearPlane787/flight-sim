@@ -377,6 +377,9 @@ async function boot() {
   }
 
   // What a widebody needs kept clear round its stand (undefined for code C: as before v0.3.0).
+  // v0.7.8: the flown type's front left door, for the jet bridge at its gate (apron-geom.js jetBridge()); null for a
+  // geometry without one, which takes the default.
+  function gateDoor() { return sim.type?.geo?.GATE_DOOR || null; }
   function standClear() {
     const t = sim.type, D = t.geo.DESIGN_SHAPE;   // v0.5.3: a design with its own airframe, by its own span and length
     if (D) return { span: D.spanM, length: D.lengthM, path: gate.pushPath?.() };
@@ -430,7 +433,7 @@ async function boot() {
     if (p.start === 'gate' && p.stand) {
       gate.start(p);
       input.lever = 0;
-      world.traffic?.setPlayerStand(p.origin, gate.stand?.ref ?? p.stand, standClear());   // the flow may have changed the stand
+      world.traffic?.setPlayerStand(p.origin, gate.stand?.ref ?? p.stand, standClear(), gateDoor());   // the flow may have changed the stand
     } else {
       gate.clear();
       world.traffic?.setPlayerStand(p.origin, null);
@@ -548,8 +551,8 @@ async function boot() {
     liftoffT = f.liftoffT ?? null; fuelAtStart = f.fuelAtStart ?? sim.state.fuelKg;
     input.lever = Number.isFinite(f.lever) ? f.lever : sim.controls.thrust;
     // The stand left behind stays free while the aircraft is near it, as in live play.
-    if (plan.start === 'gate' && !landed && ['parked', 'pushback', 'taxi', 'departed'].includes(gate.phase)) world.traffic?.setPlayerStand(plan.origin, gate.stand?.ref ?? plan.stand, standClear());
-    else if (arrivalStand && f.arrivalIcao) world.traffic?.setPlayerStand(f.arrivalIcao, arrivalStand, standClear());
+    if (plan.start === 'gate' && !landed && ['parked', 'pushback', 'taxi', 'departed'].includes(gate.phase)) world.traffic?.setPlayerStand(plan.origin, gate.stand?.ref ?? plan.stand, standClear(), gateDoor());
+    else if (arrivalStand && f.arrivalIcao) world.traffic?.setPlayerStand(f.arrivalIcao, arrivalStand, standClear(), gateDoor());
     else world.traffic?.setPlayerStand(plan.origin, null);
     scorer.reset();
     if (dest) scorer.setRunway(dest.end, dest.other);
@@ -1221,7 +1224,7 @@ async function boot() {
       if (gate.phase === 'taxi-in' && r && r.stand !== arrivalStand) {
         arrivalStand = r.stand;
         const a = airports.find((ap) => ap.origin && Math.hypot(ap.origin[0] - s.pos.x, ap.origin[1] - s.pos.y) < 8000);
-        if (a) world.traffic?.setPlayerStand(a.icao, r.stand, standClear());
+        if (a) world.traffic?.setPlayerStand(a.icao, r.stand, standClear(), gateDoor());
       }
     }
 

@@ -20,6 +20,10 @@ export const FUSELAGE_HEIGHT = 6.20;   // [ACAP] 2-4
 const MAIN_FROM_NOSE = 5.89 + 31.22;   // [ACAP] 2-4: nose gear 5.89 m from the nose, wheelbase 31.22 m to the bogie's centre
 const MAIN_X = -2.55;
 export const NOSE_X = MAIN_FROM_NOSE + MAIN_X; // nose tip, 34.56 m ahead of 25% MAC
+// v0.7.8: the front left door for a gate's jet bridge (apron-geom.js): door 1's middle 6.79 m behind the nose
+// (widebody-specs.js, [ACAP] the side view), the cab's face 3.4 m from the centreline (the fuselage 3.10 m at its
+// widest, about 3.0 m there [EST]), the sill 5.0 m up [EST, ACAP 2.3: about 4.7 to 5.3 m by loading].
+export const GATE_DOOR = { back: 6.79, half: 3.4, sill: 5.0 };
 export const TAIL_X = NOSE_X - LENGTH;         // the stabiliser's tip, −39.30
 export const FUSELAGE_TAIL_X = NOSE_X - FUSELAGE_LENGTH; // tail cone tip, −38.52
 

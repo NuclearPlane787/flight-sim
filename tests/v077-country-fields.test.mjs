@@ -13,7 +13,9 @@ import { inRegion } from './region-run.mjs';
 
 const HELPER = fileURLToPath(new URL('./v077-country-hash.mjs', import.meta.url));
 const build = (env) => {
-  const r = spawnSync(process.execPath, [HELPER], { env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_TOWNS77: '0', ...env }, encoding: 'utf8' });
+  // (v0.7.8: with v0.7.8's trees and fens switches off, FS_TREES78=0 and FS_FENS78=0, the terrain's text these hashes pin;
+  // tests/v078-trees.test.mjs and v078-fens.test.mjs pin them on.)
+  const r = spawnSync(process.execPath, [HELPER], { env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_TOWNS77: '0', FS_TREES78: '0', FS_FENS78: '0', FS_SNOW78: '0', ...env }, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout.trim().split('\n').pop());
 };
@@ -51,7 +53,7 @@ if (inRegion('europe', import.meta.url)) {
 test("ground.js: Europe's splice switched off is v0.7.6's; switched on, every v0.7.7 anchor found once and no 8 km seam", async () => {
   const g = await import('../src/world/ground.js');
   assert.equal(createHash('sha256').update(g.euGroundGlsl(g.GROUND_GLSL, false)).digest('hex'), '1bc06fdaa9e9e6373537d0f7fca03fafb4336374b26a2e7a338008d946c14f33');
-  const on = g.euGroundGlsl(g.GROUND_GLSL, true);
+  const on = g.euGroundGlsl(g.GROUND_GLSL, true, false);   // (v0.7.8: the fens' splice off; tests/v078-fens.test.mjs)
   assert.ok(!on.includes('did >> 3, 47u'), 'the 8 km cells of the polders\' direction are gone');
   for (const k of ['uniform sampler2D uEuZone;', 'textureLod(uEuZone', 'euP *= euZoneP;', 'ihash(did, 50u) < euSP', 'euPol = mix(euPol, eu == 3 ? smoothstep(0.0, 150.0, dEdge', 'euPol = euP * 0.584;', 'float euDy = min(ry, 1.0 - ry) * size.y;', 'euDw = min(1.0, 1.6 / (0.9 + aa));', 'green = step(t, 0.96); }', 'vnoise((m - dq) * 0.00003 + 17.0)']) assert.ok(on.includes(k), k);
   // nothing of East Asia's lost but v0.7.1's one narrowed greenhouse line

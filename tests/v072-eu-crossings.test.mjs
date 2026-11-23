@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { inRegion } from './region-run.mjs';
 
 if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
-  const { runwayCrossings, profileAt, CROSSING_LEVEL } = await import('../src/world/runways.js');
+  const { runwayCrossings, profileAt, CROSSING_LEVEL, CROSSINGS78 } = await import('../src/world/runways.js');
   const D = new URL('../data/europe/', import.meta.url);
   const man = JSON.parse(readFileSync(new URL('manifest.json', D)));
   const files = [...(man.airportsRegion || []), ...(man.airportsPending || [])];
@@ -26,7 +26,12 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
       const ap = JSON.parse(readFileSync(new URL(f, D)));
       runwayCrossings(ap);
       for (const g of grades(ap)) {
-        assert.ok(g.worst < 0.03, `${ap.icao} ${g.id}: ${(g.worst * 100).toFixed(1)} % at ${g.at} m`);
+        // (v0.7.8, changed on purpose for Dublin's 16/34 alone: its first bend, where 10L/28R's edge meets its far side,
+        // is 56 m from 16's end, 16 m nearer than v0.1.4's bend on the centreline, and 1.93 m above the published end:
+        // 3.4 %, was 2.6 %. 10L/28R's level there is the straight line between its ends: ROADMAP.md, "Found while
+        // building v0.7.8".)
+        const lim = ap.icao === 'EIDW' && g.id === '16/34' ? 0.035 : 0.03;
+        assert.ok(g.worst < lim, `${ap.icao} ${g.id}: ${(g.worst * 100).toFixed(1)} % at ${g.at} m`);
         if (g.worst > top.worst) top = { ...g, icao: ap.icao };
       }
     }
@@ -38,10 +43,14 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
     const ap = load(); runwayCrossings(ap);
     const long = ap.runways.find((r) => r.id === '06/24'), short = ap.runways.find((r) => r.id === '12/30');
     assert.equal(long.knots.length, 1); assert.equal(long.knots[0][1], CROSSING_LEVEL.LKPR['06/24'][1]);
-    assert.ok(Math.abs(long.knots[0][1] - short.ends[0].elevM) < 0.01);
-    assert.equal(short.knots.length, 2);
-    for (const [, h] of short.knots) assert.ok(Math.abs(h - 353.6) < 0.3, `12/30's knot at ${h.toFixed(2)} m`);
-    assert.ok(Math.max(...grades(ap).map((g) => g.worst)) < 0.009);
+    // v0.7.8 (changed on purpose, runways.js CROSSINGS78): 12/30 has four bends at the crossing and one on each edge at
+    // 06/24's own bend, six; the first is 2.6 m from 12's pavement end and 0.42 m above the published 353.6 m (06/24
+    // falls 0.85 % along its edge there), so the end is levelled to it (elevAipM keeps the published figure) and
+    // 12/30's first 23 m fall at 1.8 % to meet 06/24's edge all across its width. With FS_CROSSINGS78=0 as before.
+    assert.ok(Math.abs(long.knots[0][1] - (short.ends[0].elevAipM ?? short.ends[0].elevM)) < 0.01);
+    assert.equal(short.knots.length, CROSSINGS78 ? 6 : 2);
+    for (const [, h] of short.knots) assert.ok(Math.abs(h - 353.6) < (CROSSINGS78 ? 0.45 : 0.3), `12/30's knot at ${h.toFixed(2)} m`);
+    assert.ok(Math.max(...grades(ap).map((g) => g.worst)) < (CROSSINGS78 ? 0.02 : 0.009));
     // the same airport under another name has no entry: the straight line, and the ramp the review found
     const bare = { ...load(), icao: 'XXXX' }; runwayCrossings(bare);
     const g = grades(bare).find((q) => q.id === '12/30');

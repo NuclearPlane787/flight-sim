@@ -9,7 +9,7 @@ import { createTiledHeightfield } from '../src/world/heightfield.js';
 import { createClipWindow } from '../src/world/clipwindow.js';
 import { terrainSpec, REGION_EXTENT, FINE_EXTENT } from '../src/world/region.js';
 import { toMap } from '../src/world/frame.js';
-import { runwayRects } from '../src/world/runways.js';
+import { runwayRects, CROSSINGS78 } from '../src/world/runways.js';
 import { tiledTerrain, manifest, readGz, readJson, DATA } from './tile-terrain.mjs';
 
 const m = manifest();
@@ -49,8 +49,10 @@ test('the region: Fuji, the new runways and the margin\'s 1 km level; tiles by d
       assert.ok(Math.abs(h - e.elevM) < 0.6, `${a.icao} ${e.ident}: ground ${h.toFixed(2)} m, published ${e.elevM}`);
     }
   }
-  assert.equal(hf.runwayRects.length, airportsAll.reduce((n, a) => n + a.runways.length, 0));
-  assert.equal(runwayRects(airportsAll).length, 58);   // (50 until v0.7.5: Cheongju's 2, Itami's 2, Kunsan's, Centrair's, Komatsu's, Hiroshima's; 29 until v0.6.1's Yancheng, 30 until v0.6.3, 40 until v0.6.4: New Chitose's 2, Sendai's 2, Niigata's 2, Wonsan's 2, Aomori's, Pyongyang's)
+  // (v0.7.8: a runway with four bends comes as two rects, runways.js CROSSINGS78: three of them in East Asia)
+  assert.equal(hf.runwayRects.length, airportsAll.reduce((n, a) => n + a.runways.length, 0) + (CROSSINGS78 ? 3 : 0));
+  // (v0.7.8: 61 with runways.js's CROSSINGS78: Jeju's 13/31, Haneda's 04/22 and Niigata's 04/22 have four bends each and come as two rects)
+  assert.equal(runwayRects(airportsAll).length, CROSSINGS78 ? 61 : 58);   // (50 until v0.7.5: Cheongju's 2, Itami's 2, Kunsan's, Centrair's, Komatsu's, Hiroshima's; 29 until v0.6.1's Yancheng, 30 until v0.6.3, 40 until v0.6.4: New Chitose's 2, Sendai's 2, Niigata's 2, Wonsan's 2, Aomori's, Pyongyang's)
   // Fuji's summit (the 30 m patch): within 60 m of 3,776 m; the 250 m data alone is lower.
   const [fx, fy] = toMap(35.3606, 138.7274);
   await T.whenReady(fx, fy, 20000, 'test');

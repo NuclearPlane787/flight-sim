@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createAirports, profileAt, runwayCrossings, pavementEnd, RUNWAY_SHOULDER_M } from '../src/world/runways.js';
+import { createAirports, profileAt, runwayCrossings, pavementEnd, RUNWAY_SHOULDER_M, CROSSINGS78 } from '../src/world/runways.js';
 import { createHeightfield } from '../src/world/heightfield.js';
 
 const here = new URL('..', import.meta.url).pathname;
@@ -22,14 +22,21 @@ test('Jeju: 07/25 is the primary; 13/31 bends to meet it at its edges and is cut
   assert.ok(A.rank > B.rank, 'the longer runway ranks higher');
   assert.equal(A.knots.length, 0);
   assert.equal(A.cutBy.length, 0);
-  assert.equal(B.knots.length, 2);
+  // v0.7.8 (changed on purpose): four bends a crossing (runways.js CROSSINGS78), each where one of 07/25's drawn edges
+  // meets one of 13/31's two sides; with FS_CROSSINGS78=0 the two of v0.1.4, where its centreline meets those edges.
+  assert.equal(B.knots.length, CROSSINGS78 ? 4 : 2);
   assert.equal(B.cutBy.length, 1);
   assert.equal(B.cutBy[0], A);
   const a = axisOf(A), b = axisOf(B);
   for (const [s, h] of B.knots) {
-    const x = b.p0.x + b.ux * s, y = b.p0.y + b.uy * s;
-    const sA = (x - a.p0.x) * a.ux + (y - a.p0.y) * a.uy, across = -(x - a.p0.x) * a.uy + (y - a.p0.y) * a.ux;
-    assert.ok(Math.abs(Math.abs(across) - (A.widthM / 2 + RUNWAY_SHOULDER_M)) < 0.01, "the bend is on 07/25's drawn edge");
+    // (v0.7.8: the bend is on 07/25's edge at one of 13/31's sides, v m to its left; before, on its centreline)
+    const hwB = B.widthM / 2 + RUNWAY_SHOULDER_M, sides = CROSSINGS78 ? [-hwB, hwB] : [0];
+    const hit = sides.map((v) => {
+      const x = b.p0.x + b.ux * s - b.uy * v, y = b.p0.y + b.uy * s + b.ux * v;
+      return { sA: (x - a.p0.x) * a.ux + (y - a.p0.y) * a.uy, across: -(x - a.p0.x) * a.uy + (y - a.p0.y) * a.ux };
+    }).find((q) => Math.abs(Math.abs(q.across) - (A.widthM / 2 + RUNWAY_SHOULDER_M)) < 0.01);
+    assert.ok(hit, "the bend is on 07/25's drawn edge");
+    const sA = hit.sA;
     assert.ok(Math.abs(h - straight(A, sA, a.len)) < 1e-6, '13/31 meets 07/25 there');
     assert.ok(Math.abs(profileAt(B, s) - h) < 1e-9);
     assert.ok(Math.abs(h - straight(B, s, b.len)) < 0.5, `a small bend (${(h - straight(B, s, b.len)).toFixed(2)} m)`);

@@ -8,6 +8,7 @@ import { REGION } from './regions.js';
 import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { FINE_GLSL, FINE_PX, ihash } from './finecover.js';
 import { coverReader } from './clipwindow.js';
+import { TREES78, PARK78_UNIFORMS, trees78Vert } from './parks78.js';   // v0.7.8 trees (the trees subagent's): no tree on a centre's building or a landmark, parks as parkland
 
 // ------------------------------------------------------------------ field plots (GLSL)
 
@@ -299,6 +300,7 @@ export function createTrees(scene, uniforms, chunks, { fine = null } = {}) {
           #include <colorspace_fragment>
         }`,
     });
+    if (TREES78) { mat.vertexShader = trees78Vert(mat.vertexShader); Object.assign(u, PARK78_UNIFORMS); }   // v0.7.8 trees: off, v0.7.7's text and uniforms
     const mesh = new THREE.Mesh(geo, mat);
     mesh.frustumCulled = false;
     mesh.name = `trees${k}`;

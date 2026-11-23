@@ -35,7 +35,7 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
     // field only at 06/24's west end, so the way to 24's holds runs along 06/24 (2,378 m from R13 to R29, 898 m from R30 to R41)
     alongRunway: { byStand: { R13: 2400, R14: 2400, R15: 2400, R16: 2400, R17: 2400, R18: 2400, R19: 2400, R20: 2400, R21: 2400, R22: 2400, R23: 2400, R24: 2400, R25: 2400, R26: 2400, R27: 2400, R28: 2400, R29: 2400, R30: 900, R31: 900, R32: 900, R33: 900, R34: 900, R35: 900, R36: 900, R37: 900, R38: 900, R39: 900, R40: 900, R41: 900 }, reason: "the south-west apron joins the field only at 06/24's west end" },
     // F24-2 stands between 06/24 and 13R/31L, where the field's surface blends the runways' profiles: 0.7 m off it
-    standGround: { byStand: { 'F24-2': 1.0 }, reason: 'between 06/24 and 13R/31L, where the runways\' profiles blend' },
+    standGround: { byStand: { 'F24-2': 1.0, W28: 1.0 /* v0.7.8: 0.61 m with the four bends a crossing, under 0.6 m with two */ }, reason: 'between 06/24 and 13R/31L, where the runways\' profiles blend' },
     // OSM's stands; which take a widebody is the geometry's (the parking list not read for code letters)
     stands: { min: 184, max: 184, refs: ['D10', 'D12', 'D14', 'D16'], gates: 29, e787: { min: 118, max: 118 }, e777: { min: 106, max: 106 } },
     countries: ["DE"],

@@ -88,6 +88,15 @@ OUT = os.path.join(STAGE, 'fine')                 # v0.6.3: the new tiles' sub-t
 OUT_OLD = os.path.join(rt.STAGE_OLD, 'fine')      # v0.6.0's (read-only)
 WORK = os.path.join(rt.WORK, 'fine')
 STATE = os.path.join(WORK, 'state')
+# v0.7.8 (Hokkaido's cover baked again with --filter): FS_FINE_REBAKE=<folder> writes the sub-tiles into
+# <folder>/fine/, the state into <folder>/state/ and the log into <folder>/, in place of the batch's own staging, so
+# that a batch's tiles can be baked again beside what it left (its staging is not read as done, and not written).
+if os.environ.get('FS_FINE_REBAKE'):
+    _rb = os.path.abspath(os.environ['FS_FINE_REBAKE'])
+    if _rb.startswith(os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep):
+        sys.exit('bake_region_fine.py: FS_FINE_REBAKE must be a scratch folder outside the game')
+    OUT, WORK = os.path.join(_rb, 'fine'), _rb
+    STATE = os.path.join(_rb, 'state')
 STATE_OLD = '/tmp/flight-sim/v060/fine-work/state'
 if bc.EUROPE:
     STATE_OLD = STATE           # v0.7.0: Europe has no v0.6.0 state (never read East Asia's)

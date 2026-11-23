@@ -171,7 +171,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       prefer = Math.atan2(q[0] - p[0][0], q[1] - p[0][1]);
     }
     pb = planPushback(g, { x: rx, y: ry, hdgGridDeg: stand.hdgGridDeg }, push, prefer, geoNow().WHEELBASE);
-    if (r) { r.kind = 'out'; r.stand = stand.ref; r.runway = depEnd.ident; r.text = taxiText(r, `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`); }
+    if (r) { r.kind = 'out'; r.stand = stand.ref; r.runway = depEnd.ident; r.textTo = `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`; r.text = taxiText(r, r.textTo, airport); }
     show(r);
     phase = 'parked';
     const pk = keyName('pushback');
@@ -232,7 +232,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     } else if (phase === 'pushback' && pb) {
       pb.toggle();
       say(pb.state.running ? pushingText() : `Pushback held${keyName('pushback') ? `: ${keyName('pushback')} to continue` : ''}`);
-    } else if (phase === 'taxi') say('Pushback complete. ' + (route ? route.text : ''));
+    } else if (phase === 'taxi') say(taxiLine('Pushback complete. ', route, airport));
     else say('No pushback here: only at a gate start');
     return status;
   }
@@ -247,7 +247,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
         phase = 'taxi';
         sim.controls.parkingBrake = true;
         reroute();
-        say(`Pushback complete. Release the parking brake${keyName('parkingBrake') ? ` (${keyName('parkingBrake')})` : ''}. ` + (route ? route.text : 'No taxi route found'));
+        say(taxiLine(`Pushback complete. Release the parking brake${keyName('parkingBrake') ? ` (${keyName('parkingBrake')})` : ''}. `, route, airport, 'No taxi route found'));
       }
       return;
     }
@@ -279,7 +279,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     const r = routeFromStand(g, { x: s.pos.x + Math.sin(s.hdg) * ahead, y: s.pos.y + Math.cos(s.hdg) * ahead }, depEnd);
     if (!r) return;
     Object.assign(r, { kind: 'out', stand: stand.ref, runway: depEnd.ident });
-    r.text = taxiText(r, `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`);
+    r.textTo = `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`; r.text = taxiText(r, r.textTo, airport);
     show(r);
   }
 
@@ -301,14 +301,14 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     if (phase === 'parked' || phase === 'pushback' || phase === 'taxi') {
       phase = 'taxi'; pb = null;
       reroute();
-      say('Rewound. ' + (route ? route.text : 'No taxi route found'));
+      say(taxiLine('Rewound. ', route, airport, 'No taxi route found'));
     } else if ((phase === 'taxi-in' || phase === 'arrived') && airport && stand) {
       const r = routeToStand(graphFor(airport), [s.pos.x, s.pos.y], stand);
       if (!r) return;
       const pts = [[s.pos.x, s.pos.y], ...r.points, ...leadIn(stand)];
       const points = pts.filter((p, i) => i === 0 || dist(p[0], p[1], pts[i - 1][0], pts[i - 1][1]) > 0.5);
-      const out = { kind: 'in', points, refs: r.refs, crossings: r.crossings, lengthM: r.lengthM, stand: stand.ref, standXY: [stand.x, stand.y] };
-      out.text = taxiText(out, `stand ${stand.ref}`);
+      const out = { kind: 'in', points, refs: r.refs, refLens: r.refLens, crossings: r.crossings, lengthM: r.lengthM, stand: stand.ref, standXY: [stand.x, stand.y] };
+      out.text = taxiText(out, `stand ${stand.ref}`, airport);
       phase = 'taxi-in';
       show(out);
       say(out.text);
@@ -483,8 +483,8 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
       const rest = pastTurnOff(rect, r.points);
       if (!rest.slice(1).some(onIt)) crossings = crossings.filter((c) => c !== rect.id);
     }
-    const out = { kind: 'in', points, refs: r.refs, crossings, lengthM, stand: st.ref, standXY: [st.x, st.y], exit: [ex.O.x, ex.O.y] };
-    out.text = taxiText(out, `stand ${st.ref}`);
+    const out = { kind: 'in', points, refs: r.refs, refLens: r.refLens, crossings, lengthM, stand: st.ref, standXY: [st.x, st.y], exit: [ex.O.x, ex.O.y] };
+    out.text = taxiText(out, `stand ${st.ref}`, ap);
     stand = st;
     phase = 'taxi-in';
     show(out);
@@ -518,8 +518,84 @@ function endOf(airport, ident) {
 }
 
 // "Taxi to holding point A1 for 14R via P, A, crossing 14L/32R".
-function taxiText(r, to) {
-  const refs = r.refs.map((x) => (x.startsWith('RWY ') ? 'runway ' + x.slice(4) : x)).filter(Boolean);
+// v0.7.8 (briefs/V0-7-8.md part 6, item 2; the trees subagent's): Madrid's taxi-in ran to thirty names over two lines
+// and named OSM's "GATE-5" and "GATE-13" as taxiways. Now (taxiRefs()) a stand's or a gate's ref is no taxiway, a
+// taxiway's numbered piece ("KA-7") reads as its taxiway ("KA"), a name
+// is never given twice in a row, and a name that comes back after one short link (under TAXI_SHORT_M, not a runway)
+// takes the link in; and the whole line is cut to TAXI_LINE_MAX characters with "…" (fitLine()), so it stays one line on
+// the panel (main.js's toast: 14 px, at most half the window wide). ap: the airport, for its stands' refs.
+// (The code review, 04:53: a stand's ref is dropped only on a link under TAXI_STAND_LINK_M, the stand's own lead-in:
+// at twenty airports a real taxiway shares a stand's name, Frankfurt's N over 6 km, Incheon's R4 and R1, Berlin's B
+// and C. And the runway crossings are never cut off the line: the names in the middle of the list go first, fitTaxi().)
+export const TAXI_SHORT_M = 200, TAXI_LINE_MAX = 84, TAXI_STAND_LINK_M = 100;
+export function taxiRefs(refs, lens = null, ap = null) {
+  const standRefs = new Set(((ap && ap.stands) || []).map((s) => String(s.ref)));
+  const isRwy = (x) => x.startsWith('RWY ');
+  const out = [];
+  (refs || []).forEach((ref, i) => {
+    if (!ref) return;
+    const known = !!(lens && Number.isFinite(lens[i])), len = known ? lens[i] : Infinity;
+    // a gate's ref never; a stand's ref on a short link (its lead-in), or where the link's length isn't known
+    if (!isRwy(ref) && (/^GATE/i.test(ref) || (standRefs.has(ref) && (!known || len < TAXI_STAND_LINK_M)))) return;
+    if (!isRwy(ref)) ref = ref.replace(/^([A-Z]{1,3})-\d{1,3}$/, '$1');   // a taxiway's numbered piece (Madrid's "KA-7", "M-27"): the taxiway
+    const last = out[out.length - 1];
+    if (last && last.ref === ref) { last.len += len; return; }
+    if (out.length >= 2 && out[out.length - 2].ref === ref && last.len < TAXI_SHORT_M && !isRwy(last.ref)) { out.pop(); out[out.length - 1].len += last.len + len; return; }
+    out.push({ ref, len });
+  });
+  return out.map((o) => o.ref);
+}
+export function fitLine(s, max = TAXI_LINE_MAX) {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max - 1), k = cut.lastIndexOf(', ');
+  return (k > max * 0.6 ? cut.slice(0, k) : cut.replace(/[\s,]+$/, '')) + '…';
+}
+// The instruction within `max` characters with every runway kept, crossed or taxied along: the whole list if it fits;
+// else taxiway names are left out one at a time, from the one before the last back toward the first, each run of them
+// shown as "…" ("via P1, A, …, runway 04/22, …, G, crossing 18L/36R"). The last name and every "runway X" stay.
+export function fitTaxi(head, refs, tail, max = TAXI_LINE_MAX) {
+  const out = refs.map(() => false);
+  const text = () => {
+    const list = [];
+    refs.forEach((r, i) => { if (!out[i]) list.push(r); else if (list[list.length - 1] !== '…') list.push('…'); });
+    return head + (list.length ? ` via ${list.join(', ')}` : '') + tail;
+  };
+  let s = text();
+  for (let k = refs.length - 2; k >= 0 && s.length > max; k--) {
+    if (refs[k].startsWith('runway ')) continue;
+    out[k] = true; s = text();
+  }
+  // Still too long (Pudong: four runways crossed on one route): the last name goes too, then the "…" itself, before
+  // any runway does.
+  const n = refs.length - 1;
+  if (s.length > max && n >= 0 && !refs[n].startsWith('runway ')) { out[n] = true; s = text(); }
+  if (s.length > max) {   // (Brussels's 25L by 01/19 and 07R/25L: the runways alone, without the "…" between them)
+    const rw = refs.filter((r) => r.startsWith('runway '));
+    s = head + (rw.length ? ` via ${rw.join(', ')}` : '') + tail;
+  }
+  return s.length <= max ? s : fitLine(s, max);
+}
+// `max`: the line's budget (TAXI_LINE_MAX less a prefix such as "Pushback complete. ": taxiLine() below).
+export function taxiText(r, to, ap = null, max = TAXI_LINE_MAX) {
+  const refs = taxiRefs(r.refs, r.refLens, ap).map((x) => (x.startsWith('RWY ') ? 'runway ' + x.slice(4) : x));
   const cross = (r.crossings || []).filter((c) => !refs.includes('runway ' + c));
-  return `Taxi to ${to}` + (refs.length ? ` via ${refs.join(', ')}` : '') + (cross.length ? `, crossing ${cross.join(', ')}` : '');
+  return fitTaxi(`Taxi to ${to}`, refs, cross.length ? `, crossing ${cross.join(', ')}` : '', max);
+}
+// A route's instruction after a prefix. A short prefix ("Pushback complete. ", "Rewound. ") and the route share the
+// one line: the route is fitted again in what the prefix leaves. After a long prefix (the parking brake's hint, 50
+// characters and more) the route keeps its own full line, as v0.7.7 said the whole route there, and the message may
+// take a second line. And whatever the budget, a runway is never lost to it: a fit that cut one, or cut at all, gives
+// way to the route's own full line. (The code review's second look: the first version squeezed the route into the 34
+// characters the brake's hint left, which lost every route after a pushback.) `none`: the text where there is no route.
+export const TAXI_PREFIX_MAX = 24;
+export function taxiLine(prefix, r, ap = null, none = '') {
+  if (!r) return prefix + none;
+  // a route restored from a save made before v0.7.8 has no textTo: read it back from its text
+  const to = r.textTo || (r.refs && r.text ? (/^Taxi to (.*?)(?= via |, crossing |$)/.exec(r.text) || [])[1] : null);
+  if (!to) return prefix + (r.text || none);
+  const full = taxiText(r, to, ap);
+  if (prefix.length > TAXI_PREFIX_MAX) return prefix + full;
+  const t = taxiText(r, to, ap, TAXI_LINE_MAX - prefix.length);
+  const lost = t.endsWith('…') || (r.crossings || []).some((c) => !t.includes(c));
+  return prefix + (lost ? full : t);
 }

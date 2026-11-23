@@ -295,7 +295,7 @@ export function euConic() {
   return { rho0, lonK: 180 / Math.PI / n, rhoA: rho(46), degPerM: 10 / (rho(41) - rho(51)) };
 }
 
-export function euGroundGlsl(src, fields77 = FIELDS77) {
+export function euGroundGlsl(src, fields77 = FIELDS77, fens78 = FENS78) {
   const K = euConic();
   const splice = (text, anchor, add, where) => {
     const n = text.split(anchor).length - 1;
@@ -371,7 +371,7 @@ vec3 euField(int kind, float t, out float green) {
     + '  }\n', 'before');
   s = splice(s, '  return mix(avg, col * mix(vec3(1.0), tintM, 0.6) * 0.85, fade);\n',
     '  if (eu == 1) treeLine = max(treeLine, euHg * 0.7 * step(0.55, hv));   // trees in about half the hedges\n', 'before');
-  return fields77 ? fields77Glsl(s, splice) : s;
+  return fields77 ? (fens78 ? fens78Glsl(fields77Glsl(s, splice), splice) : fields77Glsl(s, splice)) : s;   // (v0.7.8: the Fens, below)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -496,3 +496,53 @@ function fields77Glsl(src, splice) {
     '  if (eu == 3) ang = vnoise((m - dq) * 0.00003 + 17.0) * 3.14159;   // v0.7.7: a polder\'s strips turn slowly with the land, no seam\n', 'instead');
   return s;
 }
+
+// ---- v0.7.8 fens (briefs/V0-7-8.md part 6, item 1; the trees subagent's block) ----
+// v0.7.7's "hedged British Isles" drew the Fens and East Anglia as small hedged pastures; they are open arable land, big
+// fields with few hedges. Great Britain's hedged weight is lowered to nothing over two boxes in latitude and longitude
+// (the conic's own, without the zone's wobble), eased over about 10 km at every edge: the Fens 52.2 to 53.0 N, 0.5 W to
+// 0.6 E, and East Anglia's arable east of them to the coast, 52.0 to 53.05 N, 0.6 to 1.8 E (the boxes overlap at 0.4 to 0.8 E). Behind ?fens78=0 (node
+// FS_FENS78=0), on by default; off, euGroundGlsl() is v0.7.7's text character for character. Only with fields77 on (the
+// line it changes is v0.7.7's).
+export const FENS78 = lookSwitch('fens78', 'FS_FENS78');
+export const FENS78_BOXES = [[52.2, 53.0, -0.5, 0.8], [52.0, 53.05, 0.4, 1.8]];   // [S, N, W, E] degrees (overlapping by 0.2 deg, so no dip where they meet)
+export const FENS78_EASE_KM = 10;
+function fens78Glsl(src, splice) {
+  const K = euConic(), eLat = FENS78_EASE_KM / 111.2 / 2, eLon = FENS78_EASE_KM / (111.2 * Math.cos(52.5 * Math.PI / 180)) / 2;
+  const box = ([S, N, W, E]) => `smoothstep(${g1(S - eLat)}, ${g1(S + eLat)}, fLat) * (1.0 - smoothstep(${g1(N - eLat)}, ${g1(N + eLat)}, fLat)) * smoothstep(${g1(W - eLon)}, ${g1(W + eLon)}, fLon) * (1.0 - smoothstep(${g1(E - eLon)}, ${g1(E + eLon)}, fLon))`;
+  return splice(src, '  hedge = w.r + w.g * max(nw, atl)',
+    `  // v0.7.8 fens: the Fens and East Anglia open arable (ground.js's FENS78_BOXES), eased over about ${FENS78_EASE_KM} km.
+  float fLat = 46.0 + (${g1(K.rhoA)} - length(a)) * ${g1(K.degPerM)}, fLon = ${g1(LON0)} + atan(a.x, a.y) * ${g1(K.lonK)};
+  float fens78 = max(${box(FENS78_BOXES[0])}, ${box(FENS78_BOXES[1])});
+  hedge = w.r * (1.0 - fens78) + w.g * max(nw, atl)`, 'instead');
+}
+// ---- end of v0.7.8 fens ----
+
+// ---- v0.7.8 snow (briefs/V0-7-8.md part 6, item 5; the trees subagent's block) ----
+// "Little snow on the Alps": the terrain shader's high-ground snow (v0.6.0's, for Fuji and the Japan Alps) starts at about
+// 2,850 m of the 250 m grid's height, and the grid stands several hundred metres under the real summits, so only a few
+// cells of the Alps took it. In Europe the snow line now follows the latitude [EST]: SNOW78_LINE_M at 46 N (the grid's
+// height; the real permanent line about 2,800 to 3,000 m), SNOW78_PER_DEG lower a degree further north (the Pyrenees'
+// tops at 42.6 N take it, Scotland's 1,345 m never), higher south, so in Spain's south only the Sierra Nevada's top
+// (37 N, about 3,100 m). Steep faces stay bare rock. Only above the grid's own snow line: bare ground below it (v0.7.7's
+// bg77, WorldCover's class 6) stays earth. Behind ?snow78=0 (node FS_SNOW78=0); off, the shader text is v0.7.7's.
+// East Asia's text never has it.
+export const SNOW78 = lookSwitch('snow78', 'FS_SNOW78');
+export const SNOW78_LINE_M = 2450, SNOW78_PER_DEG = 75, SNOW78_SPREAD_M = 220;
+export function snow78Line(lat) { return SNOW78_LINE_M - SNOW78_PER_DEG * (lat - 46); }
+export function snow78Frag(src) {
+  const K = euConic();
+  const anchor = '          float cap = smoothstep(2650.0, 3050.0, vHighH + 300.0 * (tex2 - 0.5)) * (1.0 - 0.7 * smoothstep(0.55, 0.9, slope));\n';
+  const n = src.split(anchor).length - 1;
+  if (n !== 1) throw new Error(`snow78Frag: the anchor occurs ${n} times`);
+  return src.replace(anchor, `          // v0.7.8 snow (ground.js's SNOW78_*): the snow line by latitude, steep faces bare.
+          vec2 sa78 = vec2(m.x, ${g1(K.rho0)} - m.y);
+          float sLat78 = 46.0 + (${g1(K.rhoA)} - length(sa78)) * ${g1(K.degPerM)};
+          float sLine78 = ${g1(SNOW78_LINE_M)} - ${g1(SNOW78_PER_DEG)} * (sLat78 - 46.0);
+          // (rock where the line's own bare band passes v0.6.0's: only the part over it, so no rock is mixed in twice)
+          float bare78 = max(bare, smoothstep(sLine78 - 500.0, sLine78 - 150.0, vHighH + 200.0 * (tex1 - 0.5)));
+          alb = mix(alb, rock * 0.85, (bare78 - bare) / max(1.0 - bare, 1e-3));
+          float cap = smoothstep(sLine78 - ${g1(SNOW78_SPREAD_M)}, sLine78 + ${g1(SNOW78_SPREAD_M)}, vHighH + 300.0 * (tex2 - 0.5)) * (1.0 - 0.85 * smoothstep(0.45, 0.8, slope));
+`);
+}
+// ---- end of v0.7.8 snow ----

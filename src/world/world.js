@@ -34,6 +34,7 @@ import { createRural } from './rural.js';
 import { createGreenhouses } from './greenhouses.js';
 import { clusterAirports, createAirportSet, MORE } from './airport-set.js';
 import { placeParked, blockedByPlayer } from './traffic-layout.js';
+import { GATES78, parkedDoor } from './apron-geom.js';
 import { regionQuery } from './region.js';
 
 export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfield = null, airports = null } = {}) {
@@ -204,6 +205,32 @@ function createAirportStreams({ uniforms, chunks, renderer, hf, ap, boxes, taxiL
   const view = { camera: null };   // the last frame's camera, to compile a new part's shaders before it's in sight
   const prep = createAirportPrep();
 
+  // v0.7.8 (GATES78, apron-geom.js): each built airport's jet bridges at the doors of the aircraft at its gates, the
+  // parked ones (those not hidden for the player) and the player's own (playerDoor, from its type). Run when an
+  // airport's aprons or traffic are built and when the player's stand changes; an airport whose doors are as they
+  // were is left alone (aprons' setGateDoors()).
+  let playerDoor = null;
+  const syncGateDoors = () => {
+    if (!GATES78) return;
+    for (const ap of parts.aprons) {
+      if (!ap.setGateDoors) continue;
+      for (const s of ap.sites) {
+        const doors = new Map();
+        let t = null;
+        for (const p of parts.traffic) { t = (p.sites || []).find((x) => x.a && x.a.icao === s.icao); if (t) break; }
+        if (t) {
+          const byRef = new Map((t.a.stands || []).map((st) => [String(st.ref), st]));
+          t.parked.forEach((p, i) => {
+            const st = byRef.get(String(p.stand));
+            const d = st && !t.hidden.has(i) ? parkedDoor(st, p) : null;
+            if (d) doors.set(String(p.stand), d);
+          });
+        }
+        if (player && player.icao === s.icao && player.ref != null && playerDoor) doors.set(String(player.ref), playerDoor);
+        try { ap.setGateDoors(s.icao, doors); } catch { /* the bridges stay as they were */ }
+      }
+    }
+  };
   // One part, made into its kind's group: listed, and a handle that undoes both.
   const register = (kind, p) => {
     if (!p) return null;
@@ -213,6 +240,7 @@ function createAirportStreams({ uniforms, chunks, renderer, hf, ap, boxes, taxiL
       try { renderer.compileAsync(p.group, view.camera, p.group.parent.parent).catch(() => {}); } catch { /* drawn compiles it */ }
     }
     if (kind === 'traffic' && player) p.setPlayerStand(player.icao, player.ref, player.opts);
+    if (kind === 'traffic' || kind === 'aprons') syncGateDoors();
     return {
       part: p,
       dispose() {
@@ -295,9 +323,11 @@ function createAirportStreams({ uniforms, chunks, renderer, hf, ap, boxes, taxiL
       return r;
     },
     // As createTraffic's: remembered, so an airport built later starts with it.
-    setPlayerStand(icao, ref, opts = null) {
+    setPlayerStand(icao, ref, opts = null, door = null) {
       player = { icao, ref, opts };
+      playerDoor = door;   // v0.7.8: the player's own front door, for the bridge at its gate
       for (const p of parts.traffic) p.setPlayerStand(icao, ref, opts);
+      syncGateDoors();
     },
     // As createTraffic's; for an airport not built now, from the same seeded placement.
     occupiedStands(icao) {

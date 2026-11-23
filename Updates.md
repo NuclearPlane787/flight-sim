@@ -4,6 +4,38 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.7.8 · 2026-11-23 · The gates, the runway crossings, landmarks, parks and East Asia's ground
+
+- **The gates fit the aircraft at every airport.** The jet bridge and the stop bar stood 21 m ahead of the aircraft they served (v0.7.6 mended four airports); now, at all seventy-two:
+  - **The jet bridge's cab stands at the front door of the aircraft at that gate,** yours or a parked one: 4 m behind the nose for an A321, 6.3 m for a 787-9 and 6.8 m for a 777-300ER, higher and further out for the widebodies. Take a 777 to a gate and its bridge moves to the 777's door. A gate with nobody at it keeps a bridge that clears every type.
+  - **The stop bar lies under the nose wheel,** and the lead-in line ends at it, where it ran on 5.3 m.
+  - More gates have a bridge: 2,299 of the 2,480 gates in the game, where 1,869 had one, and a gate that has one has it for every type. Qingdao has thirteen fewer (their terminal walls are on the wrong side of the nose).
+- **Runways that cross meet without a step.** Where a runway crossed a longer one at an angle, its surface stepped off the centreline: 33 cm at 20 m off at Dublin, 27 cm at Prague, 24 cm at Lossiemouth, 12 cm at Cologne Bonn, 8 cm at Jeju, and 3 to 6 cm at Zurich, Orly, Haneda, Niigata and Hamburg. Every such runway now bends where each edge of the longer runway meets each of its own sides, as Brussels's 01/19 has since v0.7.4, and nothing over 2 cm is left at any crossing in the game (the largest, 1.7 cm, is a slope at Dublin). The ground there has changed: Prague's 12 starts 0.4 m higher, level with the runway it crosses, and falls gently for its first 23 m.
+- **Landmarks:**
+  - **Nagoya's and Osaka's castles** have weathered green roofs and mid-grey stone bases; they read pale mint and pale grey.
+  - **Tower Bridge runs on to both banks:** its south end stood in the river.
+  - **Hamburg's Elbphilharmonie** has its glass crown rising in waves to the 108 m tip over the brick warehouse.
+  - **Innsbruck's Bergisel jump:** the tower stands on the hill's crest and the in-run runs down the slope; it was a small tower at the foot.
+  - **Notre-Dame de la Garde stands on its 150 m hill** over Marseille; the hill wasn't there.
+  - **The Rock of Gibraltar rises to its full 426 m** (364 m before).
+- **The air bases:** the hardened shelters are low concrete vaults with their doors toward the taxiways, where they were 9 m boxes (Ramstein, Lakenheath, Lossiemouth, Zaragoza, Cheongju, Komatsu, Kunsan). Zaragoza's and Lossiemouth's shelters, hangars and pads are joined to the taxiways by pavement; Fairford's hardstands have smooth edges; Zaragoza's stand 2, which overlapped stand 1, is gone.
+- **Parks, trees and the town near airports:**
+  - **Parks in the cities with real buildings are parkland:** mown lawns with scattered broadleaf trees, where a conifer forest stood, as round the Atomic Bomb Dome and in Hiroshima's Peace Park, and round Nagoya's, Osaka's and Kanazawa's castles.
+  - **No tree grows through a real building or a landmark.**
+  - **Near an airport the generated town keeps low:** two or three storeys within about 500 m of the field and under the first 4 km of each final. The wall of towers past Itami's fence and the tall dark blocks under Kunsan's final to 18 are gone.
+- **East Asia's ground:**
+  - **Kanazawa has a real city centre** from OpenStreetMap: the station, the castle park, Kenrokuen and Korinbo.
+  - **Hokkaido's 30 m land cover is cleaned of speckle,** as the rest of the region's was (about 1 pixel in 75 changes).
+  - **Thirty-eight cells where neighbouring 250 m tiles disagreed are mended;** none was in sight of an airport.
+- **Europe's countryside: the Fens and East Anglia are big open arable fields** in stubble, soil and crop, where v0.7.7 made them small hedged pastures.
+- **Taxi instructions are one line.** They name taxiways, not their numbered pieces or gates ("KA", not "KA-7"; never "GATE-5"), and don't repeat a name. A long one keeps its first taxiways, its last and every runway it crosses or runs along, with "…" for what is left out in between: "Taxi to holding point J14 for 17R via B, C, Z6, Z3, T4, Y3, …, J14, crossing 17L/35R". Madrid's longest ran to 262 characters over two lines and named a gate; Pudong's to 186; none is over 84 now.
+- **The high Alps carry snow,** as do the Pyrenees' tops and the Sierra Nevada's summit; steep faces stay rock, and the valleys are as they were.
+- **Kaiserslautern has a real city centre** from OpenStreetMap, by Ramstein's finals: the old town round the Stiftskirche, the town hall's 80 m tower, the station and the stadium on the Betzenberg.
+- **Incheon's stand 7 pushes back on pavement:** the wedge its lead-in line crosses was unpaved.
+- **A gate start on sloping ground stands on its wheels.** At Jeju's stand 1, where the apron falls nearly 2 m along the aircraft, the game stood the aircraft level, the nose gear began inside the ground, and the flight opened with the aircraft thrown into the air and a tail strike. A start on ground steeper than 2 % along the aircraft now takes the ground's own pitch. This was an old fault, found by this version's checks.
+- **The new looks can be turned off from the page's address:** `?gates78=0` (the gates), `?crossings78=0` (the crossings' shapes), `?landmarks78=0`, `?bases78=0` (the shelters), `?trees78=0` (parks and trees), `?towers78=0` (the low town near airports), `?fens78=0` and `?snow78=0`. The baked data has no switch: the Rock, Notre-Dame de la Garde's hill, Zaragoza's, Lossiemouth's and Fairford's pavement, Kanazawa's and Kaiserslautern's centres, Incheon's stand 7, Hokkaido's cover and the mended cells.
+- **Against v0.7.7:** with every switch off, all sixteen of East Asia's standard views and all twenty-six of Europe's match the last version pixel for pixel. With the new looks on, fifteen of East Asia's differ: the gates at Gimpo and on Haneda's, Pudong's and Beijing's finals, the parks in Seoul, Beijing and Tokyo, and the lower town short of Pudong's and Beijing's runways (0.05 to 3.7 % of their pixels). Twenty-one of Europe's differ: London's and Paris's parks, the snow over Zurich and on the Alps from FL350, and the gates and the lower town on eight finals (up to 1.9 %). The frame rate holds: 60.0 to 60.1 fps, worst frame 16.8 ms, at a stand by day and by night and on the final at Incheon and at Heathrow, each alone on mains. A scene draws 1,000 to 5,000 more triangles for the bridges.
+
 ## v0.7.7 · 2026-11-23 · Europe's towns, countryside and ground
 
 - **Europe's towns:**

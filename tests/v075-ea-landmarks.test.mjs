@@ -70,7 +70,10 @@ test('v0.7.5: the torii stands at the sea\'s level; the others on the lowest gro
 
 // The colours that make each read as itself (aCol per vertex).
 const share = (c, f) => { let n = 0; for (let i = 0; i < c.count; i++) if (f(c.getX(i), c.getY(i), c.getZ(i))) n++; return n / c.count; };
-const isGreen = (r, g, b) => g > r + 0.12 && g > b;            // the copper roofs
+// (v0.7.8, FS_LANDMARKS78 on: the copper's albedo darker for the shader's lift, (0.042, 0.114, 0.071): its green 0.072 over
+// its red, not 0.12; landmark-models.js's KEEP_ROOF. Off: v0.7.5's test as it was.)
+const GREEN_OVER = process.env.FS_LANDMARKS78 !== '0' ? 0.06 : 0.12;
+const isGreen = (r, g, b) => g > r + GREEN_OVER && g > b;            // the copper roofs
 const isVermilion = (r, g, b) => r > 0.6 && g < 0.3 && b < 0.2;
 const isGold = (r, g, b) => r > 0.7 && g > 0.5 && b < 0.3;
 

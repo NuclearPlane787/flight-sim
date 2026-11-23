@@ -113,6 +113,8 @@ function newCore(A, boeing, n) {
 // v0.7.4: the A321's AP fields new in v0.7.4, as an older save (which has none of them) restores them.
 const AP_V074 = { armedLateral: '', armedVertical: '', trkFpa: false, fpaDeg: 0 };
 const ENG_KITS = new WeakMap();   // v0.5.2: engine models per engine's numbers (a design's mixed engines)
+// v0.7.8: a start on ground steeper than this along the aircraft is pitched to the ground (reset(), on the ground).
+export const START_SLOPE_MIN = 0.02;
 export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   const groundFn = ground || defaultGround;
   // Everything the type decides, bound by bindType() below.
@@ -1144,6 +1146,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     massProps();
     const hdg = ic.hdg || 0;
     const onGround = ic.onGround ?? true;
+    // (v0.7.8: the ground under the nose wheel and the main wheels, for a start on steep ground below. Read BEFORE g:
+    // a ground function may hand back one object it reuses, and g must hold the reference point's values after.)
+    const hNose = onGround ? groundFn((ic.x || 0) + Math.sin(hdg) * GEAR.nose.x, (ic.y || 0) + Math.cos(hdg) * GEAR.nose.x).h : 0;
+    const hMain = onGround ? groundFn((ic.x || 0) + Math.sin(hdg) * GEAR.left.x, (ic.y || 0) + Math.cos(hdg) * GEAR.left.x).h : 0;
     const g = groundFn(ic.x || 0, ic.y || 0);
     // Flaps/slats and the gear start where their levers are.
     X.prevLever = controls.flapLever | 0;
@@ -1161,9 +1167,16 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     if (onGround) {
       controls.thrust = 0;
       controls.parkingBrake = !!ic.parkingBrake;
-      setEuler(hdg, 0, 0);
+      // v0.7.8: on ground that slopes along the aircraft by more than START_SLOPE_MIN the start takes the ground's own
+      // pitch, between the nose wheel and the main wheels. (Jeju's stand 1 falls 1.95 m from nose to tail, 4.4 %: a
+      // level start put the nose gear 0.6 m into the ground, and the three seconds of settling below threw the aircraft
+      // into the air at 10.8 degrees of pitch: not on the ground at the gate, then a tail strike. Found by v0.7.8's
+      // day run; the pushed v0.7.7 did the same.) Under the limit, every runway and nearly every stand, nothing changes.
+      const slope = (hNose - hMain) / (GEAR.nose.x - GEAR.left.x);
+      const sloped = Math.abs(slope) > START_SLOPE_MIN && Math.abs(slope) < 0.2;
+      setEuler(hdg, sloped ? Math.atan(slope) : 0, 0);
       computeR();
-      const refZ = g.h + GROUND_Z;
+      const refZ = sloped ? hMain + slope * (cgX - GEAR.left.x) + GROUND_Z : g.h + GROUND_Z;
       X.px = (ic.x || 0) + cgX * Math.sin(hdg); X.py = (ic.y || 0) + cgX * Math.cos(hdg); X.pz = refZ;
       X.ths = X.thsTakeoff;
       X.eN1.fill(A.N1_IDLE);

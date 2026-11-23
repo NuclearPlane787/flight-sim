@@ -129,7 +129,8 @@ test('switch off: the pavement is v0.7.3\'s, bit for bit (Gatwick, Madrid, Inche
     const a = airport(rel);
     const g = B.buildPavement(a, a.origin[0], a.origin[1], () => a.elevM || 0, BG.dedupePolys(a.aprons || []));
     const h = createHash('sha256').update(Buffer.from(g.getAttribute('position').array.buffer)).update(Buffer.from(g.getAttribute('pm').array.buffer)).digest('hex');
-    const off = child({ FS_APRONGRASS: '0' }, rel);
+    // (v0.7.8: with the gates' switch off too: the fit at every airport, apron-geom.js GATES78, moves the paving under each jet bridge)
+    const off = child({ FS_APRONGRASS: '0', FS_GATES78: '0' }, rel);
     assert.equal(off.pos, h, rel);
     const on = child({ FS_APRONGRASS: '' }, rel);
     assert.ok(on.n > off.n, `${rel}: the skirts add triangles`);

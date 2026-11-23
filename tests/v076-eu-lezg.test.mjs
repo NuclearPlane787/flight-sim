@@ -30,7 +30,8 @@ if (inRegion('europe', import.meta.url, { env: { FS_PENDING: '1' } })) {
     },
     fieldSurface: 'runways', fieldPavement: true,
     // OSM's stands on the civil apron, less AD 2.8's 20 to 23 and 30 to 34 (STAND_EXCLUDE); no jet bridges
-    stands: { min: 22, max: 22, refs: ['1', '9', '12', '13', '16', '5A', '10B'], gates: 0,
+    // (v0.7.8, part 3's item 6: OSM's stand 2 overlaps stand 1 and is left out, STAND_DROP: 21 from the v0.7.8 bake on)
+    stands: { min: 21, max: 21, refs: ['1', '9', '12', '13', '16', '5A', '10B'], gates: 0,
       // AIP_STANDS.LEZG: code E only at 6 to 9A, 12 and 13 [EST]; the geometry keeps nine of them (9A isn't mapped)
       e787: { min: 9, max: 9, include: ['12', '13', '9'], only: ['6', '6A', '7', '7A', '8', '8A', '9', '9A', '12', '13'] },
       e777: { min: 9, max: 9, include: ['12', '13', '9'], only: ['6', '6A', '7', '7A', '8', '8A', '9', '9A', '12', '13'] } },

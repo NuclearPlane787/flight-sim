@@ -33,6 +33,7 @@ import { toMap } from './frame.js';
 import { REGION_ID } from './regions.js';
 import { CITY_MAX_AGL, towns77Switch, TOWNS77 } from './cities.js';
 import { CELL_M, AVIATION_M, loadAndBuild } from './centres-worker.js';
+import { TREES78, addMask78, dropMask78, setLandmarks78, update78 } from './parks78.js';   // v0.7.8 trees (the trees subagent's): the trees' mask per centre
 
 // v0.7.7 (briefs/V0-7-7.md part 1, the towns): one switch for the part, on by default, read once at import from the
 // page's query (?towns77=0) or in node from FS_TOWNS77=0, as apron.js's lookSwitch(). Off, the game draws what the pushed
@@ -73,6 +74,7 @@ const COUNTRY = {
   beijing: 2, tianjin: 2, shenyang: 2, dalian: 2, vladivostok: 0,
   pyongyang: 0, sapporo: 1, sendai: 1, niigata: 1,
   nagoya: 1, hiroshima: 1,   // v0.7.5: Japan's look
+  kanazawa: 1,   // v0.7.8 (the trees subagent's): Japan's look
   // v0.7.0: Europe's nine (drawn only with REGION_ID 'europe', by VERT_EU below): 3 pale stone and plaster under
   // grey slate and zinc, 4 cream and ochre plaster under terracotta, 5 brick under dark tile.
   london: 3, paris: 3, frankfurt: 3, madrid: 4, barcelona: 4, rome: 4, munich: 4, zurich: 4, amsterdam: 5,
@@ -86,6 +88,8 @@ const COUNTRY = {
   hamburg: 5, venice: 4, marseille: 4, lyon: 3, porto: 4, naples: 4,
   // v0.7.6: Zaragoza's plaster and brick under terracotta, the south's look as Madrid's.
   zaragoza: 4,
+  // v0.7.8: Kaiserslautern's sandstone and plaster under grey roofs, as Frankfurt's.
+  kaiserslautern: 3,
 };
 // Every centre stands since v0.7.0 (v0.6.0's flags allowed only Seoul, Songdo and Busan with the region off).
 export function centreAllowed(id) { return true; }
@@ -448,7 +452,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
     j && index.centres.forEach((info, k) => centres.set(info.id, { info, k, state: 'idle', res: null, parts: null, stage: 0 }));
   });
   let exclude = null;
-  const landmarksP = import('./landmarks.js').catch(() => null).then((m) => { exclude = landmarkExclusions(m && m.REGION_LANDMARKS); });
+  const landmarksP = import('./landmarks.js').catch(() => null).then((m) => { exclude = landmarkExclusions(m && m.REGION_LANDMARKS); if (TREES78) setLandmarks78(exclude); });
 
   // The worker (one, made on the first build; idle between messages).
   let worker = null, workerFailed = false, jobSeq = 0, inFlight = null;
@@ -469,7 +473,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
   }
   function startJob(c) {
     const job = ++jobSeq;
-    const msg = { job, url: base + 'centres/' + c.info.file, info: c.info, exclude: exclude || [], runways: runRunways(c.info), holes: TOWNS77 };
+    const msg = { job, url: base + 'centres/' + c.info.file, info: c.info, exclude: exclude || [], runways: runRunways(c.info), holes: TOWNS77, ...(TREES78 ? { parks78: true } : {}) };
     c.state = 'building'; c.job = job; c.t0 = performance.now();
     inFlight = { job, id: c.info.id };
     const w = getWorker();
@@ -590,6 +594,12 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
       c.meta = { tallTop: r.tall.top, tallEnd: r.tall.end, chunkStart: L.chunkStart, chunkCols: L.chunkCols, chunkRows: L.chunkRows, chunkM: L.chunkM, mask: r.mask, masked: r.masked, kept: r.kept };
       c.timing = { id: c.info.id, ...r.ms, bytes: r.bytes, toResultMs: c.tResult - c.t0, stagingMs: performance.now() - c.tResult, totalMs: performance.now() - c.t0, tallTris: r.tall.tris, lowTris: r.low.tris, buildings: r.kept, lights: n, masked: r.masked, cells: c.info.cols * c.info.rows, skipped: r.skipped, holes: r.holes };
       log.push(c.timing);
+      if (r.park78) {   // v0.7.8 trees: the footprints' mask as a texture (uploaded when it is first bound)
+        const k = r.park78, t = new THREE.DataTexture(k.data, k.w, k.h, THREE.RGFormat, THREE.UnsignedByteType);
+        t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+        t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.flipY = false; t.unpackAlignment = 1; t.needsUpdate = true;
+        c.park78 = t; addMask78(c.info.id, k.box, t);
+      }
       c.res = null;
       c.state = 'ready';
       maskVer++;
@@ -606,6 +616,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
       }
       P.mats.tall.dispose(); P.mats.low.dispose(); P.mats.lights.dispose();
     }
+    if (c.park78) { dropMask78(c.info.id); c.park78.dispose(); c.park78 = null; }   // v0.7.8 trees
     c.parts = null; c.res = null; c.meta = null; c.state = 'idle'; c.job = 0;
     if (wasReady) maskVer++;
   }
@@ -622,6 +633,7 @@ export function createCentres(scene, uniforms, chunks, { heightfield = null, ren
   function update({ camMap, origin, agl = 0, frustum = null }) {
     stats.drawCalls = 0; stats.triangles = 0; stats.buildings = 0; stats.staging = '';
     if (!index) return stats;
+    if (TREES78) update78(camMap);   // v0.7.8 trees: the nearest ready centre's mask and the nearest landmarks into the uniforms
     const cx = camMap.x, cy = camMap.y;
     // Load and release by distance; one build at a time, the nearest first.
     let next = null, nextD = Infinity, staged = false, loaded = 0;

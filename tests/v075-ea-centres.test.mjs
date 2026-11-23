@@ -25,8 +25,9 @@ const NEW = {
 };
 
 test('v0.7.5: twenty centres, the two new ones last, Japan\'s', () => {
-  assert.equal(INDEX.centres.length, 20);
-  assert.deepEqual(INDEX.centres.slice(-2).map((c) => c.id), ['nagoya', 'hiroshima']);
+  // (v0.7.8: Kanazawa comes after them, the twenty-first: tests/v078-ea-centres.test.mjs. Twenty before its install.)
+  assert.equal(INDEX.centres.length, 21);   // (the code review: Kanazawa is installed, so 20 no longer passes)
+  assert.deepEqual(INDEX.centres.slice(18, 20).map((c) => c.id), ['nagoya', 'hiroshima']);
   const src = readFileSync(new URL('../src/world/centres.js', import.meta.url), 'utf8');
   assert.match(src, /nagoya: 1, hiroshima: 1/, 'Japan\'s look (COUNTRY 1)');
 });

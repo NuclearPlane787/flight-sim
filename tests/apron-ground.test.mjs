@@ -68,6 +68,7 @@ for (const icao of ['RKPC', 'RKSS', 'RKSI']) {
     assert.ok(lead > 100, `${lead} lead-line samples`);
     assert.equal(leadOff, 0, `${leadOff} lead-line samples off the runway's surface by more than 1 cm`);
     // 10 cm up, kept within 3 cm of the ground at each segment's middle: about 5 cm at the least.
-    assert.ok(worst > 0.04, `the paint is ${worst.toFixed(3)} m over the ground at its lowest`);
+    // (v0.7.8: 2.6 cm at the least where a taxiway's paint crosses one of 13/31's four bends, runways.js CROSSINGS78: still over the ground)
+    assert.ok(worst > 0.02, `the paint is ${worst.toFixed(3)} m over the ground at its lowest`);
   });
 }

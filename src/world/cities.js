@@ -366,6 +366,54 @@ ${suburbs ? '          if (kind == 3.0) { float rn = clamp(vnoise(mc * 0.0009 + 
   for (const [a, f] of use) { const b = f(a); src = src.replace(a, () => b); }
   return src;
 }
+// ---- v0.7.8 towers (briefs/V0-7-8.md part 4, the trees subagent's block) ----
+// The generator kept its towers out of an airport's boundary and its first kilometres of final: generated towers stood
+// in a wall just beyond Itami's fence and tall dark blocks under Kunsan's final to 18. Now a generated building is low
+// (two or three storeys, 6 or 9 m) where it stands
+//  - within about TOWERS78_MARGIN of the airfield: the cover's airfield mark (airport-mask.js: 255 inside the boundary,
+//    200 one cell round it) at the building or TOWERS78_MARGIN east, west, north or south of it, so the airport's own
+//    boundary, per airport, from data the shader already has;
+//  - under a runway's extended centreline: from its end to TOWERS78_FINAL out, TOWERS78_HALF either side of the
+//    centreline at the end, widening by TOWERS78_SPLAY a metre out (the runways are the uniforms the shader already
+//    reads: the nearest MAX_RUNWAYS flattening rects, so nothing in the text differs by airport).
+// All four [EST]. The switch: ?towers78=0 (node FS_TOWERS78=0): off, the town's text is v0.7.7's character for character.
+export function towers78Switch() {
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = /[?&]towers78=([01])\b/.exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env.FS_TOWERS78 === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const TOWERS78 = towers78Switch();
+// (HALF and SPLAY as ICAO Annex 14's approach surface for a precision runway: an inner edge 300 m wide, 15 % each side.)
+// (FINAL 4 km, not the brief's "about 3 km": Kunsan's cluster of tall blocks stands 3.1 to 3.5 km out on 18's final, about
+// 250 m left of the line, measured on v078-tra-trees78-rkjk-18-final.png.)
+export const TOWERS78_MARGIN = 500, TOWERS78_FINAL = 4000, TOWERS78_HALF = 150, TOWERS78_SPLAY = 0.15;
+export function towers78Vert(src) {
+  const once = (a) => { const n = src.split(a).length - 1; if (n !== 1) throw new Error(`cities: towers78 anchor found ${n} times: ${a.slice(0, 50)}`); };
+  const A = 'float keep = step(sh3 * 0.4 + 0.18, cov.b';
+  const B = 'if (abs(uu) < uRwyB[r].x + 400.0 && abs(vv) < uRwyB[r].y + 260.0) keep = 0.0;\n';
+  const C = 'vec3 s3 = size * vec3(1.0, grow, 1.0) * keep;';
+  for (const a of [A, B, C]) once(a);
+  const f = (v) => v.toFixed(2);
+  src = src.replace(A, () => `float low78 = 0.0, near78 = 0.0;   // v0.7.8 towers: low here (1), an airport's runway near (1)\n        ${A}`);
+  src = src.replace(B, () => `${B}          float al78 = abs(uu) - uRwyB[r].x;   // v0.7.8 towers: metres past the runway's end (below 0 alongside it)
+          if (al78 < ${f(TOWERS78_FINAL)} && abs(vv) < uRwyB[r].y + ${f(TOWERS78_HALF)} + ${f(TOWERS78_SPLAY)} * max(al78, 0.0)) low78 = 1.0;
+          if (al78 < ${f(TOWERS78_FINAL + 1500)} && abs(vv) < ${f(TOWERS78_FINAL + 1500)}) near78 = 1.0;
+`);
+  src = src.replace(C, () => `// v0.7.8 towers: near an airport, the airfield's mark within the margin (the boundary, per airport); then low.
+        if (low78 < 0.5 && near78 > 0.5 && uHasCover > 0.5) {
+          float a78 = max(max(texture(uCover, natUv(m + vec2(${f(TOWERS78_MARGIN)}, 0.0))).a, texture(uCover, natUv(m - vec2(${f(TOWERS78_MARGIN)}, 0.0))).a),
+                          max(texture(uCover, natUv(m + vec2(0.0, ${f(TOWERS78_MARGIN)}))).a, texture(uCover, natUv(m - vec2(0.0, ${f(TOWERS78_MARGIN)}))).a));
+          if (max(a78, cov.a) > 0.3) low78 = 1.0;
+        }
+        if (low78 > 0.5) size.y = min(size.y, (2.0 + floor(2.0 * sh3)) * 3.0);
+        ${C}`);
+  return src;
+}
+// ---- end of v0.7.8 towers ----
 // East Asia's vertex shader text -> Europe's: four splices at anchors that must each occur exactly once.
 export function euVert(src) {
   const once = (a) => { const i = src.indexOf(a); if (i < 0 || src.indexOf(a, i + 1) >= 0) throw new Error('cities: euVert anchor ' + JSON.stringify(a)); return i; };
@@ -723,6 +771,7 @@ export function createCities(scene, uniforms, chunks) {
     u.uCtr = TOWNS77_UNIFORMS.uCtr;
     u.uCtrN = TOWNS77_UNIFORMS.uCtrN;
   }
+  if (TOWERS78) mat.vertexShader = towers78Vert(mat.vertexShader);   // v0.7.8 towers (last, over either region's text); off, v0.7.7's
   let ctrBoxes = null, ctrList = [], ctrOx = NaN, ctrOy = NaN, ctrGX = NaN, ctrGY = NaN, ctrMV = -1;
   const mesh = new THREE.Group();          // (still `mesh` to its users: hiding it hides the cities)
   mesh.name = 'cities';

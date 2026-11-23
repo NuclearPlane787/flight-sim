@@ -562,6 +562,34 @@
    "maxHeightM": 197.5,
    "minKeepHeightM": 12.0,
    "bytes": 58938
+  },
+  {
+   "id": "kanazawa",
+   "name": "Kanazawa",
+   "file": "kanazawa.bin.gz",
+   "origin": [
+    817809,
+    100961
+   ],
+   "box": [
+    816340,
+    99305,
+    819278,
+    102617
+   ],
+   "latlon": [
+    36.5519,
+    136.63843,
+    36.5841,
+    136.67457
+   ],
+   "cols": 6,
+   "rows": 7,
+   "count": 965,
+   "vertices": 7687,
+   "maxHeightM": 131.0,
+   "minKeepHeightM": 12.0,
+   "bytes": 27956
   }
  ]
 }

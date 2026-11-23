@@ -84,7 +84,8 @@ const hashOf = (r) => {
 };
 
 test("v0.7.7 towns: switched off, Europe's thirty-four centres build v0.7.6's buffers exactly", () => {
-  const list = index(EU);
+  // (v0.7.8: Kaiserslautern is the thirty-fifth; it has no v0.7.6 build to equal and is left out here: tests/v078-eu-centres.test.mjs)
+  const list = index(EU).filter((c) => c.id !== 'kaiserslautern');
   assert.equal(list.length, 34);
   for (const info of list) {
     const b = raw(EU, info);
@@ -94,7 +95,8 @@ test("v0.7.7 towns: switched off, Europe's thirty-four centres build v0.7.6's bu
 });
 
 test("v0.7.7 towns: East Asia's twenty centres the same with the switch on", () => {
-  const list = index(EA);
+  // (v0.7.8: Kanazawa, the twenty-first, is new and has no v0.7.6 build to equal: tests/v078-ea-centres.test.mjs holds it.)
+  const list = index(EA).filter((c) => c.id !== 'kanazawa');
   assert.equal(list.length, 20);
   for (const info of list) {
     const b = raw(EA, info);

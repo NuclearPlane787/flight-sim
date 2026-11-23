@@ -28,12 +28,13 @@
 import * as THREE from '../../vendor/three.module.js';
 import {
   TAXI_W, DOOR_SILL, openRing, signedArea, densify, dedupePolys, segmentIndex,
-  holdShortSites, taxiwayEdges, standMarks, jetBridge, gateFit, strokeTriangles, subdivideSoup, hdgVec,
+  holdShortSites, taxiwayEdges, standMarks, jetBridge, gateFit, GATES78, strokeTriangles, subdivideSoup, hdgVec,
   drawnRunwayRects, clipSoupOutside, splitPolyline, refineSoup, refineLine,
 } from './apron-geom.js';
 import { floodMasts } from './taxilights.js';
 import { taxiSignSites, taxiSignSitesInSteps, SIGN, panelWidth, arrayWidth } from './taxisigns.js';
 import { sliceTimer, awaitPrep } from './airport-set.js';
+import { BASES78, isShelter, vaultTris, shelterTaxiPts } from './shelters.js';   // v0.7.8 (marks): the shelters as vaults
 
 export const APRON_RANGE = 25000;          // m from the airport's bounds
 export const APRON_MAX_ALT = 15000 * 0.3048;
@@ -793,8 +794,15 @@ export function* buildSignsInSteps(sites, ox, oy, groundAt, chars, tick = () => 
 }
 
 const KIND = { terminal: 0, hangar: 1 };
+// v0.7.8: the buildings' three attributes and their sizes, and how many gates' bridges are built again in a frame.
+const BRIDGE_ATTRS = [['position', 3], ['normal', 3], ['bk', 4]];
+export const BRIDGE_SLICE = 6;
 
-function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false) {
+// v0.7.8 (GATES78): `what` is 'all' (the buildings and the bridges in one geometry, as v0.7.7), 'buildings' or
+// 'bridges'; `doors` (a Map of a stand's ref to its aircraft's door, apron-geom.js) only for the bridges.
+// (The code review's third finding: `only`, one stand's ref, builds that gate's bridge alone, and `ranges` takes each
+// gate's [ref, first vertex, end vertex], so that a door's change builds one bridge again and not the airport's.)
+function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false, what = 'all', doors = null, only = null, ranges = null) {
   const P = buf(), N = buf(), B = buf();
   const v = (x, y, h, n, kind, band, along, hy) => {
     P.push(x - ox, h, -(y - oy));
@@ -823,11 +831,18 @@ function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false) {
     }
   };
 
-  for (const b of a.buildings || []) {
+  for (const b of what === 'bridges' ? [] : a.buildings || []) {
     if (tick()) yield 'buildings';
     let ring = openRing(b.points || []);
     if (ring.length < 3) continue;
     if (signedArea(ring) < 0) ring = ring.slice().reverse();     // counter-clockwise: outward = right
+    if (BASES78 && isShelter(a, b)) {
+      // v0.7.8 (shelters.js, ?bases78=0 for the boxes): a low concrete vault (the jet bridges' plain panels, kind 3), its
+      // door the hangars' metal under the roofline band's shade (kind 1, band 1).
+      const vt = vaultTris(b, groundAt, shelterTaxiPts(a));
+      for (const t of vt.tris) v(t[0], t[1], t[2], [t[3], t[4], t[5]], t[6] ? 1 : 3, t[6], 0, t[2] - vt.base);
+      continue;
+    }
     const kind = KIND[b.kind] ?? 2;
     let gmin = Infinity, gsum = 0;
     for (const [x, y] of ring) { const g = groundAt(x, y); gmin = Math.min(gmin, g); gsum += g; }
@@ -875,13 +890,16 @@ function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false) {
     const fp = [[L[0], L[1], z0], [R[0], R[1], z0], [R[2], R[3], z1], [L[2], L[3], z1]];
     for (const k of [0, 2, 1, 0, 3, 2]) v(fp[k][0], fp[k][1], fp[k][2], floorN, 3, 0, 0, 0);
   };
-  for (const s of a.stands || []) {
+  for (const s of what === 'buildings' ? [] : a.stands || []) {
     if (tick()) yield 'buildings: bridges';
     if (!s.gate) continue;
-    const jb = jetBridge(s, terminals, 80, gateFit(a.icao));
+    if (only !== null && String(s.ref) !== only) continue;
+    const v0 = P.a.length / 3;
+    if (ranges) ranges.push([String(s.ref), v0, v0]);
+    const jb = jetBridge(s, terminals, 80, gateFit(a.icao), doors ? doors.get(String(s.ref)) || null : null);
     if (!jb) continue;
     const g0 = groundAt(jb.root.x, jb.root.y), g1 = groundAt(jb.cab.x, jb.cab.y);
-    const floorRoot = g0 + 4.6, floorCab = g1 + DOOR_SILL;
+    const floorRoot = g0 + 4.6, floorCab = g1 + (jb.sill ?? DOOR_SILL);
     const [fx, fy] = jb.fwd, [lx, ly] = jb.left;
     // Rotunda: a 4 m square column at the terminal wall.
     beam(jb.root.x - lx * 2, jb.root.y - ly * 2, jb.root.x + lx * 2, jb.root.y + ly * 2, 2, g0 - 0.5, g0 - 0.5, 4.6 + 3.2, false);
@@ -903,6 +921,7 @@ function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false) {
     }
     beam(kx - ux * 0.9, ky - uy * 0.9, kx + ux * 0.9, ky + uy * 0.9, 1.6, gk, gk, 0.9, false);
     bridges++;
+    if (ranges) ranges[ranges.length - 1][2] = P.a.length / 3;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P.a, 3));
@@ -965,6 +984,8 @@ export function createAprons(scene, uniforms, chunks, airports, heightfield = nu
 export function runSteps(gen) {
   for (;;) { const r = gen.next(); if (r.done) return r.value; }
 }
+// v0.7.8 (marks): one airport's buildings' geometry at once, for tests/v078-bases.test.mjs.
+export const buildingsGeometry = (a, ox, oy, groundAt, what = 'all') => runSteps(buildBuildingsInSteps(a, ox, oy, groundAt, () => false, what));
 
 // v0.6.0: createAprons in slices, for the airports built near the camera (world.js): a generator that
 // yields after each airport's pavement, paint, buildings and signs, and returns createAprons's
@@ -1024,10 +1045,25 @@ export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = 
     paintMesh.renderOrder = 2;
     meshes.push(paintMesh);
     yield 'paint';
-    const bl = yield* buildBuildingsInSteps(a, ox, oy, groundAt, tick);
-    meshes.push(new THREE.Mesh(bl.geo, new THREE.ShaderMaterial({
+    const bl = yield* buildBuildingsInSteps(a, ox, oy, groundAt, tick, GATES78 ? 'buildings' : 'all');
+    const bldgMat = new THREE.ShaderMaterial({
       uniforms: u, vertexShader: vhead + BLDG_VERT, fragmentShader: fhead + BLDG_FRAG_USED,
-    })));
+    });
+    meshes.push(new THREE.Mesh(bl.geo, bldgMat));
+    // v0.7.8 (GATES78): the bridges in a mesh of their own (the buildings' material), so that a gate's bridge can be
+    // built again for the door of the aircraft that stands there (setGateDoors() below).
+    let bridgeMesh = null, bridgeParts = null;
+    if (GATES78 && (a.stands || []).some((s) => s.gate)) {
+      const ranges = [];
+      const br = yield* buildBuildingsInSteps(a, ox, oy, groundAt, tick, 'bridges', null, null, ranges);
+      bl.bridges = br.bridges;
+      if (br.bridges) {
+        bridgeMesh = new THREE.Mesh(br.geo, bldgMat); meshes.push(bridgeMesh);
+        // each gate's piece of the three attributes, for setGateDoors()
+        const A = BRIDGE_ATTRS.map(([n]) => br.geo.getAttribute(n).array);
+        bridgeParts = new Map(ranges.map(([ref, v0, v1]) => [ref, { key: '', door: null, arr: BRIDGE_ATTRS.map(([, k], i) => A[i].slice(v0 * k, v1 * k)) }]));
+      }
+    }
     yield 'buildings';
     const signs = yield* buildSignsInSteps(signSites, ox, oy, groundAt, chars, tick);
     const signMesh = signs.triangles ? new THREE.Mesh(signs.geo, new THREE.ShaderMaterial({
@@ -1040,7 +1076,7 @@ export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = 
     let t = 0;
     for (const m of meshes) {
       m.frustumCulled = false;
-      m.name = `${sub.name}-${m === paintMesh ? 'paint' : m === signMesh ? 'signs' : m.geometry === pave ? 'pavement' : 'buildings'}`;
+      m.name = `${sub.name}-${m === paintMesh ? 'paint' : m === signMesh ? 'signs' : m.geometry === pave ? 'pavement' : m === bridgeMesh ? 'bridges' : 'buildings'}`;
       sub.add(m);
       const g = m.geometry;
       t += g.index ? g.index.count / 3 : g.getAttribute('position').count / 3;
@@ -1057,6 +1093,7 @@ export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = 
     if (!isFinite(x0)) { x0 = x1 = ox; y0 = y1 = oy; }
     sites.push({
       icao: a.icao, group: sub, u, ox, oy, box: [x0, y0, x1, y1], tris: t, drawCalls: meshes.length,
+      a, groundAt, bridgeMesh, bridgeParts, bridgeDirty: [], doorsSet: 0,
       info: { holds: paint.holds, syntheticHolds: paint.synthetic, stands: paint.stands, bridges: bl.bridges, buildings: bl.buildings, aprons: aprons.length,
         signArrays: signs.arrays, signsMandatory: signs.mandatory, signsExit: signs.exits, signsDistance: signs.distance },
     });
@@ -1064,10 +1101,58 @@ export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = 
   }
   scene.add(group);
 
+  // Up to `max` of a site's marked gates built again, each alone; once none is left, the pieces joined into a new
+  // geometry for the bridges' mesh (the old one disposed, the site's triangle count kept true).
+  const rebuildBridges = (s, max) => {
+    for (let i = 0; i < max && s.bridgeDirty.length; i++) {
+      const ref = s.bridgeDirty.shift(), part = s.bridgeParts.get(ref);
+      const g = runSteps(buildBuildingsInSteps(s.a, s.ox, s.oy, s.groundAt, () => false, 'bridges', part.door ? new Map([[ref, part.door]]) : null, ref)).geo;
+      part.arr = BRIDGE_ATTRS.map(([n]) => g.getAttribute(n).array);
+      g.dispose();
+    }
+    if (s.bridgeDirty.length) return;
+    const geo = new THREE.BufferGeometry();
+    BRIDGE_ATTRS.forEach(([n, k], i) => {
+      let len = 0;
+      for (const part of s.bridgeParts.values()) len += part.arr[i].length;
+      const out = new Float32Array(len);
+      let o = 0;
+      for (const part of s.bridgeParts.values()) { out.set(part.arr[i], o); o += part.arr[i].length; }
+      geo.setAttribute(n, new THREE.BufferAttribute(out, k));
+    });
+    const old = s.bridgeMesh.geometry, count = (g) => g.getAttribute('position').count / 3;
+    s.tris += count(geo) - count(old);
+    s.bridgeMesh.geometry = geo;
+    old.dispose();
+  };
+
   const camMap = { x: 0, y: 0 };
   return {
     group,
     sites,
+    // v0.7.8 (GATES78): one airport's bridges for the aircraft at its gates. doors: a Map of a stand's ref to
+    // { back, half, sill } (apron-geom.js), the gates not in it taking the default. Only the gates whose door changed
+    // are marked; update() builds them again a few a frame (BRIDGE_SLICE) and swaps the mesh's geometry when all are
+    // done, so nothing here costs a frame (the code review's third finding: the whole airport's bridges built at once
+    // took 7 to 14 ms at Incheon, Heathrow and Charles de Gaulle). Returns how many gates were marked.
+    setGateDoors(icao, doors) {
+      const s = sites.find((t) => t.icao === icao);
+      if (!s || !s.bridgeParts) return 0;
+      let n = 0, set = 0;
+      for (const [ref, part] of s.bridgeParts) {
+        const d = doors.get(ref) || null, key = d ? `${d.back},${d.half},${d.sill}` : '';
+        if (d) set++;
+        if (key === part.key) continue;
+        part.key = key; part.door = d;
+        if (!s.bridgeDirty.includes(ref)) s.bridgeDirty.push(ref);
+        n++;
+      }
+      s.doorsSet = set;
+      return n;
+    },
+    // The marked gates built now, all of them (for a test or a check that can't wait the few frames update() takes;
+    // the game itself doesn't call it: at a gate start the bridges take their doors within about half a second).
+    flushGateDoors() { for (const s of sites) while (s.bridgeDirty.length) rebuildBridges(s, Infinity); },
     // ctx: { camMap?, origin? } (what world.js has). Without them the camera and origin
     // come from the shared uniforms, which world.update() has just set.
     update(ctx = {}) {
@@ -1077,6 +1162,7 @@ export function* apronsInSteps(scene, uniforms, chunks, airports, heightfield = 
       const high = uniforms.uCamAlt.value > APRON_MAX_ALT;
       let drawCalls = 0, triangles = 0;
       for (const s of sites) {
+        if (s.bridgeDirty.length) rebuildBridges(s, BRIDGE_SLICE);
         const [x0, y0, x1, y1] = s.box;
         const dx = Math.max(x0 - camMap.x, 0, camMap.x - x1), dy = Math.max(y0 - camMap.y, 0, camMap.y - y1);
         const on = !high && Math.hypot(dx, dy) < APRON_RANGE;

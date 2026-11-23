@@ -35,8 +35,10 @@ const ringOf = (p, i) => {
 
 test('the twenty centres parse to centres.json\'s counts', () => {
   // (v0.7.5: eighteen became twenty with Nagoya and Hiroshima, appended; tests/v075-ea-centres.test.mjs checks them.)
-  assert.equal(INDEX.centres.length, 20);
-  assert.deepEqual(INDEX.centres.slice(9).map((c) => c.id), ['beijing', 'tianjin', 'shenyang', 'dalian', 'vladivostok', 'pyongyang', 'sapporo', 'sendai', 'niigata', 'nagoya', 'hiroshima']);
+  // (v0.7.8: twenty-one with Kanazawa appended, tests/v078-ea-centres.test.mjs; twenty until its install.)
+  assert.equal(INDEX.centres.length, 21);   // (the code review: Kanazawa is installed, so 20 no longer passes)
+  assert.deepEqual(INDEX.centres.slice(9, 20).map((c) => c.id), ['beijing', 'tianjin', 'shenyang', 'dalian', 'vladivostok', 'pyongyang', 'sapporo', 'sendai', 'niigata', 'nagoya', 'hiroshima']);
+  if (INDEX.centres.length === 21) assert.equal(INDEX.centres[20].id, 'kanazawa');
   for (const c of INDEX.centres) {
     const p = parsed.get(c.id);
     assert.equal(p.count, c.count, c.id);

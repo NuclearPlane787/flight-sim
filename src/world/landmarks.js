@@ -18,7 +18,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { toMap, EARTH_RADIUS } from './frame.js';
-import { MODELS, EUROPE_MODELS, LANDMARKS77 } from './landmark-models.js';
+import { MODELS, EUROPE_MODELS, LANDMARKS77, LANDMARKS78, TB_APPROACH_S, TB_APPROACH_N, bergiselTop } from './landmark-models.js';
 import { REGION_ID } from './regions.js';
 
 export const BUILD_M = 85000;
@@ -408,6 +408,9 @@ if (LANDMARKS77) {
   L.kind = 'bridge';
   L.pylons = [[L.lat - dLat(38.5), L.lon], [L.lat + dLat(38.5), L.lon]];
   L.ends = [[L.lat - dLat(122), L.lon], [L.lat + dLat(122), L.lon]];
+  // v0.7.8 (LANDMARKS78): the ends are the approaches' ramps' feet on the banks (towerbridge77()'s `approaches`, 45 m ramps),
+  // so bridgeEnds() reads the ground where each ramp comes down. (Its `parts` stay the one 122 m circle.)
+  if (LANDMARKS78) L.ends = [[L.lat - dLat(122 + TB_APPROACH_S + 45), L.lon], [L.lat + dLat(122 + TB_APPROACH_N + 45), L.lon]];
   const P = L.pylons.map(([la, lo]) => toMap(la, lo));
   const ax = P[1][0] - P[0][0], ay = P[1][1] - P[0][1], len = Math.hypot(ax, ay), ux = ax / len, uy = ay / len;
   L.brg = Math.atan2(ux, uy) * 180 / Math.PI;
@@ -415,6 +418,18 @@ if (LANDMARKS77) {
   L.endsMap = L.ends.map(([la, lo]) => toMap(la, lo));
   const along = L.endsMap.map(([ex, ey]) => (ex - L.x) * ux + (ey - L.y) * uy);
   L.geo = { s: len / 2, n0: Math.min(...along), n1: Math.max(...along) };
+}
+// v0.7.8 (LANDMARKS78; landmark-models.js's bergisel78()): the Bergisel jump's entry 105 m south of the article's point, at
+// the middle of the jump (the tower on the crest 90 m further south, the in-run's take-off table 5 m north, the landing
+// slope down to the article's point, the foot of the hill), and `slope: true`: built with the ground along its axis
+// (slopeProfile()). Its heightM is the tower's top above its base on the installed ground (the tower 50 m, on the crest
+// about 43 m up), as the stills and the tests read it. Its footprint (97 m) and part (16 m) as before, about the new point.
+if (LANDMARKS78) {
+  const L = EUROPE_LANDMARKS.find((l) => l.id === 'bergisel');
+  L.lat -= 105 / 111195;
+  [L.x, L.y] = toMap(L.lat, L.lon);
+  L.slope = true;
+  L.heightM = Math.round(bergiselTop() * 10) / 10;
 }
 // v0.7.6 (briefs/V0-7-6.md part 5): three landmarks by the new air bases, appended after the sixty-one. Figures read on
 // 2026-11-22 from each Wikipedia article (its infobox, text and coordinates); [EST] marks what is estimated. Each one's
@@ -458,7 +473,10 @@ export function landmarkFootprints() {
 }
 
 // endH: a bridge's ground at its two ends (m; heightAt there when built), else 30 m.
+// v0.7.8: a `slope` landmark (the Bergisel jump) takes the ground along its axis instead (slopeProfile()'s, or its
+// model's own default without one).
 export function buildModel(L, endH = null) {
+  if (L.slope) return EUROPE_MODELS[L.id](L.brg, endH ? { prof: endH } : {});
   if (L.region === 'europe') return L.kind === 'bridge' ? EUROPE_MODELS[L.id](L.brg, { ...L.geo, ...(endH ? { h0: endH[0], h1: endH[1] } : {}) }) : EUROPE_MODELS[L.id](L.brg);
   const f = MODELS[L.id];
   if (L.id === 'parc1') return f(L.brg, L.parts[1].slice(0, 2));
@@ -474,6 +492,14 @@ export function bridgeEnds(L, heightAt) {
   const ux = Math.sin(L.brg * Math.PI / 180), uy = Math.cos(L.brg * Math.PI / 180);
   const a0 = (L.endsMap[0][0] - L.x) * ux + (L.endsMap[0][1] - L.y) * uy;
   return a0 <= 0 ? e : [e[1], e[0]];
+}
+
+// v0.7.8: a `slope` landmark's ground along its axis (local north, at grid bearing L.brg): metres above its base
+// (baseHeight()) every 10 m from -120 to +120.
+export function slopeProfile(L, heightAt) {
+  const base = baseHeight(L, heightAt), ux = Math.sin(L.brg * Math.PI / 180), uy = Math.cos(L.brg * Math.PI / 180), out = [];
+  for (let n = -120; n <= 120; n += 10) out.push(heightAt(L.x + n * ux, L.y + n * uy) - base);
+  return out;
 }
 
 // Is this landmark on in the scene now? Every one since v0.7.0 (v0.6.0's flags held all but Korea's back).
@@ -650,7 +676,7 @@ export function createLandmarks(scene, uniforms, chunks, { heightfield = null, r
   function build(it) {
     const t0 = performance.now();
     if (!mat) { mat = buildingMaterial(uniforms, chunks); lmat = lightMaterial(uniforms); }
-    const { geometry, lights } = buildModel(it.L, it.L.kind === 'bridge' ? bridgeEnds(it.L, heightAt) : null);
+    const { geometry, lights } = buildModel(it.L, it.L.kind === 'bridge' ? bridgeEnds(it.L, heightAt) : it.L.slope ? slopeProfile(it.L, heightAt) : null);
     it.ground = baseHeight(it.L, heightAt);
     const mesh = new THREE.Mesh(geometry, mat);
     mesh.name = `landmark-${it.L.id}`;

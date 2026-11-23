@@ -29,7 +29,7 @@ if (process.env.FS_T77_CHILD) {
 } else {
   const run = (region, on) => {
     const r = spawnSync(process.execPath, ['--test', fileURLToPath(import.meta.url)], { encoding: 'utf8',
-      env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_T77_CHILD: '1', FS_REGION: region, FS_TOWNS77: on ? '1' : '0' } });
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_T77_CHILD: '1', FS_REGION: region, FS_TOWNS77: on ? '1' : '0', FS_TOWERS78: '0' } });   // (v0.7.8: the towers' switch off, as these texts were pinned; tests/v078-towers.test.mjs pins it on)
     const m = /T77 (\S+) (\S+) (\S+) (\S+) (\S+)/.exec(r.stdout + r.stderr);
     assert.ok(m, r.stdout + r.stderr);
     return { region: m[1], vert: m[2], frag: m[3], on: m[4] === 'true', uCtr: m[5] === 'true' };
@@ -47,7 +47,7 @@ if (process.env.FS_T77_CHILD) {
   });
   test('v0.7.7 suburbs: ?suburbs77=0 keeps the blend and the river rule, without the suburbs\' splices', async () => {
     const r = spawnSync(process.execPath, ['--test', fileURLToPath(import.meta.url)], { encoding: 'utf8',
-      env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_T77_CHILD: '1', FS_REGION: 'europe', FS_TOWNS77: '1', FS_SUBURBS77: '0' } });
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_T77_CHILD: '1', FS_REGION: 'europe', FS_TOWNS77: '1', FS_SUBURBS77: '0', FS_TOWERS78: '0' } });   // (v0.7.8: the towers' switch off)
     const m = /T77 (\S+) (\S+) (\S+) (\S+) (\S+)/.exec(r.stdout + r.stderr);
     assert.ok(m, r.stdout + r.stderr);
     assert.equal(m[2], V077.suburbsOff, 'the blend and the river rule alone');

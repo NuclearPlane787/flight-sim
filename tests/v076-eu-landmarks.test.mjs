@@ -18,6 +18,11 @@ const TOTAL_MAX = 6000;
 // The older landmarks' digest (each entry's JSON and its model's positions), from the pushed v0.7.5's tree.
 const DIGEST = { europe: '9b837fde90248dd81b05a90d2ace33fe', 'east-asia': '3a5787437857f9cd135587a8bd7b51dc' };
 const EA_DIGEST_IN_EUROPE = '0ba7edeaa22d6cb0498a0b9c9ba9ebb4', EU_DIGEST_IN_EA = 'c9394dcd8bc0370ebc4a5f5d3f9b689f';
+// v0.7.8 (landmark-models.js's LANDMARKS78, on by default): Europe's Tower Bridge, Elbphilharmonie and Bergisel jump are
+// meant to change, so with the switch on the Europe digests below are left to tests/v078-landmarks.test.mjs, which pins
+// every other model (all its attributes and its entry) to the pushed v0.7.7's one by one. With FS_LANDMARKS78=0 they
+// are checked here as before. (East Asia's thirty-five keep their positions: only the castles' colours change.)
+const L78 = process.env.FS_LANDMARKS78 !== '0';
 
 async function digest(list, n) {
   const { buildModel } = await import('../src/world/landmarks.js');
@@ -184,7 +189,7 @@ if (inRegion('europe', import.meta.url)) {
   });
 
   test('the older landmarks identical to the pushed v0.7.5: Europe\'s sixty-one and East Asia\'s thirty-five', async () => {
-    assert.equal(await digest(EUROPE_LANDMARKS, BEFORE), DIGEST.europe);
+    if (!L78) assert.equal(await digest(EUROPE_LANDMARKS, BEFORE), DIGEST.europe);
     assert.equal(await digest(LANDMARKS, 35), EA_DIGEST_IN_EUROPE);
   });
 
@@ -242,6 +247,6 @@ if (inRegion('europe', import.meta.url)) {
     assert.equal(LANDMARKS.length, 35);
     for (const L of EUROPE_LANDMARKS.slice(BEFORE)) assert.equal(landmarkOn(L), false, L.id);
     assert.equal(await digest(LANDMARKS, 35), DIGEST['east-asia']);
-    assert.equal(await digest(EUROPE_LANDMARKS, BEFORE), EU_DIGEST_IN_EA);
+    if (!L78) assert.equal(await digest(EUROPE_LANDMARKS, BEFORE), EU_DIGEST_IN_EA);
   });
 }

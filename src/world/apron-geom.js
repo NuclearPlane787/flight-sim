@@ -27,7 +27,35 @@ const GATE_FIT_ALL = (() => {
   const e = typeof process !== 'undefined' && process.env && process.env.FS_GATEFIT;
   return q ? q[1] : (e === '1' || e === '0') ? e : null;
 })();
-export const gateFit = (icao) => GATE_FIT_ALL === '1' ? true : GATE_FIT_ALL === '0' ? false : GATE_FIT.has(icao);
+// v0.7.8 (part 1, Shane's "everything"): the fit at every airport by default, the lead-in line ending at the stop bar,
+// and each gate's cab at the front door of the aircraft that stands there (jetBridge()'s `door`). ?gates78=0 (node
+// FS_GATES78=0) gives the pushed v0.7.7's gates back: the fit at GATE_FIT's four airports only, the lead-in line
+// 5.3 m past the bar, every cab 4 m behind the stand point. ?gatefit=1 or 0 still overrides where the fit is used.
+export const GATES78 = (() => {
+  const q = typeof location !== 'undefined' && location && /[?&]gates78=0(&|$)/.test(location.search || '');
+  const e = typeof process !== 'undefined' && process.env && process.env.FS_GATES78 === '0';
+  return !(q || e);
+})();
+export const gateFit = (icao) => GATE_FIT_ALL === '1' ? true : GATE_FIT_ALL === '0' ? false : GATES78 || GATE_FIT.has(icao);
+// A gate's door, for jetBridge(): `back` m from the nose's tip to the middle of the front left door, `half` m from the
+// centreline to the cab's face there (the fuselage's half width at the door and about 0.4 m), `sill` m above the
+// ground. The types' own are GATE_DOOR in their geometry modules; the parked traffic's below, by AIRLINER_TYPES' index
+// (traffic-models.js: the narrowbody is the A321's shape, the widebody about a 787's) [EST].
+export const GATE_DOOR_DEFAULT = { back: NOSE_AT - DOOR_FWD, half: GATE_FIT_HALF, sill: DOOR_SILL };
+export const PARKED_DOORS = [{ back: 4.0, half: 2.4, sill: 3.3 }, { back: 6.3, half: 3.2, sill: 4.7 }];
+// A parked aircraft's door at its stand (traffic-layout.js's entry: its type, its nose's tip at x, y, its heading in
+// radians, its lenScale):
+// where the layout moved the nose back from the stand point, the door is that much further back too. null where it
+// stands more than 5 degrees off the stand's heading (the default door then).
+export function parkedDoor(stand, p) {
+  const T = PARKED_DOORS[p.type] || PARKED_DOORS[0], k = p.lenScale || 1;
+  const [dx, dy] = hdgVec(stand.hdgGridDeg);
+  const pd = p.hdg != null ? p.hdg / DEG : stand.hdgGridDeg;   // the layout's heading is in radians (standHeading())
+  const dh = Math.abs(((pd - stand.hdgGridDeg) % 360 + 540) % 360 - 180);
+  if (dh > 5) return null;
+  const off = (stand.x - p.x) * dx + (stand.y - p.y) * dy;
+  return { back: Math.round((T.back * k + off) * 100) / 100, half: T.half, sill: T.sill };
+}
 
 const DEG = Math.PI / 180;
 export const hdgVec = (deg) => [Math.sin(deg * DEG), Math.cos(deg * DEG)];
@@ -551,6 +579,8 @@ export function standMarks(stand, fit = false) {
     const e = lead[lead.length - 1];
     // OSM's line ends at the stand point; carry it on to the stop bar.
     if ((stop.x - e[0]) * dx + (stop.y - e[1]) * dy > 0.5) lead.push([stop.x, stop.y]);
+    // v0.7.8: with the fit the bar is 5.3 m short of the point, so the line is cut where it crosses the bar.
+    else if (fit && GATES78) lead = trimLeadAt(lead, stop);
   } else {
     lead = [[stand.x - dx * 60, stand.y - dy * 60], [stop.x, stop.y]];
   }
@@ -558,17 +588,37 @@ export function standMarks(stand, fit = false) {
   return { lead, stop, label };
 }
 
+// A lead-in line cut where it crosses the stop bar (the line through `stop` square to its heading): the points past
+// the bar dropped, the crossing point added. A line that never reaches the bar, or lies wholly past it, is returned whole.
+export function trimLeadAt(lead, stop) {
+  const ahead = (p) => (p[0] - stop.x) * stop.dx + (p[1] - stop.y) * stop.dy;
+  let n = lead.length;
+  while (n > 0 && ahead(lead[n - 1]) > 0) n--;
+  if (n === lead.length || n === 0) return lead;
+  const a = lead[n - 1], b = lead[n], fa = ahead(a), fb = ahead(b), t = fa / (fa - fb);
+  const out = lead.slice(0, n);
+  if (-fa > 0.05) out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+  return out.length >= 2 ? out : lead;
+}
+
 // Where a gate's jet bridge goes: from the nearest terminal wall to the cab at the L1 door.
 // terminals: [ring, ...]. Returns null if no terminal wall is within maxLen.
-export function jetBridge(stand, terminals, maxLen = 80, fit = false) {
+// v0.7.8: `fitDoor` ({ back, half, sill }, with the fit only) puts the cab at that aircraft's own front door; without it
+// the cab is where v0.7.6's fit put it, 4 m behind the nose and GATE_FIT_HALF out, which clears every type.
+export function jetBridge(stand, terminals, maxLen = 80, fit = false, fitDoor = null) {
   const [dx, dy] = hdgVec(stand.hdgGridDeg);
   const lx = -dy, ly = dx;                                        // the aircraft's left
+  // (The code review's fifth finding: the wall is always looked for from the DEFAULT door, as the paving under the
+  // bridge is laid, and only the cab goes to the aircraft's own door. So a gate has its bridge for every type or for
+  // none, its root never leaves its paving, and the root's clearance of the nose, tested for the default door 4 m
+  // back, only grows for a door further back.)
+  const D = fit && fitDoor ? fitDoor : null, back = NOSE_AT - DOOR_FWD;
   // v0.7.6 (gateFit()): the door where the parked aircraft's L1 door is, 4 m behind the nose that stands on the point.
   const doorFwd = fit ? DOOR_FWD - NOSE_AT : DOOR_FWD;
   // The fitted cab's face stands GATE_FIT_HALF out from the centreline, clear of a 777's nose too (its skin is about
   // 2.8 m out where the cab ends); before the fit the cab was 21 m ahead of every nose and FUSE_HALF met nothing.
   const side = fit ? GATE_FIT_HALF : FUSE_HALF;
-  const door = { x: stand.x + dx * doorFwd + lx * side, y: stand.y + dy * doorFwd + ly * side };
+  let door = { x: stand.x + dx * doorFwd + lx * side, y: stand.y + dy * doorFwd + ly * side };
   // The wall is looked for from the door; with the fit, from 9 m out to the left of it, so that a bridge from a wall
   // straight ahead comes in at an angle past the nose, as a real one does from its rotunda.
   const aim = fit ? { x: door.x + lx * GATE_FIT_SIDE, y: door.y + ly * GATE_FIT_SIDE } : door;
@@ -581,7 +631,7 @@ export function jetBridge(stand, terminals, maxLen = 80, fit = false) {
       const rx = q.x - door.x, ry = q.y - door.y;
       if (rx * dx + ry * dy < -4 || rx * lx + ry * ly < -6) continue;
       // With the fit the root is clear of the nose too: beside the fuselage, or ahead of the nose's tip.
-      if (fit && rx * lx + ry * ly < 3 && rx * dx + ry * dy < NOSE_AT - DOOR_FWD + 3) continue;
+      if (fit && rx * lx + ry * ly < 3 && rx * dx + ry * dy < back + 3) continue;
       // ... and never right of the centreline: a tunnel from there to a cab on the left would cross the nose (five
       // of Munich's gates did under ?gatefit=1, by the code review's count).
       if (fit && rx * lx + ry * ly < -side) continue;
@@ -590,7 +640,11 @@ export function jetBridge(stand, terminals, maxLen = 80, fit = false) {
     }
   }
   if (!best || best.d > maxLen || best.d < 4) return null;
+  // v0.7.8: the cab at the aircraft's own door, the root where the default door found it.
+  if (D) door = { x: stand.x - dx * D.back + lx * D.half, y: stand.y - dy * D.back + ly * D.half };
   // The cab sits square to the fuselage, its face on the door; the tunnel meets its back.
   const cab = { x: door.x + lx * 1.6, y: door.y + ly * 1.6 };
-  return { root: { x: best.x, y: best.y }, cab, door, fwd: [dx, dy], left: [lx, ly], length: Math.hypot(cab.x - best.x, cab.y - best.y) };
+  const jb = { root: { x: best.x, y: best.y }, cab, door, fwd: [dx, dy], left: [lx, ly], length: Math.hypot(cab.x - best.x, cab.y - best.y) };
+  if (D && D.sill != null) jb.sill = D.sill;
+  return jb;
 }

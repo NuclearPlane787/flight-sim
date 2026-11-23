@@ -391,6 +391,15 @@
       "nx": 1288,
       "ny": 896,
       "height": "terrain/patch-rota.i16.gz"
+    },
+    {
+      "id": "ndg",
+      "x0": 107550.0,
+      "y0": -411180.0,
+      "cell": 30.0,
+      "nx": 192,
+      "ny": 166,
+      "height": "terrain/patch-ndg.i16.gz"
     }
   ],
   "coastPatchesRegion": [

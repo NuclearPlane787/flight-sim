@@ -472,6 +472,11 @@ if bc.EUROPE:
 if bc.EUROPE:
     NEW_AIRPORTS += ['EGVA']
     PATCHES['fairford'] = (-2.02, 51.60, -1.56, 51.77)
+# ---- v0.7.8 marks (part 3, item 9): Notre-Dame de la Garde's hill, ~5.7 x 4.9 km round the basilica (43.2841 N 5.3710 E),
+# no airport in it (as East Asia's 'fuji'), south of Marseille's patch (which starts at 43.32 N); the sea from OSM's land
+# polygons. GLO-30 N43 E005. Its URBAN_KEEP box is above.
+if bc.EUROPE:
+    PATCHES['ndg'] = (5.335, 43.262, 5.405, 43.306)
     COAST += ['EGVA']
     FIELD_RUNWAYS = FIELD_RUNWAYS | {'EGVA'}
     FIELD_PAVEMENT = FIELD_PAVEMENT | {'EGVA'}
@@ -630,6 +635,21 @@ LAND_FLOOR_FEATHER_M = 300.0     # (v0.7.4: see cmd_patch)
 #     (Lisbon's patch) stood about 15 m low at the statue.
 DEM_FLOOR = {'schiphol': -7.0}
 URBAN_KEEP = {'lisbon': [(-9.1800, 38.6735, -9.1630, 38.6840)]}
+# v0.7.8 marks (briefs/V0-7-8.md part 3, item 9): Notre-Dame de la Garde's hill, a patch of its own ('ndg', below: Marseille's
+# patch stops at 43.32 N, 4 km north of it, so the basilica stood on the 250 m grid's 56 m). Its limestone peak is built up
+# round its foot, so the filter is off over the peak, as Cristo Rei's (GLO-30 holds 150.2 m at 43.28403 N 5.37125 E).
+if bc.EUROPE:
+    URBAN_KEEP['ndg'] = [(5.3665, 43.2815, 5.3755, 43.2865)]
+# v0.7.8 marks (item 10): RIDGE_LIFT: pid -> ((W, S, E, N degrees), from m, to m, reason). GLO-30 holds the Rock of
+# Gibraltar's ridge at 370 m at most (369.7 m at 36.1254 N 5.3438 W; the installed patch 364 m), where the Rock stands
+# 426 m (O'Hara's Battery; the north end's Rock Gun about 412 m): the surface model's 30 m posts round off a ridge only tens
+# of metres wide. Inside the box, land over `from` m is raised in proportion so that the box's highest cell reaches `to`
+# (from + (h - from) * (to - from) / (max - from)): the ridge as high and as steep-sided as it is, its shape GLO-30's [EST];
+# eased off over URBAN_KEEP_FEATHER_M outside the box. Empty but for Gibraltar.
+RIDGE_LIFT = {}
+if bc.EUROPE:
+    RIDGE_LIFT['gibraltar'] = ((-5.3560, 36.1100, -5.3330, 36.1500), 150.0, 426.0,
+                               "the Rock's ridge: GLO-30's 370 m raised to the published 426 m [EST: the shape GLO-30's]")
 URBAN_KEEP_FEATHER_M = 300.0
 PATCH_PLAIN = os.environ.get('FS_PATCH_PLAIN') == '1'
 
@@ -725,6 +745,20 @@ def cmd_patch(pid, force):
             % (int(low.sum()), floor, int((low & (w >= 1)).sum()), float(h[low].min()) if low.any() else float('nan')))
         h = np.where(low, h + (floor - h) * w, h).astype(np.float32)
     del inland
+    rl = None if PATCH_PLAIN else RIDGE_LIFT.get(pid)
+    if rl:                         # v0.7.8 marks: see RIDGE_LIFT (Gibraltar's only)
+        (kw, ks, ke, kn), lo_m, hi_m, _why = rl
+        cx, cy = bc.to_map(np.array([ks, ks, kn, kn]), np.array([kw, ke, kw, ke]))
+        bx0, bx1, by0, by1 = float(cx.min()), float(cx.max()), float(cy.min()), float(cy.max())
+        xs = x0 + (np.arange(nx) + 0.5) * cell; ys = y0 + (np.arange(ny) + 0.5) * cell
+        dx = np.maximum(np.maximum(bx0 - xs, xs - bx1), 0.0); dy = np.maximum(np.maximum(by0 - ys, ys - by1), 0.0)
+        w = 1.0 - bg.smoothstep(0.0, URBAN_KEEP_FEATHER_M, np.hypot(dy[:, None], dx[None, :]))
+        top = float(h[w >= 1].max())
+        k = (hi_m - lo_m) / (top - lo_m)
+        up = (w > 0) & (sea_sd > 0) & (h > lo_m)
+        h = np.where(up, h + (h - lo_m) * (k - 1.0) * w, h).astype(np.float32)
+        log(pid, 'RIDGE_LIFT: %d cells over %.0f m raised by %.3f (the box\'s top %.1f m -> %.1f m)' % (int(up.sum()), lo_m, k, top, float(h[w >= 1].max())))
+        del w, up
     if dem_floor is not None:      # v0.7.7: the composed land too (inland water is drawn 2 m under its banks)
         under = (sea_sd > 0) & (h < dem_floor)
         log(pid, 'DEM_FLOOR: %d composed land cells under %.2f m raised to it (lowest was %.2f m)'

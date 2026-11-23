@@ -67,9 +67,14 @@ if (inRegion('europe', import.meta.url)) {
         assert.ok(Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z), `${L.id}: finite`);
         assert.ok(Math.abs(Math.hypot(n.getX(i), n.getY(i), n.getZ(i)) - 1) < 1e-3, `${L.id}: unit normal`);
         minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-        assert.ok(Math.hypot(x, z) <= L.footprintM * 1.05 + 2, `${L.id}: a vertex ${Math.hypot(x, z).toFixed(1)} m out, footprint ${L.footprintM}`);
+        // (v0.7.8, FS_LANDMARKS78 on: Tower Bridge's approaches and ramps run on to the banks, out to 197 m; its footprint
+        // circle stays the 122 m it was, so the real centre round it keeps its buildings.)
+        const reachM = L.id === 'towerbridge' && process.env.FS_LANDMARKS78 !== '0' ? 198 : L.footprintM * 1.05 + 2;
+        assert.ok(Math.hypot(x, z) <= reachM, `${L.id}: a vertex ${Math.hypot(x, z).toFixed(1)} m out, footprint ${L.footprintM}`);
       }
-      assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);
+      // (v0.7.8, FS_LANDMARKS78 on: the Bergisel jump follows its hill, `slope: true`: its lowest point is a support's foot
+      // on the slope, not 0; tests/v078-landmarks.test.mjs checks each foot against the ground.)
+      if (!(L.slope && process.env.FS_LANDMARKS78 !== '0')) assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);
       assert.ok(Math.abs(maxY - L.heightM) / L.heightM < 0.01, `${L.id}: top ${maxY} against ${L.heightM}`);
       const tris = p.count / 3;
       counts[L.id] = tris;

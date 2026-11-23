@@ -122,6 +122,18 @@ export const CROSSING_LEVEL = { LKPR: { '06/24': ['12/30', 353.6] } };
 // Its knots end sorted along it. The runway's own shader carries up to MAX_KNOTS of them (knotPairs(), in a variant of
 // its text that only such a runway takes: airports.js); the heightfield and the terrain shader get the runway as
 // several rects of two bends each (runwayRects()), so their arithmetic and text are v0.1.4's for every runway.
+// v0.7.8 (part 2, Shane: it "changes ground already flown"): every runway that crosses a longer one gets the four
+// bends a crossing, not only one that crosses two, so the step off the centreline at an oblique crossing goes (33 cm
+// at 20 m off at Dublin, 27 cm at Prague, 24 cm at Lossiemouth, 12 cm at Cologne Bonn, 8 cm at Jeju: ROADMAP.md,
+// "Found while building v0.7.4"). And where the longer runway has a bend of its own inside the crossing (Prague's
+// CROSSING_LEVEL), the shorter one bends there too, on each edge. ?crossings78=0 (node FS_CROSSINGS78=0) gives the
+// pushed v0.7.7's shapes back: two bends for a single crossing.
+export const END_LEVEL_M = 10, END_LEVEL_MAX = 1;   // (an end more than 1 m off its bend is a fault in the data, not a lip: left to show)
+export const CROSSINGS78 = (() => {
+  const q = typeof location !== 'undefined' && location && /[?&]crossings78=0(&|$)/.test(location.search || '');
+  const e = typeof process !== 'undefined' && process.env && process.env.FS_CROSSINGS78 === '0';
+  return !(q || e);
+})();
 export function runwayCrossings(airport) {
   const rws = (airport?.runways || []).filter((r) => r.ends && r.ends.length === 2);
   if (!rws.length || rws.every((r) => r.rank !== undefined)) return;
@@ -156,7 +168,7 @@ export function runwayCrossings(airport) {
       for (const s of [sS - d, sS + d]) if (s > 1 && s < a.len - 1) S.knots.push([s, onP(s)]);
       S.cutBy.push(P);
     }
-    if (S.cutBy.length > 1) {
+    if (S.cutBy.length > 1 || (CROSSINGS78 && S.cutBy.length === 1)) {
       // v0.7.4: two or more crossings: four bends a crossing (above), in place of the two each just got. A point of
       // S is (s along its axis, v to its left); across P it is linear in s, so each meeting is one division.
       const a = ax.get(S), hwS = (S.widthM || 45) / 2 + RUNWAY_SHOULDER_M;
@@ -169,8 +181,29 @@ export function runwayCrossings(airport) {
           const f0 = across(0), f1 = across(1), s = (edge - f0) / (f1 - f0), [x, y] = at(s);
           if (s > 1 && s < a.len - 1) S.knots.push([s, profileAt(P, (x - b.p0.x) * b.ux + (y - b.p0.y) * b.uy, elev)]);
         }
+        // v0.7.8: a bend of P's own (its CROSSING_LEVEL knot) that lies on one of its edges within S's width: S bends
+        // there too, so that along that edge S's height is P's on both sides of P's bend.
+        if (CROSSINGS78) for (const [t, h] of P.knots || []) for (const edge of [-hwP, hwP]) {
+          const x = b.p0.x + b.ux * t - b.uy * edge, y = b.p0.y + b.uy * t + b.ux * edge;
+          const s = (x - a.p0.x) * a.ux + (y - a.p0.y) * a.uy, v = -(x - a.p0.x) * a.uy + (y - a.p0.y) * a.ux;
+          if (Math.abs(v) < hwS && s > 1 && s < a.len - 1) S.knots.push([s, h]);
+        }
       }
       S.knots.sort((p, q) => p[0] - q[0]);
+      // v0.7.8: a crossing at the runway's very end (Prague's 12/30: 06/24's edge meets its side 2.6 m from its
+      // pavement end, 0.42 m above 12's published 353.6 m): a bend within END_LEVEL_M of an end that would leave a
+      // ramp over 2 % to it takes the end to the bend's height, level, if that is under END_LEVEL_MAX away. The published
+      // figure is kept as elevAipM.
+      if (CROSSINGS78 && S.knots.length) {
+        const a = ax.get(S), ends = [[0, S.knots[0], S.knots[0][0]], [1, S.knots[S.knots.length - 1], a.len - S.knots[S.knots.length - 1][0]]];
+        for (const [i, k, d] of ends) {
+          const e = i ? a.e1 : a.e0;
+          if (d < END_LEVEL_M && Math.abs(k[1] - e) > 0.02 * d && Math.abs(k[1] - e) < END_LEVEL_MAX) {
+            S.ends[i].elevAipM = S.ends[i].elevM; S.ends[i].elevM = k[1];
+            if (i) a.e1 = k[1]; else a.e0 = k[1];
+          }
+        }
+      }
     }
     if (S.knots.length > MAX_KNOTS) console.warn(`Runway ${S.id} has ${S.knots.length} bends; the shaders draw the first ${MAX_KNOTS}`);
   }

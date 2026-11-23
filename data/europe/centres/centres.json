@@ -1022,6 +1022,36 @@
    "bytes": 113595,
    "holes": 91,
    "holeVertices": 688
+  },
+  {
+   "id": "kaiserslautern",
+   "name": "Kaiserslautern",
+   "file": "kaiserslautern.bin.gz",
+   "origin": [
+    271284,
+    275941
+   ],
+   "box": [
+    269846,
+    274618,
+    272722,
+    277264
+   ],
+   "latlon": [
+    49.43041,
+    7.74918,
+    49.45559,
+    7.79084
+   ],
+   "cols": 6,
+   "rows": 6,
+   "count": 3261,
+   "vertices": 21468,
+   "maxHeightM": 80.0,
+   "minKeepHeightM": 9.0,
+   "bytes": 70835,
+   "holes": 9,
+   "holeVertices": 51
   }
  ]
 }

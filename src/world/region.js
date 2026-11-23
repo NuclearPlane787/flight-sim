@@ -44,6 +44,9 @@ export const regionQuery = () => {
   if (REGION_ID !== DEFAULT_REGION) q.push('region=' + REGION_ID);
   if (PENDING_ON) q.push('pending=1');
   if (!EDGE_BLEND) q.push('edgeblend=0');   // v0.7.4 part 9 (tilestore.js): the prediction worker's tiles as the page's
+  // v0.7.8 (runways.js CROSSINGS78): the prediction worker's runways shaped as the page's (read from the page's own
+  // address here, not imported, so that region.js doesn't come to depend on runways.js)
+  if (typeof location !== 'undefined' && location && /[?&]crossings78=0(&|$)/.test(location.search || '')) q.push('crossings78=0');
   return q.length ? '?' + q.join('&') : '';
 };
 

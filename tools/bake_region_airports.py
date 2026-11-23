@@ -400,6 +400,17 @@ HOLD_DROP_M = {}    # v0.7.0: icao -> m; OSM holds farther than this from every 
 REF_SQUEEZE = set()  # v0.7.0: airports whose OSM stand refs 'B 44' are read as B44 (Europe's block fills it)
 STAND_DROP = {}     # v0.7.0: icao -> (refs, reason): OSM stands on taxiways no route reaches (Europe's block fills it)
 AREA_EXTRA = {}     # v0.7.1: icao -> [(lon0, lat0, lon1, lat1), ...]: boxes added to the aerodrome's area (Toulouse's Airbus sites)
+# v0.7.8 marks (part 3, item 7): hangars, shelters and pads that OSM leaves unjoined to any taxiway or apron ("Found while
+# building v0.7.6": Zaragoza's military side, a pad at Lossiemouth). icao -> ([(x, y, width m), ...], reason): each map
+# point inside a building or an apron; a strip of pavement `width` wide [EST] is laid from it to the nearest taxiway or
+# apron (its edge, 4 m into each), "synthetic": true; a strip that would come within 30 m of a runway's edge isn't laid.
+# Empty but for the two airports named below.
+PAVE_JOIN = {}
+# v0.7.8 marks (part 3, item 8): aprons whose OSM outlines step in and out in small notches ("Found while building
+# v0.7.6": Fairford's stepped apron edges). icao -> (close m, open m, reason): each OSM apron is closed (notches narrower
+# than twice `close` filled), then opened (corners and spurs narrower than twice `open` rounded off), and simplified to
+# 1 m. Empty but for Fairford.
+APRON_SMOOTH = {}
 PAVE_DROPPED = set()      # v0.7.4: airports whose positions left out by a STAND_EXCLUDE set of refs or by STAND_DROP_NUMBERED keep their pavement (stand_aprons())
 STAND_DROP_NUMBERED = {}  # v0.7.2: icao -> (refs, reason): unnamed stands left out by the number the bake gave them
 # - Pyongyang 17/35: ILS CAT I at both ends (17: 109.5, 35: 109.9, 3.0 deg glide paths; the nav data); 17 ALSF-I, PAPI-4R
@@ -1818,6 +1829,15 @@ if EUROPE:
     # airliner's stands
     STAND_EXCLUDE['LEZG'] = (frozenset({'20', '21', '22', '23', '30', '31', '32', '33', '34'}),
                              "AD 2.8's PRKG 20 to 23 (general aviation) and 30 to 34 (the hangar apron, 13.56 m max wingspan)")
+    # v0.7.8 marks (part 3, item 6): OSM maps stands 1 and 2 31 m apart, their parking points overlapping (an aircraft on
+    # each would touch: "Found while building v0.7.6"). One kept: 1 (its straight lead-in; the tests pin its ref), 2 left out.
+    STAND_DROP['LEZG'] = ({'2'}, "OSM's stand 2 overlaps stand 1 (their points 31 m apart): one kept, 1")
+    # v0.7.8 marks (item 7): the military side's six shelters (two rows of three) and its two hangars to the east, on bare
+    # ground in OSM, joined to the nearest pavement (20 m for a shelter, 30 m for a hangar [EST])
+    PAVE_JOIN['LEZG'] = ([(-419568.6, -575052.1, 20), (-419537.4, -575074.2, 20), (-419506.8, -575093.9, 20),
+                          (-418469.7, -575580.2, 20), (-418517.8, -575548.4, 20), (-418566.6, -575517.0, 20),
+                          (-417752.2, -575676.9, 30), (-417781.0, -575641.7, 30)],
+                         "the air force's shelters and hangars on bare ground in OSM (no taxiway or apron mapped to them)")
     # The air force's shelters: OSM maps no bunker or hangar on the military aprons; its two rows of three like parallel
     # sheds at the south apron's west end (82 x 22 m, ways 936374823 to 936374825; 53 x 20 m, 936374831 to 936374833;
     # building=yes, no height) are taken as the aircraft shelters: low vaults 9 m [EST], as v0.7.5's
@@ -1908,6 +1928,11 @@ if EUROPE:
                                    1087341054, 1087341057, 78036467}), 9.0,
                         "the two hardened aircraft shelter sites, nine each (OSM aeroway=hangar of 33-36 x 50-53 m beside "
                         "their own small aprons, no height): low vaults 9 m")
+    # v0.7.8 marks (item 7): two pads and four hangars on grass in OSM, joined to the nearest pavement (18 m for a pad,
+    # 30 m for a hangar [EST])
+    PAVE_JOIN['EGQS'] = ([(-441516.7, 1209579.0, 18), (-441089.0, 1210003.3, 18), (-441941.9, 1209218.6, 30),
+                          (-441779.1, 1209163.4, 30), (-441981.8, 1210376.4, 30), (-442156.7, 1211008.1, 30)],
+                         "pads and hangars on grass in OSM (no taxiway or apron mapped to them)")
     ICAOS = list(NAMES)
 
 # ---- v0.7.6 (airports subagent apb): Lakenheath (EGUL, england-east-261122 from OpenStreetMap France's mirror: Geofabrik
@@ -2034,6 +2059,9 @@ if EUROPE:
     OSM_DIRS['EGVA'] = '/tmp/flight-sim/v076/airports/osm'
     NOTES_DIRS['EGVA'] = '/tmp/flight-sim/v076/airports'
     HOLD_DROP_M['EGVA'] = 30.0
+    # v0.7.8 marks (item 8): the hardstands' and the aprons' outlines as OSM traces them step in and out, by up to about 40 m
+    # (the west apron's two steps of about 30 by 40 m, seen from 1,000 ft in v078-mka-mk78-egva-hardstands.png)
+    APRON_SMOOTH['EGVA'] = (25.0, 6.0, "OSM's apron outlines stepped in notches up to about 40 m: smoothed [EST]")
     AIP_SOURCE['EGVA'] = ("no AIP (the UK Military AIP's site did not answer): OurAirports' ends, length, width and elevations, "
                           "OSM's runway, the lights and ILS from OSM's mapped lights and general knowledge of the field, all [EST]")
     AIP['EGVA'] = {'09': ('ALSF-I', 900, 'left', 3.0, 'I', 286.0, False, True, 61, 0),
@@ -2401,12 +2429,21 @@ def bake(icao, wmm, oa_ap, oa_rw):
                                         [t['points'] for t in taxiways])
 
     aprons = []
+    smooth = APRON_SMOOTH.get(icao)      # (v0.7.8: Fairford's only)
     for _, _, tags, g in d['areas']:
         if tags.get('aeroway') == 'apron':
             for p in shapely.get_parts(shapely.from_wkb(g)):
                 xy = to_xy(p.exterior.coords)
                 if Polygon(xy).intersects(area):
+                    if smooth:
+                        q = Polygon(xy).buffer(0).buffer(smooth[0]).buffer(-smooth[0]).buffer(-smooth[1]).buffer(smooth[1]).simplify(1.0)
+                        for qq in shapely.get_parts(q):
+                            if qq.area > 100:
+                                aprons.append(dict(points=pts(np.asarray(qq.exterior.coords))))
+                        continue
                     aprons.append(dict(points=pts(xy)))
+    if smooth:
+        est.append(('aprons smoothed', f'closed {smooth[0]:.0f} m, opened {smooth[1]:.0f} m', smooth[2] + ' (APRON_SMOOTH)'))
 
     bridges = [LineString(to_xy(c)) for _, t, c in d['ways'] if t.get('aeroway') == 'jet_bridge']
     gate_nodes = [Point(to_map(la, lo)) for _, t, lo, la in d['nodes'] if t.get('aeroway') == 'gate']
@@ -2667,6 +2704,35 @@ def bake(icao, wmm, oa_ap, oa_rw):
         est.append(('shelters', f'{n_shelters} at {shelter_h:.0f} m', shelter_why + ' (SHELTERS)'))
     if n_skipped:
         est.append(('buildings left out', f'{n_skipped} of {len(skip_at)} points', skip_why + ' (BUILDING_SKIP_AT)'))
+    if icao in PAVE_JOIN:       # v0.7.8 marks (item 7): only the airports named in PAVE_JOIN
+        joins, join_why = PAVE_JOIN[icao]
+        from shapely.ops import nearest_points
+        rw_keep = shapely.unary_union([LineString([(r['ends'][0]['x'], r['ends'][0]['y']), (r['ends'][1]['x'], r['ends'][1]['y'])])
+                                      .buffer(r['widthM'] / 2 + 30, cap_style='flat') for r in runways])
+        pave = shapely.unary_union([LineString(t['points']).buffer(t['widthM'] / 2) for t in taxiways if len(t['points']) > 1] +
+                                   [Polygon(a['points']).buffer(0) for a in aprons])
+        made, skipped = [], []
+        for jx, jy, jw in joins:
+            q = Point(jx, jy)
+            src = next((P for P in (Polygon(b['points']).buffer(0) for b in buildings) if P.contains(q)), None) or \
+                next((P for P in (Polygon(a['points']).buffer(0) for a in aprons) if P.contains(q)), None)
+            if src is None:
+                raise SystemExit(f'{icao}: PAVE_JOIN point {jx}, {jy} is in no building or apron')
+            pa, pu = nearest_points(src, pave.difference(src.buffer(1.0)))
+            gap = np.array([pu.x - pa.x, pu.y - pa.y])     # (not `d`: the OSM data's name in bake())
+            n = float(np.hypot(*gap))
+            if n < 0.5:
+                continue
+            u = gap / n
+            a0, a1 = np.array([pa.x, pa.y]) - 4 * u, np.array([pu.x, pu.y]) + 4 * u
+            strip = LineString([tuple(a0), tuple(a1)]).buffer(jw / 2, cap_style='flat')
+            if strip.intersects(rw_keep):
+                skipped.append(f'{jx:.0f},{jy:.0f}')
+                continue
+            made.append(dict(points=pts(np.asarray(strip.exterior.coords)), synthetic=True))
+        aprons += made
+        est.append(('pavement joined', f'{len(made)} strips, {sum(Polygon(a["points"]).area for a in made):.0f} m2' +
+                    (f' ({len(skipped)} not laid, near a runway: {", ".join(skipped)})' if skipped else ''), join_why + ' (PAVE_JOIN)'))
 
     roads = []
     for _, tags, coords in d['ways']:

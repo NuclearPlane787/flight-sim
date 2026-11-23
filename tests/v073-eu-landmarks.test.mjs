@@ -12,6 +12,7 @@ const NEW = ['elbphil', 'hht', 'campanile', 'ndg', 'fourviere', 'fourvieretower'
 const BRIEF = { elbphil: 110, hht: 279, campanile: 99, ndg: 72.7, fourviere: 48, fourvieretower: 101, domluis: 45, bergisel: 50 };
 const COUNTRY = { hamburg: 'DE', venice: 'IT', marseille: 'FR', lyon: 'FR', porto: 'PT', innsbruck: 'AT' };
 const TRI_MAX = 4000, TOTAL_MAX = 16000, BEFORE = 53;
+const L78 = process.env.FS_LANDMARKS78 !== '0';     // v0.7.8's landmarks switch (landmark-models.js's LANDMARKS78)
 
 if (inRegion('europe', import.meta.url)) {
   const { LANDMARKS, EUROPE_LANDMARKS, EUROPE_CITY_BOXES, PYLON_R, buildModel, bridgeEnds, baseHeight, landmarkOn, landmarkFootprints, createLandmarks } = await import('../src/world/landmarks.js');
@@ -35,7 +36,9 @@ if (inRegion('europe', import.meta.url)) {
       assert.match(L.source, /Wikipedia "[^"]+" \(read 2026-11-22/, `${L.id}: a source read tonight`);
       const b = EUROPE_CITY_BOXES[L.city];
       assert.ok(b && L.lat > b[0] && L.lat < b[2] && L.lon > b[1] && L.lon < b[3], `${L.id} outside ${L.city}`);
-      assert.ok(Math.abs(L.heightM - BRIEF[L.id]) / BRIEF[L.id] < 0.03, `${L.id}: ${L.heightM} against ${BRIEF[L.id]}`);
+      // (v0.7.8, FS_LANDMARKS78 on: the Bergisel jump's heightM is its tower's top above its base on the hill, 50 m on the
+      // crest about 43 m up: tests/v078-landmarks.test.mjs)
+      if (!(L.slope && L78)) assert.ok(Math.abs(L.heightM - BRIEF[L.id]) / BRIEF[L.id] < 0.03, `${L.id}: ${L.heightM} against ${BRIEF[L.id]}`);
       assert.ok(Number.isFinite(L.x) && Number.isFinite(L.y) && Number.isFinite(L.brg));
     }
     assert.equal(new Set(EUROPE_LANDMARKS.map((l) => l.id)).size, EUROPE_LANDMARKS.length);
@@ -58,7 +61,7 @@ if (inRegion('europe', import.meta.url)) {
         minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         assert.ok(Math.hypot(x, z) <= L.footprintM * 1.05 + 2, `${L.id}: a vertex ${Math.hypot(x, z).toFixed(1)} m out`);
       }
-      assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);
+      if (!(L.slope && L78)) assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);     // (v0.7.8: as in v070-eu-landmarks)
       assert.ok(Math.abs(maxY - L.heightM) / L.heightM < 0.01, `${L.id}: top ${maxY} against ${L.heightM}`);
       const tris = p.count / 3;
       counts[L.id] = tris;
@@ -138,7 +141,9 @@ if (inRegion('europe', import.meta.url)) {
     assert.equal(count(L, q, (lx, y, ln) => Math.abs(ln) < 40 && y > 0.5 && y < 7.4), 0, 'clear under the lower deck in the middle');
   });
 
-  test('Innsbruck: the tower with its pod on top, the in-run sloping down to the north', () => {
+  // (v0.7.8, FS_LANDMARKS78 on: v0.7.3's model of the jump is replaced by bergisel78(), the tower on the crest 90 m south
+  // and the in-run down the hill: tests/v078-landmarks.test.mjs checks it. These two run with the switch off.)
+  test('Innsbruck: the tower with its pod on top, the in-run sloping down to the north', { skip: L78 && 'v0.7.8: the jump on its hill (v078-landmarks)' }, () => {
     const L = byId('bergisel'), p = pos('bergisel');
     assert.ok(reach(p, 42, 49) > 15 && count(L, p, (lx, y, ln) => y > 5 && y < 35 && ln < 5 && Math.hypot(lx, ln) > 7) === 0, 'the pod wider than the tower');
     assert.ok(count(L, p, (lx, y, ln) => ln > 90 && y < 4) > 0 && count(L, p, (lx, y, ln) => ln > 50 && y > 30) === 0, 'the take-off low, far out to the north');
@@ -183,7 +188,7 @@ if (inRegion('europe', import.meta.url)) {
     const bg = byId('bergisel');
     await hf.tiles.whenReady(bg.x, bg.y, 2000, 'test');
     const hs = ring(bg, 300).map(([x, y]) => hf.heightAt(x, y));
-    assert.ok(Math.max(...hs) - Math.min(...hs) > 40, 'the ski jump on a slope');
+    if (!L78) assert.ok(Math.max(...hs) - Math.min(...hs) > 40, 'the ski jump on a slope');   // (v0.7.8: its point moved up the hill; v078-landmarks)
   });
 } else {
   test("East Asia's page: v0.7.3's landmarks not on, its thirty as before", async () => {

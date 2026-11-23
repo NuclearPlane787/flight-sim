@@ -21,6 +21,8 @@ const EU77 = REGION.id === 'europe' && FIELDS77;
 import { TOWNS77, SUBURBS77, TOWNS77_UNIFORMS, TOWNS77_GLSL, SUBURB77_GLSL, GARDEN77_GLSL } from './cities.js';   // v0.7.7 towns (the towns subagent's): a town's river drawn from the 31 m cover; the suburbs' gardens
 const T77 = REGION.id === 'europe' && TOWNS77;
 const S77 = T77 && SUBURBS77;
+import { TREES78, PARK78_UNIFORMS, ground78Frag } from './parks78.js';   // v0.7.8 trees (the trees subagent's)
+import { SNOW78, snow78Frag } from './ground.js';   // v0.7.8 snow (the trees subagent's)
 function euZoneTexture() {
   const make = (z) => {
     const t = new THREE.DataTexture(z.data, z.nx, z.ny, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -336,6 +338,9 @@ export function createTerrain(scene, uniforms, chunks) {
         #include <colorspace_fragment>
       }`,
   });
+  // v0.7.8 trees (the trees subagent's block): a real centre's park drawn as parkland (parks78.js); off, v0.7.7's text.
+  if (TREES78 && GROUND) { mat.fragmentShader = ground78Frag(mat.fragmentShader); Object.assign(mat.uniforms, PARK78_UNIFORMS); }
+  if (SNOW78 && REGION.id === 'europe') mat.fragmentShader = snow78Frag(mat.fragmentShader);   // v0.7.8 snow (ground.js): Europe's snow line by latitude
   mat.extensions = mat.extensions || {};
 
   const group = new THREE.Group();

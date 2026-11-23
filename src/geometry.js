@@ -12,6 +12,9 @@ export const FUSELAGE_WIDTH = 3.95;
 export const FUSELAGE_HEIGHT = 4.14;
 
 export const NOSE_X = 21.0;            // nose tip
+// v0.7.8: the front left door for a gate's jet bridge (apron-geom.js): m behind the nose's tip, the cab's face from the
+// centreline, the sill above the ground [as apron-geom.js's DOOR_FWD, FUSE_HALF and DOOR_SILL since v0.1.0].
+export const GATE_DOOR = { back: 4.0, half: 2.4, sill: 3.3 };
 export const TAIL_X = NOSE_X - LENGTH; // tail cone tip, -23.51
 
 export const WHEELBASE = 16.91;

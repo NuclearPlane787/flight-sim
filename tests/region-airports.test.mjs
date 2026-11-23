@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createAirports, runwayCrossings, pavementEnd } from '../src/world/runways.js';
+import { createAirports, runwayCrossings, pavementEnd, CROSSINGS78 } from '../src/world/runways.js';
 import { convergence, magVar } from '../src/world/frame.js';
 import { createGeoRules } from '../src/world/geo-rules.js';
 import { buildTaxiGraph, routeFromStand, freeStand, snapToGraph, standsFor, pushMinBack, lineBehind } from '../src/ground/taxi.js';
@@ -198,7 +198,8 @@ for (const icao of ICAOS) {
     const a = load(icao);
     runwayCrossings(a);
     const crossed = a.runways.filter((r) => r.cutBy.length);
-    for (const r of crossed) assert.equal(r.knots.length, 2, `${r.id}: bends to meet ${r.cutBy[0].id}`);
+    // (v0.7.8, changed on purpose: four bends a crossing with runways.js's CROSSINGS78, v0.1.4's two with FS_CROSSINGS78=0)
+    for (const r of crossed) assert.equal(r.knots.length, CROSSINGS78 ? 4 : 2, `${r.id}: bends to meet ${r.cutBy[0].id}`);
     console.log(`  ${icao}: ${crossed.length ? crossed.map((r) => `${r.id} crosses ${r.cutBy.map((p) => p.id).join(',')}`).join('; ') : 'no runways cross'}`);
   });
 

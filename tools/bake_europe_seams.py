@@ -72,17 +72,61 @@ def seal_dir(d, tiles):
     return report
 
 
+def seal_unowned(d, tiles):
+    """--seal-unowned (v0.7.8, East Asia's shipped tiles): a border cell that two listed tiles both hold and that
+    no listed tile owns (its owner is a tile that was never baked: East Asia's 250 m area is a list of tiles with the
+    1 km level round it, not a rectangle with the sea round it) can't be sealed from an owner's core. Where two
+    such borders differ, the later tile of the pair (sorted order) takes the earlier one's value. Cores are never
+    changed. Returns the border values changed per tile."""
+    arrs = {t: [a.copy() for a in read(d, f'{t[0]}_{t[1]}')] for t in tiles if os.path.exists(os.path.join(d, f'{t[0]}_{t[1]}.h.i16.gz'))}
+    core = (slice(B, B + TILE), slice(B, B + TILE))
+    before = {t: [a[core].copy() for a in v] for t, v in arrs.items()}
+    report = {}
+    for t in sorted(arrs):
+        for di, dj in ((1, 0), (0, 1), (1, 1), (1, -1)):
+            u = (t[0] + di, t[1] + dj)
+            if u not in arrs:
+                continue
+            for gj in range(max(t[1], u[1]) * TILE - B, min(t[1], u[1]) * TILE + TILE + B):
+                for gi in range(max(t[0], u[0]) * TILE - B, min(t[0], u[0]) * TILE + TILE + B):
+                    if (gi // TILE, gj // TILE) in tiles:
+                        continue                       # owned: --seal's business
+                    for k in range(3):
+                        x = arrs[t][k][gj - (t[1] * TILE - B), gi - (t[0] * TILE - B)]
+                        y = arrs[u][k][gj - (u[1] * TILE - B), gi - (u[0] * TILE - B)]
+                        if not np.array_equal(x, y):
+                            arrs[u][k][gj - (u[1] * TILE - B), gi - (u[0] * TILE - B)] = x
+                            report[f'{u[0]}_{u[1]}'] = report.get(f'{u[0]}_{u[1]}', 0) + 1
+    for t, v in arrs.items():
+        name = f'{t[0]}_{t[1]}'
+        for k in range(3):
+            assert np.array_equal(v[k][core], before[t][k]), name
+        if name in report:
+            for (suf, dt, tail), a in zip(LAYERS, v):
+                p = os.path.join(d, name + suf)
+                with gzip.open(p + '.tmp', 'wb', compresslevel=9) as f:
+                    f.write(np.ascontiguousarray(a).tobytes())
+                os.replace(p + '.tmp', p)
+    print('seal-unowned: border values changed per tile:', report)
+    return report
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dir', default=os.path.join(rt.STAGE, 'l0'))
     ap.add_argument('--tiles', default='', help='comma list; default: the region (all batches up to this one)')
     ap.add_argument('--out', default=os.path.join(rt.WORK, 'seams.json'))
     ap.add_argument('--seal', action='store_true', help='copy the owners\' cores into the borders first')
+    ap.add_argument('--seal-unowned', action='store_true', help='then make borders that no listed tile owns agree (v0.7.8)')
     a = ap.parse_args()
+    if (a.seal or a.seal_unowned) and os.path.realpath(a.dir).startswith(os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')) + os.sep):
+        sys.exit('bake_europe_seams.py: --seal writes in place: run it on a staged copy, never on the game\'s data folder')
     names = a.tiles.split(',') if a.tiles else list(rt.EXTRA)
     tiles = {tuple(int(v) for v in n.split('_')) for n in names}
     if a.seal:
         seal_dir(a.dir, tiles)
+    if a.seal_unowned:
+        seal_unowned(a.dir, tiles)
     cache = {}
 
     def get(t):
