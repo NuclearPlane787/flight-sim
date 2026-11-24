@@ -19,6 +19,9 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { coverReader, coverGrid } from './clipwindow.js';
+import { FINE_GLSL, setFineOrigin } from './finecover.js';   // v0.7.9: the 31 m cover's dark ground (only with LIGHTS79)
+import { countryAt } from './region.js';
+import { LIGHTS79, countryMeta } from './roadlights.js';
 
 export const LIGHT_BLOCK = 400;    // m, the finest ring's block (cities.js's BLOCK)
 export const LIGHT_HALF = 20;      // blocks each side of the camera, per ring
@@ -105,6 +108,48 @@ export function levelBlocks(level, camX, camY, blockUrban, out = []) {
 export function lightColor(led, dense, h) {
   const white = Math.min(1, led + Math.max(dense - 0.7, 0) * 1.0);
   return h < white ? 'led' : 'sodium';
+}
+
+// v0.7.9 part 3, item 4 (briefs/V0-7-9.md; ?lights79=0, node FS_LIGHTS79=0, gives v0.7.8's text and uniforms exactly):
+// the city's shape and colours in the block lights. Spliced into VERT at anchors that each occur once (lights79Vert()):
+//  - the residential fill irregular: each block's slot layout shifted by a seeded offset, and seeded gaps: about one
+//    in five thirds of a block's street or inner path dark, in every ring (so the far rings' squares break up too);
+//  - downtowns denser and brighter: the light's need for cover lowered and its intensity raised with the built-up
+//    cover's density, and more inside the real centres' boxes (uCtr79: the nearest LT79_BOXES, setCentreBoxes());
+//  - parks, rivers, rail yards and water dark where the 31 m cover is loaded (finecover.js's classes): no light on its
+//    water, few in its trees, fewer on its grass, wetland and bare ground;
+//  - the colours by country: each 1.6 km district's share of white LED lamps round the country's own (uLed79: the
+//    camera's country by roadlights.js's countryMeta(): Korea and Japan whiter, China a mix, Europe sodium), with a
+//    seeded spread within the city; the densest cores whiter still, as before.
+export const LT79_BOXES = 8;
+const LT79_PARTS = [
+  ['  void hide() {', (a, fine) => `  uniform vec4 uCtr79[${LT79_BOXES}];\n  uniform vec2 uLed79;\n${fine ? FINE_GLSL : ''}\n${a}`],
+  ['    lp += alongX ? jit : jit.yx;\n', (a) => a
+    + '    lp += (vec2(ihash(bc, 71u), ihash(bc, 72u)) - 0.5) * 0.12;\n'
+    + '    if (kind <= 1.0 && ihash(bc * 4 + ivec2(floor((position.xy + 0.5) * 2.999)), 73u + uint(kind) + 8u * uint(lv)) < 0.2) { hide(); return; }\n'],
+  ['    float dn = dense + (vnoise(m * 0.003) - 0.5) * 0.2;\n', (a) => a
+    + '    float ctrIn = 0.0;\n'
+    + `    for (int b = 0; b < ${LT79_BOXES}; b++) { vec4 B = uCtr79[b]; if (m.x > B.x && m.y > B.y && m.x < B.z && m.y < B.w) ctrIn = 1.0; }\n`],
+  ['    if (dn < need) { hide(); return; }\n', (a, fine) => '    need *= 1.0 - 0.25 * smoothstep(0.65, 0.95, dense) - 0.15 * ctrIn;\n' + a
+    + (fine ? '    if (uFineOn > 0.5) {\n'
+      + '      vec2 fp79 = finePos(vec2(pc.x, -pc.y));\n'
+      + '      if (fineInside(fp79) > 1.0) {\n'
+      + '        int fc = fineTexel(ivec2(floor(fp79)) + uFineOrg);\n'
+      + '        float hk = ihash(sk, 74u);\n'
+      + '        if (fc == 1 || (fc == 2 && hk < 0.85) || ((fc == 4 || fc == 8) && hk < 0.6) || (fc == 7 && hk < 0.35)) { hide(); return; }\n'
+      + '      }\n'
+      + '    }\n' : '')],
+  ['    float led = ihash(dist16, 61u);\n    led = led * led * 0.9;\n', () => '    float led = clamp(uLed79.x + (ihash(dist16, 61u) - 0.5) * uLed79.y, 0.0, 1.0);\n'],
+  ['    I *= 0.6 + 0.4 * h2;\n', (a) => a + '    I *= 1.0 + 0.7 * smoothstep(0.6, 0.95, dense) + 0.4 * ctrIn;\n'],
+];
+// VERT with item 4's splices (fine: the 31 m cover's uniforms are there to read).
+export function lights79Vert(src, fine) {
+  for (const [anchor, f] of LT79_PARTS) {
+    const k = src.indexOf(anchor);
+    if (k < 0 || src.indexOf(anchor, k + 1) >= 0) throw new Error('citylights: lights79 anchor not found once: ' + anchor.trim());
+    src = src.slice(0, k) + f(anchor, fine) + src.slice(k + anchor.length);
+  }
+  return src;
 }
 
 const VERT = /* glsl */ `
@@ -257,8 +302,12 @@ export function createCityLights(scene, uniforms, chunks /* , { heightfield, air
 
   const group = new THREE.Group();
   group.name = 'city-lights';
+  // v0.7.9 (LIGHTS79): item 4's splices, the 31 m cover read where the world has it.
+  const fine79 = LIGHTS79 && !!uniforms.uFine;
+  if (fine79 && !uniforms.uFineOrg) setFineOrigin(uniforms, { x: 0, y: 0 });   // (terrain.js sets it every frame)
+  const u79 = LIGHTS79 ? { uCtr79: { value: new Float32Array(4 * LT79_BOXES) }, uLed79: { value: new THREE.Vector2(0.4, 0.5) } } : null;
   const vertexShader = `${chunks.UNIFORMS_GLSL}\n${chunks.NOISE_GLSL}\n${chunks.HEIGHT_GLSL}\n${chunks.ATMOS_GLSL}\n`
-    + VERT.replace('${MAXR}', String(chunks.MAX_RUNWAYS));
+    + (LIGHTS79 ? lights79Vert(VERT, fine79) : VERT).replace('${MAXR}', String(chunks.MAX_RUNWAYS));
   const rings = [];
   const list = [];
   for (let lv = 0; lv < LIGHT_LEVELS; lv++) {
@@ -276,7 +325,7 @@ export function createCityLights(scene, uniforms, chunks /* , { heightfield, air
       uBlock: { value: B },
       uLevel: { value: lv },
       uHalfM: { value: LIGHT_HALF * B },
-    });
+    }, u79 || {});
     const mat = new THREE.ShaderMaterial({
       uniforms: u, vertexShader, fragmentShader: FRAG,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -300,14 +349,42 @@ export function createCityLights(scene, uniforms, chunks /* , { heightfield, air
     r.attr.addUpdateRange(0, Math.max(list.length, 2));
   }
 
+  // v0.7.9: the real centres' boxes (centres.js's boxes(), set by world.js) and the camera's country, now and then.
+  let ctrBoxes = null, ctrAt = { x: NaN, y: NaN }, ledAt = { x: NaN, y: NaN }, ctrTick = 0;
+  function update79(camMap) {
+    if (Math.hypot(camMap.x - ledAt.x, camMap.y - ledAt.y) > 4000 || !(ledAt.x === ledAt.x)) {
+      ledAt = { x: camMap.x, y: camMap.y };
+      let cc = 'XX';
+      try { cc = countryAt(camMap.x, camMap.y) || 'XX'; } catch { /* rules not loaded */ }
+      const m = countryMeta(cc);
+      u79.uLed79.value.set(m.led, cc === 'CN' ? 0.8 : 0.45);
+    }
+    // (also every 120 updates, about 2 s: a centre turns ready some time after the camera stops, and a gate start by
+    // night never moves 2 km: the code review's fifth finding)
+    if (ctrBoxes && (++ctrTick >= 120 || Math.hypot(camMap.x - ctrAt.x, camMap.y - ctrAt.y) > 2000 || !(ctrAt.x === ctrAt.x))) {
+      ctrTick = 0;
+      ctrAt = { x: camMap.x, y: camMap.y };
+      let list = [];
+      try { list = ctrBoxes() || []; } catch { list = []; }
+      const d = (b) => Math.hypot(Math.max(b[0] - camMap.x, 0, camMap.x - b[2]), Math.max(b[1] - camMap.y, 0, camMap.y - b[3]));
+      list = list.slice().sort((a, b) => d(a) - d(b)).slice(0, LT79_BOXES);
+      const arr = u79.uCtr79.value;
+      arr.fill(0);
+      for (let k = 0; k < LT79_BOXES; k++) { const b = list[k]; if (b) arr.set(b, k * 4); else arr.set([1, 1, 0, 0], k * 4); }
+    }
+  }
+
   const NONE = { drawCalls: 0, tris: 0, lights: 0 };
   return {
     object: group,
     slots: layout.length,
+    // v0.7.9 (LIGHTS79): the ready real centres' boxes [x0, y0, x1, y1] (map m), for the downtowns.
+    setCentreBoxes(fn) { ctrBoxes = fn || null; ctrAt = { x: NaN, y: NaN }; },
     update({ camMap, origin }) {
       const on = uniforms.uNight.value >= 0.01;
       group.visible = on;
       if (!on) return NONE;
+      if (u79) update79(camMap);
       let calls = 0, lights = 0;
       if (cov && cov.version() !== coverVer) {
         // The clip window refilled: list every ring's blocks again.

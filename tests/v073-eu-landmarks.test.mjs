@@ -16,7 +16,7 @@ const L78 = process.env.FS_LANDMARKS78 !== '0';     // v0.7.8's landmarks switch
 
 if (inRegion('europe', import.meta.url)) {
   const { LANDMARKS, EUROPE_LANDMARKS, EUROPE_CITY_BOXES, PYLON_R, buildModel, bridgeEnds, baseHeight, landmarkOn, landmarkFootprints, createLandmarks } = await import('../src/world/landmarks.js');
-  const { MODELS, EUROPE_MODELS } = await import('../src/world/landmark-models.js');
+  const { MODELS, EUROPE_MODELS, NDG79 } = await import('../src/world/landmark-models.js');
   const byId = (id) => EUROPE_LANDMARKS.find((l) => l.id === id);
   const pos = (id, endH = null) => buildModel(byId(id), endH).geometry.getAttribute('position');
   const local = (L, x, z) => { const c = Math.cos(L.brg * Math.PI / 180), s = Math.sin(L.brg * Math.PI / 180), N = -z; return [x * c - N * s, x * s + N * c]; };
@@ -61,7 +61,10 @@ if (inRegion('europe', import.meta.url)) {
         minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         assert.ok(Math.hypot(x, z) <= L.footprintM * 1.05 + 2, `${L.id}: a vertex ${Math.hypot(x, z).toFixed(1)} m out`);
       }
-      if (!(L.slope && L78)) assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);     // (v0.7.8: as in v070-eu-landmarks)
+      // (v0.7.9 looks, ?ndg79 on: Notre-Dame de la Garde's rock reaches 36 m under its base into the hill, its footprint
+      // grown to cover it: tests/v079-looks-models.test.mjs checks the rock against the installed ground.)
+      if (L.id === 'ndg' && NDG79) assert.ok(Math.abs(minY + 36) < 1e-6, `${L.id}: the rock's foot ${minY}`);
+      else if (!(L.slope && L78)) assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);     // (v0.7.8: as in v070-eu-landmarks)
       assert.ok(Math.abs(maxY - L.heightM) / L.heightM < 0.01, `${L.id}: top ${maxY} against ${L.heightM}`);
       const tris = p.count / 3;
       counts[L.id] = tris;

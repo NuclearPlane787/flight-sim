@@ -14,7 +14,7 @@ const V077 = {
 };
 const HELPER = fileURLToPath(new URL('./v078-trees-hash.mjs', import.meta.url));
 function hashes(region, env) {
-  const r = spawnSync(process.execPath, [HELPER], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_REGION: region === 'ea' ? '' : region, FS_FENS78: '0', FS_SNOW78: '0', ...env } });
+  const r = spawnSync(process.execPath, [HELPER], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_REGION: region === 'ea' ? '' : region, FS_FENS78: '0', FS_SNOW78: '0', FS_TOWNS79: '0' /* v0.7.9: the far towns off too */, ...env } });
   const m = /HASH78 (.*)/.exec(r.stdout + r.stderr);
   assert.ok(m, r.stdout + r.stderr);
   return JSON.parse(m[1]);

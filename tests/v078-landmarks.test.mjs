@@ -50,7 +50,7 @@ test('off (FS_LANDMARKS78=0): all ninety-nine landmarks exactly the pushed v0.7.
 
 test('on: the five meant to change change, every other one exactly the pushed v0.7.7\'s', () => {
   for (const region of Object.keys(OLD)) {
-    const got = hashes(region, { FS_LANDMARKS78: '1' });
+    const got = hashes(region, { FS_LANDMARKS78: '1', FS_BERGISEL79: '0', FS_NDG79: '0' });   // (v0.7.8's own set; v0.7.9's two: tests/v079-looks-models.test.mjs)
     assert.deepEqual(Object.keys(got), Object.keys(OLD[region]), region);
     for (const id of Object.keys(OLD[region])) {
       if (CHANGED[region].includes(id)) assert.notEqual(got[id], OLD[region][id], `${id}: changed`);
@@ -150,8 +150,11 @@ if (inRegion('europe', import.meta.url) && process.env.FS_LANDMARKS78 !== '0') {
     for (let i = 0; i < p.count; i++) {
       const [lx, ln] = local(L, p.getX(i), p.getZ(i)), y = p.getY(i);
       if (y > top) { top = y; topN = ln; }
-      if (Math.abs(lx) > 1.05 && Math.abs(lx) <= 2.21 && ln > -84 && ln < 5) deckAbove = Math.min(deckAbove, y - g(ln));   // the deck (the supports are 1 m a side)
-      if (Math.abs(lx) <= 1.01 && ln > -84 && ln < 5) footBelow = Math.min(footBelow, y - g(ln));
+      // (v0.7.9 looks, ?bergisel79 on: the in-run 3 m to a side over a girder as wide, on legs 1.85 to 2.75 m out, so
+      // the deck is read at its walls' inner faces (2.7 m out) and the feet at the legs: tests/v079-looks-models.test.mjs.)
+      const [d0, d1, f0, f1] = M.BERGISEL79 ? [2.69, 2.71, 1.84, 2.76] : [1.05, 2.21, -1, 1.01];
+      if (Math.abs(lx) > d0 && Math.abs(lx) <= d1 && ln > -84 && ln < 5) deckAbove = Math.min(deckAbove, y - g(ln));   // the deck (the supports are 1 m a side)
+      if (Math.abs(lx) > f0 && Math.abs(lx) <= f1 && ln > -84 && ln < 5) footBelow = Math.min(footBelow, y - g(ln));
       if (ln > 4.9) table = Math.max(table ?? -Infinity, y);
     }
     assert.ok(Math.abs(top - L.heightM) < 0.01 && topN < -70, `the top on the crest (n ${topN.toFixed(0)})`);

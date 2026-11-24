@@ -112,6 +112,9 @@ CENTRES = {
     # (Cheongju left out: the Korea extract on disk, south-korea-latest of 2026-10-31, maps 562 buildings in this box and
     # the keep rule keeps 164, nearly all estimated 12 m blocks, no downtown; baked once into the run's staging, not shipped.)
     # 'cheongju': ('Cheongju', 'korea', (127.472, 36.622, 127.505, 36.650), (36.636, 127.489, 3.0)),
+    # (v0.7.9, the `looks` subagent: Geofabrik's South Korea extract of 2026-11-24, reference/raw/osm/
+    # south-korea-261124.osm.pbf, maps the same 562 buildings in this box, 164 kept, the tallest 48 m: OSM itself has no
+    # downtown there yet, so a newer extract doesn't help; still left out.)
     'kanazawa': ('Kanazawa', 'chubu', (136.640, 36.553, 136.673, 36.583), (36.567, 136.656, 3.0)),
 }
 # v0.7.5: published heights for towers whose OSM parts carry only levels (x 3.2 m reads far short for office floors of
@@ -120,6 +123,10 @@ CENTRES = {
 HEIGHT_FIX = {
     'nagoya': {'w501414893': 247.0, 'w501412688': 245.0, 'w501412689': 226.0},
 }
+# v0.7.9 (briefs/V0-7-9.md part 8, item 3; the `looks` subagent): the keep rule's least height per centre, where it isn't
+# 12 m. Kanazawa's centre stood sparser than the generated town round it (965 of the 7,115 buildings OSM maps in its box
+# kept, and the town is left out inside a real centre's box): every building kept. Only the centres named here.
+MIN_THR = {'kanazawa': 0.0}
 
 # v0.7.0 (briefs/V0-7-0.md Part 6): Europe's nine, in Europe's frame, chosen by FS_REGION=europe (bake_common.EUROPE).
 # East Asia's tables above are untouched and used exactly as before when no region is set.
@@ -609,7 +616,7 @@ def bake_centre(cid):
             f['H'], f['src'] = fix[f['osm']], 'tag'
     feats, dropped, both = drop_outlines(feats)
 
-    thr = 12.0
+    thr = 12.0 if EUROPE else MIN_THR.get(cid, 12.0)   # (v0.7.9: MIN_THR; 12 m for every centre baked before)
     if EUROPE:   # v0.7.0: Europe's budget by count and by vertices (approximated by the raw rings' length)
         thr = EU_MIN_THR   # three-storey old towns (9.6 m) stand where the budget allows
         for f in feats:    # the stored vertex count, exactly (the ring as it will be written)

@@ -27,6 +27,64 @@ export function trees78Switch() {
 }
 export const TREES78 = trees78Switch();
 
+// v0.7.9 part 8, item 1 (briefs/V0-7-9.md, the `looks` subagent): "the park trees are simple cones and faceted mounds:
+// give the broadleaf trees round crowns". v0.7.8 drew a park's tree as the forest's two-tier cone squashed (a faceted
+// mound). Now its crown is a low ellipsoid of 18 triangles (two staggered pentagonal rings, a top fan and a closed
+// base) with smooth ellipsoid normals, carried in two attributes of its own (p79, n79) beside the cone's; the cone's
+// 12 triangles get 6 more of zero area (no pixel), so every tree outside a park draws exactly as before and each tree
+// costs 18 triangles, 1.5 times the 12. The switch: ?trees79=0 (node FS_TREES79=0), on by default, read once as
+// apron.js's lookSwitch(); only with ?trees78 on (a park's trees exist only there). Off: v0.7.8's geometry and text.
+function lookSwitch(q, env) {   // as apron.js's
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = new RegExp(`[?&]${q}=([01])\\b`).exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env[env] === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const TREES79 = TREES78 && lookSwitch('trees79', 'FS_TREES79');
+// [EST] the crown in the tree's own units (unit height ~1; the shader takes off 0.3 of the height to sink the base):
+// centre 0.53 up, 0.44 across, 0.32 high, the rings at +30 and -30 degrees, so it stands from about 0.07 to 0.55 of the
+// tree's height over the lawn (v0.7.8's mound: 0.06 to 0.59), a wide low crown as a park's planes and oaks.
+export const CROWN79 = { cy: 0.53, rx: 0.44, ry: 0.32, ringA: 30, ringB: -30 };   // the rings' elevations (degrees)
+// The tree's arrays (pos, nrm: 3 a vertex; kind: 1) -> the same with 6 zero-area triangles added, and p79, n79 (the
+// round crown, 18 triangles, each wound outwards).
+export function trees79Arrays(pos, nrm, kind) {
+  const n0 = pos.length / 3, N = 54;   // 18 triangles
+  if (n0 !== 36) throw new Error(`trees79: the tree has ${n0 / 3} triangles, not 12`);
+  const P = new Float32Array(N * 3), Nn = new Float32Array(N * 3), K = new Float32Array(N), P79 = new Float32Array(N * 3), N79 = new Float32Array(N * 3);
+  P.set(pos); Nn.set(nrm); K.set(kind); K.fill(1, n0);
+  for (let v = n0; v < N; v++) Nn[v * 3 + 1] = 1;
+  const { cy, rx, ry, ringA, ringB } = CROWN79, D = Math.PI / 180;
+  const pt = (el, az) => [Math.cos(el * D) * Math.cos(az * D) * rx, cy + Math.sin(el * D) * ry, Math.cos(el * D) * Math.sin(az * D) * rx];
+  const top = [0, cy + ry, 0];
+  const A = [0, 1, 2, 3, 4].map((i) => pt(ringA, i * 72)), B = [0, 1, 2, 3, 4].map((i) => pt(ringB, i * 72 + 36));
+  const tris = [];
+  for (let i = 0; i < 5; i++) {
+    const j = (i + 1) % 5;
+    tris.push([top, A[i], A[j]]);              // the top fan
+    tris.push([A[i], B[i], A[j]]);             // the band, staggered
+    tris.push([A[j], B[i], B[j]]);
+  }
+  tris.push([B[0], B[1], B[2]], [B[0], B[2], B[3]], [B[0], B[3], B[4]]);   // the base, closed
+  const enorm = (p) => { const x = p[0] / (rx * rx), y = (p[1] - cy) / (ry * ry), z = p[2] / (rx * rx), l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; };
+  tris.forEach((t, k) => {
+    const base = k >= 15;
+    const c = [(t[0][0] + t[1][0] + t[2][0]) / 3, (t[0][1] + t[1][1] + t[2][1]) / 3 - cy, (t[0][2] + t[1][2] + t[2][2]) / 3];
+    const e1 = [0, 1, 2].map((q) => t[1][q] - t[0][q]), e2 = [0, 1, 2].map((q) => t[2][q] - t[0][q]);
+    const cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const out = (cr[0] * c[0] + cr[1] * c[1] + cr[2] * c[2]) > 0;   // counter-clockwise from outside: three.js's front
+    const tt = out ? t : [t[0], t[2], t[1]];
+    tt.forEach((p, q) => {
+      const v = k * 3 + q;
+      P79.set(p, v * 3);
+      N79.set(base ? [0, -1, 0] : enorm(p), v * 3);
+    });
+  });
+  return { pos: P, nrm: Nn, kind: K, p79: P79, n79: N79 };
+}
+
 export const PX_M = 10;             // the mask's pixel (m), larger only where the box is over 20 km a side
 export const MAX_SIDE = 2048;
 export const COARSE_M = 50;         // the fabric's cells
@@ -228,8 +286,14 @@ export function trees78Vert(src) {
           keep *= (1.0 - park78Built(m, pk78t)) * step(r2, forest * 0.92 * mix(1.0, ${PARK_DENSITY.toFixed(2)}, pk78));
 `, 'after');
   // a park's trees broadleaf: a lower, rounder crown
-  s = splice(s, 'vec3 p = position * vec3(sc * w, sc, sc * w);\n',
-    '          if (pk78 > 0.5) { p *= vec3(1.25, 0.62, 1.25); p.y += 0.2 * sc; }   // v0.7.8 trees: broadleaf in a park (a low round crown, lifted clear of the lawn), not a conifer\n', 'after');
+  s = splice(s, 'vec3 p = position * vec3(sc * w, sc, sc * w);\n', TREES79
+    ? '          if (pk78 > 0.5) p = p79 * vec3(sc * w, sc, sc * w);   // v0.7.9 looks (trees79): broadleaf in a park, a round crown (trees79Arrays())\n'
+    : '          if (pk78 > 0.5) { p *= vec3(1.25, 0.62, 1.25); p.y += 0.2 * sc; }   // v0.7.8 trees: broadleaf in a park (a low round crown, lifted clear of the lawn), not a conifer\n', 'after');
+  if (TREES79) {
+    s = splice(s, 'attribute vec2 cell;\n', 'attribute vec3 p79, n79;   // v0.7.9 looks: the round crown (parks78.js trees79Arrays())\n', 'before');
+    s = splice(s, 'vNormal = normal;\n',
+      '          if (pk78 > 0.5) { vec3 n79r = n79; n79r.xz = mat2(cos(a), -sin(a), sin(a), cos(a)) * n79r.xz; vNormal = n79r; }   // v0.7.9 looks: the crown\'s smooth normals, turned with it\n', 'after');
+  }
   s = splice(s, 'vCol = mix(vCol, vec3(0.040, 0.056, 0.025), (1.0 - thin) * 0.6);\n',
     '          if (pk78 > 0.5) vCol = mix(vec3(0.040, 0.062, 0.022), vec3(0.060, 0.072, 0.028), r2) * (0.9 + 0.2 * r3);   // v0.7.8 trees\n', 'after');
   return s;

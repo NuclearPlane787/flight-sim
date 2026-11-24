@@ -174,6 +174,16 @@ export const AIRPORT_INDEX = {
   ETAR: ['Ramstein', 'europe'], EGQS: ['Lossiemouth', 'europe'], EGUL: ['Lakenheath', 'europe'], EGVA: ['Fairford', 'europe'],
   LEZG: ['Zaragoza', 'europe'], LERT: ['Rota', 'europe'],
 };
+// v0.7.9 (Shane: "maybe military bases should be a different color to denote them as such"): each airport's kind, a
+// field of the table above kept beside it (so every `[name, region]` entry, and tools/promote-airport.py's insert, stay
+// as they were): 'base' for the five air bases with no civil traffic (traffic-layout.js's NO_PARKED: no airliner
+// parked there), 'joint' for the four civil airports that share their runways with an air base. Every other airport
+// is 'civil'.
+export const AIRPORT_KIND = {
+  ETAR: 'base', EGUL: 'base', EGVA: 'base', EGQS: 'base', LERT: 'base',
+  LEZG: 'joint', RJNK: 'joint', RKJK: 'joint', RKTU: 'joint',
+};
+export const airportKind = (icao) => AIRPORT_KIND[icao] || 'civil';
 export const airportShortName = (icao) => (AIRPORT_INDEX[icao] ? AIRPORT_INDEX[icao][0] : icao || '');
 export const airportRegion = (icao) => (AIRPORT_INDEX[icao] ? AIRPORT_INDEX[icao][1] : null);
 

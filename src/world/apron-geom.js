@@ -37,6 +37,62 @@ export const GATES78 = (() => {
   return !(q || e);
 })();
 export const gateFit = (icao) => GATE_FIT_ALL === '1' ? true : GATE_FIT_ALL === '0' ? false : GATES78 || GATE_FIT.has(icao);
+// v0.7.9 (part 5, the gates' leftovers; "Found while building v0.7.8"). ?gates79=0 (node FS_GATES79=0) gives v0.7.8's
+// gates back. With it (and the fit):
+// - **each type's nose wheel on the stop bar.** The bar is where an A321's nose wheel stands with its nose on the
+//   stand point (5.3 m behind it). A 787-9's nose wheel is 5.41 m behind its nose and a 777-300ER's 5.89 m, so they
+//   stood 0.1 and 0.6 m short of the bar; the parked widebody's is 7.0 m behind, 1.7 m short (measured: the roadmap
+//   said 1 to 2 m for all). noseWheelShift() is how far forward of the stand point such a nose goes;
+// - **more gates bridged** (181 of 2,480 had none; jetBridge()'s `more`): a terminal wall up to GATE_LONG_M away
+//   where none is within 80 m (a long fixed link), and a wall ahead of the nose on EITHER side within GATE_ELBOW_MAX
+//   of an elbow ahead and to the left of the nose. Neither where the tunnel would pass over another stand's
+//   aircraft or cross a neighbouring gate's bridge (bridgeClear()). Not taken: a bridge from a plain building where
+//   no terminal answers (it gave Heathrow's cargo stands bridges from their sheds), and elbows with a first leg over
+//   45 m (Heathrow's 531 got a 64 m tunnel across the grass);
+// - **a gate nobody stands at keeps its bridge drawn back** (GATE_RETRACT of its reach), not out in the open apron
+//   where an aircraft's door would be.
+export const GATES79 = GATES78 && (() => {
+  const q = typeof location !== 'undefined' && location && /[?&]gates79=0(&|$)/.test(location.search || '');
+  const e = typeof process !== 'undefined' && process.env && process.env.FS_GATES79 === '0';
+  return !(q || e);
+})();
+export const GATE_LONG_M = 110, GATE_ELBOW_FWD = 8, GATE_ELBOW_SIDE = 10, GATE_ELBOW_MAX = 45, GATE_RETRACT = 0.55;
+// The shortest distance between two segments (m).
+export function segSegDist(ax, ay, bx, by, cx, cy, dx, dy) {
+  const o = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const d1 = o(cx, cy, dx, dy, ax, ay), d2 = o(cx, cy, dx, dy, bx, by), d3 = o(ax, ay, bx, by, cx, cy), d4 = o(ax, ay, bx, by, dx, dy);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(segDist(ax, ay, cx, cy, dx, dy).d, segDist(bx, by, cx, cy, dx, dy).d, segDist(cx, cy, ax, ay, bx, by).d, segDist(dx, dy, ax, ay, bx, by).d);
+}
+// Is the tunnel's leg a-b clear of every other stand's aircraft? An aircraft as a fuselage (the stand point to 60 m
+// behind it, 7 m clear) and a wing (28 m behind the point, 30 m to each side, 4 m clear). Stands within 25 m of this
+// one are its own alternates (a wide stand's L and R positions), never used at the same time.
+// `bridges`: the neighbouring gates' own bridges as [rootX, rootY, cabX, cabY] (jetBridge() gathers them): not
+// within 4 m of one either.
+// `rings`: building outlines the leg may not cross (gateMore()'s: every building of the airport that isn't a
+// terminal; the code review's third finding: Frankfurt's C14 had a long link through a 10 m building).
+export function bridgeClear(ax, ay, bx, by, stand, stands, bridges = null, rings = null) {
+  for (const n of bridges || []) if (segSegDist(ax, ay, bx, by, n[0], n[1], n[2], n[3]) < 4) return false;
+  if (rings) {
+    const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), y0 = Math.min(ay, by), y1 = Math.max(ay, by);
+    for (const r of rings) {
+      const bb = r.bb;
+      if (bb && (bb[0] > x1 || bb[2] < x0 || bb[1] > y1 || bb[3] < y0)) continue;
+      for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; if (segSegDist(ax, ay, bx, by, p[0], p[1], q[0], q[1]) === 0) return false; }
+    }
+  }
+  for (const t of stands || []) {
+    if (t === stand || Math.hypot(t.x - stand.x, t.y - stand.y) < 25) continue;
+    if (Math.abs(t.x - ax) > 260 && Math.abs(t.x - bx) > 260) continue;
+    const [ux, uy] = hdgVec(t.hdgGridDeg), wx = t.x - ux * 28, wy = t.y - uy * 28;
+    if (segSegDist(ax, ay, bx, by, t.x, t.y, t.x - ux * 60, t.y - uy * 60) < 7) return false;
+    if (segSegDist(ax, ay, bx, by, wx - uy * 30, wy + ux * 30, wx + uy * 30, wy - ux * 30) < 4) return false;
+  }
+  return true;
+}
+// How far past the stand point a nose goes for its nose wheel to stand on the stop bar (m, 0 for the A321 and with the
+// switch off). `noseToWheel`: the nose wheel's distance behind the nose's tip.
+export const noseWheelShift = (noseToWheel) => (GATES79 && Number.isFinite(noseToWheel) ? Math.max(0, noseToWheel - (NOSE_AT - NOSE_WHEEL)) : 0);
 // A gate's door, for jetBridge(): `back` m from the nose's tip to the middle of the front left door, `half` m from the
 // centreline to the cab's face there (the fuselage's half width at the door and about 0.4 m), `sill` m above the
 // ground. The types' own are GATE_DOOR in their geometry modules; the parked traffic's below, by AIRLINER_TYPES' index
@@ -47,6 +103,8 @@ export const PARKED_DOORS = [{ back: 4.0, half: 2.4, sill: 3.3 }, { back: 6.3, h
 // radians, its lenScale):
 // where the layout moved the nose back from the stand point, the door is that much further back too. null where it
 // stands more than 5 degrees off the stand's heading (the default door then).
+// (v0.7.9: a parked widebody now stands 1.7 m past the stand point, its nose wheel on the bar: `off` below is then
+// negative and its door that much nearer the point.)
 export function parkedDoor(stand, p) {
   const T = PARKED_DOORS[p.type] || PARKED_DOORS[0], k = p.lenScale || 1;
   const [dx, dy] = hdgVec(stand.hdgGridDeg);
@@ -54,6 +112,10 @@ export function parkedDoor(stand, p) {
   const dh = Math.abs(((pd - stand.hdgGridDeg) % 360 + 540) % 360 - 180);
   if (dh > 5) return null;
   const off = (stand.x - p.x) * dx + (stand.y - p.y) * dy;
+  // v0.7.9: an aircraft that isn't at this stand has no door here (some of Incheon's refs name two positions 80 m and
+  // more apart: four gates' cabs stood that far behind their stands in v0.7.8). The layout backs a nose off by 12 m
+  // at most and parks a widebody 1.7 m past the point.
+  if (GATES79 && (off < -3 || off > 13 || Math.abs((stand.x - p.x) * -dy + (stand.y - p.y) * dx) > 3)) return null;
   return { back: Math.round((T.back * k + off) * 100) / 100, half: T.half, sill: T.sill };
 }
 
@@ -605,7 +667,31 @@ export function trimLeadAt(lead, stop) {
 // terminals: [ring, ...]. Returns null if no terminal wall is within maxLen.
 // v0.7.8: `fitDoor` ({ back, half, sill }, with the fit only) puts the cab at that aircraft's own front door; without it
 // the cab is where v0.7.6's fit put it, 4 m behind the nose and GATE_FIT_HALF out, which clears every type.
-export function jetBridge(stand, terminals, maxLen = 80, fit = false, fitDoor = null) {
+// A gate somebody stands at whose door isn't known (an aircraft parked off the stand's heading; a type with no
+// GATE_DOOR): the default door, and not drawn back (world.js syncGateDoors(), apron.js).
+export const GATE_OCCUPIED = Object.freeze({ occupied: true });
+// An airport's `more` for jetBridge(), made once: its stands and its buildings that aren't terminals, each ring with
+// its box.
+const MORE = new WeakMap();
+export function gateMore(a) {
+  let m = MORE.get(a);
+  if (!m) {
+    const others = (a.buildings || []).filter((b) => b.kind !== 'terminal' && b.points && b.points.length > 2).map((b) => {
+      const r = openRing(b.points).slice();   // (a copy: the box below is never written onto the airport's own array)
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of r) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+      r.bb = [x0, y0, x1, y1];
+      return r;
+    });
+    m = { stands: a.stands || [], others };
+    MORE.set(a, m);
+  }
+  return m;
+}
+// v0.7.9 (GATES79, with the fit): `more` = { stands: the airport's stands (for bridgeClear()), others: the building
+// rings no leg may cross (gateMore()), retract: true (nobody at the gate: the cab drawn back) }. The result gains `elbow` ({ x, y }: the tunnel runs root, elbow, cab) and `how`
+// ('long' | 'elbow') where one of the new rules found the wall.
+export function jetBridge(stand, terminals, maxLen = 80, fit = false, fitDoor = null, more = null) {
   const [dx, dy] = hdgVec(stand.hdgGridDeg);
   const lx = -dy, ly = dx;                                        // the aircraft's left
   // (The code review's fifth finding: the wall is always looked for from the DEFAULT door, as the paving under the
@@ -622,29 +708,73 @@ export function jetBridge(stand, terminals, maxLen = 80, fit = false, fitDoor = 
   // The wall is looked for from the door; with the fit, from 9 m out to the left of it, so that a bridge from a wall
   // straight ahead comes in at an angle past the nose, as a real one does from its rotunda.
   const aim = fit ? { x: door.x + lx * GATE_FIT_SIDE, y: door.y + ly * GATE_FIT_SIDE } : door;
-  let best = null;
-  for (const ring of terminals) {
-    for (let i = 0; i < ring.length; i++) {
-      const a = ring[i], b = ring[(i + 1) % ring.length];
-      const q = segDist(aim.x, aim.y, a[0], a[1], b[0], b[1]);
-      // Not behind the door, and on the left half (the bridge mustn't cross the nose).
-      const rx = q.x - door.x, ry = q.y - door.y;
-      if (rx * dx + ry * dy < -4 || rx * lx + ry * ly < -6) continue;
-      // With the fit the root is clear of the nose too: beside the fuselage, or ahead of the nose's tip.
-      if (fit && rx * lx + ry * ly < 3 && rx * dx + ry * dy < back + 3) continue;
-      // ... and never right of the centreline: a tunnel from there to a cab on the left would cross the nose (five
-      // of Munich's gates did under ?gatefit=1, by the code review's count).
-      if (fit && rx * lx + ry * ly < -side) continue;
-      const d = fit ? Math.hypot(rx, ry) : q.d;
-      if (!best || q.d < best.q) best = { d, q: q.d, x: q.x, y: q.y };
+  const straight = (rings) => {
+    let best = null;
+    for (const ring of rings) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        const q = segDist(aim.x, aim.y, a[0], a[1], b[0], b[1]);
+        // Not behind the door, and on the left half (the bridge mustn't cross the nose).
+        const rx = q.x - door.x, ry = q.y - door.y;
+        if (rx * dx + ry * dy < -4 || rx * lx + ry * ly < -6) continue;
+        // With the fit the root is clear of the nose too: beside the fuselage, or ahead of the nose's tip.
+        if (fit && rx * lx + ry * ly < 3 && rx * dx + ry * dy < back + 3) continue;
+        // ... and never right of the centreline: a tunnel from there to a cab on the left would cross the nose (five
+        // of Munich's gates did under ?gatefit=1, by the code review's count).
+        if (fit && rx * lx + ry * ly < -side) continue;
+        const d = fit ? Math.hypot(rx, ry) : q.d;
+        if (!best || q.d < best.q) best = { d, q: q.d, x: q.x, y: q.y };
+      }
+    }
+    return best;
+  };
+  let best = straight(terminals), elbow = null, how = null;
+  if (!best || best.d > maxLen || best.d < 4) {
+    if (!(fit && GATES79) || (best && best.d < 4)) return null;   // (as v0.7.8; a wall under 4 m from the door is no place for a bridge)
+    const others = more && more.stands, walls = (more && more.others) || null;
+    const cab0 = { x: door.x + lx * 1.6, y: door.y + ly * 1.6 };
+    // the neighbouring gates' bridges by the rules above (within 200 m; not this stand's own alternates)
+    const near = [];
+    for (const t of others || []) {
+      if (t === stand || !t.gate) continue;
+      const dd = Math.hypot(t.x - stand.x, t.y - stand.y);
+      if (dd < 25 || dd > 200) continue;
+      const nb = jetBridge(t, terminals, maxLen, fit);
+      if (nb) near.push([nb.root.x, nb.root.y, nb.cab.x, nb.cab.y]);
+    }
+    if (best && best.d <= GATE_LONG_M && bridgeClear(best.x, best.y, cab0.x, cab0.y, stand, others, near, walls)) how = 'long';   // the same wall, at the end of a long fixed link
+    else {
+      best = null;
+      // Round an elbow: a point ahead of the nose and to its left, and from there the nearest wall that lies at
+      // least as far ahead of the nose's tip, on either side. The tunnel's first leg then stays GATE_ELBOW_FWD
+      // ahead of the stand point all its way (a parked widebody's nose is 1.7 m past the point).
+      const E = { x: stand.x + dx * GATE_ELBOW_FWD + lx * GATE_ELBOW_SIDE, y: stand.y + dy * GATE_ELBOW_FWD + ly * GATE_ELBOW_SIDE };
+      for (const ring of terminals) {
+        for (let i = 0; i < ring.length; i++) {
+          const a = ring[i], b = ring[(i + 1) % ring.length];
+          const q = segDist(E.x, E.y, a[0], a[1], b[0], b[1]);
+          if ((q.x - stand.x) * dx + (q.y - stand.y) * dy < GATE_ELBOW_FWD || q.d < 3 || q.d > GATE_ELBOW_MAX) continue;
+          if (best && q.d >= best.q) continue;
+          if (!bridgeClear(q.x, q.y, E.x, E.y, stand, others, near, walls)) continue;
+          best = { d: q.d, q: q.d, x: q.x, y: q.y };
+        }
+      }
+      if (!best || !bridgeClear(E.x, E.y, cab0.x, cab0.y, stand, null, near, walls)) return null;
+      elbow = E; how = 'elbow';
     }
   }
-  if (!best || best.d > maxLen || best.d < 4) return null;
   // v0.7.8: the cab at the aircraft's own door, the root where the default door found it.
   if (D) door = { x: stand.x - dx * D.back + lx * D.half, y: stand.y - dy * D.back + ly * D.half };
+  // v0.7.9: nobody at the gate: the cab drawn back along the tunnel's last leg, never to under 6 m of it.
+  else if (fit && GATES79 && more && more.retract) {
+    const from = elbow || best, len = Math.hypot(door.x - from.x, door.y - from.y), k = Math.min(1, Math.max(GATE_RETRACT, 6 / (len || 1)));
+    door = { x: from.x + (door.x - from.x) * k, y: from.y + (door.y - from.y) * k };
+  }
   // The cab sits square to the fuselage, its face on the door; the tunnel meets its back.
   const cab = { x: door.x + lx * 1.6, y: door.y + ly * 1.6 };
   const jb = { root: { x: best.x, y: best.y }, cab, door, fwd: [dx, dy], left: [lx, ly], length: Math.hypot(cab.x - best.x, cab.y - best.y) };
+  if (elbow) { jb.elbow = elbow; jb.length = Math.hypot(elbow.x - best.x, elbow.y - best.y) + Math.hypot(cab.x - elbow.x, cab.y - elbow.y); }
+  if (how) jb.how = how;
   if (D && D.sill != null) jb.sill = D.sill;
   return jb;
 }

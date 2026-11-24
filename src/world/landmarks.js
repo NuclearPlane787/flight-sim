@@ -18,7 +18,7 @@
 
 import * as THREE from '../../vendor/three.module.js';
 import { toMap, EARTH_RADIUS } from './frame.js';
-import { MODELS, EUROPE_MODELS, LANDMARKS77, LANDMARKS78, TB_APPROACH_S, TB_APPROACH_N, bergiselTop } from './landmark-models.js';
+import { MODELS, EUROPE_MODELS, LANDMARKS77, LANDMARKS78, TB_APPROACH_S, TB_APPROACH_N, bergiselTop, NDG79, NDG79_ROCK_R } from './landmark-models.js';
 import { REGION_ID } from './regions.js';
 
 export const BUILD_M = 85000;
@@ -430,6 +430,14 @@ if (LANDMARKS78) {
   [L.x, L.y] = toMap(L.lat, L.lon);
   L.slope = true;
   L.heightM = Math.round(bergiselTop() * 10) / 10;
+}
+// v0.7.9 looks (NDG79; landmark-models.js's ndgRock79()): Notre-Dame de la Garde's footprint out to its rock, so the
+// centre's buildings and the trees keep off it; `parts` holds the old 46 m circle, so baseHeight() reads the ground
+// where it did and the basilica stands where it stood.
+if (NDG79) {
+  const L = EUROPE_LANDMARKS.find((l) => l.id === 'ndg');
+  L.parts = [[0, 0, L.footprintM]];
+  L.footprintM = NDG79_ROCK_R;
 }
 // v0.7.6 (briefs/V0-7-6.md part 5): three landmarks by the new air bases, appended after the sixty-one. Figures read on
 // 2026-11-22 from each Wikipedia article (its infobox, text and coordinates); [EST] marks what is estimated. Each one's

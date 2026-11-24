@@ -34,7 +34,7 @@ import { createRural } from './rural.js';
 import { createGreenhouses } from './greenhouses.js';
 import { clusterAirports, createAirportSet, MORE } from './airport-set.js';
 import { placeParked, blockedByPlayer } from './traffic-layout.js';
-import { GATES78, parkedDoor } from './apron-geom.js';
+import { GATES78, GATES79, GATE_OCCUPIED, parkedDoor } from './apron-geom.js';
 import { regionQuery } from './region.js';
 
 export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfield = null, airports = null } = {}) {
@@ -76,14 +76,20 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
     if (cities.setMask && lmMask) cities.setMask((x, y) => (centres ? centres.maskAt(x, y) : false) || lmMask(x, y), centres ? centres.maskVersion : null);
     else if (centres && cities.setMask) cities.setMask(centres.maskAt, centres.maskVersion);
     if (centres && cities.towns77) cities.setCentreBoxes(centres.boxes);   // v0.7.7 towns: the blend round the real centres
+    if (centres && terrain.setCentres79) terrain.setCentres79(centres);   // v0.7.9 towns (fartowns.js): the centres' masks for the far ground
   }
-  let runways, aprons, traffic, cityLights, taxiLights, airportSet = null, streamView = null;
+  let runways, aprons, traffic, cityLights, taxiLights, airportSet = null, streamView = null, roadLights = null;
   {
     // v0.6.0: the airports near the camera (one group per kind, in v0.5.8's scene order).
     const box = (name) => { const g = new THREE.Group(); g.name = name; scene.add(g); return g; };
     const boxes = { runways: box('runways'), aprons: box('aprons'), traffic: box('traffic') };
     const [clMod, tlMod] = await Promise.all([import('./citylights.js').catch(() => null), import('./taxilights.js').catch(() => null)]);
     cityLights = clMod?.createCityLights ? optional('city lights', () => clMod.createCityLights(scene, uniforms, chunks, { heightfield: hf, airports: ap.airports })) : null;
+    if (cityLights?.setCentreBoxes && centres) cityLights.setCentreBoxes(centres.boxes);   // v0.7.9 part 3: the downtowns (only read with LIGHTS79)
+    // v0.7.9 part 3 (roadlights.js): the main roads lit and the motorways' cars at night; ?lights79=0 makes nothing.
+    const rlMod = await import('./roadlights.js').catch(() => null);
+    roadLights = rlMod?.LIGHTS79 ? optional('road lights', () => rlMod.createRoadLights(scene, uniforms, chunks, { baseUrl })) : null;
+    if (roadLights) { const st = sky.setTime.bind(sky); sky.setTime = (ms, lat, lon) => { roadLights.setClock(ms); return st(ms, lat, lon); }; }
     boxes.taxiLights = box('taxi-lights');
     const S = createAirportStreams({ uniforms, chunks, renderer, hf, ap, boxes, taxiLightsInSteps: tlMod?.taxiLightsInSteps || null });
     ({ runways, aprons, traffic, taxiLights, set: airportSet } = S);
@@ -105,6 +111,8 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
 
     // v0.4.0: the settings (normalizeWeather()'s shape, or null for the default weather), whenever they change.
     setWeather(settings) { sky.setWeather?.(settings); clouds.setWeather(settings); precip.setWeather(settings); },
+    // v0.7.9: the flight's whole weather (two ends or one), for the clouds drawn by place (clouds.js WXAHEAD79)
+    setWeatherRoute(settings) { clouds.setRoute?.(settings); },
     // v0.6.0: build the airports within reach of a map point now (a new flight, a loaded scenario, a jump).
     // Resolves with the clusters built there (ids such as 'RJTT+RJAA'); with the flag off, at once.
     ensureNear(x, y) { return Promise.resolve(airportSet ? airportSet.ensureNear(x, y) : []); },
@@ -153,6 +161,7 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       const tr = traffic ? traffic.update({ camera, origin, camMap, frustum }, paused ? 0 : dt) : NONE;
       const cl = cityLights ? cityLights.update({ camMap, origin, camScene, agl }) || NONE : NONE;
       const tl = taxiLights ? taxiLights.update({ camMap, origin, camScene }) || NONE : NONE;
+      const rl = roadLights ? roadLights.update({ camMap }) : NONE;   // v0.7.9 part 3
 
       stats.agl = agl;
       stats.terrainLevels = t.drawCalls - 1;
@@ -161,7 +170,8 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
       stats.buildings = c.instances;
       stats.lights = r.lights + (tl.lights || 0);
       stats.cityLights = cl.lights || 0;
-      stats.drawCalls = (sky.drawCalls ?? 1) + t.drawCalls + trees.drawCalls + c.drawCalls + r.drawCalls + a.drawCalls + tr.drawCalls + (cl.drawCalls || 0) + (tl.drawCalls || 0) + (ru.drawCalls || 0) + (gh.drawCalls || 0) + p6calls;
+      if (roadLights) stats.roadLights = rl.lights || 0;   // v0.7.9 part 3
+      stats.drawCalls = (sky.drawCalls ?? 1) + t.drawCalls + trees.drawCalls + c.drawCalls + r.drawCalls + a.drawCalls + tr.drawCalls + (cl.drawCalls || 0) + (rl.drawCalls || 0) + (tl.drawCalls || 0) + (ru.drawCalls || 0) + (gh.drawCalls || 0) + p6calls;
       stats.triangles = 960 * 2 + t.tris + treeTris + c.tris + r.tris + a.triangles + tr.triangles + (cl.tris || 0) + (tl.tris || 0) + (ru.tris || 0) + (gh.tris || 0) + p6tris;
       if (airportSet) stats.airportsBuilt = airportSet.built().join(' ');
     },
@@ -169,7 +179,7 @@ export async function createWorld({ renderer, scene, baseUrl = 'data/', heightfi
     // Ground height and kind for anything that needs it (same as the sim's).
     heightAt: (x, y) => hf.heightAt(x, y),
   };
-  Object.assign(world, { rural, greenhouses, landmarks, centres });   // v0.6.0 Parts 6 and 7 (null without their flags)
+  Object.assign(world, { rural, greenhouses, landmarks, centres, roadLights });   // v0.6.0 Parts 6 and 7 (null without their flags)
   return world;
 }
 
@@ -221,12 +231,15 @@ function createAirportStreams({ uniforms, chunks, renderer, hf, ap, boxes, taxiL
         if (t) {
           const byRef = new Map((t.a.stands || []).map((st) => [String(st.ref), st]));
           t.parked.forEach((p, i) => {
-            const st = byRef.get(String(p.stand));
+            // v0.7.9: where a ref names two positions, the one the aircraft stands at
+            const st = GATES79 ? (t.a.stands || []).reduce((b, q) => (String(q.ref) === String(p.stand) && (!b || Math.hypot(q.x - p.x, q.y - p.y) < Math.hypot(b.x - p.x, b.y - p.y)) ? q : b), null) : byRef.get(String(p.stand));
             const d = st && !t.hidden.has(i) ? parkedDoor(st, p) : null;
             if (d) doors.set(String(p.stand), d);
+            // v0.7.9: parked there but off the stand's heading (no door known): the default bridge, not drawn back
+            else if (GATES79 && st && !t.hidden.has(i) && !doors.has(String(p.stand)) && Math.hypot(st.x - p.x, st.y - p.y) < 40) doors.set(String(p.stand), GATE_OCCUPIED);
           });
         }
-        if (player && player.icao === s.icao && player.ref != null && playerDoor) doors.set(String(player.ref), playerDoor);
+        if (player && player.icao === s.icao && player.ref != null && (playerDoor || GATES79)) doors.set(String(player.ref), playerDoor || GATE_OCCUPIED);
         try { ap.setGateDoors(s.icao, doors); } catch { /* the bridges stay as they were */ }
       }
     }

@@ -15,6 +15,7 @@
 
 import { createPushback, pushbackPoses, REF_WHEELBASE } from './pushback.js';
 import { AIRLINER_TYPES } from '../world/traffic-models.js';
+import { noseWheelShift } from '../world/apron-geom.js';
 import { standHeading, apronIndex, pointInPoly, footprint, sizedFootprint, rectsOverlap,
   standObstacles, footprintBlocked, CLEAR, WINGTIP_CLEARANCE } from '../world/traffic-layout.js';
 
@@ -208,6 +209,9 @@ export function buildTaxiGraph(airport, opts = {}) {
 
   // 4. Holding positions: split the nearest edge and mark the new node.
   for (const hp of airport.holdingPositions || []) {
+    // (v0.7.9, taxi: a hold the bake marks `noRoute` is painted but never a route's end: Glasgow's two on taxiway A's loop,
+    // which leads to no runway entry in the game; tools/bake_region_airports.py HOLD_NO_ROUTE)
+    if (hp.noRoute) continue;
     const at = snapToGraph(graph, hp.x, hp.y);
     if (!at || at.d > HOLD_SNAP_M) continue;
     const id = splitAt(graph, at);
@@ -716,6 +720,11 @@ const AIP_STANDS = {
 // A321neo's, whose tail is shorter than that.
 // The shape the stands see (v0.5.3): a design with its own airframe has its nose, length and span in
 // geo.DESIGN_SHAPE (its fuselage plugs move the nose, the wing sets the span); anything else is its geo as given.
+// v0.7.9 (GATES79, apron-geom.js): how far past the stand point a type's nose stands at a gate start, so that its
+// nose wheel is on the stop bar (the bar is the A321's: 0 for it, 0.12 m for the 787-9, 0.60 m for the 777-300ER).
+// Takes the type's own geometry (not standGeo()'s: a design keeps its base's nose and nose gear here). The stands'
+// fit (standFits()) and the neighbours freed keep the stand point: 0.6 m is inside their margins (1.5 m to a wall).
+export const stopAhead = (geo) => (geo && geo.GEAR && geo.GEAR.nose && Number.isFinite(geo.NOSE_X) ? noseWheelShift(geo.NOSE_X - geo.GEAR.nose.x) : 0);
 export function standGeo(geo) {
   const D = geo?.DESIGN_SHAPE;
   return D ? { ...geo, NOSE_X: D.noseX, LENGTH: D.lengthM, SPAN: D.spanM } : geo;

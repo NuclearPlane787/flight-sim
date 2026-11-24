@@ -13,7 +13,7 @@ const V077 = {
 };
 const HELPER = fileURLToPath(new URL('./v078-trees-hash.mjs', import.meta.url));
 export function hashes(region, env) {
-  const r = spawnSync(process.execPath, [HELPER], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_REGION: region === 'ea' ? '' : region, FS_FENS78: '0', FS_SNOW78: '0', ...env } });
+  const r = spawnSync(process.execPath, [HELPER], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_REGION: region === 'ea' ? '' : region, FS_FENS78: '0', FS_SNOW78: '0', FS_TOWNS79: '0' /* v0.7.9: the far towns off too */, ...env } });
   const m = /HASH78 (.*)/.exec(r.stdout + r.stderr);
   assert.ok(m, r.stdout + r.stderr);
   return JSON.parse(m[1]);
@@ -41,9 +41,11 @@ test('v0.7.8 trees: the splices find each anchor once, or throw', async () => {
   const P = await import('../src/world/parks78.js');
   assert.throws(() => P.trees78Vert('void main() {}'));
   assert.throws(() => P.ground78Frag('void main() {}'));
-  const src = 'attribute vec2 cell;\nfloat keep = 1.0 * step(zone, 0.001) * step(cov.b, 0.5);\nvec3 p = position * vec3(sc * w, sc, sc * w);\nvCol = mix(vCol, vec3(0.040, 0.056, 0.025), (1.0 - thin) * 0.6);\n';
+  // (v0.7.9 looks: the source gains detail.js's 'vNormal = normal;', the anchor of ?trees79's splice; with ?trees79 on,
+  // its round crown's line stands where v0.7.8's mound line stood: tests/v079-looks-trees.test.mjs.)
+  const src = 'attribute vec2 cell;\nfloat keep = 1.0 * step(zone, 0.001) * step(cov.b, 0.5);\nvec3 p = position * vec3(sc * w, sc, sc * w);\nvNormal = normal;\nvCol = mix(vCol, vec3(0.040, 0.056, 0.025), (1.0 - thin) * 0.6);\n';
   const s = P.trees78Vert(src);
-  for (const k of ['uniform sampler2D uPark78;', 'park78Built(m, pk78t)', 'p *= vec3(1.25, 0.62, 1.25)', 'mix(1.0, 0.16, pk78)']) assert.ok(s.includes(k), k);
+  for (const k of ['uniform sampler2D uPark78;', 'park78Built(m, pk78t)', P.TREES79 ? 'p = p79 * vec3(sc * w, sc, sc * w)' : 'p *= vec3(1.25, 0.62, 1.25)', 'mix(1.0, 0.16, pk78)']) assert.ok(s.includes(k), k);
   assert.throws(() => P.trees78Vert(s + src), 'an anchor twice');
 });
 

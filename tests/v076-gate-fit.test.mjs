@@ -65,6 +65,19 @@ test('at the four airports every gate that had a bridge has one still, none over
       const [dx, dy] = G.hdgVec(s.hdgGridDeg);
       const f = (n.door.x - s.x) * dx + (n.door.y - s.y) * dy;
       assert.ok(Math.abs(f - (G.DOOR_FWD - NOSE_X)) < 1e-6, `${icao} ${s.ref}`);
+      // v0.7.9 (GATES79): a gate bridged by one of the new rules: a long link to 110 m, or round an elbow (the root
+      // at least GATE_ELBOW_FWD ahead of the stand point on either side, the elbow to the nose's left). The old rules
+      // below hold for every other bridge, as they did.
+      if (n.how) {
+        assert.ok(G.GATES79 && !o, `${icao} ${s.ref}: a new rule only where the old ones found nothing`);
+        if (n.how === 'long') assert.ok(n.length > 80 && n.length <= G.GATE_LONG_M + 2, `${icao} ${s.ref}: ${n.length}`);
+        else {
+          assert.equal(n.how, 'elbow');
+          assert.ok((n.root.x - s.x) * dx + (n.root.y - s.y) * dy >= G.GATE_ELBOW_FWD - 1e-6, `${icao} ${s.ref}: the root ahead of the nose`);
+          assert.ok((n.elbow.x - s.x) * -dy + (n.elbow.y - s.y) * dx > 9, `${icao} ${s.ref}: the elbow on the left`);
+        }
+        continue;
+      }
       assert.ok(n.length >= 4 && n.length <= 82, `${icao} ${s.ref}: ${n.length}`);
       // the root not inside the aircraft's nose: ahead of the tip, or more than 3 m out to the left of the door
       const rx = n.root.x - n.door.x, ry = n.root.y - n.door.y;
@@ -90,10 +103,14 @@ test('with the fit on everywhere, no bridge crosses a fuselage', () => {
         const [dx, dy] = G.hdgVec(s.hdgGridDeg);
         // the tunnel's closest approach to the centreline between the nose and 44 m behind it
         let worst = Infinity;
-        for (let t = 0; t <= 1; t += 0.02) {
-          const x = jb.cab.x + (jb.root.x - jb.cab.x) * t - s.x, y = jb.cab.y + (jb.root.y - jb.cab.y) * t - s.y;
-          const f2 = x * dx + y * dy, l = x * -dy + y * dx;
-          if (f2 <= 0 && f2 >= -44) worst = Math.min(worst, Math.abs(l));
+        // (v0.7.9: an elbowed bridge's tunnel runs cab, elbow, root)
+        const pts = jb.elbow ? [jb.cab, jb.elbow, jb.root] : [jb.cab, jb.root];
+        for (let k = 0; k + 1 < pts.length; k++) {
+          for (let t = 0; t <= 1; t += 0.02) {
+            const x = pts[k].x + (pts[k + 1].x - pts[k].x) * t - s.x, y = pts[k].y + (pts[k + 1].y - pts[k].y) * t - s.y;
+            const f2 = x * dx + y * dy, l = x * -dy + y * dx;
+            if (f2 <= 0 && f2 >= -44) worst = Math.min(worst, Math.abs(l));
+          }
         }
         if (worst < 2.3) crossing.push(`${a.icao} ${s.ref} ${worst.toFixed(1)}`);
       }

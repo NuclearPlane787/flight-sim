@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createSim } from '../src/sim/sim.js';
 import { typeById } from '../src/sim/types.js';
 import { createGateFlow, standList } from '../src/ground/gate-flow.js';
-import { buildTaxiGraph, routeFromStand, snapToGraph, standsFor, pushMinBack, lineBehind } from '../src/ground/taxi.js';
+import { buildTaxiGraph, routeFromStand, snapToGraph, standsFor, pushMinBack, lineBehind, stopAhead } from '../src/ground/taxi.js';
 import { createPushback } from '../src/ground/pushback.js';
 import { placeParked, blockedByPlayer, standHeading, sizedFootprint, rectsOverlap, pointInPoly, WINGTIP_CLEARANCE, CLEAR } from '../src/world/traffic-layout.js';
 import * as A321 from '../src/geometry.js';
@@ -79,7 +79,9 @@ for (const i of ICAOS) {
       assert.ok(routeFromStand(gate.graphFor(i), { x: r.points[0][0], y: r.points[0][1] }, end), 'routeFromStand');
       const s = sim.state, st = gate.stand;
       const nose = [s.pos.x + Math.sin(s.hdg) * type.geo.NOSE_X, s.pos.y + Math.cos(s.hdg) * type.geo.NOSE_X];
-      assert.ok(d(nose, [st.x, st.y]) < 0.01, 'the type\'s nose on the stop mark');
+      // v0.7.9: the nose wheel on the stop bar, so the 777's nose is 0.60 m past the mark (stopAhead(); 0 with FS_GATES79=0)
+      const sa = stopAhead(B77W.geo), sh = st.hdgGridDeg * Math.PI / 180;
+      assert.ok(d(nose, [st.x + Math.sin(sh) * sa, st.y + Math.cos(sh) * sa]) < 0.01, 'the type\'s nose wheel on the stop bar');
       assert.ok(Math.abs(gate.pushback.state.radius) >= 12 * 31 / 16.91 - 1e-9, 'a turn the longer wheelbase can make');
       gate.onKey('pushback');
       for (let t = 0; t < 900 && gate.phase === 'pushback'; t += 0.1) gate.update(0.1, { yaw: 0 });
@@ -116,7 +118,9 @@ for (const i of ICAOS) {
     gate.start({ origin: i, depRunway: end.ident, fuelKg: 40000, payloadKg: 30000 });
     const path = gate.pushPath();
     assert.ok(path.length > 3);
-    assert.ok(d(path[0], [gate.stand.x, gate.stand.y]) < 1e-6, 'the path starts with the nose on the stop mark');
+    // v0.7.9: ... with the nose stopAhead() past the stop mark (its nose wheel on the bar)
+    const sa = stopAhead(B77W.geo), sh = gate.stand.hdgGridDeg * Math.PI / 180;
+    assert.ok(d(path[0], [gate.stand.x + Math.sin(sh) * sa, gate.stand.y + Math.cos(sh) * sa]) < 1e-6, 'the path starts with the nose wheel on the stop bar');
     const hide = blockedByPlayer(ap, parked, gate.stand.ref, { ...sizeOf(type), path });
     for (const [x, y, h] of path) {
       const fp = sizedFootprint(sizeOf(type), x, y, h);

@@ -43,6 +43,21 @@ export const LANDMARKS78 = (() => {
   try { const v = typeof process !== 'undefined' && process.env ? process.env.FS_LANDMARKS78 : undefined; if (v === '0') return false; } catch (e) { /* no process */ }
   return true;
 })();
+// v0.7.9 part 8 (briefs/V0-7-9.md; the `looks` subagent): two more looks, each on by default and read once, at import,
+// as apron.js's lookSwitch(): ?bergisel79=0 (node FS_BERGISEL79=0), the Bergisel jump's in-run with its depth
+// (bergisel79()); ?ndg79=0 (FS_NDG79=0), Notre-Dame de la Garde's limestone rock. Each only with ?landmarks78 on. Off,
+// v0.7.8's models exactly.
+function lookSwitch79(q, env) {
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = new RegExp(`[?&]${q}=([01])\\b`).exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env[env] === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const BERGISEL79 = LANDMARKS78 && lookSwitch79('bergisel79', 'FS_BERGISEL79');
+export const NDG79 = LANDMARKS78 && lookSwitch79('ndg79', 'FS_NDG79');
 
 // ------------------------------------------------------------------ the builder
 
@@ -202,7 +217,8 @@ export class Builder {
 
   geometry() {
     // nothing below the base (a member's prism round its foot): the base is y = 0
-    for (let i = 1; i < this.P.length; i += 3) if (this.P[i] < 0) this.P[i] = 0;
+    // (v0.7.9 looks: but for a model that asks to reach under it, Notre-Dame de la Garde's rock, ndgRock79())
+    if (!this.below79) for (let i = 1; i < this.P.length; i += 3) if (this.P[i] < 0) this.P[i] = 0;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.P, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.N, 3));
@@ -3097,6 +3113,7 @@ export function campanile(brg = 0) {
 export function ndg(brg = 0) {
   const b = new Builder(0.89).frame(0, 0, brg);
   const F = 8;
+  if (NDG79) { b.below79 = true; ndgRock79(b); }   // v0.7.9 looks: the limestone peak under the fort, down to 36 m under the base
   b.set(PLAIN([0.30, 0.29, 0.26], 0.05, { glow: flood(0.4) }));
   b.loft([at(chamferRect(42, 22, 8), 0), at(chamferRect(40, 20, 7), F)]);   // the fort's base
   const pale = GLASS(MARS_PALE, 2.5, 4.0, 0.0, 0.06, { glow: flood(1.0) }), green = GLASS(MARS_GREEN, 2.5, 4.0, 0.0, 0.06, { glow: flood(0.6) });
@@ -3120,6 +3137,30 @@ export function ndg(brg = 0) {
   profile(b, TX, 0, [[S, 1.6], [S + 3, 1.9], [S + 6.5, 1.5], [S + 8.5, 1.0], [S + 9.6, 0.9], [S + 10.6, 0.6], [S + 11.2, 0.15]], 8);
   b.light([TX, S + 11.2, 0], 0);
   return b.result();
+}
+
+// v0.7.9 (NDG79; "Found while building v0.7.8": "the hill is a smooth dome with the streets draped on it: give it its
+// steep limestone sides"): the peak as a crag of pale limestone under the fort, its rings rough (two waves of noise
+// round each, fixed), stepping out and down from a top 2 m over the fort's walls (the ground's own top, 9.8 m over the base, under
+// it: the church's lowest 2 m in the rock) to 36 m under the model's base, where
+// the installed ground (the 30 m patch `ndg`) is above it everywhere round (tests/v079-looks-models.test.mjs). Where the
+// ground falls away (north, south and west, as the real peak's cliffs) the rock stands out of it in faces of 5 to 20 m;
+// to the east and south-east, where the ridge runs on, the ground covers it. Its entry's footprint grows to ROCK_R so
+// the centre's buildings and the trees keep off the rock (its `parts` keep the base where it was). Sizes [EST].
+export const NDG79_ROCK = [[10, 50, 32], [-6, 60, 42], [-20, 72, 54], [-36, 86, 66]];   // [y, half x, half n]
+export const NDG79_ROCK_R = 100;   // the rock's reach (its widest ring with its roughness, 96 m), as footprintM
+function ndgRock79(b) {
+  const K = 24, rough = (k, j) => 1 + 0.07 * Math.sin(3 * (k / K) * 2 * Math.PI + 1.3 * j) + 0.05 * Math.sin(7 * (k / K) * 2 * Math.PI + 2.1 * j + 0.5);
+  const ring = (y, a, n, j) => Array.from({ length: K }, (_, k) => {
+    const t = (k / K) * 2 * Math.PI, c = Math.cos(t), s = Math.sin(t), e = 2 / 2.6;   // a squarish ellipse (superellipse 2.6)
+    return [Math.sign(c) * Math.abs(c) ** e * a * rough(k, j), y, Math.sign(s) * Math.abs(s) ** e * n * rough(k, j)];
+  });
+  const R = NDG79_ROCK;
+  // the upper faces paler, weathered; the lower a shade darker
+  b.set(PLAIN([0.27, 0.26, 0.22], 0.05, { glow: [0.05, 0.05, 0.045] }));   // (0.52 then 0.40 read as snow in the sun)
+  b.loft([ring(R[2][0], R[2][1], R[2][2], 2), ring(R[1][0], R[1][1], R[1][2], 1), ring(R[0][0], R[0][1], R[0][2], 0)], { smooth: false, capTop: true });
+  b.set(PLAIN([0.23, 0.22, 0.19], 0.05));
+  b.loft([ring(R[3][0], R[3][1], R[3][2], 3), ring(R[2][0], R[2][1], R[2][2], 2)], { smooth: false, capTop: false });
 }
 
 // ------------------------------------------------------------------ Lyon
@@ -3195,7 +3236,7 @@ export function domluis(brg = -10, geo = {}) {
 // the in-run, and the in-run sloping down from it (local +n, north) to the take-off table about 95 m out [EST]; the landing
 // slope is the hill. The tower's and pod's sizes, the in-run's line and its supports [EST]. Lit at night.
 // v0.7.8 (LANDMARKS78): bergisel78() below, the tower at the top of the hill and the in-run down it; off, v0.7.3's.
-export function bergisel(brg = 0, geo = {}) { return LANDMARKS78 ? bergisel78(brg, geo) : bergisel77(brg); }
+export function bergisel(brg = 0, geo = {}) { return LANDMARKS78 ? (BERGISEL79 ? bergisel79(brg, geo) : bergisel78(brg, geo)) : bergisel77(brg); }
 
 // v0.7.8: the Bergisel jump on its hill ("Found while building v0.7.3": a small tower at the slope's foot). Its entry
 // (landmarks.js) stands 105 m south of the article's point, the middle of the jump, and is `slope: true`: the model is
@@ -3226,6 +3267,62 @@ function bergisel78(brg = 0, geo = {}) {
   deckAlong(b, runY, n0, n1, 2.2, 1.6, 5);
   b.set(PLAIN([0.40, 0.40, 0.38], 0.1));
   for (let n = n0 + 10; n < n1 - 2; n += 12) { const yb = Math.min(...[-1, 0, 1].map((d) => g(n + d))) - 1, yt = runY(n) - 1.6; if (yt - yb > 1.5) box(b, 0, n, yb, yt, 1.0, 1.0, 0, { capTop: false }); }
+  b.light([0, y0 + H, TN + 4], 0);
+  return b.result();
+}
+
+// v0.7.9 (BERGISEL79; "Found while building v0.7.8": "the in-run is a thin strip over the trees: give it its depth"):
+// bergisel78()'s tower and pod, and the in-run as a ramp with a body: the track 6 m wide between side walls 1.4 m
+// high, carried on a box girder as wide and 3.2 m deep, a darker band under the pale track on each side (less where the slope comes up under it), on portal
+// frames of two legs every 12 m. Its line (runY) is v0.7.8's, so its top, its table and the tower are where they were.
+// The sizes [EST] (the jump's in-run, about 4 to 5 m across, on a steel structure from the tower down the hill).
+export const BERGISEL79_SIZES = { hw: 3.0, wall: 1.4, wallT: 0.3, slab: 0.45, girderHw: 3.0, girderD: 3.2, legHw: 0.45, legX: 2.3, step: 12 };
+// A prism along local n between x0 and x1, from bot(n) to top(n), in pieces of `step` m (deckAlong()'s, off its axis).
+function prismAlong(b, top, bot, n0, n1, x0, x1, step) {
+  const ns = [];
+  for (let n = n0; n < n1; n += step) ns.push(n);
+  ns.push(n1);
+  const q = (x, y, n) => b.T([x, y, n]);
+  for (let i = 0; i + 1 < ns.length; i++) {
+    const na = ns[i], nb = ns[i + 1];
+    const c = b.T([(x0 + x1) / 2, (top(na) + bot(na) + top(nb) + bot(nb)) / 4, (na + nb) / 2]);
+    const A = [q(x0, bot(na), na), q(x1, bot(na), na), q(x1, top(na), na), q(x0, top(na), na)];
+    const B = [q(x0, bot(nb), nb), q(x1, bot(nb), nb), q(x1, top(nb), nb), q(x0, top(nb), nb)];
+    for (let k = 0; k < 4; k++) { const k1 = (k + 1) % 4; b.tri(A[k], A[k1], B[k1], c); b.tri(A[k], B[k1], B[k], c); }
+    if (i === 0) { b.tri(A[0], A[1], A[2], c); b.tri(A[0], A[2], A[3], c); }
+    if (i + 2 === ns.length) { b.tri(B[0], B[1], B[2], c); b.tri(B[0], B[2], B[3], c); }
+  }
+}
+function bergisel79(brg = 0, geo = {}) {
+  const prof = geo.prof || BERGISEL_PROF, g = (n) => profAt(prof, n);
+  const b = new Builder(0.95).frame(0, 0, brg);
+  const H = 50, TN = BERGISEL_TOWER_N, y0 = g(TN), gMin = Math.min(...[-4.5, 0, 4.5].map((d) => g(TN + d))) - 1;
+  // the tower and its pod: bergisel78()'s
+  b.set(PLAIN([0.46, 0.46, 0.44], 0.1, { glow: [0.10, 0.10, 0.12] }));
+  b.loft([at(shift(roundedRect(4.5, 4.5, 1.5, 2), 0, TN), gMin), at(shift(roundedRect(4.0, 4.0, 1.3, 2), 0, TN), y0 + 40)], { capTop: false });
+  b.set(GLASS([0.28, 0.31, 0.33], 4.0, 2.5, 0.7, 0.4, { glow: [0.30, 0.28, 0.24] }));
+  const pod = (s) => shift(superellipse(7 * s, 15 * s, 2.6, 16), 0, TN + 4);
+  b.loft([at(pod(0.55), y0 + 40), at(pod(1), y0 + 43), at(pod(1), y0 + 47.5), at(pod(0.7), y0 + H)], { smooth: false });
+  // the in-run: bergisel78()'s line
+  const S = BERGISEL79_SIZES;
+  const n0 = TN + 6, n1 = BERGISEL_TABLE_N, yTop = y0 + 34, yEnd = g(n1) + 3;
+  const runY = (n) => { const t = Math.min(Math.max((n - n0) / (n1 - n0), 0), 1); return Math.max(lerp(yTop, yEnd, 1 - (1 - t) ** 1.35), g(n) + 1.8); };
+  const under = (n) => Math.min(...[-1, 0, 1].map((d) => g(n + d))) - 0.5;            // the slope under it, less half a metre
+  const slabBot = (n) => runY(n) - S.slab;
+  const girderBot = (n) => Math.max(slabBot(n) - S.girderD, Math.min(under(n), slabBot(n) - 0.6));
+  // the track and its walls, pale; the girder below, a darker steel, so its side reads from above and from the side
+  b.set(PLAIN([0.60, 0.60, 0.58], 0.15, { glow: [0.14, 0.14, 0.16] }));
+  prismAlong(b, runY, slabBot, n0, n1, -S.hw, S.hw, 5);
+  prismAlong(b, (n) => runY(n) + S.wall, runY, n0, n1, -S.hw, -S.hw + S.wallT, 5);
+  prismAlong(b, (n) => runY(n) + S.wall, runY, n0, n1, S.hw - S.wallT, S.hw, 5);
+  b.set(PLAIN([0.30, 0.31, 0.32], 0.1));
+  prismAlong(b, slabBot, girderBot, n0, n1, -S.girderHw, S.girderHw, 5);
+  // the portal frames: two legs from the slope to the girder's foot
+  b.set(PLAIN([0.40, 0.40, 0.38], 0.1));
+  for (let n = n0 + 10; n < n1 - 2; n += S.step) {
+    const yb = under(n) - 0.5, yt = girderBot(n);
+    if (yt - yb > 1.5) for (const x of [-S.legX, S.legX]) box(b, x, n, yb, yt, S.legHw, S.legHw, 0, { capTop: false });
+  }
   b.light([0, y0 + H, TN + 4], 0);
   return b.result();
 }

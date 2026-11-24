@@ -113,6 +113,8 @@ test('at the six airports of the check, every gate bridged before is bridged wit
         if (o && !n) lost++;
         if (!n) continue;
         has++;
+        // v0.7.9 (GATES79): a long link or an elbowed bridge, only where the old rules found nothing (tests/v079-gates.test.mjs)
+        if (n.how) { assert.ok(G.GATES79 && n.length <= 130, `${icao} ${s.ref}: ${n.how} ${n.length}`); continue; }
         assert.ok(n.length >= 4 && n.length <= 82, `${icao} ${s.ref}: ${n.length}`);
         const [dx, dy] = G.hdgVec(s.hdgGridDeg), rx = n.root.x - n.door.x, ry = n.root.y - n.door.y;
         // the root clear of the nose (ahead of its tip by 3 m, or 3 m out to the left of the door) and never right of the centreline

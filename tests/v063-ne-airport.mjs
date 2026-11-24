@@ -291,7 +291,8 @@ export function airportSuite(cfg) {
     }
     const g = buildTaxiGraph(ap);
     assert.ok(ap.holdingPositions.length >= 2 && ap.holdingPositions.every((h) => typeof h.ref === 'string'));
-    assert.equal(g.holds.length, ap.holdingPositions.length, 'every hold snaps to the graph');
+    // (v0.7.9: a hold the bake marks `noRoute`, painted but no route's end, isn't in the graph: Glasgow's A1 and A2)
+    assert.equal(g.holds.length, ap.holdingPositions.filter((h) => !h.noRoute).length, 'every hold snaps to the graph');
   }));
 
   test(`${ICAO}: from every stand a route to a hold of every runway end`, { skip }, () => withPending(() => {

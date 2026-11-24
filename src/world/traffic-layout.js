@@ -8,6 +8,7 @@
 // Coordinates are map metres; headings are grid radians (clockwise from map +y).
 
 import { AIRLINER_TYPES } from './traffic-models.js';
+import { noseWheelShift } from './apron-geom.js';
 
 // ------------------------------------------------------------------ seeded random
 
@@ -327,8 +328,11 @@ export function* placeParkedInSteps(airport, { heightAt = null, wide = airport.i
       let lenScale = type === 0 ? (r1 < 0.45 ? T.shortScale : 1) : 1;
       // The stand point is the nose's stop mark; back off up to 12 m if the nose would
       // touch a building (some OSM stop marks sit right at the terminal wall).
+      // v0.7.9 (GATES79): its nose wheel on the stop bar: a widebody's nose 1.7 m past the stand point (the bar is
+      // where an A321's nose wheel stands; noseWheelShift() is 0 for the narrowbody and with ?gates79=0).
+      const ahead = noseWheelShift(T.noseGearX);
       const at = (ls) => {
-        for (let back = 0; back <= 12; back += 3) {
+        for (const back of ahead ? [-ahead, 0, 3, 6, 9, 12] : [0, 3, 6, 9, 12]) {
           const x = s.x - Math.sin(h) * back, y = s.y - Math.cos(h) * back;
           const fp = footprint(T, x, y, h, ls, CLEAR);
           if (fits(fp)) return { x, y, fp };

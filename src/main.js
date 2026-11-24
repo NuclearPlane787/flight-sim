@@ -15,6 +15,7 @@ import { createScorePanel } from './ui/score-panel.js';
 import { baroValueText } from './ui/fcu.js';   // v0.6.0: Shift+B's toast in the BARO's unit (inches in Japan)
 import * as store from './store.js';
 import { createGateFlow } from './ground/gate-flow.js';
+import { stopAhead } from './ground/taxi.js';   // v0.7.9: the nose past the stand point, its wheel on the stop bar
 import { standHeading } from './world/traffic-layout.js';
 import { VERSION } from './version.js';
 import { ScenarioStore, whereText, flightFields, legacyId, renamedState } from './scenarios.js';
@@ -379,7 +380,11 @@ async function boot() {
   // What a widebody needs kept clear round its stand (undefined for code C: as before v0.3.0).
   // v0.7.8: the flown type's front left door, for the jet bridge at its gate (apron-geom.js jetBridge()); null for a
   // geometry without one, which takes the default.
-  function gateDoor() { return sim.type?.geo?.GATE_DOOR || null; }
+  // (v0.7.9: the type stands stopAhead() past the stand point, so its door is that much nearer the point.)
+  function gateDoor() {
+    const d = sim.type?.geo?.GATE_DOOR, a = d ? stopAhead(sim.type.geo) : 0;
+    return d ? (a ? { ...d, back: Math.round((d.back - a) * 100) / 100 } : d) : null;
+  }
   function standClear() {
     const t = sim.type, D = t.geo.DESIGN_SHAPE;   // v0.5.3: a design with its own airframe, by its own span and length
     if (D) return { span: D.spanM, length: D.lengthM, path: gate.pushPath?.() };
@@ -1295,7 +1300,7 @@ async function boot() {
     aircraft.update(s, dt);
     // v0.4.2: the spray off the wheels.
     if (spray) {
-      const wx = wxLook.at(sim.weather, s.pos.x, s.pos.y);   // v0.7.4: the runway's own weather (by place)
+      const wx = wxLook.at(sim.weather, s.pos.x, s.pos.y, s.t);   // v0.7.4: the runway's own weather (by place; v0.7.9: at the sim's time)
       spray.update({ gs: s.gs, onGround: s.onGround, runway: runwayStateOf(wx), rain: wx?.precip?.kind === 'rain' ? wx.precip.rate : 0, dt, paused });
     }
     // A Boeing's wings bend with the lift they carry (none on the wheels), eased so they rise through
@@ -1312,8 +1317,9 @@ async function boot() {
       const tDraw = performance.now();
       // v0.4.0; v0.7.4: the weather where the aircraft (and so the camera, within a few hundred metres of it) is:
       // a single weather is sim.weather itself; two ends' the same object until it changes by a visible step.
-      const lookWx = wxLook.at(sim.weather, s.pos.x, s.pos.y);
+      const lookWx = wxLook.at(sim.weather, s.pos.x, s.pos.y, s.t);
       if (lookWx !== shownWeather) { shownWeather = lookWx; world.setWeather(shownWeather); synth?.setWeather?.(shownWeather); }
+      world.setWeatherRoute?.(sim.weather);   // v0.7.9: the far end's weather drawn ahead (the same object again does nothing)
       world.update({ camera, origin, state: s, dt, paused });
       renderer.render(scene, camera);
       drawMs += (performance.now() - tDraw - drawMs) * 0.1;
@@ -1329,6 +1335,7 @@ async function boot() {
     // setup's, so a waypoint dragged on the map never showed or counted).
     view.waypoints = map.waypoints;
     view.taxiRoute = gate.points;
+    view.taxiPhase = gate.phase; view.taxiAssigned = gate.route;   // v0.7.9: the path map draws the assigned route while taxiing (no allocation)
     view.viewId = rig.view.id;
     hud.update(view);
     if (map.isOpen) map.update(view);
@@ -1426,7 +1433,7 @@ async function boot() {
   weatherWin.onclose = () => requestFrame();
   weatherWin.ontab = (t) => showLTab(t);
   function weatherNow() {
-    return { settings: sim.weather, ctx: weatherContext(airports, plan), crashed: !!(crashed || sim.state.crashed) };
+    return { settings: sim.weather, ctx: weatherContext(airports, plan), crashed: !!(crashed || sim.state.crashed), t: sim.state.t };   // v0.7.9: t, for a front set in flight
   }
   function applyWeather(settings) {
     if (!plan || crashed || sim.state.crashed) return { ok: false, text: 'Crashed: rewind or restart to change the weather.' };

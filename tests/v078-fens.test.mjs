@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const V077 = { ea: ['7aecf5da04d4e136', 'f67e6fb5cfeef5a3'], europe: ['5c0430ae156011fb', 'e26cc34f3563060e'] };
 const HELPER = fileURLToPath(new URL('./v078-trees-hash.mjs', import.meta.url));
 const terrain = (region, fens) => {
-  const r = spawnSync(process.execPath, [HELPER], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_REGION: region === 'ea' ? '' : region, FS_TREES78: '0', FS_TOWERS78: '0', FS_SNOW78: '0', FS_FENS78: fens ? '1' : '0' } });
+  const r = spawnSync(process.execPath, [HELPER], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_REGION: region === 'ea' ? '' : region, FS_TREES78: '0', FS_TOWERS78: '0', FS_SNOW78: '0', FS_TOWNS79: '0' /* v0.7.9: the far towns off too */, FS_FENS78: fens ? '1': '0' } });
   const m = /HASH78 (.*)/.exec(r.stdout + r.stderr);
   assert.ok(m, r.stdout + r.stderr);
   return JSON.parse(m[1]).terrain.slice(0, 2);

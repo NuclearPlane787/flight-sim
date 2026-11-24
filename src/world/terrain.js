@@ -23,6 +23,7 @@ const T77 = REGION.id === 'europe' && TOWNS77;
 const S77 = T77 && SUBURBS77;
 import { TREES78, PARK78_UNIFORMS, ground78Frag } from './parks78.js';   // v0.7.8 trees (the trees subagent's)
 import { SNOW78, snow78Frag } from './ground.js';   // v0.7.8 snow (the trees subagent's)
+import { TOWNS79, FAR79_UNIFORMS, far79Frag, setCentres79, update79 } from './fartowns.js';   // v0.7.9 towns (the towns subagent's): the far towns by day
 function euZoneTexture() {
   const make = (z) => {
     const t = new THREE.DataTexture(z.data, z.nx, z.ny, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -341,6 +342,7 @@ export function createTerrain(scene, uniforms, chunks) {
   // v0.7.8 trees (the trees subagent's block): a real centre's park drawn as parkland (parks78.js); off, v0.7.7's text.
   if (TREES78 && GROUND) { mat.fragmentShader = ground78Frag(mat.fragmentShader); Object.assign(mat.uniforms, PARK78_UNIFORMS); }
   if (SNOW78 && REGION.id === 'europe') mat.fragmentShader = snow78Frag(mat.fragmentShader);   // v0.7.8 snow (ground.js): Europe's snow line by latitude
+  if (TOWNS79 && GROUND) { mat.fragmentShader = far79Frag(mat.fragmentShader); Object.assign(mat.uniforms, FAR79_UNIFORMS); }   // v0.7.9 towns (fartowns.js); off, v0.7.8's text
   mat.extensions = mat.extensions || {};
 
   const group = new THREE.Group();
@@ -380,11 +382,13 @@ export function createTerrain(scene, uniforms, chunks) {
   return {
     group, material: mat, fine,
     finest: 0,
+    setCentres79: (c) => { if (TOWNS79) setCentres79(c); },   // v0.7.9 towns: the real centres' masks (world.js)
     // camMap: the camera's map position; agl: its height above the ground (m).
     update(camMap, origin, agl) {
       if (clip) clip.update(camMap);
       if (fine) { fine.update(camMap); setFineOrigin(uniforms, origin); }
       if (near) near.update(camMap);
+      if (TOWNS79) update79(camMap);   // v0.7.9 towns
       // Skip the rings that are small compared with the height above the ground.
       let f = 0;
       while (f < LEVELS - 3 && GRID / 2 * STEP0 * 2 ** f < agl * 1.5) f++;

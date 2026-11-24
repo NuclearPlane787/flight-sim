@@ -411,6 +411,10 @@ PAVE_JOIN = {}
 # than twice `close` filled), then opened (corners and spurs narrower than twice `open` rounded off), and simplified to
 # 1 m. Empty but for Fairford.
 APRON_SMOOTH = {}
+# v0.7.9 taxi (part 4): OSM holds that stay painted but are never a taxi route's end (src/ground/taxi.js skips a hold with
+# "noRoute": true). icao -> ([(x, y), ...] map points, each within 3 m of one OSM hold, reason); the bake stops if a point
+# matches none. Empty but for Glasgow.
+HOLD_NO_ROUTE = {}
 PAVE_DROPPED = set()      # v0.7.4: airports whose positions left out by a STAND_EXCLUDE set of refs or by STAND_DROP_NUMBERED keep their pavement (stand_aprons())
 STAND_DROP_NUMBERED = {}  # v0.7.2: icao -> (refs, reason): unnamed stands left out by the number the bake gave them
 # - Pyongyang 17/35: ILS CAT I at both ends (17: 109.5, 35: 109.9, 3.0 deg glide paths; the nav data); 17 ALSF-I, PAPI-4R
@@ -1590,6 +1594,12 @@ if EUROPE:
                    '24': ('ALSF-II', 914, 'left', 3.0, 'III', 99.8, True, True, 45, 211)}
     AIP['EGPF'] = {'05': ('ALSF-II', 914, 'left', 3.0, 'III', 26.1, True, True, 45, 0),
                    '23': ('ALSF-II', 914, 'left', 3.0, 'III', 20.8, True, True, 45, 304)}
+    # v0.7.9 taxi (part 4): OSM's A loops round past 23's end and stops on the extended centreline 167 m beyond the
+    # pavement, joined to nothing; its holds A1 and A2 were the routes' holds for 23, so a departure was sent to a dead end.
+    # AD 2.20 (above): a full-length take-off on 23 back-tracks the runway, entered at B1. A1 and A2 stay painted.
+    HOLD_NO_ROUTE['EGPF'] = ([(-528629.3, 1012228.7), (-528696.4, 1012100.5)],
+                             "OSM's A loop past 23's end joins no runway entry in the game; AD 2.20: a full-length take-off "
+                             "on 23 back-tracks the runway from B1")
     AIP['LFRS'] = {'03': ('ALSF-II', 900, 'left', 3.0, 'III', 73.0, True, True, 45, 0),
                    '21': ('SSALF', 420, 'left', 3.1, None, 83.0, False, True, 45, 262)}
     AIP['LEST'] = {'17': ('ALSF-II', 900, 'left', 3.0, 'III', 1170.0, True, True, 45, 120),
@@ -2079,6 +2089,19 @@ if EUROPE:
     STAND_POINTS_REASONS['EGVA'] = ("the player's ramp spots, placed: three on the north-east apron, 75 m apart, nosed in to "
                                     "305 deg true with its taxilane behind [EST]; the whole base is military in OSM, which "
                                     "maps no parking position; a 60 m lead-in behind each")
+    # v0.7.9 taxi (part 5): the hardstands round the loops stand unjoined in OSM, their edges 7 to 53 m (most about 38 m)
+    # from the taxiways' edges ("Found while building v0.7.8"): a 25 m strip [EST] from each of the 27 to the nearest
+    # taxiway or apron (each point inside one hardstand's smoothed outline, none in a building).
+    PAVE_JOIN['EGVA'] = ([(-399142.5, 531597.8, 25), (-398074.5, 531353.0, 25), (-398185.5, 531410.8, 25),
+                          (-398116.0, 531556.7, 25), (-398469.6, 531413.4, 25), (-398524.1, 531571.2, 25),
+                          (-399574.1, 531585.5, 25), (-398940.8, 531589.2, 25), (-397626.9, 532031.2, 25),
+                          (-396725.6, 532421.5, 25), (-396862.1, 532426.2, 25), (-396978.6, 532272.8, 25),
+                          (-396550.5, 532220.8, 25), (-396490.7, 532067.6, 25), (-396410.1, 532226.4, 25),
+                          (-397664.8, 531355.3, 25), (-397833.1, 531379.5, 25), (-397538.7, 531143.9, 25),
+                          (-397790.4, 531103.2, 25), (-397582.8, 530984.2, 25), (-397373.2, 530993.6, 25),
+                          (-397407.6, 530857.2, 25), (-397155.7, 531146.9, 25), (-396986.8, 531144.6, 25),
+                          (-396922.6, 531307.3, 25), (-397145.3, 531347.9, 25), (-396845.8, 531447.2, 25)],
+                         "the hardstands round the loops, unjoined to any taxiway in OSM")
     ICAOS = list(NAMES)
 
 
@@ -2650,6 +2673,15 @@ def bake(icao, wmm, oa_ap, oa_rw):
             xy = to_xy(coords).mean(0)
             if Point(xy).within(area):
                 holds.append(dict(ref=tags.get('ref', ''), x=r1(xy[0]), y=r1(xy[1])))
+    if icao in HOLD_NO_ROUTE:       # v0.7.9 taxi: only the airports named in HOLD_NO_ROUTE
+        pts_nr, why_nr = HOLD_NO_ROUTE[icao]
+        for hx, hy in pts_nr:
+            hit = [h for h in holds if np.hypot(h['x'] - hx, h['y'] - hy) <= 3.0]
+            if len(hit) != 1:
+                raise SystemExit(f'{icao}: HOLD_NO_ROUTE point {hx}, {hy} matches {len(hit)} holds')
+            hit[0]['noRoute'] = True
+        est.append(('holds no route ends at', ', '.join(h['ref'] or '?' for h in holds if h.get('noRoute')),
+                    why_nr + ' (HOLD_NO_ROUTE)'))
 
     # (v0.7.4: PAVE_DROPPED's positions are no stands but keep the pavement made round them: Berlin's de-icing pads)
     extra = stand_aprons(stands + paved_only, aprons, runways, icao, taxiways)

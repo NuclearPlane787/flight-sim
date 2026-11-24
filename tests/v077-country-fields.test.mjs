@@ -15,7 +15,7 @@ const HELPER = fileURLToPath(new URL('./v077-country-hash.mjs', import.meta.url)
 const build = (env) => {
   // (v0.7.8: with v0.7.8's trees and fens switches off, FS_TREES78=0 and FS_FENS78=0, the terrain's text these hashes pin;
   // tests/v078-trees.test.mjs and v078-fens.test.mjs pin them on.)
-  const r = spawnSync(process.execPath, [HELPER], { env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_TOWNS77: '0', FS_TREES78: '0', FS_FENS78: '0', FS_SNOW78: '0', ...env }, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HELPER], { env: { ...process.env, NODE_TEST_CONTEXT: undefined, FS_TOWNS77: '0', FS_TREES78: '0', FS_FENS78: '0', FS_SNOW78: '0', FS_TOWNS79: '0', ...env }, encoding: 'utf8' });   // (v0.7.9: the far towns' switch off too, fartowns.js)
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout.trim().split('\n').pop());
 };

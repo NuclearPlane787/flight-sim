@@ -730,6 +730,67 @@ SHOTS['mk78-egva-hardstands'] = { q: lookXY(-398465, 531567, 1000, 90, -35), ms:
 SHOTS['mk78-ndg-above'] = { q: aimAt(43.2841, 5.3710, 72.7, 300, 200, 43.2950, 5.3700, 0.3), ms: EU_DAY };
 GROUPS['marks-078-eu2'] = ['lezg-civil-apron', 'mk78-lezg-shelters', 'mil-egva-above', 'mk78-egva-hardstands', 'eu-landmark-ndg-day', 'mk78-ndg-above', 'eu-lxgb-rock-09', 'eu-lxgb-rock-27'];
 
+// v0.7.9 lights (part 3: cities at night; ?lights79=0 for v0.7.8's): the six cities of the check by night from 3,000 ft
+// and FL100 (East Asia's three with --region --cities --ground; Europe's three with FS_REGION=europe and --q
+// '&region=europe'), and a motorway's cars close up, twice 1.5 s apart (the cars a function of the clock alone):
+// Seoul's Gyeongbu expressway south of Yangjae looking down it and London's M25 by South Mimms looking east, from 1,000 ft.
+{
+  const LT79 = { seoul: [37.53, 126.98, 20, 'ea'], tokyo: [35.68, 139.76, 20, 'ea'], shanghai: [31.23, 121.47, 285, 'ea'],
+    paris: [48.857, 2.35, 60, 'eu'], london: [51.507, -0.11, 80, 'eu'], frankfurt: [50.11, 8.68, 60, 'eu'] };
+  for (const [k, [la, lo, h, r]] of Object.entries(LT79)) {
+    const ms = r === 'eu' ? EU_NIGHT : NIGHT;
+    SHOTS[`lt79-${k}-3000`] = { q: look(la, lo, 3000, h, -14), ms };
+    SHOTS[`lt79-${k}-fl100`] = { q: look(la, lo, 10000, h, -24), ms };
+  }
+  SHOTS['lt79-cars-seoul-a'] = { q: look(37.455, 127.048, 1000, 150, -25), ms: NIGHT };
+  SHOTS['lt79-cars-seoul-b'] = { q: look(37.455, 127.048, 1000, 150, -25), ms: NIGHT + 1500 };
+  SHOTS['lt79-cars-london-a'] = { q: look(51.7095, -0.29, 1000, 95, -25), ms: EU_NIGHT };
+  SHOTS['lt79-cars-london-b'] = { q: look(51.7095, -0.29, 1000, 95, -25), ms: EU_NIGHT + 1500 };
+  GROUPS['lights-079-ea'] = Object.keys(LT79).filter((k) => LT79[k][3] === 'ea').flatMap((k) => [`lt79-${k}-3000`, `lt79-${k}-fl100`]).concat(['lt79-cars-seoul-a', 'lt79-cars-seoul-b']);
+  GROUPS['lights-079-eu'] = Object.keys(LT79).filter((k) => LT79[k][3] === 'eu').flatMap((k) => [`lt79-${k}-3000`, `lt79-${k}-fl100`]).concat(['lt79-cars-london-a', 'lt79-cars-london-b']);
+}
+// v0.7.9 taxi (part 5's Fairford line): Fairford's hardstands from above, the south-east loop's and the south-west row's,
+// where v0.7.9 joins them to the taxiways (PAVE_JOIN); Europe's (FS_REGION=europe, --q '&region=europe').
+SHOTS['tx79-egva-se'] = { q: lookXY(-397560, 531180, 2500, 0, -62), ms: EU_DAY };
+SHOTS['tx79-egva-sw'] = { q: lookXY(-398350, 531480, 2000, 0, -62), ms: EU_DAY };
+GROUPS['taxi-079-eu'] = ['tx79-egva-se', 'tx79-egva-sw'];
+// v0.7.9 towns (part 7: the far towns by day; ?towns79=0 for v0.7.8's): London, Paris, Seoul and Tokyo from 3,000 ft and
+// FL100 by day, each looking across the town at a shallow pitch so the near buildings and the far ground are both in
+// frame (East Asia's with --region --cities --ground; Europe's with FS_REGION=europe and --q '&region=europe'); the
+// hand-over: Seoul's south-western suburbs (Gwangmyeong) from 3,000 ft, the camera 5.0, 6.5 and 7.5 km from the point
+// (inside the buildings' 8 km ring) and 8.5, 9.5 and 11 km (outside), looking east at it; one night view a region.
+{
+  const TW79 = { seoul: [37.55, 126.99, 75, 'ea'], tokyo: [35.68, 139.76, 340, 'ea'], london: [51.507, -0.11, 80, 'eu'], paris: [48.857, 2.35, 60, 'eu'] };
+  for (const [k, [la, lo, h, r]] of Object.entries(TW79)) {
+    const ms = r === 'eu' ? EU_DAY : DAY;
+    SHOTS[`tw79-${k}-3000`] = { q: look(la, lo, 3000, h, -8), ms };
+    SHOTS[`tw79-${k}-fl100`] = { q: look(la, lo, 10000, h, -12), ms };
+  }
+  SHOTS['tw79-seoul-fl100-night'] = { q: SHOTS['tw79-seoul-fl100'].q, ms: NIGHT };
+  SHOTS['tw79-london-fl100-night'] = { q: SHOTS['tw79-london-fl100'].q, ms: EU_NIGHT };
+  for (const km of [5.0, 6.5, 7.5, 8.5, 9.5, 11.0]) {
+    const p = -Math.atan((3000 * FT) / (km * 1000)) / DEG;
+    SHOTS[`tw79-handover-${km.toFixed(1)}`] = { q: look(37.475, 126.865, 3000, 90, +p.toFixed(3)), ms: DAY };
+  }
+  GROUPS['towns-079-ea'] = ['seoul', 'tokyo'].flatMap((k) => [`tw79-${k}-3000`, `tw79-${k}-fl100`]).concat(['tw79-seoul-fl100-night'], [5.0, 6.5, 7.5, 8.5, 9.5, 11.0].map((km) => `tw79-handover-${km.toFixed(1)}`));
+  GROUPS['towns-079-eu'] = ['london', 'paris'].flatMap((k) => [`tw79-${k}-3000`, `tw79-${k}-fl100`]).concat(['tw79-london-fl100-night']);
+}
+// v0.7.9 looks (part 8: the looks still weak; ?trees79=0, ?bergisel79=0, ?ndg79=0 for v0.7.8's). The park trees: the Bois
+// de Boulogne from 1,500 ft (Hyde Park lies west of London's real centre, so its trees are the forest's: not a park's)
+// and Parc Monceau from 1,000 ft, with v0.7.8's Peace Park and Kanazawa views (East Asia); the Bergisel jump, Notre-Dame
+// de la Garde and the Rock from v0.7.8's views, and the Rock from over the bay to its west at 2,000 ft; Barcelona's harbour.
+SHOTS['lk79-bois-1500'] = { q: look(48.862, 2.2495, 1500, 0, -20), ms: EU_DAY };
+SHOTS['lk79-monceau-1000'] = { q: look(48.8797, 2.3088, 1000, 0, -25), ms: EU_DAY };
+SHOTS['lk79-rock-west'] = { q: look(36.126, -5.3445, 2000, 90, -8), ms: EU_DAY };
+SHOTS['lk79-rock-north'] = { q: look(36.130, -5.3440, 1500, 180, -10), ms: EU_DAY };
+GROUPS['looks-079-eu'] = ['lk79-bois-1500', 'lk79-monceau-1000', 'mk78-bergisel-north', 'mk78-bergisel-west', 'mk78-bergisel-above',
+  'eu-landmark-ndg-day', 'mk78-ndg-above', 'eu-lxgb-rock-09', 'eu-lxgb-rock-27', 'lk79-rock-west', 'lk79-rock-north'];
+GROUPS['looks-079-ea'] = ['trees78-peacepark-400', 'trees78-peacepark-1500', 'trees78-kanazawa-3000', 'trees78-kanazawa-1500'];
+GROUPS['looks-079-eu-code'] = GROUPS['looks-079-eu'].filter((n) => !/rock/.test(n));   // (items 1, 2 and 4: the switched ones)
+GROUPS['looks-079-ea-code'] = ['trees78-peacepark-400', 'trees78-peacepark-1500'];
+GROUPS['looks-079-eu-data'] = GROUPS['looks-079-eu'].filter((n) => /rock/.test(n));   // (item 5: data, no switch)
+GROUPS['looks-079-ea-data'] = ['trees78-kanazawa-3000', 'trees78-kanazawa-1500'];     // (item 3: data, no switch)
+
 // The page's frame clock, replaced before the page runs.
 const INIT = () => {
   const native = window.requestAnimationFrame.bind(window);

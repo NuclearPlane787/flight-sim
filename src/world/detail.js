@@ -8,7 +8,7 @@ import { REGION } from './regions.js';
 import { seaFloor } from './glsl.js';   // v0.7.0: the ground's floor (max(h, 0.0) in East Asia; none where land lies below the sea)
 import { FINE_GLSL, FINE_PX, ihash } from './finecover.js';
 import { coverReader } from './clipwindow.js';
-import { TREES78, PARK78_UNIFORMS, trees78Vert } from './parks78.js';   // v0.7.8 trees (the trees subagent's): no tree on a centre's building or a landmark, parks as parkland
+import { TREES78, PARK78_UNIFORMS, trees78Vert, TREES79, trees79Arrays } from './parks78.js';   // v0.7.8 trees (the trees subagent's): no tree on a centre's building or a landmark, parks as parkland
 
 // ------------------------------------------------------------------ field plots (GLSL)
 
@@ -162,6 +162,10 @@ export function treeCells(ai, aj, half, spacing, texel, coverAt, out) {
 // fine: finecover.js's object (terrain.fine), for v0.6.1's lists; without it every cell is drawn.
 export function createTrees(scene, uniforms, chunks, { fine = null } = {}) {
   const base = treeGeometry();
+  if (TREES79) {   // v0.7.9 looks (parks78.js): a park's round crown beside the cone; off, v0.7.8's geometry
+    const a = trees79Arrays(base.getAttribute('position').array, base.getAttribute('normal').array, base.getAttribute('kind').array);
+    for (const [k, n] of [['position', 3], ['normal', 3], ['kind', 1], ['p79', 3], ['n79', 3]]) base.setAttribute(k, new THREE.Float32BufferAttribute(a[k === 'position' ? 'pos' : k === 'normal' ? 'nrm' : k], n));
+  }
   const group = new THREE.Group();
   group.name = 'trees';
   const levels = [];
@@ -175,6 +179,7 @@ export function createTrees(scene, uniforms, chunks, { fine = null } = {}) {
     geo.setAttribute('position', base.getAttribute('position'));
     geo.setAttribute('normal', base.getAttribute('normal'));
     geo.setAttribute('kind', base.getAttribute('kind'));
+    if (TREES79) { geo.setAttribute('p79', base.getAttribute('p79')); geo.setAttribute('n79', base.getAttribute('n79')); }   // v0.7.9 looks
     const ring = ringCells(L.half, k === 0 ? 0 : L.half / 2);
     // v0.6.0 Part 7: a ring can also fill its own hole (the cells after the ring's), for when the
     // finer ring inside it is switched off with height (update() below).

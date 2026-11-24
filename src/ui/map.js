@@ -17,8 +17,29 @@ import { circleFrom, runwayUseNote } from '../world/runways.js';
 import { smoothOutline, traceClipped } from './map-outline.js';
 import { buildCountries, traceBorders, layoutNames } from './map-countries.js';
 import { loadRelief, RELIEF_BANDS, POLDER_RGB } from './map-relief.js';
+import { airportKind } from '../world/regions.js';
+import { groundShapes, placeAlong, placeAt, GROUND, GROUND_MPP } from './map-airports.js';
 
 const PRED = '#c6ff2e';      // the predicted path: bright lime
+// v0.7.9 (map): the switch for the map's v0.7.9 looks, on by default and read once, at import, as apron.js's lookSwitch():
+// ?map79=0 on the page, FS_MAP79=0 in node. Off, the map makes exactly the canvas calls of the pushed v0.7.8
+// (tests/v079-map-switch.test.mjs hashes them for fixed views in both regions).
+function lookSwitch(q, env) {
+  try {
+    const s = (typeof location !== 'undefined' && location && location.search) || '';
+    const m = new RegExp(`[?&]${q}=([01])\\b`).exec(s);
+    if (m) return m[1] === '1';
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env[env] === '0') return false; } catch (e) { /* no process */ }
+  return true;
+}
+export const MAP79 = lookSwitch('map79', 'FS_MAP79');
+// v0.7.9 (map), item 2 (Shane: "maybe military bases should be a different color to denote them as such"): the five pure
+// bases' labels, dots and runways in amber (regions.js airportKind() 'base'), apart from the airports' cyan, the
+// destination's magenta (which still wins) and the predicted path's lime; the four joint fields keep the cyan with a
+// small amber diamond after the code.
+export const KIND_COLOR = { base: '#ffa515', baseRunway: '#e9c78f', joint: '#ffa515' };
+export const KIND_NOTE = { base: 'military base', joint: 'joint civil and military' };
 // v0.6.3: the city areas' tint over the land, and a switch for comparing (?mapcities=0 draws the map without them).
 const URBAN_FILL = 'rgba(226,212,176,0.27)';
 const CITY_AREAS = !/[?&]mapcities=0\b/.test((typeof location !== 'undefined' && location.search) || '');
@@ -178,7 +199,8 @@ export function createMap(root, { airports, coast, urban } = {}) {
     if (!isOpen || !v?.state) return;
     const st = v.state, ap = v.ap || {};
     const sig = [Math.round(X(st.pos.x)), Math.round(Y(st.pos.y)), Math.round(st.hdg * 50), ap.ap, ap.hdgDeg, ap.altFt, v.timeScale,
-      Math.round((v.timeScaleActual || 0) * 10), v.paused, Math.round(st.t / 2), v.dest?.ident].join();
+      Math.round((v.timeScaleActual || 0) * 10), v.paused, Math.round(st.t / 2), v.dest?.ident].join()
+      + (MAP79 ? `|${v.taxiPhase}|${v.taxiAssigned?.points?.length}|${v.taxiAssigned?.points?.[0]?.[0]}` : '');   // v0.7.9: a new or dropped taxi route redraws
     if (sig !== lastSig) { lastSig = sig; redraw(); }
   }
 
@@ -347,6 +369,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
         ctx.beginPath(); ctx.moveTo(ix - 7, iy - 7); ctx.lineTo(ix + 7, iy + 7); ctx.moveTo(ix + 7, iy - 7); ctx.lineTo(ix - 7, iy + 7); ctx.stroke();
       }
     }
+    if (MAP79 && st) drawTaxiRoute(st);   // v0.7.9: the assigned taxi route, under the aircraft
     if (st) drawAircraft(st);
     drawScale();
     drawLegend();   // v0.7.4: the colour by height's legend, bottom left
@@ -362,6 +385,8 @@ export function createMap(root, { airports, coast, urban } = {}) {
   // Hongqiao, Haneda and Narita) take opposite sides. Laid out once per view and reused by the
   // drawing and the pointer.
   const LBL_ICAO = font(13, true), LBL_NAME = font(11);
+  const JOINT_MARK_W = 11;   // v0.7.9: the joint fields' diamond after the code (its room in the label's box)
+  const kindOf = (apt) => (MAP79 ? airportKind(apt.icao) : 'civil');
   let layoutSig = '', layoutMap = new Map();
   const originOf = (apt) => apt.origin || [apt.runways?.[0]?.ends[0].x || 0, apt.runways?.[0]?.ends[0].y || 0];
   function labelLayout() {
@@ -377,7 +402,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
       && dots.every(([dx, dy], i) => i === self || dx < b.x0 - 6 || dx > b.x1 + 6 || dy < b.y0 - 6 || dy > b.y1 + 6);
     for (const apt of order) {
       const self = list.indexOf(apt), [px, py] = dots[self];
-      ctx.font = LBL_ICAO; const wi = ctx.measureText(apt.icao).width;
+      ctx.font = LBL_ICAO; const wi = ctx.measureText(apt.icao).width + (MAP79 && airportKind(apt.icao) === 'joint' ? JOINT_MARK_W : 0);
       const name = nameOf(apt);
       ctx.font = LBL_NAME; const wn = ctx.measureText(name).width;
       const off = Math.max(10, 2200 * k);
@@ -434,15 +459,48 @@ export function createMap(root, { airports, coast, urban } = {}) {
     // above the info box (bottom left), whatever its height now
     const r = info.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
     const bottom = r.height > 4 ? r.top - cr.top - 8 : H - 12;
-    return { x0: LEGEND.x - 6, y0: bottom - 44, x1: LEGEND.x + RELIEF_BANDS.length * LEGEND.w + (relief.polders ? 12 + LEGEND.w + 34 : 14), y1: bottom };
+    const kr = kindRow();   // v0.7.9: the airports' kinds, a row above the heights (none with the switch off)
+    const x1 = LEGEND.x + RELIEF_BANDS.length * LEGEND.w + (relief.polders ? 12 + LEGEND.w + 34 : 14);
+    return { x0: LEGEND.x - 6, y0: bottom - 44 - (kr ? KIND_ROW_H : 0), x1: kr ? Math.max(x1, LEGEND.x + kr.w + 8) : x1, y1: bottom };
+  }
+  // v0.7.9 (map), item 2: the legend's row of the airports' kinds this region has (East Asia: no pure base), measured once.
+  const KIND_ROW_H = 20;
+  let kindRowCache;
+  function kindRow() {
+    if (!MAP79) return null;
+    if (kindRowCache !== undefined) return kindRowCache;
+    const have = new Set(airportList(airports).map((a) => airportKind(a.icao)));
+    const items = [['civil', 'airport'], ['base', KIND_NOTE.base], ['joint', KIND_NOTE.joint]].filter(([kd]) => have.has(kd));
+    if (items.length < 2) { kindRowCache = null; return null; }
+    const f = ctx.font; ctx.font = font(10);
+    let w = 0;
+    const row = items.map(([kd, text]) => { const tw = ctx.measureText(text).width, it = { kd, text, x: w }; w += 14 + (kd === 'joint' ? 10 : 0) + tw + 16; return it; });
+    ctx.font = f;
+    kindRowCache = { items: row, w: w - 16 };
+    return kindRowCache;
+  }
+  function drawKindRow(B, kr) {
+    const y = B.y0 + 11;
+    ctx.font = font(10); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    for (const it of kr.items) {
+      const x = LEGEND.x + it.x;
+      ctx.fillStyle = it.kd === 'base' ? KIND_COLOR.base : C.cyan;
+      ctx.beginPath(); ctx.arc(x + 4, y, 3.5, 0, Math.PI * 2); ctx.fill();
+      let tx = x + 14;
+      if (it.kd === 'joint') { jointMark(x + 16, y, 3.5); tx += 10; }
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillText(it.text, tx, y);
+    }
   }
   function drawLegend() {
     const B = legendBox(); if (!B) return;
     ctx.fillStyle = 'rgba(6,16,28,0.72)'; ctx.fillRect(B.x0, B.y0, B.x1 - B.x0, B.y1 - B.y0);
-    const y = B.y0 + 18;
+    const kr = kindRow();
+    if (kr) drawKindRow(B, kr);
+    const y0 = B.y0 + (kr ? KIND_ROW_H : 0);   // the heights' part, under the kinds' row (v0.7.8's B.y0)
+    const y = y0 + 18;
     ctx.font = font(10); ctx.textBaseline = 'top'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
     let x = LEGEND.x;
-    ctx.textAlign = 'left'; ctx.fillText('HEIGHT, FT', x, B.y0 + 5); ctx.textAlign = 'center';
+    ctx.textAlign = 'left'; ctx.fillText('HEIGHT, FT', x, y0 + 5); ctx.textAlign = 'center';
     RELIEF_BANDS.forEach((b, i) => {
       ctx.fillStyle = `rgb(${b.rgb.map((c) => Math.round(c * 1.15)).join(',')})`; ctx.fillRect(x, y, LEGEND.w - 1, LEGEND.h);
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
@@ -555,19 +613,26 @@ export function createMap(root, { airports, coast, urban } = {}) {
       }
     }
   }
+  // v0.7.9: the joint fields' mark, a small amber diamond with a dark edge (centred at x, y)
+  function jointMark(x, y, r = 4) {
+    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+    ctx.fillStyle = KIND_COLOR.joint; ctx.fill(); ctx.strokeStyle = 'rgba(6,16,28,0.85)'; ctx.lineWidth = 1; ctx.stroke();
+  }
   function drawAirportsRegion() {
     const list = airportList(airports), lay = labelLayout();
     const vbox = { x0: cx - W / 2 / k, x1: cx + W / 2 / k, y0: cy - H / 2 / k, y1: cy + H / 2 / k };
+    if (MAP79) drawGround(list, vbox);   // v0.7.9: the aprons, taxiways and hold bars, under the terminals and runways
     drawTerminals(list, vbox);
     drawTerminalLabels(list, vbox);
     for (const apt of list) {
       const rws = apt.runways || [];
+      const kind = kindOf(apt);
       ctx.lineCap = 'butt';
       let longest = 0;
       for (const rw of rws) {
         const [a, b] = rw.ends;
         longest = Math.max(longest, Math.hypot(b.x - a.x, b.y - a.y) * k);
-        ctx.strokeStyle = '#d8d8d8'; ctx.lineWidth = Math.max(2.5, (rw.widthM || 45) * k);
+        ctx.strokeStyle = kind === 'base' ? KIND_COLOR.baseRunway : '#d8d8d8'; ctx.lineWidth = Math.max(2.5, (rw.widthM || 45) * k);
         ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke();
         if (k > 0.012) { // closer in than Korea's 0.004: Pudong's and Haneda's parallels pile up
           ctx.fillStyle = C.white; ctx.font = font(11); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -588,18 +653,144 @@ export function createMap(root, { airports, coast, urban } = {}) {
           }
         }
       }
+      if (MAP79 && 1 / k <= GROUND_MPP.rwyNums && nearView(apt, vbox)) paintRunwayNumbers(rws);   // v0.7.9
       const isDest = view?.dest && rws.some((r) => r.ends.includes(view.dest));
       const [ox, oy] = originOf(apt);
       if (longest < 8) { // far out: a dot, so the airport reads
-        ctx.fillStyle = isDest ? C.magenta : C.cyan;
+        ctx.fillStyle = isDest ? C.magenta : kind === 'base' ? KIND_COLOR.base : C.cyan;
         ctx.beginPath(); ctx.arc(X(ox), Y(oy), 3, 0, Math.PI * 2); ctx.fill();
       }
       const B = lay.get(apt);
       if (!B) continue;
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.font = LBL_ICAO; ctx.fillStyle = isDest ? C.magenta : C.cyan;
+      ctx.font = LBL_ICAO; ctx.fillStyle = isDest ? C.magenta : kind === 'base' ? KIND_COLOR.base : C.cyan;
       ctx.fillText(apt.icao, B.tx, B.ty + 7);
+      if (kind === 'joint') jointMark(B.tx + ctx.measureText(apt.icao).width + 3 + JOINT_MARK_W / 2 - 2, B.ty + 7);
       if (B.name) { ctx.font = LBL_NAME; ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fillText(B.name, B.tx, B.ty + 21); }
+    }
+    if (MAP79) drawGroundNames();   // v0.7.9: the taxiways' names and the stands' numbers, over the runways
+  }
+
+  // ---- v0.7.9 (map), part 2: the airports in full as the map zooms in (map-airports.js) ----
+  // The aprons and taxiways as pavement at their widths from 40 m a pixel in, their centrelines from 4, the hold-short
+  // bars and the taxiways' names from 9, the runways' numbers painted at their thresholds from 5, the stands' numbers
+  // from 2.6 (the map zooms to 1 m a pixel with the switch on; 2 before). Each airport's shapes are built once, in metres
+  // from its origin, and drawn through the canvas's transform; only the airports in view are drawn.
+  // (first by the runways' box and 4 km round it, which costs nothing, so an airport's shapes are only built near the view)
+  const aptBoxes = new WeakMap();
+  function nearView(apt, vbox) {
+    let b = aptBoxes.get(apt);
+    if (!b) {
+      b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+      for (const rw of apt.runways || []) for (const e of rw.ends) { b.x0 = Math.min(b.x0, e.x); b.x1 = Math.max(b.x1, e.x); b.y0 = Math.min(b.y0, e.y); b.y1 = Math.max(b.y1, e.y); }
+      aptBoxes.set(apt, b);
+    }
+    const m = 4000;
+    return !(b.x1 + m < vbox.x0 || b.x0 - m > vbox.x1 || b.y1 + m < vbox.y0 || b.y0 - m > vbox.y1);
+  }
+  function inView(apt, vbox) {
+    if (!nearView(apt, vbox)) return false;
+    const S = groundShapes(apt);
+    if (!S) return false;
+    const b = S.box, m = 200;
+    return !(b.x1 + m < vbox.x0 || b.x0 - m > vbox.x1 || b.y1 + m < vbox.y0 || b.y0 - m > vbox.y1);
+  }
+  function airportTransform(S) {
+    // map metres from the airport's origin to device pixels (y up), so a Path2D in metres draws where X(), Y() would
+    ctx.setTransform(dpr * k, 0, 0, -dpr * k, dpr * X(S.ox), dpr * Y(S.oy));
+  }
+  function drawGround(list, vbox) {
+    const mpp = 1 / k;
+    if (mpp > GROUND_MPP.pave) return;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const apt of list) {
+      if (!inView(apt, vbox)) continue;
+      const S = groundShapes(apt);
+      airportTransform(S);
+      ctx.fillStyle = GROUND.pave; ctx.fill(S.aprons);
+      ctx.strokeStyle = GROUND.pave;
+      for (const t of S.taxi) { ctx.lineWidth = Math.max(t.w, 1.1 * mpp); ctx.stroke(t.path); }
+      if (mpp <= GROUND_MPP.centre) {
+        ctx.strokeStyle = GROUND.centre; ctx.lineWidth = 1.2 * mpp;
+        for (const t of S.taxi) ctx.stroke(t.path);
+      }
+      if (mpp <= GROUND_MPP.holds) {
+        ctx.strokeStyle = GROUND.hold; ctx.lineCap = 'butt'; ctx.lineWidth = Math.max(2.1, 2.4 * mpp);
+        if (S.holdsA) ctx.stroke(S.holdsA);
+        if (S.holdsB && mpp <= GROUND_MPP.holdsB) { ctx.setLineDash([2.5 * mpp, 2 * mpp]); ctx.stroke(S.holdsB); ctx.setLineDash([]); }
+        ctx.lineCap = 'round';
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+  }
+  // The runway's number painted just inside each threshold, reading from the approach (dark on the runway's grey).
+  function paintRunwayNumbers(rws) {
+    ctx.font = font(12, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = GROUND.rwyNum;
+    for (const rw of rws) {
+      if ((rw.widthM || 45) * k < 15) continue;   // too narrow on the screen for its number
+      const [a, b] = rw.ends;
+      for (const [e, o] of [[a, b], [b, a]]) {
+        const L = Math.hypot(o.x - e.x, o.y - e.y) || 1, ux = (o.x - e.x) / L, uy = (o.y - e.y) / L;
+        const d = (e.displacedM || 0) + 30 + 12 / k;   // from the pavement's end: the displaced threshold, then a little in
+        const sx = X(e.x + ux * d), sy = Y(e.y + uy * d);
+        ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.atan2(ux, uy)); ctx.fillText(e.ident, 0, 0); ctx.restore();
+      }
+    }
+  }
+  let groundSig = '', groundNames = [], groundStands = [];
+  const NAME_FONT = font(11, true), STAND_FONT = font(10);
+  const textW = new Map();
+  const widthOf = (t, f) => { const key = f + '|' + t; let w = textW.get(key); if (w === undefined) { ctx.font = f; w = ctx.measureText(t).width; textW.set(key, w); } return w; };
+  function groundLayout() {
+    const mpp = 1 / k;
+    const sig = [W, H, cx, cy, k, destAirport()?.icao].join();
+    if (sig === groundSig) return;
+    groundSig = sig; groundNames = []; groundStands = [];
+    if (mpp > GROUND_MPP.names) return;
+    const vbox = { x0: cx - W / 2 / k, x1: cx + W / 2 / k, y0: cy - H / 2 / k, y1: cy + H / 2 / k };
+    const list = airportList(airports).filter((a) => inView(a, vbox));
+    if (!list.length) return;
+    // kept clear: the airports' labels, the map's panels, the terminals' labels (their text about 12 px high)
+    const taken = [...labelLayout().values(), ...overlayBoxes(), ...runwayLabelBoxes()];   // (and the runways' end labels)
+    if (termLabels && mpp <= TERM_LABELS_MPP) {
+      for (const apt of list) for (const L of termLabels[apt.icao] || []) {
+        const w = widthOf(L.label, font(12, true)) + 6;
+        taken.push({ x0: X(L.x) - w / 2, x1: X(L.x) + w / 2, y0: Y(L.y) - 9, y1: Y(L.y) + 9 });
+      }
+    }
+    const toScreen = (x, y, o) => { o[0] = X(x); o[1] = Y(y); return o; };
+    const view = { x0: 0, y0: 0, x1: W, y1: H };
+    // the stands' numbers first when they show (each is where its stand is; the names find room round them)
+    if (mpp <= GROUND_MPP.stands) {
+      const items = [];
+      for (const apt of list) for (const s of groundShapes(apt).stands) items.push({ text: s.ref, x: s.x, y: s.y });
+      groundStands = placeAt(items, { toScreen, measure: (t) => widthOf(t, STAND_FONT), h: 12, view, taken });
+    }
+    const lines = [];
+    for (const apt of list) for (const n of groundShapes(apt).names) lines.push({ text: n.ref, pts: n.pts });
+    groundNames = placeAlong(lines, { toScreen, measure: (t) => widthOf(t, NAME_FONT), h: 15, view, taken });
+  }
+  function drawGroundNames() {
+    groundLayout();
+    if (!groundNames.length && !groundStands.length) return;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (groundStands.length) {
+      ctx.font = STAND_FONT; ctx.lineJoin = 'round';
+      for (const s of groundStands) {
+        ctx.strokeStyle = 'rgba(6,16,28,0.85)'; ctx.lineWidth = 3; ctx.strokeText(s.text, s.x, s.y);
+        ctx.fillStyle = GROUND.standText; ctx.fillText(s.text, s.x, s.y);
+      }
+      ctx.lineJoin = 'miter';
+    }
+    if (groundNames.length) {
+      ctx.font = NAME_FONT; ctx.lineWidth = 1;
+      for (const n of groundNames) {
+        const b = n.box;
+        ctx.fillStyle = GROUND.nameBox; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+        ctx.strokeStyle = GROUND.nameEdge; ctx.strokeRect(b.x0 + 0.5, b.y0 + 0.5, b.x1 - b.x0 - 1, b.y1 - b.y0 - 1);
+        ctx.fillStyle = GROUND.nameText; ctx.fillText(n.text, n.x, n.y + 0.5);
+      }
     }
   }
 
@@ -622,6 +813,67 @@ export function createMap(root, { airports, coast, urban } = {}) {
     return null;
   }
 
+  // ---- v0.7.9 (map), item 4: the taxi route the game assigned (gate-flow.js: kind 'out' to a hold, 'in' to a stand),
+  // from the aircraft along what is left of it to its end, while it is the route in use: parked at the gate, in the
+  // pushback, taxiing out or in. Lined up, airborne or at the stand, gate-flow's phase moves on and it goes.
+  const TAXI_PHASES = new Set(['parked', 'pushback', 'taxi', 'taxi-in']);
+  const TAXI_LINE = { color: '#ff7a3d', casing: 'rgba(6,16,28,0.8)', text: '#ffb08f' };
+  function taxiShown() {
+    const r = MAP79 ? view?.taxiAssigned : null;
+    return r && TAXI_PHASES.has(view.taxiPhase) && r.points?.length > 1 ? r : null;
+  }
+  function drawTaxiRoute(st) {
+    const r = taxiShown(); if (!r || 1 / k > GROUND_MPP.taxi) return;
+    const p = r.points, ax = st.pos.x, ay = st.pos.y;
+    // the point of the route nearest the aircraft (the earliest segment if two are as near): the line starts there
+    let bi = 0, bd = Infinity, bx = p[0][0], by = p[0][1];
+    for (let i = 0; i < p.length - 1; i++) {
+      const [x0, y0] = p[i], [x1, y1] = p[i + 1], dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy || 1;
+      const t = clamp(((ax - x0) * dx + (ay - y0) * dy) / L2, 0, 1), qx = x0 + t * dx, qy = y0 + t * dy;
+      const d = Math.hypot(qx - ax, qy - ay);
+      if (d < bd - 0.5) { bd = d; bi = i; bx = qx; by = qy; }
+    }
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (const [style, w] of [[TAXI_LINE.casing, 6.5], [TAXI_LINE.color, 3.5]]) {
+      ctx.strokeStyle = style; ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by));
+      for (let j = bi + 1; j < p.length; j++) ctx.lineTo(X(p[j][0]), Y(p[j][1]));
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    // its end: a ring, and what it is (the hold short of the runway, or the stand)
+    const [ex, ey] = p[p.length - 1], sx = X(ex), sy = Y(ey);
+    ctx.fillStyle = TAXI_LINE.casing; ctx.strokeStyle = TAXI_LINE.color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    const what = r.kind === 'in' ? (r.stand != null ? `STAND ${r.stand}` : '') : (r.runway ? `HOLD ${r.runway}` : '');
+    if (what) {
+      // in a dark box, on the first side of the ring (right, left, below, above) clear of the runways' end labels
+      ctx.font = font(11, true); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(what).width + 8, h = 16, ends = runwayLabelBoxes();
+      const spots = [[sx + 10, sy - h / 2], [sx - 10 - w, sy - h / 2], [sx - w / 2, sy + 10], [sx - w / 2, sy - 10 - h]];
+      const [bx0, by0] = spots.find(([x, y]) => ends.every((q) => x + w < q.x0 || x > q.x1 || y + h < q.y0 || y > q.y1)) || spots[0];
+      ctx.fillStyle = 'rgba(6,16,28,0.85)'; ctx.fillRect(bx0, by0, w, h);
+      ctx.fillStyle = TAXI_LINE.text; ctx.fillText(what, bx0 + 4, by0 + h / 2 + 0.5);
+    }
+  }
+
+  // the runways' end labels' boxes in view (where drawAirportsRegion() writes each end's name and course)
+  function runwayLabelBoxes() {
+    const out = [];
+    if (!(k > 0.012)) return out;
+    const two = k > 0.04, bw = two ? 44 : 26, bh = two ? 26 : 13;
+    for (const apt of airportList(airports)) for (const rw of apt.runways || []) {
+      const [a, b] = rw.ends;
+      for (const [e, o] of [[a, b], [b, a]]) {
+        const L = Math.hypot(o.x - e.x, o.y - e.y) || 1, ux = -(o.x - e.x) / L, uy = (o.y - e.y) / L;
+        const reach = Math.min(Math.abs(ux) > 1e-6 ? bw / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-6 ? bh / 2 / Math.abs(uy) : Infinity);
+        const dpx = reach + Math.max(5, (rw.widthM || 45) * k / 2) + 3, lx = X(e.x) + ux * dpx, ly = Y(e.y) + uy * dpx;
+        if (lx < -60 || lx > W + 60 || ly < -60 || ly > H + 60) continue;
+        out.push({ x0: lx - bw / 2 - 2, x1: lx + bw / 2 + 2, y0: ly - bh / 2 - 2, y1: ly + bh / 2 + 2 });
+      }
+    }
+    return out;
+  }
   function drawAircraft(st) {
     ctx.save(); ctx.translate(X(st.pos.x), Y(st.pos.y)); ctx.rotate(st.hdg);
     ctx.fillStyle = C.yellow; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
@@ -757,7 +1009,8 @@ export function createMap(root, { airports, coast, urban } = {}) {
       if (tipLeg) { tip.hidden = true; tipLeg = false; }
       if (!s && apt) {
         const isDest = apt.runways?.some((r) => r.ends.includes(view?.dest));
-        tip.textContent = isDest ? `${apt.icao}: click to change the runway` : `${apt.icao}: click to fly there instead`;
+        const kn = KIND_NOTE[kindOf(apt)], who = kn ? `${apt.icao}, ${kn}` : apt.icao;   // v0.7.9: a base's or a joint field's kind
+        tip.textContent = isDest ? `${who}: click to change the runway` : `${who}: click to fly there instead`;
         tip.hidden = false; tip.style.left = sx + 14 + 'px'; tip.style.top = sy + 12 + 'px';
         tipAirport = true;
       } else if (!s && tipAirport) { tip.hidden = true; tipAirport = false; }
@@ -800,7 +1053,7 @@ export function createMap(root, { airports, coast, urban } = {}) {
     if (e.ctrlKey || mouse) {
       const before = toMapXY(sx, sy);
       const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.0025) * (e.deltaMode === 1 ? 33 : 1));
-      k = clamp(k * f, kMin(), 1 / 2);
+      k = clamp(k * f, kMin(), MAP79 ? 1 : 1 / 2);   // v0.7.9: to 1 m a pixel, for the stands' numbers
       const after = toMapXY(sx, sy);
       cx += before[0] - after[0]; cy += before[1] - after[1];
     } else { cx += e.deltaX / k; cy -= e.deltaY / k; }

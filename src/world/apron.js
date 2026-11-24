@@ -28,7 +28,7 @@
 import * as THREE from '../../vendor/three.module.js';
 import {
   TAXI_W, DOOR_SILL, openRing, signedArea, densify, dedupePolys, segmentIndex,
-  holdShortSites, taxiwayEdges, standMarks, jetBridge, gateFit, GATES78, strokeTriangles, subdivideSoup, hdgVec,
+  holdShortSites, taxiwayEdges, standMarks, jetBridge, gateFit, gateMore, GATES78, GATES79, strokeTriangles, subdivideSoup, hdgVec,
   drawnRunwayRects, clipSoupOutside, splitPolyline, refineSoup, refineLine,
 } from './apron-geom.js';
 import { floodMasts } from './taxilights.js';
@@ -531,8 +531,17 @@ export function* buildPavementInSteps(a, ox, oy, groundAt, aprons, tick = sliceT
     const p = [c(-28, -20), c(-28, 20), c(24, 20), c(24, -20)];
     yield* add(subdivideSoup([...p[0], ...p[1], ...p[2], ...p[0], ...p[2], ...p[3]], 30), 1, 1);
     // At a gate, pave on to the terminal wall under the jet bridge.
-    const jb = s.gate ? jetBridge(s, terminals, 80, gateFit(a.icao)) : null;
-    if (jb) {
+    const jb = s.gate ? jetBridge(s, terminals, 80, gateFit(a.icao), null, GATES79 ? gateMore(a) : null) : null;
+    if (jb && jb.how) {
+      // v0.7.9 (GATES79): under a long link or an elbowed bridge, a strip 24 m wide along each leg, on to the wall
+      const pts = jb.elbow ? [jb.cab, jb.elbow, jb.root] : [jb.cab, jb.root];
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const A = pts[k], B = pts[k + 1], len = Math.hypot(B.x - A.x, B.y - A.y) || 1, ux = (B.x - A.x) / len, uy = (B.y - A.y) / len;
+        const nx = -uy * 12, ny = ux * 12, sx = A.x - ux * 6, sy = A.y - uy * 6, ex = B.x + ux * 4, ey = B.y + uy * 4;
+        const q = [[sx + nx, sy + ny], [sx - nx, sy - ny], [ex - nx, ey - ny], [ex + nx, ey + ny]];
+        yield* add(subdivideSoup([...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]], 30), 1, 1);
+      }
+    } else if (jb) {
       const ux = (jb.root.x - jb.cab.x) / jb.length, uy = (jb.root.y - jb.cab.y) / jb.length;
       const nx = -uy * 25, ny = ux * 25, ex = jb.root.x + ux * 4, ey = jb.root.y + uy * 4;
       const q = [[jb.cab.x + nx, jb.cab.y + ny], [jb.cab.x - nx, jb.cab.y - ny], [ex - nx, ey - ny], [ex + nx, ey + ny]];
@@ -896,15 +905,51 @@ function* buildBuildingsInSteps(a, ox, oy, groundAt, tick = () => false, what = 
     if (only !== null && String(s.ref) !== only) continue;
     const v0 = P.a.length / 3;
     if (ranges) ranges.push([String(s.ref), v0, v0]);
-    const jb = jetBridge(s, terminals, 80, gateFit(a.icao), doors ? doors.get(String(s.ref)) || null : null);
+    const at = doors ? doors.get(String(s.ref)) || null : null;
+    const door = at && at.back != null ? at : null;   // (GATE_OCCUPIED: somebody there, the door unknown: the default)
+    // v0.7.9 (GATES79): the new rules' bridges, and the cab drawn back at a gate nobody stands at
+    const jb = jetBridge(s, terminals, 80, gateFit(a.icao), door, GATES79 ? { ...gateMore(a), retract: !at } : null);
     if (!jb) continue;
     const g0 = groundAt(jb.root.x, jb.root.y), g1 = groundAt(jb.cab.x, jb.cab.y);
     const floorRoot = g0 + 4.6, floorCab = g1 + (jb.sill ?? DOOR_SILL);
     const [fx, fy] = jb.fwd, [lx, ly] = jb.left;
     // Rotunda: a 4 m square column at the terminal wall.
     beam(jb.root.x - lx * 2, jb.root.y - ly * 2, jb.root.x + lx * 2, jb.root.y + ly * 2, 2, g0 - 0.5, g0 - 0.5, 4.6 + 3.2, false);
+    if (jb.elbow) {
+      // v0.7.9: round an elbow: the tunnel to a second rotunda ahead and left of the nose, and on to the cab
+      const E = jb.elbow, l1 = Math.hypot(E.x - jb.root.x, E.y - jb.root.y) || 1, l2 = Math.hypot(jb.cab.x - E.x, jb.cab.y - E.y) || 1;
+      const u1x = (E.x - jb.root.x) / l1, u1y = (E.y - jb.root.y) / l1, u2x = (jb.cab.x - E.x) / l2, u2y = (jb.cab.y - E.y) / l2;
+      const fl = (d) => floorRoot + (floorCab - floorRoot) * (d / (l1 + l2));
+      const tS = Math.min(2, l1 * 0.3), ge = groundAt(E.x, E.y), tE = Math.max(0.5, l2 - 1.2);
+      beam(jb.root.x + u1x * tS, jb.root.y + u1y * tS, E.x, E.y, 1.4, fl(tS), fl(l1), 2.8, true);
+      beam(E.x - u1x * 2, E.y - u1y * 2, E.x + u1x * 2, E.y + u1y * 2, 2, ge - 0.5, ge - 0.5, fl(l1) - ge + 0.5 + 3.2, false);
+      beam(E.x, E.y, E.x + u2x * tE, E.y + u2y * tE, 1.4, fl(l1), fl(l1 + tE), 2.8, true);
+      beam(jb.cab.x - fx * 1.8, jb.cab.y - fy * 1.8, jb.cab.x + fx * 1.8, jb.cab.y + fy * 1.8, 1.6, floorCab - 0.3, floorCab - 0.3, 3.2, true);
+      // the first leg on a pair of columns every 30 m, and the drive leg on the last
+      for (let d = 30; d < l1 - 12; d += 30) {
+        const px = jb.root.x + u1x * d, py = jb.root.y + u1y * d, gp = groundAt(px, py);
+        for (const sgn of [-1, 1]) beam(px - u1y * sgn * 1.1 - u1x * 0.25, py + u1x * sgn * 1.1 - u1y * 0.25, px - u1y * sgn * 1.1 + u1x * 0.25, py + u1x * sgn * 1.1 + u1y * 0.25, 0.25, gp, gp, fl(d) - gp, false);
+      }
+      const kx = E.x + u2x * l2 * 0.6, ky = E.y + u2y * l2 * 0.6, kf = fl(l1 + l2 * 0.6), gk = groundAt(kx, ky);
+      for (const sgn of [-1, 1]) {
+        const cx = kx + -u2y * sgn * 1.1, cy = ky + u2x * sgn * 1.1;
+        beam(cx - u2x * 0.25, cy - u2y * 0.25, cx + u2x * 0.25, cy + u2y * 0.25, 0.25, gk, gk, kf - gk, false);
+      }
+      beam(kx - u2x * 0.9, ky - u2y * 0.9, kx + u2x * 0.9, ky + u2y * 0.9, 1.6, gk, gk, 0.9, false);
+      bridges++;
+      if (ranges) ranges[ranges.length - 1][2] = P.a.length / 3;
+      continue;
+    }
     // Tunnel from the rotunda to the back of the cab.
     const ux = (jb.cab.x - jb.root.x) / jb.length, uy = (jb.cab.y - jb.root.y) / jb.length;
+    if (jb.how === 'long') {
+      // v0.7.9: a long fixed link stands on a pair of columns every 30 m
+      for (let d = 30; d < jb.length * 0.78 - 12; d += 30) {
+        const px = jb.root.x + ux * d, py = jb.root.y + uy * d, gp = groundAt(px, py);
+        const fz = floorRoot + (floorCab - floorRoot) * (d / jb.length);
+        for (const sgn of [-1, 1]) beam(px - uy * sgn * 1.1 - ux * 0.25, py + ux * sgn * 1.1 - uy * 0.25, px - uy * sgn * 1.1 + ux * 0.25, py + ux * sgn * 1.1 + uy * 0.25, 0.25, gp, gp, fz - gp, false);
+      }
+    }
     const tStart = Math.min(2, jb.length * 0.3);
     const tEnd = Math.max(tStart + 0.5, jb.length - 1.2);
     beam(jb.root.x + ux * tStart, jb.root.y + uy * tStart, jb.root.x + ux * tEnd, jb.root.y + uy * tEnd, 1.4,

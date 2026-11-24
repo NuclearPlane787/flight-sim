@@ -585,11 +585,11 @@
    ],
    "cols": 6,
    "rows": 7,
-   "count": 965,
-   "vertices": 7687,
+   "count": 7115,
+   "vertices": 47424,
    "maxHeightM": 131.0,
-   "minKeepHeightM": 12.0,
-   "bytes": 27956
+   "minKeepHeightM": 0.0,
+   "bytes": 159786
   }
  ]
 }

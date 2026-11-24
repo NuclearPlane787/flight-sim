@@ -30,11 +30,14 @@ test('v0.7.8: Kanazawa: FSB1, the file against its entry, a tight box round its 
   assert.equal(new DataView(raw.buffer, raw.byteOffset).getUint32(0, true), MAGIC, 'FSB1, as East Asia\'s other centres');
   const p = parseCentre(raw);
   assert.equal(p.count, c.count); assert.equal(p.vertexCount, c.vertices);
-  assert.ok(c.count >= 600 && c.count <= 2000, `${c.count} buildings`);
+  // (v0.7.9 looks: every building kept for Kanazawa, minKeepHeightM 0, 7,115 buildings in about 160 KB and 128k
+  // triangles; tests/v079-looks-kanazawa.test.mjs holds that file. v0.7.8's own limits for its 12 m file.)
+  const v079 = c.minKeepHeightM === 0;
+  assert.ok(v079 ? c.count >= 6000 && c.count <= 8000 : c.count >= 600 && c.count <= 2000, `${c.count} buildings`);
   assert.ok(c.maxHeightM >= 100 && c.maxHeightM <= 140, `tallest ${c.maxHeightM} m (Porte Kanazawa, 131 m)`);
   assert.equal(c.bytes, statSync(new URL(c.file, DATA)).size);
-  assert.ok(c.bytes <= 60 * 1024, `${c.bytes} bytes`);
-  assert.equal(c.minKeepHeightM, 12);
+  assert.ok(c.bytes <= (v079 ? 200 : 60) * 1024, `${c.bytes} bytes`);
+  if (!v079) assert.equal(c.minKeepHeightM, 12);
   assert.ok(c.box[2] - c.box[0] < 3500 && c.box[3] - c.box[1] < 3500, `box ${c.box}`);
   const places = { station: [36.5781, 136.6480], castle: [36.5653, 136.6596], kenrokuen: [36.5621, 136.6626], korinbo: [36.5619, 136.6556] };
   for (const [k, [la, lo]] of Object.entries(places)) assert.ok(inBox(c.box, la, lo), `${k} outside the box`);

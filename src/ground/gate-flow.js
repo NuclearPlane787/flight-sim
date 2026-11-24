@@ -16,7 +16,7 @@
 // The phases: 'none' → 'parked' → 'pushback' → 'taxi' → 'departed' (lined up or airborne);
 // after landing 'taxi-in' → 'arrived'.
 
-import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, standGeo, lineBehind, pushMinBack, planPushback, regionRules } from './taxi.js';
+import { buildTaxiGraph, routeFromStand, routeToStand, freeStand, snapToGraph, standsFor, standGeo, stopAhead, lineBehind, pushMinBack, planPushback, regionRules } from './taxi.js';
 import { createPushback, pushbackPoses } from './pushback.js';
 import { createTaxiRoute } from '../world/taxiroute.js';
 import * as A321_GEO from '../geometry.js';
@@ -44,6 +44,45 @@ export function standList(airport, typeDef = null) {
 // so it isn't counted against an exit: Venice's 04L/22R (ONE_WAY.LIPZ; landings on 04R past 60 % were turned back
 // 500 m along 04R to an exit behind, because the exits ahead lead off along 04L/22R).
 const RUNWAY_AS_TAXIWAY = { LIPZ: ['04L/22R'] };
+// v0.7.9 (taxi, part 4): the airports whose taxi-in goes to a stand's lead-in start where the route would end ahead of the
+// stand's nose and turn back (afterLanding): Lossiemouth's ramp spots.
+export const LEADIN_START = new Set(['EGQS']);
+// v0.7.9 (part 4): the route after a pushback (reroute()). How far off the nose (degrees) a route's first leg of
+// over 3 m may point before the route is planned from further ahead; the steps and the reach along the nose's line;
+// how far a point there may lie from a taxiway; how much longer the way ahead may be than the way behind.
+export const REROUTE_OFF_NOSE = 90, REROUTE_STEP_M = 25, REROUTE_REACH_M = 200, REROUTE_SNAP_M = 15, REROUTE_MORE_M = 800;
+// (A runway crossed counts as the router counts it, 400 m: taxi.js's RUNWAY_CROSS_PENALTY. Zurich's A03 to 14 goes
+// ahead across 10/28, 71 m shorter than the way behind that crossed nothing.)
+export const REROUTE_CROSS_M = 400;
+const routeCost = (q) => q.lengthM + REROUTE_CROSS_M * (q.crossings ? q.crossings.length : 0);
+// Does a route double back early: a turn of over REROUTE_TURN_DEG onto a leg of over 3 m within its first `withinM`?
+// (Prague's stand 3 turns 120° from A1 onto AA's fillet 37 m ahead and the test pilot holds the pavement there; the
+// turns the code review found were 151° and 154°.)
+export const REROUTE_TURN_DEG = 135, REROUTE_TURN_M = 150;
+export function routeTurnsBack(r, withinM = REROUTE_TURN_M) {
+  const p = r && r.points;
+  if (!p || p.length < 3) return false;
+  let run = 0, last = null;
+  for (let i = 1; i < p.length; i++) {
+    const dx = p[i][0] - p[i - 1][0], dy = p[i][1] - p[i - 1][1], l = Math.hypot(dx, dy);
+    if (l > 3) {
+      const h = Math.atan2(dx, dy) / DEG;
+      if (last !== null && Math.abs(((h - last) % 360 + 540) % 360 - 180) > REROUTE_TURN_DEG) return true;
+      last = h;
+    }
+    run += l;
+    if (run > withinM) break;
+  }
+  return false;
+}
+export function routeOffNose(r, hdg) {
+  const p = r && r.points;
+  if (!p || p.length < 2) return 0;
+  let j = 1;
+  while (j < p.length - 1 && Math.hypot(p[j][0] - p[0][0], p[j][1] - p[0][1]) <= 3) j++;
+  const leg = Math.atan2(p[j][0] - p[0][0], p[j][1] - p[0][1]);
+  return Math.abs((((leg - hdg) / DEG) % 360 + 540) % 360 - 180);
+}
 
 export function alongRunwayM(graph, points, skip = null) {
   let m = 0;
@@ -96,6 +135,7 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   // The aircraft: what setType gave, else the sim's own, else (a mock sim in a test) the A321neo.
   const typeNow = () => forcedType || sim?.type || null;
   const geoNow = () => standGeo(typeNow()?.geo || A321_GEO);   // v0.5.3: a design's own nose and length
+  const aheadNow = () => stopAhead(typeNow()?.geo || A321_GEO);  // v0.7.9: the nose past the stand point, its wheel on the bar
   const usable = (ap) => standsFor(ap, typeNow());
   // The stand that goes by this ref. Some of Incheon's refs name two positions: take one that fits.
   const standByRef = (ap, ref) => usable(ap).find((s) => s.ref === ref) || (ap.stands || []).find((s) => s.ref === ref);
@@ -149,8 +189,10 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     const { NOSE_X } = geoNow();
     const h0 = stand.hdgGridDeg * DEG;
     const fx = Math.sin(h0), fy = Math.cos(h0);
-    // The nose on the stop point: the reference point is NOSE_X behind it.
-    const rx = stand.x - fx * NOSE_X, ry = stand.y - fy * NOSE_X;
+    // The nose on the stop point: the reference point is NOSE_X behind it. (v0.7.9: the nose wheel on the stop bar,
+    // so a 787's nose is 0.12 m past the point and a 777's 0.60 m; aheadNow() is 0 for the A321 and with ?gates79=0.)
+    const back = NOSE_X - aheadNow();
+    const rx = stand.x - fx * back, ry = stand.y - fy * back;
     const toFlap = sim.type?.data.TAKEOFF_FLAP_LEVER ?? 1;
     sim.reset({ x: rx, y: ry, hdg: h0, onGround: true, flapLever: toFlap, gearDown: true, parkingBrake: true,
       fuelKg: plan.fuelKg, payloadKg: plan.payloadKg ?? ((plan.pax || 0) * 84 + (plan.cargoKg || 0)), pax: plan.pax, cargoKg: plan.cargoKg });
@@ -210,8 +252,8 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
   // traffic.setPlayerStand's opts.path. Empty once it has gone.
   function pushPath() {
     if (!pb || !stand || phase !== 'parked') return [];
-    const noseX = geoNow().NOSE_X, h0 = stand.hdgGridDeg * DEG;
-    const st = { x: stand.x - Math.sin(h0) * noseX, y: stand.y - Math.cos(h0) * noseX, hdgGridDeg: stand.hdgGridDeg };
+    const noseX = geoNow().NOSE_X, h0 = stand.hdgGridDeg * DEG, back = noseX - aheadNow();
+    const st = { x: stand.x - Math.sin(h0) * back, y: stand.y - Math.cos(h0) * back, hdgGridDeg: stand.hdgGridDeg };
     return pushbackPoses(st, pb.state).map(([x, y, h]) => [x + Math.sin(h) * noseX, y + Math.cos(h) * noseX, h]);
   }
 
@@ -276,8 +318,56 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     if (!airport || !depEnd) return;
     const s = sim.state, g = graphFor(airport);
     const ahead = 8 * geoNow().NOSE_X / A321_GEO.NOSE_X;
-    const r = routeFromStand(g, { x: s.pos.x + Math.sin(s.hdg) * ahead, y: s.pos.y + Math.cos(s.hdg) * ahead }, depEnd);
+    const from = (d) => ({ x: s.pos.x + Math.sin(s.hdg) * d, y: s.pos.y + Math.cos(s.hdg) * d });
+    let r = routeFromStand(g, from(ahead), depEnd);
     if (!r) return;
+    // v0.7.9 (part 4, Prague's stand 3 to 24): where two ways to the runway are nearly as long (a ring of taxiways), the
+    // shortest way from the pushback's end can leave BEHIND the nose, and the aircraft would have to turn round in the
+    // junction (the airports' day run left the pavement there: 49 of 515 samples). Then the route is planned from
+    // further along the taxiway the nose points down, the first place from which it leaves ahead, and joined to the
+    // aircraft by the taxiway between. A route that already leaves within 90° of the nose is left as it is.
+    if (routeOffNose(r, s.hdg) > REROUTE_OFF_NOSE || routeTurnsBack(r)) {   // behind the nose, or ahead and straight back
+      const p0 = from(ahead);
+      // Two passes: first a way ahead that crosses no more runways than the way behind; only if there is none, one
+      // that does (a crossing counted as the router counts it). In each, the first place along the nose's line whose
+      // route, joined to the aircraft, neither leaves behind the nose nor turns back within REROUTE_TURN_M.
+      const plan = (moreCrossings) => {
+        for (let d = REROUTE_STEP_M; d <= REROUTE_REACH_M; d += REROUTE_STEP_M) {
+          const p = from(ahead + d), sn = snapToGraph(g, p.x, p.y);
+          if (!sn || sn.d > REROUTE_SNAP_M || sn.edge.runway) break;   // the nose's line has left the taxiways, or met a runway
+          const r2 = routeFromStand(g, p, depEnd);
+          if (!r2 || r2.points.length < 2 || routeOffNose(r2, s.hdg) > REROUTE_OFF_NOSE) continue;
+          if (!moreCrossings && (r2.crossings || []).length > (r.crossings || []).length) continue;
+          // The lead: the taxiways' own way from the aircraft to that place (not the nose's straight line), so its
+          // points lie on the taxiways and its names are theirs (the code review's third look). It must itself leave
+          // ahead of the nose, be about as long as the step, and cross no runway.
+          const lead = routeToStand(g, [p0.x, p0.y], p);
+          if (!lead || lead.points.length < 2 || lead.lengthM > d * 1.5 + 20 || (lead.crossings && lead.crossings.length) || routeOffNose(lead, s.hdg) > REROUTE_OFF_NOSE) continue;
+          if (routeCost(r2) + lead.lengthM > routeCost(r) + REROUTE_MORE_M) continue;
+          const a = lead.points[lead.points.length - 1], b = r2.points[0];
+          const points = [...lead.points, ...(Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.5 ? r2.points.slice(1) : r2.points)];
+          // (the code review's fourth look: a way that goes ahead and then doubles back through the next junction
+          // is no better than the turn it replaces: Cologne Bonn's B10 turned 154° at 104 m)
+          if (routeTurnsBack({ points }, REROUTE_TURN_M)) continue;
+          const refs = lead.refs.slice(), lens = (lead.refLens || lead.refs.map(() => 0)).slice();
+          (r2.refs || []).forEach((ref, k) => {
+            const m = (r2.refLens && r2.refLens[k]) || 0;
+            if (refs.length && refs[refs.length - 1] === ref) lens[lens.length - 1] += m; else { refs.push(ref); lens.push(m); }
+          });
+          // (A place where two taxiways meet belongs to either: "Inner, J, Inner, J" at Zurich's A03. A run under 40 m
+          // between two runs of one name is that junction, not a taxiway rolled along.)
+          // Only where the lead meets the route, and never a runway's run (a crossing is always named).
+          const seam = lead.refs.length;
+          for (let k = Math.max(1, seam - 1); k + 1 < refs.length && k <= seam; k++) {
+            if (refs[k - 1] === refs[k + 1] && lens[k] < 40 && !/^RWY /.test(refs[k])) { lens[k - 1] += lens[k] + lens[k + 1]; refs.splice(k, 2); lens.splice(k, 2); break; }
+          }
+          r2.points = points; r2.lengthM += lead.lengthM; r2.refs = refs; r2.refLens = lens;
+          return r2;
+        }
+        return null;
+      };
+      r = plan(false) || plan(true) || r;
+    }
     Object.assign(r, { kind: 'out', stand: stand.ref, runway: depEnd.ident });
     r.textTo = `holding point${r.hold.ref ? ' ' + r.hold.ref : ''} for ${depEnd.ident}`; r.text = taxiText(r, r.textTo, airport);
     show(r);
@@ -464,7 +554,26 @@ export function createGateFlow({ sim, airports, findRunwayEnd = null, scene = nu
     }
     if (!best) { lastTry = [x, y]; say('No taxi route to a stand found'); return null; }
     lastTry = null;
-    const { ex, r, st } = best;
+    const { ex, st } = best;
+    let { r } = best;
+    // v0.7.9 (taxi, part 4): a stand whose nearest taxi line runs ahead of its nose, not where its lead-in begins
+    // (Lossiemouth's ramp spots, 16 m from D Apron's north-west taxilane, their lead-ins from taxiway D behind): the
+    // route went to that line, then turned back along the lead-in to its start, a hairpin. Where the route's end and the
+    // lead-in meet so (more than 10 m apart, a turn of more than 120 degrees), the route goes to the lead-in's start.
+    // Only at the airports in LEADIN_START: the same rule everywhere would change about 600 taxi-ins at 53 airports
+    // (measured with tests/v079-taxi-routes.mjs), a change for a later version to check airport by airport.
+    if (rule && LEADIN_START.has(ap.icao)) {
+      const L0 = leadIn(st), E = r.points[r.points.length - 1];
+      const hairpin = (P) => {
+        if (L0.length < 3) return false;
+        const [ax, ay] = L0[0], [bx, by] = L0[1], dx = ax - P[0], dy = ay - P[1], d = Math.hypot(dx, dy), l = dist(ax, ay, bx, by);
+        return d > 10 && l > 1 && (dx * (bx - ax) + dy * (by - ay)) / (d * l) < -0.5;
+      };
+      if (hairpin(E)) {
+        const r2 = routeToStand(g, [ex.O.x, ex.O.y], { x: L0[0][0], y: L0[0][1] });
+        if (r2 && !hairpin(r2.points[r2.points.length - 1])) r = r2;
+      }
+    }
     // On the runway to the exit, the exit, the route, then the stand's lead-in.
     const pts = [[x, y], [ex.I.x, ex.I.y], [ex.O.x, ex.O.y], ...r.points];
     const lead = leadIn(st);

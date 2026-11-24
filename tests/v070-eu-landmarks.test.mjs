@@ -23,7 +23,7 @@ const TRI_BUDGET = 6000, TOTAL_BUDGET = 60000;
 
 if (inRegion('europe', import.meta.url)) {
   const { LANDMARKS, EUROPE_LANDMARKS, EUROPE_CITY_BOXES, REGION_LANDMARKS, buildModel, landmarkOn, landmarkFootprints, createLandmarks } = await import('../src/world/landmarks.js');
-  const { MODELS, EUROPE_MODELS } = await import('../src/world/landmark-models.js');
+  const { MODELS, EUROPE_MODELS, NDG79 } = await import('../src/world/landmark-models.js');
   const byId = (id) => EUROPE_LANDMARKS.find((l) => l.id === id);
   const pos = (id) => buildModel(byId(id)).geometry.getAttribute('position');
   // local (east, north) of a scene vertex for a model built at grid bearing brg: local n = the part's own north
@@ -74,7 +74,9 @@ if (inRegion('europe', import.meta.url)) {
       }
       // (v0.7.8, FS_LANDMARKS78 on: the Bergisel jump follows its hill, `slope: true`: its lowest point is a support's foot
       // on the slope, not 0; tests/v078-landmarks.test.mjs checks each foot against the ground.)
-      if (!(L.slope && process.env.FS_LANDMARKS78 !== '0')) assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);
+      // (v0.7.9 looks, ?ndg79 on: Notre-Dame de la Garde's rock reaches 36 m under its base into the hill: tests/v079-looks-models.test.mjs.)
+      if (L.id === 'ndg' && NDG79) assert.ok(Math.abs(minY + 36) < 1e-6, `${L.id}: the rock's foot ${minY}`);
+      else if (!(L.slope && process.env.FS_LANDMARKS78 !== '0')) assert.ok(Math.abs(minY) < 1e-6, `${L.id}: base ${minY}`);
       assert.ok(Math.abs(maxY - L.heightM) / L.heightM < 0.01, `${L.id}: top ${maxY} against ${L.heightM}`);
       const tris = p.count / 3;
       counts[L.id] = tris;

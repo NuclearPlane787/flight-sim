@@ -4,6 +4,38 @@ What each update added and changed, newest first. Dates are in KST. Each commit 
 
 <!-- Agents: add new versions here, newest first, in the same style. -->
 
+## v0.7.9 · 2026-11-24 · The map's airports and bases, cities at night, and the leftovers
+
+- **Military bases have a colour of their own on the path map.** Ramstein, Lakenheath, Fairford, Lossiemouth and Rota are amber, their runways too. The four airports shared with an air base (Zaragoza, Komatsu, Kunsan and Cheongju) keep the airports' blue with a small amber diamond. The legend and the tooltip on an airport say "military base" or "joint civil and military".
+- **Zoom in on an airport and the map draws it in full:** the aprons and taxiways at their real widths; then the taxiways' names in sign-style boxes, the hold-short bars and the runway numbers at the thresholds; then the yellow centrelines and the stand numbers. The map now zooms in to 1 m a pixel (2 m before).
+- **Your taxi route is on the map.** At the gate, during the pushback and while taxiing, the map draws the route you were given from the aircraft to its end, labelled "HOLD 27R" or "STAND 38". It clears once you line up or reach the stand.
+- **Cities at night look like cities from above.**
+  - **The main roads are lit:** motorways, trunk and primary roads from OpenStreetMap as continuous lines of streetlights, brighter and whiter on the bigger roads. From 10,000 ft you see each city's road net, its ring roads and its bridges: Tokyo's expressway web, the Périphérique, the M25, the Han's bridges.
+  - **Cars on the motorways:** white headlights coming toward you and red tail lights going away, on the country's side of the road, moving with the clock and thinning out late at night.
+  - **Downtowns are brighter and denser; parks, rivers and water stay dark;** the suburbs' lights no longer sit on a grid. The colours follow the country: whiter LED in Korea and Japan, a mix in China, warmer sodium in Europe's streets.
+- **Towns by day, seen from afar,** are no longer flat grey ground. Past the buildings the ground shows the town's blocks, lots and roofs in each country's colours (slate in Britain, zinc and slate in Paris, terracotta in the south, Korea's apartment slabs, Japan's dark tiles); the real city centres are a darker, denser mass; parks and rivers stay green and blue. It shows most from 10,000 ft; from 3,000 ft the far ground's grey speckle is gone and neighbourhoods and avenues show faintly through the haze, most over Paris.
+- **Weather by place, the second half:**
+  - **You see the destination's weather ahead.** On a flight between two weathers the clouds are drawn where they are: from the cruise in clear air the destination's overcast stands on the horizon ahead and grows as you near it, where the sky stayed clear all round until you flew into it. Lightning flashes come from where the storm is.
+  - **Fronts can move.** In the Weather tab, a flight with two weathers has a "Front" row: Still, To departure or To destination. A moving front carries the destination's weather toward the departure (or away from it) at 30 kt along the route, so the weather at a place changes with the clock: wait at the gate and the storm arrives.
+- **Taxi routes:**
+  - **After a pushback the taxi route leaves ahead of the nose.** Where two ways to the runway were nearly as long, the route could start behind the aircraft, or go ahead and double straight back, so you had to turn round in a junction: about one pushback in twenty did (42 of 872 tried, at Narita, Fukuoka, Qingdao, Zurich, Lyon, Venice, Gibraltar and others). Now the route takes the way ahead where there is one within 800 m of the shortest, crossing no more runways than before where it can; sixteen of those 872 still turn round, where no taxiway leads on ahead. At Prague this was the corner where A1 meets Z: from stand 3 to runway 24 the taxi now stays on the pavement.
+  - **Glasgow:** a departure from 23 is sent to hold B1, as the published procedure has it; it was sent to a hold on a taxiway loop that led nowhere.
+  - **Lossiemouth:** after landing, the route turns into your ramp spot from the taxiway behind it; it passed the spot and doubled back.
+  - **Fairford:** the hardstands round the loops are joined to the taxiways by concrete.
+- **The gates' leftovers:**
+  - **Every type's nose wheel stands on the stop bar.** The bar is the A321's; a 787-9's nose wheel stopped 0.1 m short of it, a 777-300ER's 0.6 m and a parked widebody's 1.7 m.
+  - **Thirty-one more gates have a jet bridge** (2,330 of 2,480): a bridge round an elbow where the terminal's wall is ahead of the nose on its right, and a long link where the wall is 80 to 110 m from the door. No bridge passes over another stand, across another bridge or through a building.
+  - **A gate with nobody at it keeps its bridge drawn back** toward the terminal; it stood out in the open apron where a door would be.
+  - Four of Incheon's bridges reached 80 m and more behind their gates, toward an aircraft at another stand with the same number; mended.
+- **Looks:**
+  - **Park trees in the real city centres have round crowns,** where they were faceted mounds.
+  - **The Bergisel jump's in-run** is a ramp between walls on a deep girder with legs, not a thin strip.
+  - **Notre-Dame de la Garde stands on a grey limestone crag** above Marseille.
+  - **Kanazawa's centre is drawn building by building** (7,115 buildings, 965 before), so the old town round the castle reads as a dense city.
+  - **The Rock of Gibraltar's ridge is sharper** and higher at its north end, its east face steeper, shaped to its published heights (426 m at O'Hara's Battery, 412 m at the north summit).
+- **Not in this update** (each is in the roadmap): Cologne Bonn's south-west apron, Barcelona's harbour basin, Cheongju's centre (OpenStreetMap has no downtown there yet), and published values for the fifteen airports that are still estimates.
+- **Switches** on the page's address, each giving v0.7.8's look back: `?map79=0`, `?lights79=0`, `?gates79=0`, `?wxahead79=0`, `?towns79=0`, `?trees79=0`, `?bergisel79=0`, `?ndg79=0`.
+
 ## v0.7.8 · 2026-11-23 · The gates, the runway crossings, landmarks, parks and East Asia's ground
 
 - **The gates fit the aircraft at every airport.** The jet bridge and the stop bar stood 21 m ahead of the aircraft they served (v0.7.6 mended four airports); now, at all seventy-two:

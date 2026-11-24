@@ -11,7 +11,7 @@
 // Styles: sky-window.css (fssw-* for the frame, fslw-* shared with the Weight tab, fswx-* for this).
 
 import { PRESETS, presetWeather, weatherForm, weatherFromForm, weatherCheck, metarOf, canPlaceOnFinal, COVERS, coverOf, oktaOf, endContext } from '../sim/weather-presets.js';
-import { normalizeWeather, runwayStateOf, endWeather, withEndWeather, hasTwoEnds } from '../sim/weather.js';
+import { normalizeWeather, runwayStateOf, endWeather, withEndWeather, hasTwoEnds, withFront, frontKtOf } from '../sim/weather.js';
 // v0.7.4, weather by place: the Departure / Destination switch at the top. The form, the presets, Apply and the
 // METAR line are those of the end it shows (its weather alone: endWeather()); Apply and a preset set that end's
 // and keep the other's (withEndWeather(), at the ends' places in ctx.ends). The other end's METAR is the dim
@@ -48,6 +48,8 @@ function linkCss() {
 
 // How much of a 0..1 setting a button stands for: the value it sets, and the band it lights for any value.
 const RATE = [['light', 'Light', 0.25], ['moderate', 'Moderate', 0.5], ['heavy', 'Heavy', 0.85]];
+// v0.7.9: the speed the Weather tab gives a moving front (kt along the route; weather.js allows up to 60 either way).
+export const FRONT_STEP_KT = 30;
 const rateBand = (r) => (r < 0.33 ? 'light' : r < 0.66 ? 'moderate' : 'heavy');
 const LIGHTNING = [['none', 'None', 0], ['occasional', 'Occasional', 0.35], ['frequent', 'Frequent', 0.8]];
 const lightningBand = (v) => (v <= 0 ? 'none' : v < 0.5 ? 'occasional' : 'frequent');
@@ -89,7 +91,7 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
       <span class="fssw-sub" data-o="name"></span>
       <button class="fssw-x" data-a="close" title="Close (\\ or Esc)">${ICON.x}</button></div>
     <div class="fssw-body fswx-body">
-      <div class="fswx-ends" style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px">${seg('end', [['both', 'Both ends'], ['dep', 'Departure'], ['dest', 'Destination']])}<span class="fswx-u fswx-dim" data-o="endNote" style="flex-basis:100%"></span></div>
+      <div class="fswx-ends" style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px">${seg('end', [['both', 'Both ends'], ['dep', 'Departure'], ['dest', 'Destination']])}<span class="fswx-u fswx-dim" data-o="endNote" style="flex-basis:100%"></span><span data-o="frontRow" style="flex-basis:100%;display:flex;align-items:center;gap:6px" hidden><span class="fswx-u fswx-dim">Front</span>${seg('front', [['0', 'Still'], [String(FRONT_STEP_KT), 'To departure'], [String(-FRONT_STEP_KT), 'To destination']])}<span class="fswx-u fswx-dim" data-o="frontNote"></span></span></div>
       <div class="fswx-metar" data-o="metar"></div>
       <div class="fswx-metar fswx-metar2" data-o="metar2" style="opacity:0.55;font-size:11px"></div>
       <div class="fswx-presets">${PRESETS.map((p) => `<button class="fssw-b" data-p="${p.id}" title="${p.name}: ${p.note}">${p.short}</button>`).join('')}</div>
@@ -196,6 +198,16 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
     const other = end === 'dep' ? 'dest' : 'dep';
     const m2 = canSwitch() ? metarOf(normalizeWeather(endWeather(all, other)), icaoOf(other), endContext(ctxAll, other)) : '';
     if (o('metar2').textContent !== m2) o('metar2').textContent = m2;
+    // v0.7.9: the front between the two weathers, still or moving along the route (weather.js blendWeight()'s frontKt).
+    const two = hasTwoEnds(all), fk = frontKtOf(all);
+    if (o('frontRow').hidden !== !two) o('frontRow').hidden = !two;
+    if (two) {
+      paintSeg('front', fk > 0 ? String(FRONT_STEP_KT) : fk < 0 ? String(-FRONT_STEP_KT) : '0');
+      for (const b of segOf('front').querySelectorAll('button')) b.disabled = crashed;
+      const fn = fk > 0 ? `${icaoOf('dest') || 'the destination'}'s weather comes toward ${icaoOf('dep') || 'the departure'} at ${Math.abs(fk)} kt`
+        : fk < 0 ? `${icaoOf('dep') || 'the departure'}'s weather follows toward ${icaoOf('dest') || 'the destination'} at ${Math.abs(fk)} kt` : '';
+      if (o('frontNote').textContent !== fn) o('frontNote').textContent = fn;
+    }
     const note = !canSwitch() ? '' : end === 'both' ? (hasTwoEnds(all) ? 'Apply sets both to this' : 'One weather on the whole route')
       : hasTwoEnds(all) ? 'Blends between the two along the route' : 'Apply sets this end only';
     if (o('endNote').textContent !== note) o('endNote').textContent = note;
@@ -300,6 +312,15 @@ export function createWeatherWindow(root, { get, onapply } = {}) {
     if (sg) {
       const v = t.dataset.v;
       if (sg.dataset.seg === 'end') { win.showEnd(v); return; }
+      if (sg.dataset.seg === 'front') {   // v0.7.9: set at once, on the whole route's weather (the form's edits stay as they are)
+        if (crashed || !hasTwoEnds(all)) return;
+        // (the sim's time now: the front goes on from where it stands, the code review's first finding)
+        const r = onapply?.(withFront(all, Number(v), now().t || 0)) || { ok: true };
+        if (r.ok !== false) takeNow(now());
+        setMsg(r.ok !== false ? (Number(v) ? 'The front moves.' : 'The front stands still.') : (r.text || 'Not applied.'), r.ok !== false ? 'ok' : 'bad');
+        render();
+        return;
+      }
       switch (sg.dataset.seg) {
         case 'turbulence': form.turbulence = v; break;
         case 'precipKind': form.precipKind = v; if (v !== 'none' && !(form.precipRate > 0)) form.precipRate = 0.5; break;

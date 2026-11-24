@@ -11,7 +11,7 @@
 
 import { isaInto, columnInto, indicatedAltitude, casFromTasP, tasFromCasP, RHO0, T0, STD_INHG_HPA } from './atmosphere.js';
 import { rulesAt } from '../world/region.js';   // v0.6.0: the transition by place (Korea's everywhere with the flag off)
-import { compileWeather, isDefaultWeather, normalizeWeather, windAt, windTurnAt, newWind, microburstInto, localWeather } from './weather.js';
+import { compileWeather, isDefaultWeather, normalizeWeather, windAt, windTurnAt, newWind, microburstInto, localWeather, burstLambda } from './weather.js';
 import { leverToPhi, createEngines } from './engines.js';
 import { kitFor, DEFAULT_TYPE } from './types.js';
 import { resolveDef, isDesign } from './designs.js';
@@ -200,7 +200,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // The air here: ISA by the very same arithmetic as before unless the day isn't standard.
   // v0.7.4: the weather's place-bound parts where the aircraft is (weather by place: the departure's, the
   // destination's or the blend between; a single weather is wxC itself, so its arithmetic is as before).
-  const wxL = () => localWeather(wxC, X.px, X.py);
+  const wxL = () => localWeather(wxC, X.px, X.py, X.t);   // (v0.7.9: at the sim's time, for a front that moves)
   function atmAt(h, out) {
     if (wxC === null) return isaInto(h, out);
     const L = wxL();
@@ -897,6 +897,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // a kilometre starting in the warning zone. F = the tailwind's rise over that kilometre / (g × the time to fly it)
   // + the mean downdraft / the airspeed, as the reactive detector's.
   const pwsBurst = { n: 0, e: 0, d: 0 }, pwsTail = new Float64Array(50), pwsDown = new Float64Array(50);
+  let pwsLam = new Float64Array(64);   // v0.7.9: each burst's strength at this scan's time (burstLambda(): a moving front)
   function pwsScan(gs, gamma, agl) {
     // The time to fly the kilometre at the speed it will be flown: no slower than 70 m/s (about 136 kt), so on the
     // take-off roll it's the lift-off's, not the roll's.
@@ -904,11 +905,14 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const tn = gs > 5 ? X.vn / gs : R[0], te = gs > 5 ? X.ve / gs : R[3];
     const tl = Math.hypot(tn, te) || 1, un = tn / tl, ue = te / tl;
     const step = 100, n0 = Math.round(PWS_NEAR_M / step), n1 = Math.round((PWS_FAR_M + 1000) / step);
+    const nb = wxC.bursts.length;
+    if (pwsLam.length < nb) pwsLam = new Float64Array(nb * 2);
+    for (let k = 0; k < nb; k++) pwsLam[k] = burstLambda(wxC, wxC.bursts[k], X.t);
     for (let i = n0; i <= n1; i++) {
       const s = i * step, h = Math.max(15, agl + s * Math.tan(clamp(gamma, -0.1, 0.15)));
-      let wn = 0, we = 0, wd = 0;
+      let wn = 0, we = 0, wd = 0, bi = 0;
       for (const b of wxC.bursts) {
-        microburstInto(X.px + ue * s - b.x, X.py + un * s - b.y, h, b.R, b.lambda, pwsBurst);
+        microburstInto(X.px + ue * s - b.x, X.py + un * s - b.y, h, b.R, pwsLam[bi++], pwsBurst);
         wn += pwsBurst.n; we += pwsBurst.e; wd += pwsBurst.d;
       }
       pwsTail[i - n0] = wn * un + we * ue; pwsDown[i - n0] = wd;

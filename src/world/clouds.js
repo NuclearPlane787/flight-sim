@@ -26,6 +26,7 @@
 import { magToGrid, convergenceAt } from './frame.js';
 import * as THREE from '../../vendor/three.module.js';
 import { strikesBetween } from '../sim/lightning.js';
+import { hasTwoEnds, endWeather, blendWeight, frontShift } from '../sim/weather.js';
 import { EARTH_RADIUS } from './frame.js';
 import { UNIFORMS_GLSL, NOISE_GLSL } from './glsl.js';
 import { ATMOS_GLSL } from './sky.js';
@@ -53,6 +54,64 @@ const SHAFT_MAX_ALPHA = 0.85;
 // After every layer above the camera (-500 and below) and before every layer below it (500 and up) and the ground's
 // transparent things, so a shaft shows in front of a ceiling and through the holes of a layer under the aircraft.
 export const SHAFT_ORDER = -400;
+
+// ------------------------------------------------------------------ v0.7.9: the far end's weather drawn ahead
+// briefs/V0-7-9.md part 9. Until now the clouds were the camera's weather everywhere: a flight toward a storm saw a
+// clear sky to the horizon until it reached the blend. With two ends (weather by place) each layer is now drawn BY
+// PLACE: its cover, base and top at a point are the two ends' blended by that point's weight (weather.js's
+// blendWeight(), the front's shift by the sim's time included), in the shader, so the destination's overcast stands
+// ahead from the cruise and the departure's stays behind. The layers pair by the order of their bases, as
+// blendSettings() pairs them, so at the camera the field is what the camera's own weather draws. The flashes come
+// from where the storm is: strikes are kept by the lightning at their own place. A single weather draws as before,
+// with the same shaders. ?wxahead79=0 (node FS_WXAHEAD79=0) gives v0.7.8's clouds back: the camera's weather all round.
+export const WXAHEAD79 = (() => {
+  try {
+    const q = (typeof location !== 'undefined' && location && location.search) || '';
+    if (/[?&]wxahead79=0(&|$)/.test(q)) return false;
+  } catch (e) { /* no location */ }
+  try { if (typeof process !== 'undefined' && process.env && process.env.FS_WXAHEAD79 === '0') return false; } catch (e) { /* no process */ }
+  return true;
+})();
+export const THR_NONE = 1.05;        // a threshold no cloud passes (the noise's octaves sum to 1): an end with no layer where the other has one
+// The threshold for a cover in oktas that needn't be whole (the blend's): COVER_THR's, straight between its entries,
+// THR_NONE at none. The route's fragment shader has the same table (ROUTE_THR_GLSL).
+export function routeThr(okta) {
+  const k = Math.min(Math.max(okta, 0), 8), i = Math.floor(k), j = Math.min(i + 1, 8);
+  const at = (n) => (n <= 0 ? THR_NONE : COVER_THR[n]);
+  return at(i) + (at(j) - at(i)) * (k - i);
+}
+// The two ends' layers, paired: [{ seed, scale, A: { okta, baseM, topM, thr, cov }, B: {…} }], lowest first as the
+// destination's bases lie. `seed` and `scale` are layerParams()'s for the pair's index, as the camera's weather has them.
+export function routeLayers(s) {
+  if (!hasTwoEnds(s)) return [];
+  const a = endWeather(s, 'dep'), b = endWeather(s, 'dest');
+  const la = (a.clouds || []).slice().sort((p, q) => p.baseFt - q.baseFt), lb = (b.clouds || []).slice().sort((p, q) => p.baseFt - q.baseFt);
+  const end = (c, o) => {
+    const k = c || { okta: 0, baseFt: o.baseFt, topFt: o.topFt };
+    const okta = Math.round(Math.min(Math.max(k.okta, 0), 8));
+    const baseM = Math.max(k.baseFt, 0) * FT, topM = Math.max(k.topFt, k.baseFt + 150) * FT;
+    return { okta, baseM, topM, thr: routeThr(okta), cov: okta / 8 };
+  };
+  const out = [];
+  for (let i = 0; i < Math.max(la.length, lb.length) && out.length < MAX_LAYERS; i++) {
+    const A = end(la[i], lb[i]), B = end(lb[i], la[i]);
+    if (!(A.okta > 0) && !(B.okta > 0)) continue;
+    const P = layerParams({ okta: Math.max(A.okta, B.okta), baseFt: 0, topFt: 1000 }, i, b.seed);
+    out.push({ seed: P.seed, scale: P.scale, A, B });
+  }
+  return out;
+}
+// A paired layer at weight w (0 the departure's, 1 the destination's), as layerParams() gives one: for the fog, the
+// surfaces' order, the bolt's and the shafts' tops. `into` is reused.
+export function routeLayerAt(pair, w, into = {}) {
+  const m = (p, q) => p + (q - p) * w;
+  // (at an end, that end's own cover: an overcast departure is solid at w = 0, the code review's sixth finding)
+  into.okta = w <= 0 ? pair.A.okta : w >= 1 ? pair.B.okta : pair.A.okta >= 8 && pair.B.okta >= 8 ? 8 : Math.min(7, Math.round(m(pair.A.okta, pair.B.okta)));
+  into.baseM = m(pair.A.baseM, pair.B.baseM); into.topM = m(pair.A.topM, pair.B.topM);
+  into.thr = routeThr(m(pair.A.okta, pair.B.okta)); into.seed = pair.seed; into.scale = pair.scale;
+  if (into.driftX === undefined) { into.driftX = 0; into.driftY = 0; }
+  return into;
+}
 
 // ------------------------------------------------------------------ the noise (pure: the same in JS and GLSL)
 
@@ -310,6 +369,56 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+// v0.7.9 (WXAHEAD79): the same two shaders for a layer drawn by place. The vertex shader finds its point's weight and
+// moves it to the layer's height there; the fragment shader takes its threshold and its far cover from the weight.
+// Each replace is of a line that must be there once (routeVariant() throws otherwise).
+function routeVariant(src, pairs) {
+  let out = src;
+  for (const [a, b] of pairs) {
+    if (out.split(a).length !== 2) throw new Error('clouds.js routeVariant: anchor not found once: ' + a.slice(0, 60));
+    out = out.replace(a, b);
+  }
+  return out;
+}
+export const CLOUD_VERT_ROUTE = routeVariant(CLOUD_VERT, [
+  ['varying vec3 vRel;\nvoid main() {', `${UNIFORMS_GLSL}
+uniform vec4 uRoute;        // the departure's place (map x, y) and the route's vector over its length squared
+uniform float uRouteShift;  // the front's shift along the route by now (weather.js frontShift())
+uniform vec2 uAlt;          // this surface's height at the departure's end and at the destination's, less the mesh's own
+varying vec3 vRel;
+varying float vW;
+void main() {`],
+  ['  vRel = w.xyz - cameraPosition;', `  vRel = w.xyz - cameraPosition;
+  vec2 mapV = uOrigin + vec2(uCamPos.x + vRel.x, -(uCamPos.z + vRel.z));
+  float fV = clamp((dot(mapV - uRoute.xy, uRoute.zw) + uRouteShift - 1.0 / 3.0) * 3.0, 0.0, 1.0);
+  vW = fV * fV * (3.0 - 2.0 * fV);
+  w.y += mix(uAlt.x, uAlt.y, vW);
+  vRel.y = w.y - cameraPosition.y;`],
+]);
+export const CLOUD_FRAG_ROUTE = routeVariant(CLOUD_FRAG, [
+  ['uniform float uIsTop, uThr, uCov, uSeed, uScale, uSolid, uFlash;', `uniform float uIsTop, uSeed, uScale, uFlash;
+uniform vec2 uOkta2;        // the layer's cover in oktas at the departure's end and at the destination's
+varying float vW;
+const float ROUTE_THR[9] = float[9](${[THR_NONE, ...COVER_THR.slice(1)].map((v) => v.toFixed(4)).join(', ')});
+float routeThr(float okta) {
+  float k = clamp(okta, 0.0, 8.0);
+  int i = int(floor(k)), j = min(i + 1, 8);
+  return mix(ROUTE_THR[i], ROUTE_THR[j], k - float(i));
+}`],
+  [`  float cov = uSolid > 0.5 ? 1.0 : smoothstep(uThr - ${SOFT.toFixed(3)}, uThr + ${SOFT.toFixed(3)}, n);`,
+    `  float oktaHere = mix(uOkta2.x, uOkta2.y, vW);
+  float uThr = routeThr(oktaHere);
+  float uSolid = 1.0 - smoothstep(-0.2, 0.36, uThr);   // how nearly overcast the layer is here
+  // Under one okta (where the far end's layer begins, which no single weather has) the first clouds are thin and
+  // soft-edged: seen from the cruise they were hard white patches lying on the land (the pictures-only review).
+  float thin79 = 1.0 - smoothstep(0.0, 1.0, oktaHere);
+  float soft79 = ${SOFT.toFixed(3)} * (1.0 + 3.0 * thin79);
+  float cov = smoothstep(uThr - soft79, uThr + soft79, n) * (1.0 - 0.55 * thin79);`],
+  ['  cov = mix(cov, uCov, far);', '  cov = mix(cov, oktaHere / 8.0, far);'],
+  ['  float thick = uSolid > 0.5 ? smoothstep(0.32, 0.72, n) : clamp((n - uThr) / 0.20, 0.0, 1.0);',
+    '  float thick = mix(clamp((n - uThr) / 0.20, 0.0, 1.0), smoothstep(0.32, 0.72, n), uSolid);'],
+]);
+
 const FOG_VERT = /* glsl */ `
 void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -552,6 +661,8 @@ export function createClouds(scene, uniforms) {
     uFlash: { value: 0 },
     uFlashPos: { value: new THREE.Vector2() },
   };
+  // v0.7.9: the route's uniforms, one set for every surface drawn by place.
+  const routeU = { uRoute: { value: new THREE.Vector4() }, uRouteShift: { value: 0 } };
 
   const disc = discGeometry();
   function surface(isTop) {
@@ -573,7 +684,21 @@ export function createClouds(scene, uniforms) {
     mesh.visible = false;
     mesh.name = isTop ? 'cloud-top' : 'cloud-base';
     scene.add(mesh);
-    return { mesh, mat, own };
+    // v0.7.9: the same surface drawn by place (two ends' weather): its own material, made with it, used only then.
+    let matR = null, ownR = null;
+    if (WXAHEAD79) {
+      ownR = { uIsTop: { value: isTop ? 1 : 0 }, uOkta2: { value: new THREE.Vector2() },
+        uAlt: { value: new THREE.Vector2() }, uSeed: { value: 0 }, uScale: { value: CLOUD_SCALE_M } };
+      matR = new THREE.ShaderMaterial({
+        uniforms: Object.assign({}, uniforms, shared, routeU, ownR),
+        vertexShader: CLOUD_VERT_ROUTE,
+        fragmentShader: CLOUD_FRAG_ROUTE,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+    }
+    return { mesh, mat, own, matR, ownR };
   }
   const surfaces = [];
   for (let i = 0; i < MAX_LAYERS; i++) surfaces.push({ base: surface(false), top: surface(true) });
@@ -660,6 +785,11 @@ export function createClouds(scene, uniforms) {
 
   let settings = null;
   let layers = [];
+  // v0.7.9: the two ends' weather (main.js hands it over with setRoute()), its paired layers, and the layers at the
+  // camera this frame (reused objects). null: a single weather, or the switch off.
+  let route = null;
+  const lightAt = { seed: 0, lightning: 0 };   // the settings strikesBetween() takes, for the route's storm
+  const hashT = (t) => ((Math.imul((t * 1000) | 0, 0x9e3779b1) ^ 0x5bd1e995) >>> 0) / 4294967296;
   let shaftCount = 0, shaftRefX = 0, shaftRefY = 0;   // the instances are stored about the first cell
   let lightningOn = false;
   let lastT = NaN;
@@ -729,21 +859,70 @@ export function createClouds(scene, uniforms) {
       }
       buildShafts(s?.microbursts || []);
       shaftU.uShaftTop.value = shaftTopM(layers);
-      if (!layers.length && !lightningOn && !shaftCount) hideAll();
+      if (!layers.length && !lightningOn && !shaftCount && !route) hideAll();
+    },
+
+    // v0.7.9 (WXAHEAD79): the flight's whole weather, two ends or one (sim.weather itself, not the camera's): with two
+    // ends the layers are drawn by place from now on. The same object again does nothing.
+    setRoute(s) {
+      if (!WXAHEAD79) return;
+      if (route ? route.settings === s : !hasTwoEnds(s)) return;
+      if (!hasTwoEnds(s)) {
+        route = null;
+        for (const S of surfaces) { S.base.mesh.material = S.base.mat; S.top.mesh.material = S.top.mat; }
+        this.setWeather(settings);
+        return;
+      }
+      const pairs = routeLayers(s), a = endWeather(s, 'dep'), b = endWeather(s, 'dest');
+      // (the drift's wind and the place it is read at are the destination's for the whole flight, as weatherAt()'s `cloud`)
+      route = { settings: s, ends: s.ends, pairs, local: pairs.map(() => ({})), lA: a.lightning || 0, lB: b.lightning || 0,
+        cloud: { aloft: { ...b.aloft }, refX: b.refX, refY: b.refY, trueWind: b.trueWind === true } };
+      const e = s.ends, dx = e.bx - e.ax, dy = e.by - e.ay, L2 = dx * dx + dy * dy || 1;
+      routeU.uRoute.value.set(e.ax, e.ay, dx / L2, dy / L2);
+      for (let i = 0; i < MAX_LAYERS; i++) {
+        const P = pairs[i];
+        for (const sf of [surfaces[i].base, surfaces[i].top]) {
+          sf.mesh.material = P ? sf.matR : sf.mat;
+          if (!P) continue;
+          sf.ownR.uOkta2.value.set(P.A.okta, P.B.okta);
+          sf.ownR.uSeed.value = P.seed; sf.ownR.uScale.value = P.scale;
+        }
+      }
     },
 
     update({ camera, origin, state, paused = false }) {
-      if (!layers.length && !lightningOn && !shaftCount) { if (stats.drawCalls) hideAll(); return; }
+      if (!layers.length && !lightningOn && !shaftCount && !(route && (route.pairs.length || route.lA > 0 || route.lB > 0))) { if (stats.drawCalls) hideAll(); return; }
       const t = Number.isFinite(state?.t) ? state.t : 0;
       camera.updateMatrixWorld();
       camPos.setFromMatrixPosition(camera.matrixWorld);
       const mapX = origin.x + camPos.x, mapY = origin.y - camPos.z;
       const camAlt = camPos.y;
+      // v0.7.9: by place. The layers at the camera, for the fog, the order and the tops; the front's shift for the shader.
+      let stormOn = lightningOn, stormX = mapX, stormY = mapY;
+      if (route) {
+        const wCam = blendWeight(route.ends, mapX, mapY, t);
+        layers = route.local;
+        for (let i = 0; i < route.pairs.length; i++) routeLayerAt(route.pairs[i], wCam, route.local[i]);
+        routeU.uRouteShift.value = frontShift(route.ends, t);
+        shaftU.uShaftTop.value = shaftTopM(layers);
+        // The storm's flashes: where the lightning is. Strikes are thrown round the nearest place where the stormier
+        // end's weather has the upper hand (the camera itself once it is there), and each is kept by the lightning at
+        // its own place.
+        const lMax = Math.max(route.lA, route.lB);
+        stormOn = lMax > 0;
+        if (stormOn && route.lA !== route.lB) {
+          const e = route.ends, dx = e.bx - e.ax, dy = e.by - e.ay, L = Math.hypot(dx, dy) || 1;
+          const f = ((mapX - e.ax) * dx + (mapY - e.ay) * dy) / (L * L) + routeU.uRouteShift.value;
+          const want = route.lB > route.lA ? Math.max(f, 0.6) : Math.min(f, 0.4);
+          stormX = mapX + (dx / L) * (want - f) * L; stormY = mapY + (dy / L) * (want - f) * L;
+        }
+        lightAt.seed = settings ? settings.seed | 0 : route.settings.seed | 0; lightAt.lightning = lMax;
+      }
 
       // The clouds drift with the wind aloft, by sim time: a pure function of it.
       let driftX = 0, driftY = 0;
       // (v0.7.4: weather by place's look carries one drift wind for the whole flight, `cloud`.)
-      const D = settings?.cloud || settings;
+      const D = route ? route.cloud : (settings?.cloud || settings);
       const a = D?.aloft;
       if (a && a.kt > 0) {
         const rx = D.refX || 0, ry = D.refY || 0;
@@ -759,12 +938,14 @@ export function createClouds(scene, uniforms) {
 
       // ---- lightning (sim time: no strikes while the sim is stopped)
       let flash = 0, scene_flash = 0, flashX = 0, flashY = 0;
-      if (lightningOn) {
+      if (stormOn) {
         const window = Number.isFinite(lastT) ? t - lastT : 0;
         if (!paused && window > 0 && window < 3) {
-          strikesBetween(settings, lastT, t, mapX, mapY, strikes);
+          strikesBetween(route ? lightAt : settings, lastT, t, stormX, stormY, strikes);
           for (const s of strikes) {
-            const sd = (Math.imul(s.t * 1000 | 0, 16807) + (settings.seed | 0)) | 0;
+            // (v0.7.9, by place: a strike is kept by the lightning where it falls, as a share of the stormier end's)
+            if (route && hashT(s.t) * lightAt.lightning >= route.lA + (route.lB - route.lA) * blendWeight(route.ends, s.x, s.y, t)) continue;
+            const sd = (Math.imul(s.t * 1000 | 0, 16807) + ((route ? lightAt.seed : settings.seed) | 0)) | 0;
             const st = { t: s.t, x: s.x, y: s.y, power: s.power, ground: s.ground, seed: sd };
             active.push(st);
             if (active.length > MAX_ACTIVE) active.shift();
@@ -818,8 +999,8 @@ export function createClouds(scene, uniforms) {
         const l = layers[i], S = surfaces[i];
         if (!l) { S.base.mesh.visible = false; S.top.mesh.visible = false; continue; }
         const ord = surfaceOrder(l, i, camAlt);
-        place(S.base, l, l.baseM, ord.base, ord.orderBase);
-        place(S.top, l, l.topM, ord.top, ord.orderTop);
+        place(S.base, l, l.baseM, ord.base, ord.orderBase, route ? route.pairs[i] : null, false);
+        place(S.top, l, l.topM, ord.top, ord.orderTop, route ? route.pairs[i] : null, true);
         if (ord.base) { draws++; tris += disc.index.count / 3; }
         if (ord.top) { draws++; tris += disc.index.count / 3; }
       }
@@ -854,11 +1035,15 @@ export function createClouds(scene, uniforms) {
       stats.drawCalls = draws + (flashOn ? 1 : 0) + (boltOn ? 1 : 0);
       stats.triangles = tris + (flashOn ? 1 : 0) + (boltOn ? boltGeo.drawRange.count / 3 : 0);
 
-      function place(sf, l, alt, on, order) {
+      function place(sf, l, alt, on, order, pair, isTop) {
         if (sf.mesh.visible !== on) sf.mesh.visible = on;
         if (!on) return;
         sf.mesh.position.set(camPos.x, alt, camPos.z);
         sf.mesh.renderOrder = order;
+        if (pair) {   // v0.7.9: by place: the surface's height at each end, about the mesh's own (the camera's)
+          sf.ownR.uAlt.value.set((isTop ? pair.A.topM : pair.A.baseM) - alt, (isTop ? pair.B.topM : pair.B.baseM) - alt);
+          return;
+        }
         const o = sf.own;
         o.uThr.value = l.thr; o.uCov.value = l.okta / 8; o.uSeed.value = l.seed; o.uScale.value = l.scale;
         o.uSolid.value = l.okta >= 8 ? 1 : 0;
