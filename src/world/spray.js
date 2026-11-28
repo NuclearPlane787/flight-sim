@@ -24,6 +24,7 @@ export function sprayAmount(runway, rain, gs, onGround) {
 const VERT = /* glsl */ `
   attribute vec4 aS;            // leg (0 nose, 1 left, 2 right), phase, across (-1..1), up (0..1)
   uniform vec3 uLeg0, uLeg1, uLeg2;
+  uniform vec3 uOn;             // v0.8.0: 1 for each leg down, 0 for one up (a gear failure)
   uniform float uT, uGs, uAmt, uSnow;
   uniform vec3 uSunDir, uSunColor, uSkyAmb;
   uniform float uNight;
@@ -44,7 +45,7 @@ const VERT = /* glsl */ `
     mv.xy += (position.xy - 0.5) * size;
     gl_Position = projectionMatrix * mv;
     vUv = position.xy;
-    float legAmt = aS.x < 0.5 ? 0.45 : 1.0;   // the nose wheel throws less
+    float legAmt = (aS.x < 0.5 ? 0.45 : 1.0) * (aS.x < 0.5 ? uOn.x : aS.x < 1.5 ? uOn.y : uOn.z);   // the nose wheel throws less
     vA = uAmt * legAmt * smoothstep(0.0, 0.08, age) * (1.0 - age) * (1.0 - age) * 0.46;
     float sunUp = max(uSunDir.y, 0.0);
     vCol = (uSkyAmb * 1.25 + uSunColor * sunUp * 1.1) * (uSnow > 0.5 ? 1.05 : 0.9) + vec3(0.02) * (1.0 - uNight);
@@ -84,6 +85,7 @@ export function createSpray(GEAR, uniforms = {}) {
   const leg = (l) => toModel(l.x, l.y, l.z);
   const u = {
     uLeg0: { value: leg(GEAR.nose) }, uLeg1: { value: leg(GEAR.left) }, uLeg2: { value: leg(GEAR.right) },
+    uOn: { value: new THREE.Vector3(1, 1, 1) },
     uT: { value: 0 }, uGs: { value: 0 }, uAmt: { value: 0 }, uSnow: { value: 0 },
     uSunDir: uniforms.uSunDir ?? { value: new THREE.Vector3(0, 1, 0) },
     uSunColor: uniforms.uSunColor ?? { value: new THREE.Color(1, 1, 1) },
@@ -97,8 +99,10 @@ export function createSpray(GEAR, uniforms = {}) {
   object.visible = false;
   object.renderOrder = 25;
 
-  function update({ gs = 0, onGround = false, runway = 'dry', rain = 0, dt = 1 / 60, paused = false } = {}) {
+  function update({ gs = 0, onGround = false, runway = 'dry', rain = 0, dt = 1 / 60, paused = false, legs = null } = {}) {
     const amt = sprayAmount(runway, rain, gs, onGround);
+    // v0.8.0: no spray from a leg that isn't down (legs: state.gearLegs, nose, left, right; absent: all down).
+    if (legs) u.uOn.value.set(legs[0] > 0.98 ? 1 : 0, legs[1] > 0.98 ? 1 : 0, legs[2] > 0.98 ? 1 : 0);
     object.visible = amt > 0.01;
     if (!object.visible) return;
     if (!paused) u.uT.value = (u.uT.value + dt) % 600;

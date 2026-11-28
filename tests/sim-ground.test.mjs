@@ -118,8 +118,15 @@ test('crashes: water, off-runway, gear-up and gear-breaking landings', () => {
   assert.ok(water.events.some((e) => e.type === 'crash'));
   const grass = descendInto(() => ({ h: 0, kind: 'ground' }));
   assert.equal(grass.s.crashed, 'ran off the runway');
+  // v0.8.0 (briefs/V0-8-0.md, part 6: "A gear-up landing within limits is survivable whether a failure caused it or
+  // the gear was forgotten"): this gentle arrival (about 130 ft/min at the first touch) crashed until v0.7.9 at the
+  // nacelles' first touch; it now scrapes and slides on them. Flown into the ground with no flare it is the crash it
+  // always was. (The expectation changed on purpose, for this case alone.)
   const belly = descendInto(undefined, { gearDown: false });
-  assert.ok(belly.s.crashed && /impact|strike/.test(belly.s.crashed), belly.s.crashed);
+  assert.equal(belly.s.crashed, null);
+  assert.ok(belly.s.scraping && belly.events.some((e) => e.type === 'scrape') && belly.events.some((e) => e.type === 'touchdown'), 'it scraped, and touched down once');
+  const bellyHard = descendInto(undefined, { gearDown: false, hard: true });
+  assert.ok(bellyHard.s.crashed && /impact|strike/.test(bellyHard.s.crashed), bellyHard.s.crashed);
   const hard = descendInto(undefined, { hard: true });
   assert.ok(/collapsed/.test(hard.s.crashed), hard.s.crashed);
 });

@@ -7,3 +7,5 @@ reference/raw/
 reference/docs/*.pdf
 # Python's bytecode cache (tools/*.py)
 __pycache__/
+# The baked world, since v0.8.0 its own repository (github.com/NuclearPlane787/flight-sim-data), cloned as data/.
+/data/

@@ -60,6 +60,13 @@ export function verdict(result) {
   const wreck = part(parts, 'Would have crashed');
   if (wreck) return `Without Indestructible, that was a crash (${result?.damage?.[0] || wreck.value}).`;
   if (result?.offRunway || part(parts, 'On a runway')) return "That wasn't a runway.";
+  // v0.8.0: down with the gear not all there, and stopped in one piece (result.gear: score.js's gearLanding())
+  if (result?.gear) {
+    const G = result.gear;
+    if (!G.failure) return 'The gear was still up. Everyone walks away, but the aircraft won’t fly for a while.';
+    if (G.legsUp?.length === 3) return 'Down on the belly and stopped in one piece. Evacuate.';
+    return 'Stopped in one piece on what was left. Evacuate.';
+  }
   if (vs >= 600 || g >= 2.3) return 'That one will need an inspection.';
   if (Number.isFinite(along) && along < 0) return 'Short of the threshold. Far too close.';
   if (part(parts, 'On the grass')) return 'Off the side, onto the grass.';
@@ -114,6 +121,16 @@ export function partsHtml(parts) {
       + `<span class="bar"><i style="width:${Math.max(2, Math.round(partFrac(p) * 1000) / 10)}%;background:${col}"></i></span>`
       + `<span class="p" style="color:${col}">${txt}</span></div>`;
   }).join('')}</div>`;
+}
+
+// v0.8.0: the line under the touchdown for a landing with the gear not all down (result.gear): what kind it was and
+// what scraped ("Gear-up landing: on the engines and the tail"). '' for a normal landing.
+const SCRAPED_NAMES = { 'engine strike': 'the engines', 'tail strike': 'the tail', 'belly impact': 'the belly', 'nose impact': 'the nose', 'tank strike': 'the wing tanks' };
+export function gearLine(gear) {
+  if (!gear || !gear.text) return '';
+  const on = [...new Set((gear.scraped || []).map((r) => SCRAPED_NAMES[r] || r))];
+  const tail = on.length ? `: on ${on.length < 2 ? on[0] : on.slice(0, -1).join(', ') + ' and ' + on[on.length - 1]}` : '';
+  return `<div class="fssc-td fssc-gear">${esc(gear.text + tail)}</div>`;
 }
 
 // The runway seen from above, landing left to right, with the touchdown point.
@@ -221,6 +238,7 @@ export function createScorePanel(root, { onclose, onnewflight } = {}) {
       <div class="fssc-td">${esc(touchdownText(td.along, td.cross, aimM))}</div>
       ${windLine(td.wind)}
       ${result.indestructible || td.indestructible ? '<div class="fssc-td fssc-ind">Flown with Indestructible on</div>' : ''}
+      ${gearLine(result.gear)}
       ${partsHtml(parts)}
       <div class="fssc-foot">
         <button class="fsui-b" data-k="close">Close</button>

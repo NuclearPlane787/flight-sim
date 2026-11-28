@@ -514,7 +514,7 @@ export function createBoeingPfd(cv) {
     const disc = !ap.ap && st.warnings?.apDisc;
     if (disc) {
       if (Math.floor(now / 400) % 2) { ctx.fillStyle = C.red; ctx.font = font(s * 0.034, true); ctx.fillText('A/P', cx, y); }
-    } else if (modes.status) {
+    } else if (modes.status && !(st.law === 'secondary' || st.law === 'direct')) {   // v0.8.0 (part 7): blank with no AP to have [EST]
       ctx.fillStyle = C.green; ctx.font = font(s * 0.036, true);
       ctx.fillText(modes.status, cx, y);
       if (boxes.boxed('status', now)) {

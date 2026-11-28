@@ -43,3 +43,36 @@ export function dropMemo(secs = 20) {
     return now && t !== null && t - t0 >= -0.5 && t - t0 <= secs;
   };
 }
+
+// v0.8.0 (part 5, Shane's decision): the switch under each engine's gauges, the A321's ENG MASTER n (ON / OFF) and the
+// Boeings' FUEL CONTROL n (RUN / CUTOFF), drawn by both engine screens and clicked (hud.engineSwitchAt). Pure: what it
+// says for engine state e (state.engines[i]): { text, col: 'green' | 'white' | 'cyan' | 'amber', fire, progress }.
+//   fire: the engine burning (a red FIRE beside the switch's word); progress: 0..1 while it starts, else -1.
+// Can't start with its switch on: the short reason in amber (the checklist has the long one).
+export const SWITCH_LABEL = { airbus: 'MASTER', boeing: 'FUEL CTRL' };
+const SHORT_BLOCK = { gone: '', seized: 'SEIZED', fire: 'FIRE HDL', cycle: 'RECYCLE', fuel: 'NO FUEL', altitude: 'TOO HIGH', speed: 'TOO SLOW' };
+export function switchFace(e, family) {
+  const boeing = family === 'boeing';
+  const on = e?.sw !== false;
+  const out = { text: on ? (boeing ? 'RUN' : 'ON') : (boeing ? 'CUTOFF' : 'OFF'), col: on ? 'green' : 'white', fire: !!e?.fire, progress: -1 };
+  if (on && e && e.lit === false) {
+    if (e.start > 0 && e.startS > 0) { out.text = 'START'; out.col = 'cyan'; out.progress = Math.min(1, e.start / e.startS); }
+    else if (e.block) { out.text = SHORT_BLOCK[e.block] ?? e.block.toUpperCase(); out.col = 'amber'; }
+  }
+  return out;
+}
+// The engine screens' redraw key for the switches (the hud's signature): each engine's switch, flame, fire, start.
+export function switchSig(st) {
+  // (Every engine burning with its switch on and no fire: '' and nothing made, a frame.)
+  let plain = true;
+  for (const e of st?.engines || []) if (e.sw === false || e.lit === false || e.fire || e.pushed) { plain = false; break; }
+  if (plain) return '';
+  let k = '';
+  for (const e of st?.engines || []) k += (e.sw === false ? 0 : 1) + '' + (e.lit === false ? 0 : 1) + (e.fire ? 1 : 0) + (e.pushed ? 1 : 0) + (e.block || '') + (e.start > 0 ? Math.floor(50 * e.start / (e.startS || 1)) : '') + ';';
+  return k;
+}
+// A hit test on the rectangles a screen drew its switches in ([{ x, y, w, h, i }], CSS px): the engine's index or -1.
+export function rectAt(rects, x, y, pad = 2) {
+  for (const r of rects) if (x >= r.x - pad && x <= r.x + r.w + pad && y >= r.y - pad && y <= r.y + r.h + pad) return r.i;
+  return -1;
+}

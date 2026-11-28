@@ -1046,6 +1046,8 @@ export function createSynth({ context = null } = {}) {
     // (the lead, from the code review: a new flight, a rewind, a jump or a load leaves nothing silenced)
     resetSilence() { hush.reset(); },
     get sounding() { return { ...sounding }; },
+    // v0.8.0 warn: the context and the warnings' bus, for the failure warnings' aurals (src/audio/alerts.js); null before start().
+    get alertOut() { return ctx && n ? { ctx, bus: n.warnBus } : null; },
     // A short, soft tone through the master gain: the volume slider's preview.
     blip() {
       if (!ctx || !n) return;

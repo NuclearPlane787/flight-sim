@@ -14,8 +14,14 @@ import { rulesAt } from '../world/region.js';   // v0.6.0: the transition by pla
 import { compileWeather, isDefaultWeather, normalizeWeather, windAt, windTurnAt, newWind, microburstInto, localWeather, burstLambda } from './weather.js';
 import { leverToPhi, createEngines } from './engines.js';
 import { kitFor, DEFAULT_TYPE } from './types.js';
+import { lawLevel, lawName } from './fbw.js';   // v0.8.0 (part 7): the law that flies
 import { resolveDef, isDesign } from './designs.js';
 import { partsDeltaInto, clmaxDelta } from './parts-aero.js';
+// v0.8.0: failures (the plan is the world's, beside the weather; the state is the core's)
+import { KINDS, normalizePlan, without, shiftedPlan, momentNow, fireNeeds, collapseDelay, newFailCore, adoptFailCore, copyFailCore, startBlock, startSeconds,
+  RELIGHT, DEAD_ENGINE, GRAVITY_GEAR_S, BELLY, BELLY_SKID, E_FLAMEOUT, E_SEIZED, E_FIRE, E_PUSHED, E_FIRE_OUT, G_NOEXT, G_NOGRAV, G_GRAV, L_NOLOCK, L_COLLAPSE, L_GONE, L_FLOWN } from './failures.js';
+import { H_FLAPS, H_SLATS, G_HYD } from './failures.js';   // v0.8.0 (part 7)
+import { hydLayout, hydPressures, hydEffects, hydNormal, HYD, LOST_P } from './hydraulics.js';   // v0.8.0 (part 7)
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -105,6 +111,10 @@ function newCore(A, boeing, n) {
     // v0.7.4: the A321's autoland (autopilot.js): ROLL OUT's and the decrab's pedals, the flare's time constant
     a3Rollout: false, a3RollYaw: 0, a3Align: false, a3AlignYaw: 0, a3YawClear: false, a3FlareTau: 0, a3Crab0: 0, a3AlignI: 0, a3AlignBI: 0,
     ...(boeing ? boeing.coreFields() : null),
+    // v0.8.0: the failures' state (failures.js): what has fired and what is failed now, each engine's switch, flame,
+    // start, fire and bottles, each gear leg. A fresh core has nothing failed, and then no step reads past the first test.
+    ...newFailCore(n),
+    wowT: -100,   // v0.8.0: when a wheel last stood on the ground (the belly landing's rule in step())
   };
 }
 
@@ -120,7 +130,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // Everything the type decides, bound by bindType() below.
   let typeDef, A, kit, coefficients, liftCurve, machLift, clOfAlpha, engineStep, togaThrust, idleN1, detentName,
     leverToPhi, leverForPhi, n1ForPhi, LEVER_CL, legStep, fbwStep, apStep, athrStep, AP_FIELDS,
-    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, SKID_POINTS, CONFIG_BY_LEVER, NEXT_CONFIG, engKits = null;
+    GEAR, GROUND_Z, ENGINES, CRASH_POINTS, SKID_POINTS, skidVd, CONFIG_BY_LEVER, NEXT_CONFIG, engKits = null, HL, HE;
   // v0.5.0: a type id or a design (src/sim/designs.js); a design flies its own data and geometry on its base's kit.
   const bindKit = (id) => {
     typeDef = resolveDef(id);
@@ -130,9 +140,11 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     ({ legStep } = kit.gear); ({ fbwStep } = kit.fbw); ({ apStep, athrStep, AP_FIELDS } = kit.auto);
     ({ GEAR, GROUND_Z, ENGINES, CRASH_POINTS } = typeDef.geo);
     SKID_POINTS = skidPoints(CRASH_POINTS);
+    skidVd = new Float64Array(SKID_POINTS.length);   // v0.8.0
     // v0.5.2: a design with mixed engines (types or thrusts) has an engine model per engine, from its own numbers.
     engKits = A.ENGINE_DATA ? A.ENGINE_DATA.map((d) => { let k = ENG_KITS.get(d); if (!k) { k = createEngines({ ...A, ...d }); ENG_KITS.set(d, k); } return k; }) : null;
     CONFIG_BY_LEVER = A.FLAP_LEVER; NEXT_CONFIG = A.NEXT_CONFIG;
+    HL = hydLayout(typeDef); HE = hydNormal(ENGINES.length);   // v0.8.0 (part 7): the hydraulics' layout and effects
   };
   bindKit(type);
   const X = newCore(A, kit.boeing, ENGINES.length);
@@ -149,7 +161,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
   // ---- the read-only state, updated in place every step ----
   const state = {
-    type: typeDef.id, t: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 },
+    type: typeDef.id, typeBase: typeDef.base ? typeDef.base.id : typeDef.id, t: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 },
     hdg: 0, pitch: 0, roll: 0, quat: { x: 0, y: 0, z: 0, w: 1 },
     p: 0, q: 0, r: 0, alpha: 0, beta: 0,
     ias: 0, cas: 0, tas: 0, gs: 0, mach: 0, vs: 0, nz: 1, agl: 0, groundH: 0,
@@ -162,6 +174,11 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     tanksDropped: false,   // v0.5.4 (the core's)
     payloadKg: 0, paxN: null, cargoKg: null, fuelAddedKg: 0,   // v0.3.2 (the core's)
     engines: [],   // one per engine (mkEngines)
+    // v0.8.0 (failState()): what is failed now ([{ id, kind, target, t }], the core's own list: read it, never change it),
+    // each leg's position (nose, left, right) and flags, the gear's system flags (failures.js)
+    failures: [], gearLegs: [1, 1, 1], gearLegFlags: [0, 0, 0], gearSys: 0,
+    // v0.8.0 (part 7): the hydraulics (hydState()), and the flaps' and slats' jams
+    hyd: { on: false, p: [1, 1, 1], lost: [false, false, false], names: [], pumps: [], rat: 0, eff: null, law: 0 }, flapsJam: false, slatsJam: false,
     thrustLever: 0, detent: 'IDLE',
     // v0.2.2: the A/THR is moving the lever; the N1 the lever asks for, here and now (the
     // engine panel's cyan ring).
@@ -244,6 +261,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     alphaMax: 0.3, vls: 0, vsw: 0, slat: 0, flap: 0, apOn: false, apGamma: 0, apBank: 0,
     fAlong: 0, mass: 1, iasDot: 0, autoTrim: false,
     nThrust: 0,   // v0.5.8: the engines' yaw moment about the CG, N·m (exactly 0 with the thrust symmetric)
+    hydLaw: 0,    // v0.8.0 (part 7): the law the hydraulics leave (0 normal; 1 alternate / secondary; 2 direct)
   };
   // The engines' scratch (engineStep's), and the public list, one per engine of the type.
   let eng, NE = 0;
@@ -253,7 +271,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     state.engines.length = 0;
     for (let i = 0; i < NE; i++) {
       eng.push({ n1: 0, n1Target: 0, rev: 0, thrustN: 0, ffKgS: 0, fuelOk: true });
-      state.engines.push({ n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0, off: false, leverN1: 0 });   // v0.5.6: its own ring
+      state.engines.push({ n1: 0, n1Target: 0, ffKgS: 0, thrustN: 0, rev: 0, off: false, leverN1: 0,   // v0.5.6: its own ring
+        sw: true, lit: true, start: 0, startS: 0, block: '', flags: 0, fire: false, pushed: false, agents: 0, agentT: -1 });   // v0.8.0 (failState())
     }
   };
   mkEngines();
@@ -407,6 +426,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     }
     X.cfg = lever === 1 && A.HAS_1F ? (X.lever1F ? '1+F' : '1') : CONFIG_BY_LEVER[clamp(lever, 0, CONFIG_BY_LEVER.length - 1)];
     const tgt = A.CONFIGS[X.cfg];
+    if (X.hOn !== 0) {   // v0.8.0 (part 7): the rates' share of pressure; nothing moves jammed (the lever's X.cfg still follows)
+      const ks = X.hJam & H_SLATS ? 0 : HE.slats, kf = X.hJam & H_FLAPS ? 0 : HE.flaps;
+      X.slat = approach(X.slat, tgt.slat, A.SLAT_RATE / A.DEG * dt * ks);
+      X.flap = approach(X.flap, tgt.flap, A.FLAP_RATE / A.DEG * dt * kf);
+      return;
+    }
     X.slat = approach(X.slat, tgt.slat, A.SLAT_RATE / A.DEG * dt);
     X.flap = approach(X.flap, tgt.flap, A.FLAP_RATE / A.DEG * dt);
   }
@@ -414,6 +439,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
   // ---- gear lever → doors and legs (weight-on-wheels interlock) ----
   function updateGear(dt, wowAny) {
     const want = controls.gearDown || wowAny ? 1 : 0;
+    if (X.gOn !== 0) { updateLegs(dt, want); return; }   // v0.8.0: a gear failure: each leg its own
     if (X.gearPos !== want) {
       if (X.gearDoors < 1) X.gearDoors = Math.min(1, X.gearDoors + dt / A.GEAR_DOOR_S);
       else X.gearPos = approach(X.gearPos, want, dt / A.GEAR_TRAVEL_S);
@@ -422,11 +448,357 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     }
   }
 
+  // ---- v0.8.0: failures (src/sim/failures.js) ----
+  // The plan (what is armed) is the world's, beside the weather: null, or { v, next, items }, replaced, never changed
+  // in place. With none armed and nothing failed, step() reads X.gOn (0) and each engine's X.eLit (1) and no more.
+  let failPlan = null;
+  const MOM = { ias: 0, onGround: true, wowNose: true, wowMain: true, agl: 0, alt: 0, vs: 0, lever: 0, airTime: 0, everAirborne: false };
+  const SB = { flags: 0, off: false, fuelKg: 0, altFt: 0, iasKt: 0, onGround: true };
+  // An id is never used twice in a flight. A plan emptied by a disarm or a repair numbers from 1 again
+  // (failures.js's armed()), so the sim gives every item new to the plan its id itself, from a counter that only goes
+  // up and that no rewind takes back (failNext, beside the plan; a load or a new flight starts it past everything it
+  // sees). Found twice: by the 777's check in Chrome (the second failure armed after a repair never fired) and, for
+  // the first mend's hole, by the code review (after a rewind to while the first failure stood, the second, with the
+  // same id, counted as fired, and repairing the first took the second out of the plan).
+  let failNext = 1;
+  const sameItem = (a, b) => a.id === b.id && a.kind === b.kind && a.target === b.target && a.seed === b.seed;
+  function floorIds(plan) {
+    if (plan !== null) { if (plan.next > failNext) failNext = plan.next; for (const it of plan.items) if (it.id >= failNext) failNext = it.id + 1; }
+    for (const d of X.fDone) if (d >= failNext) failNext = d + 1;
+    for (const a of X.fActive) if (a.id >= failNext) failNext = a.id + 1;
+  }
+  function setFailures(p) {
+    let np = normalizePlan(p);
+    floorIds(failPlan);
+    if (np !== null) {
+      const had = failPlan !== null ? failPlan.items : [];
+      const items = np.items.map((it) => (had.some((h) => sameItem(h, it)) ? it : { ...it, id: failNext++ }));
+      np = { v: 1, next: failNext, items };
+    }
+    failPlan = np;
+    failState();
+  }
+  // Each leg its own from here on (until nothing is failed and the three agree again: updateLegs()).
+  function legsOwn() { if (X.gOn === 0) { X.gOn = 1; X.gLeg[0] = X.gLeg[1] = X.gLeg[2] = X.gearPos; } }
+  // The armed failures whose time or moment has come (from the state the last step left).
+  function fireDue() {
+    const its = failPlan.items;
+    let filled = false;
+    for (let i = 0; i < its.length; i++) {
+      const it = its[i];
+      if (X.fDone.includes(it.id)) continue;
+      if (it.moment !== undefined) {
+        if (!filled) {
+          filled = true;
+          MOM.ias = X.prevIas; MOM.onGround = state.onGround; MOM.wowNose = wowN; MOM.wowMain = wowL || wowR; MOM.agl = state.agl; MOM.alt = X.pz;
+          MOM.vs = -X.vd; MOM.lever = controls.thrust; MOM.airTime = X.airTime; MOM.everAirborne = X.everAirborne;
+        }
+        if (!momentNow(it.moment, MOM)) continue;
+      } else if (X.t < it.at) continue;
+      fire(it);
+    }
+  }
+  function fire(it) {
+    const K = KINDS[it.kind], t = it.target;
+    // This aircraft has no such engine (now), or no such leg: nothing fails, and the item leaves the plan (it would
+    // otherwise stand in the tab as armed for ever).
+    if ((K.target === 'engine' && (!(t >= 0 && t < NE) || X.eOff & (1 << t))) || ((K.target === 'leg' || K.target === 'system') && !(t >= 0 && t < 3))) { failPlan = without(failPlan, it.id); return; }
+    X.fDone = X.fDone.concat([it.id]);
+    switch (it.kind) {
+      case 'eng-flameout': X.eLit[t] = 0; X.eSt[t] = 0; X.eFl[t] |= E_FLAMEOUT; break;
+      case 'eng-seize': X.eLit[t] = 0; X.eSt[t] = 0; X.eFl[t] |= E_SEIZED; break;
+      case 'eng-fire': if (!(X.eFl[t] & E_FIRE)) { X.eFl[t] = (X.eFl[t] & ~E_FIRE_OUT) | E_FIRE; X.eNeed[t] = fireNeeds(it.seed); } break;
+      case 'gear-noext': legsOwn(); X.gSys |= G_NOEXT; break;
+      case 'gear-nograv': legsOwn(); X.gSys |= G_NOGRAV; break;
+      case 'gear-nolock': legsOwn(); X.gFl[t] |= L_NOLOCK; break;
+      // (the countdown waits as -(2 + its delay): the delay comes from the failure's seed, and the leg has no other place for it)
+      case 'gear-collapse': legsOwn(); if (!(X.gFl[t] & L_GONE)) { X.gFl[t] = (X.gFl[t] & ~L_FLOWN) | L_COLLAPSE; X.gColT[t] = -(2 + collapseDelay(it.seed)); } break;
+      // v0.8.0 (part 7): the hydraulics and the flaps
+      case 'hyd-pump': X.hPf |= hydPumpBits((pu) => pu.kind === 'engine' && pu.engine === t); X.hOn = 1; break;
+      case 'hyd-elec': X.hPf |= hydPumpBits((pu) => pu.kind === 'electric' && pu.sys === t); X.hOn = 1; break;
+      case 'hyd-sys': X.hDr |= 1 << t; X.hOn = 1; break;
+      case 'flaps-jam': X.hJam |= H_FLAPS; X.hOn = 1; break;
+      case 'slats-jam': X.hJam |= H_SLATS; X.hOn = 1; break;
+    }
+    X.fActive = X.fActive.concat([{ id: it.id, kind: it.kind, target: t, t: X.t }]);
+    events.push({ type: 'failure', id: it.id, kind: it.kind, target: t, hidden: !!it.hidden });
+  }
+  // Repair one failure (its id) or all ('all'): the aircraft as repaired (an engine then starts by its switch, the
+  // gear goes where its lever says), and the failure out of the plan, so a rewind doesn't bring it back. → true if any.
+  function repair(id) {
+    const list = id === 'all' ? X.fActive.slice() : X.fActive.filter((a) => a.id === id);
+    if (!list.length) {
+      // Nothing failed, but "repair all" still puts back what the checklists' switches left set.
+      // (part 7: and stows the RAT, which otherwise stays out for the flight after engines were stopped and started with nothing failed: B5)
+      if (id === 'all') { const rat = stowRat(); if (clearLatches(null) || rat) { failState(); return true; } }
+      return false;
+    }
+    for (const a of list) {
+      const t = a.target;
+      switch (a.kind) {
+        case 'eng-flameout': X.eFl[t] &= ~E_FLAMEOUT; break;
+        case 'eng-seize': X.eFl[t] &= ~E_SEIZED; break;
+        case 'eng-fire': X.eFl[t] &= ~(E_FIRE | E_PUSHED | E_FIRE_OUT); X.eAg[t] = 0; X.eAgT[t] = -1; X.eNeed[t] = 0; break;
+        case 'gear-noext': X.gSys &= ~(G_NOEXT | G_GRAV); break;
+        case 'gear-nograv': X.gSys &= ~G_NOGRAV; break;
+        case 'gear-nolock': X.gFl[t] &= ~L_NOLOCK; break;
+        case 'gear-collapse': X.gFl[t] &= ~(L_COLLAPSE | L_GONE | L_FLOWN); X.gColT[t] = -1; break;
+        case 'hyd-pump': X.hPf &= ~hydPumpBits((pu) => pu.kind === 'engine' && pu.engine === t); break;
+        case 'hyd-elec': X.hPf &= ~hydPumpBits((pu) => pu.kind === 'electric' && pu.sys === t); break;
+        case 'hyd-sys': X.hDr &= ~(1 << t); break;
+        case 'flaps-jam': X.hJam &= ~H_FLAPS; break;
+        case 'slats-jam': X.hJam &= ~H_SLATS; break;
+      }
+      if (failPlan !== null) failPlan = without(failPlan, a.id);
+    }
+    X.fActive = X.fActive.filter((a) => !list.includes(a));
+    if (X.fActive.length === 0) stowRat();   // v0.8.0 (part 7): the RAT stays out until everything is repaired
+    events.push({ type: 'repair', all: id === 'all' });
+    clearLatches(id === 'all' ? null : list);
+    failState();
+    return true;
+  }
+  // What a checklist's switches leave set once the failure they answered is gone (the code review's second and third
+  // findings: a seized engine repaired with its fire handle still out never ran again, and a gravity extension stood
+  // for the rest of the flight after the leg that wouldn't lock was repaired): an engine with no fire and no engine
+  // failure left has its fire handle in and its bottles full again; with no gear failure left the gravity extension
+  // is reset. → true if anything was cleared.
+  // The RAT back in, once nothing is failed: but only with every engine burning, or on the ground. (The code review's
+  // third round: stowed in a glide with no engine burning it came straight out again, took its 8 s to spin up, and for
+  // about four of them blue was under its working pressure and the elevator had no actuator.) → true if it was stowed.
+  function stowRat() {
+    if (X.hRat === 0) return false;
+    let burning = 0, there = 0;
+    for (let i = 0; i < NE; i++) if (!(X.eOff & (1 << i))) { there++; if (X.eLit[i] === 1) burning++; }
+    if (burning !== there && !(wowN || wowL || wowR)) return false;
+    X.hRat = 0;
+    return true;
+  }
+  // (list: what was just repaired, or null for "repair all". The code review's second round: called for every repair
+  // it reset a fire handle on an engine the repair had nothing to do with, and a gravity extension under way when
+  // something else was repaired. A single repair now resets only what belongs to it: the handle of the engine it was
+  // on, the gravity extension if it was a gear failure. And never the gravity extension while the gear's own
+  // hydraulics are lost (bit 8 of gSys, a later sub-update's) or a hydraulic failure stands.)
+  function clearLatches(list) {
+    let any = false;
+    for (let i = 0; i < NE; i++) {
+      if (X.eFl[i] & (E_FIRE | E_SEIZED | E_FLAMEOUT) || X.fActive.some((a) => a.target === i && KINDS[a.kind].target === 'engine')) continue;
+      if (list !== null && !list.some((a) => a.target === i && KINDS[a.kind].target === 'engine' && KINDS[a.kind].system === 'engines')) continue;
+      if (X.eFl[i] & (E_PUSHED | E_FIRE_OUT) || X.eAg[i] !== 0) { X.eFl[i] &= ~(E_PUSHED | E_FIRE_OUT); X.eAg[i] = 0; X.eAgT[i] = -1; X.eNeed[i] = 0; any = true; }
+    }
+    const gearish = (a) => KINDS[a.kind].system === 'gear' || KINDS[a.kind].system === 'hydraulics';
+    if (X.gSys & G_GRAV && !(X.gSys & 8) && !X.fActive.some(gearish) && (list === null || list.some(gearish))) { X.gSys &= ~G_GRAV; any = true; }
+    return any;
+  }
+  // An engine's switch (the A321's ENG MASTER, the Boeings' FUEL CONTROL): on undefined flips it. Off cuts the fuel;
+  // on starts the engine if it can start (failures.js's startBlock(); the start runs in step()). → true if it moved.
+  function engineSwitch(i, on) {
+    if (!(i >= 0 && i < NE) || X.crashed || X.eOff & (1 << i)) return false;
+    const want = on === undefined ? (X.eSw[i] === 1 ? 0 : 1) : on ? 1 : 0;
+    if (want === X.eSw[i]) return false;
+    X.eSw[i] = want;
+    if (want === 0) { X.eLit[i] = 0; X.eSt[i] = 0; X.eFl[i] &= ~E_FLAMEOUT; }
+    failState();
+    return true;
+  }
+  // An engine's fire handle (FIRE pushbutton, fire switch): fuel, air and hydraulics shut off at the engine, and its
+  // bottles armed. It stays out until the fire is repaired.
+  function firePush(i) {
+    if (!(i >= 0 && i < NE) || X.crashed || X.eFl[i] & E_PUSHED) return false;
+    X.eFl[i] |= E_PUSHED; X.eLit[i] = 0; X.eSt[i] = 0;
+    failState();
+    return true;
+  }
+  // Discharge the engine's next bottle (two each): only with its fire handle out.
+  function fireAgent(i) {
+    if (!(i >= 0 && i < NE) || X.crashed || !(X.eFl[i] & E_PUSHED) || X.eAg[i] >= 2) return false;
+    X.eAg[i]++; X.eAgT[i] = X.t;
+    failState();
+    return true;
+  }
+  // The gravity extension (the A321's crank, the Boeings' ALTN GEAR): the doors open and the legs fall in about
+  // GRAVITY_GEAR_S, unless that has failed too. The gear then stays down.
+  function gravityGear() {
+    if (X.crashed || X.gSys & G_GRAV) return false;
+    legsOwn(); X.gSys |= G_GRAV;
+    failState();
+    return true;
+  }
+  // The legs each on their own (a gear failure): where each is headed, the doors, then the travel.
+  const legTo = [0, 0, 0];
+  function updateLegs(dt, want) {
+    const sys = X.gSys, grav = (sys & G_GRAV) !== 0;
+    let open = grav, allDown = true;
+    for (let i = 0; i < 3; i++) {
+      const fl = X.gFl[i], p = X.gLeg[i];
+      let to = want;
+      if (fl & L_GONE) { X.gLeg[i] = 0; to = 0; }                       // collapsed: folded under
+      else if (fl & L_NOLOCK && p < 1) to = 0;                          // it won't come down, whatever is done
+      else if (grav) to = sys & G_NOGRAV ? p : 1;                       // by gravity (or stuck, if that failed too)
+      else if (want === 1 && sys & G_NOEXT) to = p;                     // the normal extension failed: it stays
+      else if (sys & G_HYD) to = p;                                     // v0.8.0 (part 7): no pressure: it stays, either way
+      legTo[i] = to;
+      if (X.gLeg[i] !== to) open = true;
+      if (X.gLeg[i] < 1) allDown = false;
+    }
+    if (want === 1 && sys & (G_NOEXT | G_HYD) && !allDown) open = true;   // the doors open and the legs stay up
+    if (open) {
+      if (X.gearDoors < 1) X.gearDoors = Math.min(1, X.gearDoors + dt / A.GEAR_DOOR_S);
+      else for (let i = 0; i < 3; i++) X.gLeg[i] = approach(X.gLeg[i], legTo[i], dt / (grav ? GRAVITY_GEAR_S : A.GEAR_TRAVEL_S));
+    } else if (X.gearDoors > 0) X.gearDoors = Math.max(0, X.gearDoors - dt / A.GEAR_DOOR_S);
+    X.gearPos = (X.gLeg[0] + X.gLeg[1] + X.gLeg[2]) / 3;   // the drag's, the warnings' and the laws' gear: down only when all three are
+    // Nothing failed any more and the three agree: one position for all, v0.7.9's arithmetic again.
+    if (sys === 0 && (X.gFl[0] | X.gFl[1] | X.gFl[2]) === 0 && X.gLeg[0] === X.gLeg[1] && X.gLeg[1] === X.gLeg[2]) { X.gearPos = X.gLeg[0]; X.gOn = 0; }
+  }
+  // A leg armed to collapse: once it has left the ground, its next touch starts the countdown (0 at the touchdown,
+  // or seconds into the roll, by the failure's seed).
+  function collapseStep(dt) {
+    for (let i = 0; i < 3; i++) {
+      const fl = X.gFl[i];
+      if (!(fl & L_COLLAPSE)) continue;
+      if (X.gColT[i] >= 0) {
+        X.gColT[i] -= dt;
+        if (X.gColT[i] > 0) continue;
+        X.gFl[i] = (fl & ~(L_COLLAPSE | L_FLOWN)) | L_GONE; X.gLeg[i] = 0; X.gColT[i] = -1;
+        legs[i].wow = false; legs[i].comp = 0; legs[i].normal = 0;
+        events.push({ type: 'gearCollapse', leg: i });
+      } else if (!(fl & L_FLOWN)) { if (!legs[i].wow && X.airTime > 0.5) X.gFl[i] |= L_FLOWN; }
+      else if (legs[i].wow) X.gColT[i] = Math.max(0, -X.gColT[i] - 2);
+    }
+  }
+  // An engine that isn't burning: windmilling (a flameout, the switch off, its fire handle out), seized, or
+  // starting. Its fan's drag acts along its thrust line; no fuel but a start's.
+  function deadEngine(i, e, fuelTotal, mach, sigmaT, qbar, ias, onGround, dt) {
+    const fl = X.eFl[i], iasKt = ias / A.KT;
+    e.n1 = X.eN1[i]; e.rev = Math.max(0, X.eRev[i] - dt / A.REV_DEPLOY_S);
+    let target = 0, ff = 0;
+    if (fl & E_SEIZED) {
+      X.eSt[i] = 0;
+      e.n1 = Math.max(0, e.n1 - dt * 100 / DEAD_ENGINE.seizeS);
+    } else {
+      // The windmill's N1 as engines.js's (4 + 20 M) in flight, fading to a stop on the ground.
+      const wm = (4 + 20 * mach) * clamp(iasKt / 60, 0, 1);
+      target = wm;
+      SB.flags = fl; SB.off = false; SB.fuelKg = fuelTotal; SB.altFt = X.pz / A.FT; SB.iasKt = iasKt; SB.onGround = onGround;
+      const RL = kit.boeing ? RELIGHT.boeing : RELIGHT.airbus;
+      if (X.eSw[i] === 1 && startBlock(SB, RL) === '') {
+        X.eSt[i] += dt;
+        const f = X.eSt[i] / startSeconds(SB, RL), idle = (engKits ? engKits[i].idleN1 : idleN1)(sigmaT, mach);
+        // The starter and the wind turn it; it lights a quarter of the way in and runs up to idle.
+        target = wm + (idle - wm) * clamp(f / 0.9, 0, 1);
+        if (f > 0.25) ff = A.FF_IDLE * 0.5;
+        if (f >= 1) { X.eLit[i] = 1; X.eSt[i] = 0; events.push({ type: 'engineStart', engine: i }); }
+      } else X.eSt[i] = 0;
+      const tau = X.eSt[i] > 0 ? 3 : A.SPOOL_TAU_LOW + (A.SPOOL_TAU_HIGH - A.SPOOL_TAU_LOW) * clamp((e.n1 - 20) / 76, 0, 1);
+      e.n1 += (target - e.n1) * Math.min(1, dt / tau);
+    }
+    const t0 = A.ENGINE_DATA ? A.ENGINE_DATA[i].T0_ENGINE || A.T0_ENGINE : A.T0_ENGINE;
+    e.n1Target = target; e.ffKgS = ff;
+    e.thrustN = -qbar * t0 * DEAD_ENGINE.areaPerN * (fl & E_SEIZED ? DEAD_ENGINE.cdSeized : DEAD_ENGINE.cdWindmill);
+    X.eN1[i] = e.n1; X.eRev[i] = e.rev; X.eN1t[i] = target; X.eThr[i] = e.thrustN; X.eFf[i] = ff;
+  }
+  // ---- v0.8.0 (part 7): the hydraulics (src/sim/hydraulics.js) ----
+  // X.hOn 0: everything normal, and a step reads X.hOn, the engines' X.eLit and X.eOff and no more (v0.7.9's path).
+  function hydPumpBits(f) { let b = 0; for (let k = 0; k < HL.pumps.length; k++) if (f(HL.pumps[k])) b |= 1 << k; return b; }
+  // The yellow electric pump's switch (the A321's; the Boeings' demand pumps run by themselves). → true if it moved.
+  function hydPump(id, on) {
+    if (id !== 'Y-ELEC' || HL.family !== 'airbus') return false;
+    const want = on === undefined ? (X.hYe ? 0 : 1) : on ? 1 : 0;
+    if (want === X.hYe) return false;
+    X.hYe = want;
+    failState();
+    return true;
+  }
+  const HIN = { eng: [], failed: 0, drained: 0, power: true, ySw: false, rat: 0, iasKt: 0 }, HP = { p: [1, 1, 1], pc: [1, 1, 1], ptu: false };
+  const HPL = { p: null, pc: [1, 1, 1] };
+  let heDirty = false;   // HE has been written since it was last normal
+  function hydNormalize() { const rv = HE.reverser; Object.assign(HE, hydNormal(NE)); HE.reverser = rv; rv.length = NE; for (let i = 0; i < NE; i++) rv[i] = 1; heDirty = false; }
+  function hydStep(dt, ias, onGround) {
+    let burning = 0;
+    for (let i = 0; i < NE; i++) if (X.eLit[i] === 1 && !(X.eOff & (1 << i))) burning++;
+    if (X.hOn === 0) {
+      if (burning === NE && X.hPf === 0 && X.hDr === 0 && X.hJam === 0) return;
+      X.hOn = 1;
+    }
+    const iasKt = ias / A.KT;
+    HIN.eng.length = NE;
+    for (let i = 0; i < NE; i++) HIN.eng[i] = X.eOff & (1 << i) ? 0 : X.eLit[i] === 1 ? 1 : -X.eN1[i];
+    HIN.failed = X.hPf; HIN.drained = X.hDr; HIN.power = burning > 0; HIN.ySw = X.hYe === 1; HIN.iasKt = iasKt;
+    // The RAT: out by itself in flight when no engine burns or two systems are lost (by what the pumps give, not the
+    // lagging pressures, so a repair doesn't bring it out again); up to speed in HYD.ratS.
+    HIN.rat = X.hRat > 0 ? X.hRat : 0;
+    hydPressures(HL, HIN, HP);
+    if (X.hRat === 0 && !onGround && dt > 0) {   // (not at a restore's look, dt 0: the code review's B4)
+      let lost = 0;
+      for (let s = 0; s < 3; s++) if (HP.p[s] < LOST_P) lost++;
+      if (burning === 0 || lost >= 2) { X.hRat = 1e-6; events.push({ type: 'ratOut' }); }
+    }
+    if (X.hRat > 0 && X.hRat < 1) X.hRat = Math.min(1, X.hRat + dt / HYD.ratS);
+    const k = Math.min(1, dt / HYD.lagS);
+    for (let s = 0; s < 3; s++) {
+      X.hP[s] += (HP.p[s] - X.hP[s]) * k;
+      HPL.pc[s] = HP.p[s] > 0 ? X.hP[s] * HP.pc[s] / HP.p[s] : 0;
+    }
+    HPL.p = X.hP;
+    hydEffects(HL, HPL, HE, X.gearPos > 0.99); heDirty = true;
+    E.hydLaw = HE.law;
+    if (!HE.gear) { legsOwn(); X.gSys |= G_HYD; }
+    else if (X.gSys & G_HYD) {
+      X.gSys &= ~G_HYD;
+      // (the third round's second: the pressure back with no gear or hydraulic failure left: a gravity extension
+      // pulled for the loss is reset with it, as a repair does, so the gear answers its lever again)
+      if (X.gSys & G_GRAV && !X.fActive.some((a) => KINDS[a.kind].system === 'gear' || KINDS[a.kind].system === 'hydraulics')) X.gSys &= ~G_GRAV;
+    }
+    // Back to normal: nothing failed, every engine burning, the RAT stowed and every system at full pressure.
+    if (dt > 0 && burning === NE && X.hPf === 0 && X.hDr === 0 && X.hJam === 0 && X.hRat === 0 && HP.p[0] === 1 && HP.p[1] === 1 && HP.p[2] === 1 &&
+        X.hP[0] > 0.999 && X.hP[1] > 0.999 && X.hP[2] > 0.999) {
+      X.hOn = 0; X.hP[0] = X.hP[1] = X.hP[2] = 1; E.hydLaw = 0;
+      hydNormalize();
+    }
+  }
+  // state.hyd (failState()): filled in place; the pumps' list made again only when the type changes.
+  function hydState() {
+    const H = state.hyd, on = X.hOn !== 0;
+    if (!on && heDirty) hydNormalize();   // (a reset or a restore to a sound aircraft)
+    H.on = on; H.names = HL.names; H.eff = HE; H.rat = X.hRat > 0 ? X.hRat : 0; H.law = on ? HE.law : 0;
+    for (let s = 0; s < 3; s++) { H.p[s] = on ? X.hP[s] : 1; H.lost[s] = H.p[s] < LOST_P; }
+    if (H.pumps.length !== HL.pumps.length || H.pumps[0] && H.pumps[0].id !== HL.pumps[0].id) H.pumps = HL.pumps.map((pu) => ({ id: pu.id, sys: pu.sys, kind: pu.kind, on: true, failed: false }));
+    let burning = false;
+    for (let i = 0; i < NE; i++) if (X.eLit[i] === 1 && !(X.eOff & (1 << i))) burning = true;
+    for (let k = 0; k < HL.pumps.length; k++) {
+      const pu = HL.pumps[k], o = H.pumps[k];
+      o.failed = (X.hPf & (1 << k)) !== 0;
+      o.on = pu.kind === 'engine' ? X.eLit[pu.engine] === 1 && !(X.eOff & (1 << pu.engine)) : pu.kind === 'rat' ? X.hRat > 0 : pu.kind === 'ptu' ? on && HP.ptu : burning && (!pu.sw || X.hYe === 1);
+    }
+    state.flapsJam = (X.hJam & H_FLAPS) !== 0; state.slatsJam = (X.hJam & H_SLATS) !== 0;
+    E.hydLaw = H.law;
+  }
+  // The failures' public state (state.engines[i]'s switch and fire fields, state.failures, state.gearLegs…): after
+  // every step, and at once after an action, so the screens follow while the game is paused.
+  function failState() {
+    const S = state, RL = kit.boeing ? RELIGHT.boeing : RELIGHT.airbus;
+    for (let i = 0; i < NE && i < S.engines.length; i++) {
+      const e = S.engines[i], fl = X.eFl[i];
+      e.sw = X.eSw[i] === 1; e.lit = X.eLit[i] === 1; e.flags = fl; e.fire = (fl & E_FIRE) !== 0; e.pushed = (fl & E_PUSHED) !== 0;
+      e.agents = X.eAg[i]; e.agentT = X.eAgT[i]; e.start = X.eSt[i]; e.block = ''; e.startS = 0;
+      if (!e.lit) {
+        SB.flags = fl; SB.off = (X.eOff & (1 << i)) !== 0; SB.fuelKg = X.fuelL + X.fuelR + X.fuelC; SB.altFt = X.pz / A.FT; SB.iasKt = S.ias / A.KT; SB.onGround = S.onGround;
+        e.block = startBlock(SB, RL); e.startS = startSeconds(SB, RL);
+      }
+    }
+    S.failures = X.fActive;
+    const own = X.gOn !== 0, L = S.gearLegs, LF = S.gearLegFlags;
+    for (let i = 0; i < 3; i++) { L[i] = own ? X.gLeg[i] : X.gearPos; LF[i] = X.gFl[i]; }
+    S.gearSys = X.gSys;
+    hydState();   // v0.8.0 (part 7)
+  }
+
   // Wheels touching anything (from the previous step) — used by the systems' logic.
   let wowN = false, wowL = false, wowR = false;
 
   function step(dt) {
     if (X.crashed) return;
+    if (failPlan !== null) fireDue();   // v0.8.0
     massProps();
     computeR();
     atmAt(X.pz, atm);
@@ -492,10 +864,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     }
 
     // ---- systems ----
+    hydStep(dt, ias, onGround);   // v0.8.0 (part 7): reads X.hOn and the engines' flames, no more, while all is normal
     updateFlaps(dt, ias, onGround);
     updateGear(dt, wowAny);
     // v0.4.2: sliding on the skids (Indestructible) counts as the ground here, so a belly landing touches down once.
-    if (onGround || (indestructible && X.scrapes !== 0)) { X.groundTime += dt; } else { X.airTime += dt; }
+    // v0.8.0: and so does a belly landing's slide (the gear not all down: only then are there scrapes without Indestructible).
+    if (onGround || X.scrapes !== 0) { X.groundTime += dt; } else { X.airTime += dt; }
 
     // Flight / ground mode blend for the fly-by-wire.
     if (wowN && mainsWow) X.flt = Math.max(0, X.flt - dt / 1.5);
@@ -526,7 +900,8 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       // Decision 7: an autoland always tries, so gusts that dip into the protections don't take it off.
       else if ((X.protAlpha || X.protSpeed) && !(windOn() && kit.boeing && ap.lateral === 'LOC' && (ap.vertical === 'G/S' || ap.vertical === 'FLARE'))) ap.disconnectAp('protection');
       else if (onGround && !(kit.boeing ? kit.boeing.staysOnGround(ap) : kit.auto.staysOnGround?.(ap))) ap.disconnectAp('ground');   // v0.7.4: the A321's autoland too
-      else if (controls.law === 'alternate' && Math.abs(phi) > 45 * A.DEG) ap.disconnectAp('attitude');
+      else if (lawLevel(controls.law, E.hydLaw, !!kit.boeing) >= (kit.boeing ? 1 : 2)) ap.disconnectAp('law');   // v0.8.0 (part 7): none in direct (a Boeing's secondary)
+      else if ((controls.law === 'alternate' || (!kit.boeing && lawLevel(controls.law, E.hydLaw, false) === 1)) && Math.abs(phi) > 45 * A.DEG) ap.disconnectAp('attitude');
     }
     apStep(X, ap, E, state, dt);
     if (kit.boeing) kit.boeing.applyControls(X, controls);
@@ -561,11 +936,17 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     for (let i = 0; i < NE; i++) {
       const e = eng[i];
       if (X.eOff & (1 << i)) { e.n1 = e.n1Target = e.thrustN = e.ffKgS = e.rev = 0; X.eN1[i] = X.eN1t[i] = X.eThr[i] = X.eFf[i] = X.eRev[i] = 0; continue; }
+      // v0.8.0: its fire's bottles, and an engine that isn't burning (a failure, its switch, its fire handle)
+      if (X.eFl[i] & E_FIRE && X.eAg[i] >= X.eNeed[i] && X.eAgT[i] >= 0 && X.t - X.eAgT[i] >= DEAD_ENGINE.fireOutS) {
+        X.eFl[i] = (X.eFl[i] & ~E_FIRE) | E_FIRE_OUT; events.push({ type: 'fireOut', engine: i });
+      }
+      if (X.eLit[i] === 0) { deadEngine(i, e, fuelTotal, mach, sigmaT, qbar, ias, onGround, dt); continue; }
       e.n1 = X.eN1[i]; e.rev = X.eRev[i]; e.fuelOk = fuelTotal > 0;
       if (split) {   // v0.5.6: this engine's own lever
-        const li = TE[i], rs = li < -0.02 && mainsWow;
+        const li = TE[i], rs = li < -0.02 && mainsWow && (X.hOn === 0 || HE.reverser[i] === 1);   // v0.8.0 (part 7): its system
         (engKits ? engKits[i].engineStep : engineStep)(e, li > 0 ? leverToPhi(li) : 0, rs, rs ? clamp(-li, 0, 1) : 0, sigmaT, mach, sqrtTheta, dt);
-      } else (engKits ? engKits[i].engineStep : engineStep)(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
+      } else if (X.hOn !== 0 && HE.reverser[i] === 0) (engKits ? engKits[i].engineStep : engineStep)(e, phiFwd, false, 0, sigmaT, mach, sqrtTheta, dt);   // v0.8.0 (part 7): no pressure, no reverser
+      else (engKits ? engKits[i].engineStep : engineStep)(e, phiFwd, revSel, revCmd, sigmaT, mach, sqrtTheta, dt);
       X.eN1[i] = e.n1; X.eRev[i] = e.rev; X.eN1t[i] = e.n1Target; X.eThr[i] = e.thrustN; X.eFf[i] = e.ffKgS;
       // v0.5.0: past its pylon's limit (a design's: 1.5 × its engine type's rated thrust) the engine tears off. It's
       // a failure, not a crash: Indestructible doesn't stop it. From this step on it makes no thrust and burns
@@ -578,7 +959,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     }
     // The N1 the lever asks for here and now (the panel's ring): where the needle settles.
     // (In reverse, the first engine still on its pylon's target: engine 1's for a base type.)
-    let iRef = 0; while (X.eOff & (1 << iRef) && iRef < NE - 1) iRef++;
+    let iRef = 0; while ((X.eOff & (1 << iRef) || X.eLit[iRef] === 0) && iRef < NE - 1) iRef++;   // (v0.8.0: nor a dead engine's)
     X.leverN1 = lever >= 0 ? n1ForPhi(leverToPhi(lever), idleN1(sigmaT, mach)) : X.eN1t[iRef];
 
     // Spoilers: speed brakes (inhibited in FULL, α prot, TOGA/MCT), ground spoilers.
@@ -588,14 +969,24 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const leverIdle = lvHi <= 0.02;
     if (mainsWow && ((controls.spoilersArmed && leverIdle && ias > 72 * A.KT) || revAny)) X.gspLatched = true;
     if (lvHi > 0.05 || (!mainsWow && !wowN)) X.gspLatched = false;
-    X.gsp = approach(X.gsp, X.gspLatched ? 1 : 0, dt * (X.gspLatched ? 2.0 : 0.5));
     const sbInhibit = X.cfg === A.CONFIG_FULL || X.protAlpha || lvHi > 0.75 || X.alphaFloorLock;
-    X.sb = approach(X.sb, sbInhibit ? 0 : clamp(controls.speedbrake, 0, 1), dt * 0.5);
+    if (X.hOn !== 0) {   // v0.8.0 (part 7): only the panels with pressure move
+      X.gsp = approach(X.gsp, X.gspLatched ? HE.groundSpoilers : 0, dt * (X.gspLatched ? 2.0 : 0.5));
+      X.sb = approach(X.sb, sbInhibit ? 0 : clamp(controls.speedbrake, 0, 1) * HE.speedbrake, dt * 0.5);
+    } else {
+      X.gsp = approach(X.gsp, X.gspLatched ? 1 : 0, dt * (X.gspLatched ? 2.0 : 0.5));
+      X.sb = approach(X.sb, sbInhibit ? 0 : clamp(controls.speedbrake, 0, 1), dt * 0.5);
+    }
 
     // Brakes (anti-skid in the tyre model) and nosewheel steering.
     const park = controls.parkingBrake ? 1 : 0;
-    X.brkL = approach(X.brkL, Math.max(controls.brakeL, park), dt * 3);
-    X.brkR = approach(X.brkR, Math.max(controls.brakeR, park), dt * 3);
+    if (X.hOn !== 0) {   // v0.8.0 (part 7): the pedals get what the brakes' system gives (the parking brake its accumulator)
+      X.brkL = approach(X.brkL, Math.max(controls.brakeL * HE.brake, park), dt * 3);
+      X.brkR = approach(X.brkR, Math.max(controls.brakeR * HE.brake, park), dt * 3);
+    } else {
+      X.brkL = approach(X.brkL, Math.max(controls.brakeL, park), dt * 3);
+      X.brkR = approach(X.brkR, Math.max(controls.brakeR, park), dt * 3);
+    }
     let steerCmd = 0;
     if (wowN) {
       const kt = gs / A.KT;
@@ -603,6 +994,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       const maxA = A.STEER_TILLER * (1 - k) + A.STEER_PEDAL * k;
       const fade = clamp((130 - kt) / 30, 0, 1);
       steerCmd = controls.yaw * maxA * fade;
+      if (X.hOn !== 0) steerCmd *= HE.steer;   // v0.8.0 (part 7)
     }
     X.steer = approach(X.steer, steerCmd, dt * 25 * A.DEG);
 
@@ -620,6 +1012,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // with the ailerons' and the roll spoilers' powers the design's. The types (and designs on the base's airframe) skip it.
     let clAil = A.CL_ROLL.aileron, clSp = A.CL_ROLL.spoiler;
     if (A.PARTS_AERO !== undefined) { partsDeltaInto(A.PARTS_AERO, cs, co); clAil += co.dClAil; clSp += co.dClSp; }
+    if (X.hOn !== 0) clSp *= HE.rollSpoilers;   // v0.8.0 (part 7): the roll spoilers with pressure (the law inverts what is there)
     const qS = qbar * A.S;
     const ca = Math.cos(alpha), sa = Math.sin(alpha);
     const iv = V > 2 ? 1 / V : 0;
@@ -674,7 +1067,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const wowNPrev = wowN;
     wowN = wowL = wowR = false;
     let peakComp = 0;
-    if (aglEst < 15 && X.gearPos > 0.98) {
+    // v0.8.0: with a gear failure each leg is down or not by itself (X.gLeg); else all three by X.gearPos, as before.
+    const own = X.gOn !== 0;
+    const gearOk = own ? X.gLeg[0] > 0.98 && X.gLeg[1] > 0.98 && X.gLeg[2] > 0.98 : X.gearPos > 0.98;
+    if (aglEst < 15 && (own ? X.gLeg[0] > 0.98 || X.gLeg[1] > 0.98 || X.gLeg[2] > 0.98 : gearOk)) {
       kctx.px = X.px; kctx.py = X.py; kctx.pz = X.pz;
       // The gear rolls on the ground, not in the air: inertial velocities here.
       kctx.u = R[0] * X.vn + R[3] * X.ve + R[6] * X.vd;
@@ -686,6 +1082,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       kctx.hydro = 0;   // v0.4.2: the most any tyre is hydroplaning (gear.js)
       for (let i = 0; i < 3; i++) {
         const L = legs[i];
+        if (own && !(X.gLeg[i] > 0.98)) { L.wow = false; L.comp = 0; L.normal = 0; L.vRoll *= 0.995; continue; }   // v0.8.0: this leg isn't down
         L.rx = L.bx - cgX; L.ry = -L.by; L.rz = -L.bz;
         kctx.brake = i === 1 ? X.brkL : i === 2 ? X.brkR : 0;
         legStep(L, kctx);
@@ -697,13 +1094,23 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       for (let i = 0; i < 3; i++) { legs[i].wow = false; legs[i].comp = 0; legs[i].normal = 0; legs[i].vRoll *= 0.995; }
       state.hydroplaning = false;
     }
+    if (own) { collapseStep(dt); wowN = legs[0].wow; wowL = legs[1].wow; wowR = legs[2].wow; }
+    // v0.8.0, a landing with the gear up or a leg missing (a failure, or the gear forgotten): the crash points are
+    // skids, as Indestructible's, while each touch stays within BELLY's limits (below, with the events).
+    // (Not in the seconds after the wheels have left the ground with the gear on its way up and nothing failed: a tail
+    // that touches then is the crash it was in v0.7.9, not a belly landing: the code review's sixth. X.wowT: when a
+    // wheel last stood on the ground.)
+    const belly = !indestructible && !gearOk && (own || X.scrapes !== 0 || X.t - X.wowT > 15);
 
     // v0.4.1, Indestructible: a crash point under the ground pushes back (a stiff, damped spring, with the
     // ground under it) and slides (metal on the ground), so the aircraft scrapes and bounces, and never sinks in.
     let scrapes = 0, scrapeDepth = 0;
-    if (indestructible && aglEst < 15) {
+    if ((indestructible || belly) && aglEst < 15) {
       const ui = R[0] * X.vn + R[3] * X.ve + R[6] * X.vd, vi = R[1] * X.vn + R[4] * X.ve + R[7] * X.vd, wi = R[2] * X.vn + R[5] * X.ve + R[8] * X.vd;
-      const kS = mass * SKID.k, cS = mass * SKID.c;
+      const kS = mass * SKID.k, cS = mass * (belly ? BELLY_SKID.c : SKID.c);   // v0.8.0: a belly's own damping and friction
+      const muS = belly ? BELLY_SKID.mu : SKID.mu, slipS = belly ? BELLY_SKID.slipMs : 0.5;
+      // (a belly's friction holds at a crawl as static friction does, its rate capped so a step can't overshoot)
+      const kfMax = belly ? BELLY_SKID.kfMax * mass / dt : Infinity;
       for (let i = 0; i < SKID_POINTS.length; i++) {
         const c = SKID_POINTS[i];
         if (c.engine !== undefined && X.eOff & (1 << c.engine)) continue;   // v0.5.0: an engine that's gone
@@ -717,8 +1124,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
         // The point's velocity (inertial, body: v + ω × r), then north, east and down.
         const ub = ui + X.q * rz - X.r * ry, vb = vi + X.r * rx - X.p * rz, wb = wi + X.p * ry - X.q * rx;
         const vN = R[0] * ub + R[1] * vb + R[2] * wb, vE = R[3] * ub + R[4] * vb + R[5] * wb, vD = R[6] * ub + R[7] * vb + R[8] * wb;
+        skidVd[i] = vD;   // v0.8.0: this part's speed into the ground (a belly landing's limit)
         const fn = Math.max(0, kS * pen + cS * vD);
-        const vh = Math.hypot(vN, vE), kf = vh > 1e-6 ? (SKID.mu * fn * Math.tanh(vh / 0.5)) / vh : 0;
+        const vh = Math.hypot(vN, vE), kf = vh > 1e-6 ? Math.min(kfMax, (muS * fn * Math.tanh(vh / slipS)) / vh) : 0;
         const fN = -kf * vN, fE = -kf * vE, fD = -fn;
         const fx = R[0] * fN + R[3] * fE + R[6] * fD, fy = R[1] * fN + R[4] * fE + R[7] * fD, fz = R[2] * fN + R[5] * fE + R[8] * fD;
         F[0] += fx; F[1] += fy; F[2] += fz;
@@ -738,12 +1146,21 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     E.rudLim = iasKt < 160 ? A.RUD_MAX : Math.max(3.5 * A.DEG, A.RUD_MAX * (160 / iasKt) * (160 / iasKt));
     fbwStep(X, controls, E, dt);
     // Actuators.
+    if (X.hOn !== 0) {   // v0.8.0 (part 7): each surface's rate by its share of actuators with pressure; 0 frozen
+      X.elev = approach(X.elev, X.elevCmd, A.ELEV_RATE * dt * HE.elevator);
+      if (HE.stab !== 0) X.ths = clamp(X.ths + X.thsRate * dt, -A.THS_DN, A.THS_UP);
+      X.ail = approach(X.ail, X.uRoll * A.AIL_MAX, A.AIL_RATE * dt * HE.aileron);
+      X.spR = approach(X.spR, Math.max(0, X.uRoll), 3 * dt * (HE.rollSpoilers > 0 ? 1 : 0));
+      X.spL = approach(X.spL, Math.max(0, -X.uRoll), 3 * dt * (HE.rollSpoilers > 0 ? 1 : 0));
+      X.rud = approach(X.rud, X.rudCmd, A.RUD_RATE * dt * HE.rudder);
+    } else {
     X.elev = approach(X.elev, X.elevCmd, A.ELEV_RATE * dt);
     X.ths = clamp(X.ths + X.thsRate * dt, -A.THS_DN, A.THS_UP);
     X.ail = approach(X.ail, X.uRoll * A.AIL_MAX, A.AIL_RATE * dt);
     X.spR = approach(X.spR, Math.max(0, X.uRoll), 3 * dt);
     X.spL = approach(X.spL, Math.max(0, -X.uRoll), 3 * dt);
     X.rud = approach(X.rud, X.rudCmd, A.RUD_RATE * dt);
+    }
     M[1] += E.elevScale * X.elev;
     M[0] += qS * A.SPAN * (clAil * X.ail + clSp * (X.spR - X.spL));
 
@@ -778,6 +1195,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // let a fast hit bury the nose up to 6 m in a hill.
     let impNz = 0;
     if (indestructible && scrapeDepth > SKID_HARD_PEN) impNz = hardStop(mass, cgX, Ixx, Iyy, Izz, Ixz, dt);
+    else if (belly && scrapeDepth > SKID_HARD_PEN) crash('belly impact');   // v0.8.0: past the skids' travel
 
     // Load factor (specific force along body −z) and the force along the path.
     const nz = -(F[2]) / (mass * G) + impNz;
@@ -804,7 +1222,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
     // ---- events and crashes ----
     const nowMains = wowL || wowR, nowAny = nowMains || wowN;
-    const onSkids = indestructible && scrapes !== 0 && !nowAny;   // v0.4.2
+    const onSkids = (indestructible || belly) && scrapes !== 0 && !nowAny;   // v0.4.2; v0.8.0: a belly landing too
     // Touchdown: armed after 0.5 s with no wheel on the ground. A nose-first arrival that
     // is too hard breaks the nose gear; the main-gear contact makes the touchdown event.
     if (X.airTime > 0.5 && X.everAirborne) X.tdArmed = true;
@@ -840,6 +1258,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     }
     if (onSkids && X.airTime > 0.5) X.airTime = 0;
     if (nowAny) {
+      X.wowT = X.t;   // v0.8.0 (belly, above)
       if (X.airTime > 0.5) X.airTime = 0;
       let grass = false;
       for (let i = 0; i < 3; i++) {
@@ -871,7 +1290,29 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
         crash(SKID_POINTS[i].why);
       }
       X.scrapes = scrapes;
+    } else if (belly) {
+      // v0.8.0: each part that has just touched, against the limits: the sink rate at the first touch of all, any
+      // later part's speed into the ground, the bank and the pitch. Within them it scrapes and slides; past them it
+      // is a crash, as it always was. On water it is a ditching.
+      const fresh = scrapes & ~X.scrapes;
+      for (let i = 0; fresh && i < SKID_POINTS.length; i++) {
+        if (!(fresh & (1 << i))) continue;
+        const why = SKID_POINTS[i].why;
+        // (failures.js's BELLY: the pitch and the sink at the first touch alone, nothing yet on the ground; a wingtip always)
+        const first = X.scrapes === 0 && !mainsWow && !wowNPrev && !nowAny;
+        if (why === 'wingtip strike' || skidVd[i] > (first ? BELLY.vs : BELLY.part) || Math.abs(phi) > BELLY.bank || (first && (theta < BELLY.pitchLo || theta > BELLY.pitchHi))) {
+          if (why === 'tail strike') events.push({ type: 'tailstrike' });
+          crash(why);
+          break;
+        }
+        if (groundFn(X.px, X.py).kind === 'water') { crash('ditched'); break; }
+        if (why !== X.dmgReason || X.t - X.dmgT > 3) events.push({ type: 'scrape', reason: why });
+        X.dmgReason = why; X.dmgT = X.t;
+      }
+      X.scrapes = scrapes;
+      if (scrapes !== 0 && !X.crashed && groundFn(X.px, X.py).kind === 'water') crash('ditched');   // sliding off the land (the code review's seventh)
     } else if (aglEst < 12) {
+      X.scrapes = 0;   // v0.8.0: nothing scrapes with the gear down (a slide that ended with the gear repaired)
       // Fuselage, tail, engine and wingtip contact against the local ground plane.
       computeR();
       for (let i = 0; i < CRASH_POINTS.length; i++) {
@@ -1065,6 +1506,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     S.n1Idle = idleN1(flatSigma(atmo.rho / RHO0, atmo.T), mach);   // v0.7.4: the screens' thrust limit, where the ring's N1 comes from
     S.flapLever = controls.flapLever; S.config = X.cfg; S.slatDeg = X.slat; S.flapDeg = X.flap;
     S.gearPos = X.gearPos; S.gearDoors = X.gearDoors;
+    failState();   // v0.8.0
     S.gearCompression.nose = legs[0].comp; S.gearCompression.left = legs[1].comp; S.gearCompression.right = legs[2].comp;
     S.steerAngle = X.steer;
     S.wheelRate.nose = legs[0].vRoll / A.WHEEL_R_NOSE;
@@ -1078,7 +1520,7 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       sf.spoilersR[i] = Math.min(1, Math.max(X.gsp, sbPart + rollR));
     }
     S.speedbrake = X.sb; S.groundSpoilers = X.gsp;
-    S.brakes.left = X.brkL; S.brakes.right = X.brkR; S.parkingBrake = controls.parkingBrake; S.law = controls.law;
+    S.brakes.left = X.brkL; S.brakes.right = X.brkR; S.parkingBrake = controls.parkingBrake; S.law = lawName(lawLevel(controls.law, E.hydLaw, !!kit.boeing), !!kit.boeing);   // v0.8.0 (part 7): the law that flies
 
     // Speeds for the tape (IAS ≈ EAS at these speeds).
     liftCurve(X.slat, X.flap, lc); machLift(lc, mach);
@@ -1100,13 +1542,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // Warnings.
     const W = S.warnings;
     const aglFt = S.agl / A.FT, vsFpm = S.vs / A.FPM;
-    W.stall = controls.law === 'alternate' && !S.onGround && alpha > lc.alphaMax - A.ALPHA_SW_MARGIN;
+    W.stall = (controls.law === 'alternate' || lawLevel(controls.law, E.hydLaw, !!kit.boeing) >= 1) && !S.onGround && alpha > lc.alphaMax - A.ALPHA_SW_MARGIN;
     W.overspeed = ias > vmax + 4 * A.KT || mach > A.MMO + 0.006;
     W.apDisc = X.apDiscT > 0;
     const air = !S.onGround && X.everAirborne;
     W.sinkRate = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(998 + 1.67 * aglFt);
     W.pullUp = air && aglFt > 50 && aglFt < 2450 && vsFpm < -(1710 + 2.17 * (aglFt - 50));
-    W.tooLowGear = air && aglFt < 500 && X.gearPos < 0.99 && ias < 190 * A.KT && vsFpm < 0;
+    W.tooLowGear = air && aglFt < 500 && X.gearPos < 0.99 && ias < 190 * A.KT && vsFpm < 0 && (indestructible || X.scrapes === 0);   // v0.8.0: not while sliding or lying on the belly (Indestructible's slide keeps it, as v0.7.9)
     W.windshear = X.wsT > 0;
     W.windshearAhead = X.pwsT > 0 && !W.windshear;   // v0.4.2: the reactive warning comes first
     if (kit.boeing) kit.boeing.updateState(S, X, lc, atm);
@@ -1134,6 +1576,11 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
 
   // ---- initial conditions ----
   function reset(ic = {}) {
+    // v0.8.0, ic.keepFailures (a skip to final): the aircraft is placed anew but what has failed stays failed and what is
+    // armed stays armed, on the clock that starts again here. Otherwise a reset is a sound aircraft; the plan is the
+    // caller's to clear (main.js's startFlight() does), and it sleeps through the settling below.
+    const kept = ic.keepFailures ? { t: X.t, core: copyFailCore({}, X), gOn: X.gOn, gSys: X.gSys } : null;
+    const planWas = failPlan; failPlan = null;
     Object.assign(X, newCore(A, kit.boeing, NE));
     events.length = 0;
     controls.pitch = controls.roll = controls.yaw = 0;
@@ -1196,6 +1643,17 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
       events.length = 0;
     } else {
       trimAirborne(ic, hdg, g);
+    }
+    failPlan = planWas;
+    if (kept) {
+      const c = kept.core; c.gOn = kept.gOn; c.gSys = kept.gSys;
+      adoptFailCore(X, c, NE);
+      for (const a of X.fActive) a.t -= kept.t;
+      for (let i = 0; i < NE; i++) { if (X.eAgT[i] >= 0) X.eAgT[i] -= kept.t; if (X.eLit[i] === 0) X.eN1[i] = X.eN1t[i] = X.eThr[i] = X.eFf[i] = 0; }
+      // The legs where this start puts the gear, but a leg that is gone or won't lock.
+      for (let i = 0; i < 3; i++) X.gLeg[i] = X.gFl[i] & (L_GONE | L_NOLOCK) ? 0 : X.gearPos;
+      if (X.gOn !== 0) X.gearPos = (X.gLeg[0] + X.gLeg[1] + X.gLeg[2]) / 3;
+      failPlan = shiftedPlan(failPlan, kept.t);
     }
     if (ic.ap) {
       for (const k of AP_FIELDS) if (k in ic.ap && k !== 'ap') ap[k] = ic.ap[k];
@@ -1297,8 +1755,10 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     for (const k of AP_FIELDS) apSnap[k] = ap[k];
     const snap = { v: 1, type: typeDef.id, core: { ...X }, controls: { ...controls, thrustEng: controls.thrustEng ? controls.thrustEng.slice() : null }, ap: apSnap, wow: [wowN, wowL, wowR] };
     for (const k of ENGINE_FIELDS) snap.core[k] = X[k].slice();
+    copyFailCore(snap.core, X);   // v0.8.0: the failures' state, the core's own copies
     if (typeDef.design) snap.design = typeDef.design;   // v0.5.0: the design itself, whole (designs.js)
     if (wxS) snap.weather = wxS;   // the default weather writes nothing: absent means calm
+    if (failPlan !== null) snap.failures = failPlan;   // v0.8.0: the armed failures, the world's as the weather is: absent means none
     for (const k in opts) if (opts[k]) (snap.options ??= {})[k] = true;   // only those on: absent means off
     return snap;
   }
@@ -1316,11 +1776,12 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     mkLegs();
     for (const k of Object.keys(ap)) delete ap[k];
     kit.auto.createAp(core, ap);
-    state.type = def.id;
+    state.type = def.id; state.typeBase = def.base ? def.base.id : def.id;   // (v0.8.0: a design's base type, for the screens' numbers)
   }
   // keepWeather: the weather set now stays (a rewind or a jump: it's the world's, not the aircraft's).
   function restore(snap, { keepWeather = false } = {}) {
     if (!keepWeather) setWeather(snap.weather || null);
+    if (!keepWeather) { failPlan = normalizePlan(snap.failures); failNext = 1; }   // v0.8.0: a rewind or a jump keeps the plan armed now, as the weather (a load starts the ids' counter anew: floorIds() below)
     for (const k in opts) setOption(k, !!snap.options?.[k]);
     // A save from before v0.3.0 has no type: it's the A321neo.
     // v0.5.0: a save with a design flies that design (saved whole, so deleting or editing it later changes nothing).
@@ -1328,10 +1789,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     // A save from before v0.2.2 has no A/THR lever fields: it starts not driving. One from before
     // v0.3.2 has no load fields: the plan's load, and no fuel added.
     Object.assign(X, { athrDriving: false, athrLever: 0, athrOffBy: '', leverN1: A.N1_IDLE, paxN: null, cargoKg: null, fuelAddedKg: 0, baroHpa: 1013.25, baroStd: false, baroIn: false, wsF: 0, wsPrevN: 0, wsPrevE: 0, wsValid: false, wsT: 0,
-      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0, tanksDropped: false,
+      scrapes: 0, dmgReason: '', dmgT: -100, pwsT: 0, pwsClock: 0, eOff: 0, tanksDropped: false, wowT: -100,
       a3Rollout: false, a3RollYaw: 0, a3Align: false, a3AlignYaw: 0, a3YawClear: false, a3FlareTau: 0, a3Crab0: 0, a3AlignI: 0, a3AlignBI: 0,   // v0.7.4: a save from before has none
       ...(kit.boeing ? { boAlign: false, boAlignYaw: 0, boCrab0: 0, boRolloutRoll: 0, boRollHeld: false, boAlignI: 0, boAlignBI: 0 } : null) }, snap.core);
     migrateEngines(snap.core);
+    adoptFailCore(X, snap.core, NE);   // v0.8.0: a save from before has none: nothing failed
+    floorIds(failPlan);
+    if (!('wowT' in snap.core)) X.wowT = X.t - X.airTime;   // a save from before v0.8.0: the wheels left the ground when its air time began
     Object.assign(controls, snap.controls);
     // v0.5.6: the levers apart, as saved (a save from before has none: together).
     const te = snap.controls?.thrustEng;
@@ -1344,6 +1808,9 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     const g = groundFn(X.px, X.py);
     windHere(g.h);
     const V = Math.hypot(X.vn - Wd.n, X.ve - Wd.e, X.vd - Wd.d);
+    // v0.8.0 (part 7): the hydraulics' effects and the law they leave, at once (no time passes: the pressures stay as
+    // saved), so a save loaded paused shows its law and its lost systems before the first step (found by `p7-laws`).
+    if (X.hOn !== 0) hydStep(0, casFromTasP(V, atm.p, atm.a), wowN || wowL || wowR);
     updateState(atm, casFromTasP(V, atm.p, atm.a), V / atm.a, X.prevAlpha, 0, X.nzPrev, Math.hypot(X.vn, X.ve), g.h, X.pz - GROUND_Z - g.h);
     // A rewind into air that has changed since the snapshot: the change isn't an acceleration or a shear. (In the
     // same air nothing is touched, so a restored flight still flies on exactly.)
@@ -1497,11 +1964,13 @@ export function createSim({ ground, type = DEFAULT_TYPE } = {}) {
     let oneF = X.lever1F;
     if (fl === 1 && A.HAS_1F && fl !== X.prevLever) oneF = X.prevLever === 0 ? (S.onGround || S.ias < 100 * A.KT) : S.ias < A.AUTO_RETRACT_KT * A.KT;
     S.flapLever = controls.flapLever; S.config = fl === 1 && A.HAS_1F ? (oneF ? '1+F' : '1') : CONFIG_BY_LEVER[fl];
-    S.parkingBrake = controls.parkingBrake; S.law = controls.law;
+    S.parkingBrake = controls.parkingBrake; S.law = lawName(lawLevel(controls.law, E.hydLaw, !!kit.boeing), !!kit.boeing);   // v0.8.0 (part 7): the law that flies
   }
 
   return { controls, ap, state, events, step, reset, snapshot, restore, setGroundPose, setType, setLoad, dropTanks, previewControls,
     setIndestructible: (on) => setOption('indestructible', on), setAutoTrim: (on) => setOption('autoTrim', on),
+    setFailures, repair, engineSwitch, firePush, fireAgent, gravityGear, get failures() { return failPlan; },   // v0.8.0
+    hydPump, get hydLayout() { return HL; },   // v0.8.0 (part 7)
     setWeather: applyWeather, setBaro, setBaroStd, setLocalQnh, setBaroUnit, get weather() { return wxS; }, get baro() { return X.baroIn ? { hpa: X.baroHpa, std: X.baroStd, inHg: true } : { hpa: X.baroHpa, std: X.baroStd }; },
     get type() { return typeDef; }, get design() { return typeDef.design || null; },
     get massProps() { massProps(); return { mass, cgX, Ixx, Iyy, Izz, Ixz }; },   // v0.5.0: for the tests

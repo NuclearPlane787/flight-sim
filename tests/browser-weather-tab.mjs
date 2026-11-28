@@ -118,7 +118,8 @@ try {
   await shot('v040-weather-tab-scrolled.png');
 
   // The tabs: L's window, three on each.
-  for (const [t, sel] of [['sky', '.fssw:not(.fslw):not(.fswx)'], ['load', '.fslw'], ['weather', W]]) {
+  // (v0.8.0: a fourth window, the Failures tab's, shares the frame: the Sky window alone is the one that is none of the other three.)
+  for (const [t, sel] of [['sky', '.fssw:not(.fslw):not(.fswx):not(.fsfw)'], ['load', '.fslw'], ['weather', W]]) {
     await page.evaluate((t) => window.__show(t), t);
     await page.waitForTimeout(100);
     check(await page.$$eval(`${sel} .fssw-tab`, (e) => e.length) === 3, `${t}: three tabs`);
@@ -131,7 +132,7 @@ try {
   check(await page.evaluate(() => window.__tab()) === 'weather' && await page.isVisible(W), 'from Weight to Weather');
   await page.click(`${W} [data-tab="sky"]`);
   check(await page.evaluate(() => window.__tab()) === 'sky', 'from Weather to Sky');
-  await page.click('.fssw:not(.fslw):not(.fswx) [data-tab="weather"]');
+  await page.click('.fssw:not(.fslw):not(.fswx):not(.fsfw) [data-tab="weather"]');
   check(await page.isVisible(W), 'from Sky to Weather');
   await page.keyboard.press('Backslash');   // v0.5.7: the Sky window is \ (L is the warehouse's block)
   check(!await page.isVisible(W), '\\ closes it');

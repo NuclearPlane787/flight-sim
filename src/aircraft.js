@@ -37,6 +37,18 @@ export const BODY_TO_MODEL = new THREE.Matrix4().set(
 );
 export const toModel = (x, y, z, out = new THREE.Vector3()) => out.set(-y, z, -x);
 
+// v0.8.0: where the model draws leg i (0 nose, 1 left main, 2 right main; 0 up … 1 down): the sim's own leg with a
+// gear failure (state.gearLegs, state.gearLegFlags), a collapsed leg (flag 4) folded, and exactly the one gearPos
+// (gp, already clamped) when the state has no legs: the warehouse's, the dev pages' and v0.7.9's states.
+export function legPos(state, i, gp) {
+  const L = state.gearLegs;
+  if (!L) return gp;
+  const F = state.gearLegFlags;
+  if (F && (F[i] & 4)) return 0;
+  const v = L[i];
+  return v === undefined || v === null ? gp : clamp(v, 0, 1);
+}
+
 // Control-surface signs, matching src/sim/sim.js (rad): elevator + = nose-up elevator (trailing
 // edge up), stab + = nose-up trim (trailing edge up), aileronL/R + = trailing edge up (the sim
 // sends aileronL = −ail, aileronR = +ail, ail + rolls right), rudder + = trailing edge right
@@ -1070,10 +1082,11 @@ export function createAircraft(opts = {}) {
 
     // Gear.
     const gp = clamp(state.gearPos ?? 1, 0, 1);
-    const up = 1 - gp;
-    rot('mainLegL', -up * 88 * DEG);
-    rot('mainLegR', up * 88 * DEG);
-    rot('noseLeg', -up * 100 * DEG);
+    // v0.8.0: each leg its own (state.gearLegs: nose, left, right; L = the sim's left, body y > 0); a collapsed leg folded.
+    const gN = legPos(state, 0, gp), gL = legPos(state, 1, gp), gR = legPos(state, 2, gp);
+    rot('mainLegL', -(1 - gL) * 88 * DEG);
+    rot('mainLegR', (1 - gR) * 88 * DEG);
+    rot('noseLeg', -(1 - gN) * 100 * DEG);
     const gc = state.gearCompression || {};
     slide('mainPistonL', (gc.left ?? staticComp.main) - staticComp.main);
     slide('mainPistonR', (gc.right ?? staticComp.main) - staticComp.main);
@@ -1090,8 +1103,8 @@ export function createAircraft(opts = {}) {
     animateEngines(state.engines || NO_ENGINES, dt);
 
     // Lights: steady nav, flashing beacons and strobes (aircraft-lights.js), the lamps.
-    gearNow = gp;
-    const f = flashAt(clock), L = lights, gearLamp = gp > 0.97 ? 1 : 0;
+    gearNow = gN;   // v0.8.0: the taxi lamp is on the nose leg (gN is gp when nothing is failed)
+    const f = flashAt(clock), L = lights, gearLamp = gN > 0.97 ? 1 : 0;
     // From the seats the nose is hidden, so the lamps under it would show through: hide them
     // (the pilots never see these lamps, only their light on the ground).
     const seen = cockpitView ? 0 : 1;

@@ -140,6 +140,14 @@ export function createPfd(cv) {
           ctx.moveTo(o * s * 2, -R * 0.98); ctx.lineTo(o * s * 2, -R * 1.07); ctx.restore(); ctx.stroke();
         }
       }
+    } else {
+      // v0.8.0 (part 7): with the protections lost (alternate or direct law) amber crosses in their place.
+      ctx.strokeStyle = C.amber; ctx.lineWidth = Math.max(1.2, s * 0.003);
+      const d = 0.009 * s, m = R * 1.025;
+      for (const b of [-67, 67]) {
+        const a = (b - 90) * DEG, x = Math.cos(a) * m, y = Math.sin(a) * m;
+        ctx.beginPath(); ctx.moveTo(x - d, y - d); ctx.lineTo(x + d, y + d); ctx.moveTo(x - d, y + d); ctx.lineTo(x + d, y - d); ctx.stroke();
+      }
     }
     // Roll pointer and the sideslip index under it.
     ctx.rotate(-roll * DEG);
@@ -568,7 +576,19 @@ export function createPfd(cv) {
     if (altArm || gsArm) text(1, 1, altArm && gsArm ? 'ALT  G/S' : altArm ? 'ALT' : 'G/S', C.cyan);
     if (apOn && ap.armedLateral === 'LOC') text(2, 1, 'LOC', C.cyan);
     if (!/^(LAND|ROLL OUT)$/.test(lat)) text(2, 0, lat, C.green, 'lat');
-    if ((st.law || 'normal') !== 'normal') text(3, 2, 'ALTN LAW', C.amber);
+    if ((st.law || 'normal') !== 'normal') {
+      // v0.8.0 (part 7): DIRECT LAW where ALTN LAW is, and the direct law's reminder under the FMA [EST: placement].
+      const dir = st.law === 'direct';
+      if (!dir) text(3, 2, 'ALTN LAW', C.amber);
+      else {   // (fitted to its column: at the FMA's size "DIRECT LAW" ran into the column's line: the pictures reader's second sitting)
+        ctx.font = font(fitSize('DIRECT LAW', s * 0.033, cw - 0.014 * s), true); ctx.fillStyle = C.amber;
+        ctx.fillText('DIRECT LAW', 3 * cw + cw / 2, row(2));
+      }
+      if (dir) {
+        ctx.font = font(fitSize('USE MAN PITCH TRIM', s * 0.033, 3 * cw - 0.02 * s), true); ctx.fillStyle = C.amber;
+        ctx.fillText('USE MAN PITCH TRIM', 2.5 * cw, h + 0.03 * s);
+      }
+    }
     text(4, 0, apOn ? 'AP1' : '', C.white, 'ap');
     text(4, 2, athr ? 'A/THR' : '', athrArmed ? C.cyan : C.white, 'athr');
     if (!apOn && st.warnings?.apDisc && Math.floor(now / 400) % 2) text(4, 0, 'AP OFF', C.red);

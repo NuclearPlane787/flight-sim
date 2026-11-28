@@ -173,3 +173,35 @@
   .fssw-clock { margin: 5px 0 3px; }
   .fssw-date { margin-bottom: 5px; }
 }
+
+/* v0.8.0: the Failures window (failures-window.js), the L window's fourth tab. Four tabs: a little closer, and no
+   subtitle in any of the four windows (the tabs' tooltips say the same). */
+.fssw-head:has(.fssw-tab:nth-child(4)) .fssw-tab { padding: 0 6px; gap: 5px; }
+.fssw-head:has(.fssw-tab:nth-child(4)) .fssw-sub { display: none; }
+.fsfw-ico { color: #ffb347; filter: drop-shadow(0 0 4px rgba(255, 160, 60, 0.6)); }
+.fssw.fsfw .fsfw-body { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+.fssw.fsfw .fsfw-scroll { overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding-right: 3px;
+  max-height: calc(100vh - min(43vh, 27vw, 560px) - clamp(38px, 5.2vh, 56px) - 170px); min-height: 90px;
+  /* (the pictures review: a row cut through its middle at the scroll's foot read as broken: the foot fades, so it reads as "more below". The 32 px more room first given with it put the window over the PFD's foot, the reader's second sitting, and were taken back.) */
+  box-sizing: border-box; padding-bottom: 16px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
+@media (max-height: 800px) { .fssw.fsfw .fsfw-scroll { max-height: calc(100vh - min(43vh, 27vw, 560px) - clamp(38px, 5.2vh, 56px) - 144px); } }
+.fssw.fsfw .fsfw-h { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 3px;
+  font: 700 11px var(--font); text-transform: uppercase; letter-spacing: 0.1em; color: #8a9097; }
+.fssw.fsfw .fsfw-h2 { margin-top: 9px; padding-top: 7px; border-top: 1px solid #2a343d; }
+.fssw.fsfw .fsfw-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
+  padding: 3px 0; font: 600 13px var(--font); color: #eef3f7; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.fssw.fsfw .fsfw-what { min-width: 0; }
+.fssw.fsfw .fsfw-lists > .fsfw-row .fsfw-what { color: #ffd0a0; }
+.fssw.fsfw .fsfw-rand .fsfw-what { color: #c9ced2; font-style: italic; }
+.fssw.fsfw .fsfw-when { font: 600 11.5px var(--font); color: #8a9097; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fssw.fsfw .fsfw-rb { padding: 3px 7px; font-size: 12px; }
+.fssw.fsfw .fsfw-none { padding: 2px 0 4px; font: 600 12.5px var(--font); color: #6f7b85; }
+.fssw.fsfw .fsfw-grid { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 5px 8px; }
+.fssw.fsfw .fsfw-grid label { font: 600 13px var(--font); color: #d8dde1; }
+.fssw.fsfw .fsfw-grid [hidden] { display: none; }
+.fssw.fsfw .fswx-v input { width: 46px; }
+.fssw.fsfw .fswx-v select { max-width: 100%; }
+.fssw.fsfw .fsfw-engs { gap: 3px; flex-wrap: nowrap; }
+.fssw.fsfw .fsfw-eng { width: 28px; padding: 4px 0; font-size: 12.5px; }
+.fssw.fsfw .fsfw-ticks { gap: 3px; }
+.fssw.fsfw .fsfw-tick { padding: 3px 6px; font-size: 11.5px; }

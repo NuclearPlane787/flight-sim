@@ -184,6 +184,7 @@ export const COST = {
   grass: 0.35,      // the first main wheels landed on the grass (short of the runway or off its side)
   offRunway: 2.3,   // not on a runway at all: a perfect touchdown on a taxiway scores 10
   crash: 2.3,       // v0.4.1: Indestructible kept together what would have crashed (a damage event): as off a runway
+  gearUp: 2.3,      // v0.8.0: a landing with the gear left up, no failure (a belly or two legs survived): as off a runway
   // (v0.5.4 to v0.6.1 also scored the approach: path, the RMS dots off the glideslope and localizer from 1,000 ft
   // to 100 ft, sq(dots / 2.9); swing, the sink rate's standard deviation about a steady 3° descent, sq(fpm / 900).
   // v0.6.2 dropped both.)
@@ -204,7 +205,7 @@ export const scoreFor = (cost, k) => Math.round(10 * Math.exp(-cost / k));
 // v0.5.4: the most a landing on the grass can score, 49 (an F). (v0.5.4 also capped a touchdown off a
 // runway and a would-be crash at 10; v0.5.5 halves them instead, HALVED.)
 export const CAP = { grass: 49 };
-export const HALVED = ['offRunway', 'crash'];
+export const HALVED = ['offRunway', 'crash', 'gearUp'];   // (v0.8.0: and the gear left up)
 // v0.5.4: and the worst part's score caps it at 50 + 10 × that score (0/10: 50, 3/10: 80, 5/10 or better: none).
 // v0.6.2: vertical speed's alone (CAPPED_BY): a hard touchdown still holds the total down; the other parts average.
 export const WORST_CAP = (score) => 50 + 10 * score;
@@ -279,6 +280,40 @@ export function bounceTracker(B = BOUNCE) {
     },
   };
   return api;
+}
+// v0.8.0: a landing with the gear not all down, from the state at the touchdown: the legs that weren't down and
+// whether a gear failure was armed and fired (else the gear was left up). {} when all three were down (a normal
+// landing: the touchdown's fields exactly as before).
+export function gearAtTouchdown(s) {
+  const L = s.gearLegs;
+  if (!Array.isArray(L) || L.length !== 3 || (L[0] > 0.98 && L[1] > 0.98 && L[2] > 0.98)) return {};
+  const failure = Array.isArray(s.failures) && s.failures.some((f) => f && typeof f.kind === 'string' && f.kind.startsWith('gear-'));
+  return { gearLegs: L.map((v) => +v.toFixed(2)), ...(failure ? { gearFailure: true } : {}) };
+}
+export const LEG_NAMES = ['nose', 'left main', 'right main'];
+const andList = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+// What kind of landing it was, for the card: { text, legsUp, collapsed, failure, scraped } or null (a normal one).
+// td: the scorer's touchdown (gearAtTouchdown()'s fields); scraped: the parts' names that scraped (the sim's
+// 'scrape' events' reasons); collapsed: [{ t, leg }] (the sim's 'gearCollapse' events).
+export function gearLanding(td, scraped = [], collapsed = []) {
+  const gone = [...new Set(collapsed.map((c) => c.leg))];   // (a leg that collapsed at the touchdown reads as up there)
+  const legsUp = Array.isArray(td.gearLegs) ? [0, 1, 2].filter((i) => !(td.gearLegs[i] > 0.98) && !gone.includes(i)) : [];
+  if (!legsUp.length && !gone.length) return null;
+  let text;
+  if (legsUp.length === 3) text = 'Gear-up landing';
+  else if (legsUp.length && gone.length) text = `Landed with the ${andList(legsUp.map((i) => LEG_NAMES[i]))} gear up, the ${andList(gone.map((i) => LEG_NAMES[i]))} collapsed`;
+  else if (legsUp.length) text = `Landed with the ${andList(legsUp.map((i) => LEG_NAMES[i]))} gear up`;
+  else {
+    const atTd = collapsed.every((c) => c.t - td.t < 1);
+    const n = andList(gone.map((i) => LEG_NAMES[i]));
+    text = `${n[0].toUpperCase()}${n.slice(1)} gear collapsed ${atTd ? 'at the touchdown' : 'on the roll'}`;
+  }
+  // The card's row: short enough for its name column ("Gear up", "Left main up", "Right main collapsed").
+  const cap = (n) => n[0].toUpperCase() + n.slice(1);
+  const short = legsUp.length === 3 ? 'Gear up' : legsUp.length ? cap(legsUp.map((i) => LEG_NAMES[i].replace(' main', '')).join(' + ')) + (legsUp.length === 1 && legsUp[0] > 0 ? ' main up' : legsUp.length === 1 ? ' gear up' : ' up')
+    : cap(gone.map((i) => LEG_NAMES[i]).join(' + ')) + ' collapsed';
+  // (a leg that collapsed is a failure by its nature)
+  return { text, short, legsUp, collapsed: gone, failure: !!td.gearFailure || gone.length > 0, scraped: [...new Set(scraped)] };
 }
 // v0.4.1: the sim's crash reasons, short enough for the card's value column.
 export const DAMAGE_SHORT = { 'hard landing: gear collapsed': 'gear collapsed', 'nose gear collapsed': 'nose gear', 'ran off the runway': 'off the runway' };
@@ -386,6 +421,9 @@ export function createScorer() {
   // v0.4.1: what would have crashed (the sim's damage events, with Indestructible on): [{ t, reason }], the
   // last few since the lift-off. Those from 10 s before the touchdown to the end of the rollout count.
   let damage = [];
+  // v0.8.0: a landing with the gear not all down, within limits (no Indestructible): the parts that scraped (the
+  // sim's 'scrape' events, [{ t, reason }], as the damage above) and the legs that collapsed ([{ t, leg }]).
+  let scraped = [], collapsed = [];
   // The track for the approach: a sample every 0.25 s in the air, the last 5 minutes.
   let track = [], lastSampleT = -Infinity;
   const clearTrack = () => { track = []; lastSampleT = -Infinity; };
@@ -397,7 +435,7 @@ export function createScorer() {
     setRunway(end, other) {
       rf = end && other ? runwayFrame(end, other) : null;
       landing = end && other ? { runway: null, end, other } : null;
-      td = null; result = null; bt.reset(); peakG = 0; damage = [];
+      td = null; result = null; bt.reset(); peakG = 0; damage = []; scraped = []; collapsed = [];
     },
     // At the touchdown: the runway it was on (landingRunway()), or null for none.
     setLanding(l) {
@@ -412,6 +450,7 @@ export function createScorer() {
     reset(keepTrack = false) {
       td = null; result = null; bt.reset(); peakG = 0; airborneSince = null;
       if (!keepTrack) { clearTrack(); damage = []; }
+      scraped = []; collapsed = [];
     },
 
     // ---- scenario saves (v0.2.0) ----
@@ -432,6 +471,8 @@ export function createScorer() {
         td: td ? jsonSafe(td) : null,
         peakG, bounces: bt.count, airborneSince,
         ...(damage.length ? { damage: damage.map((d) => ({ t: d.t, reason: d.reason })) } : {}),
+        ...(scraped.length ? { scraped: scraped.map((d) => ({ t: d.t, reason: d.reason })) } : {}),   // v0.8.0
+        ...(collapsed.length ? { collapsed: collapsed.map((d) => ({ t: d.t, leg: d.leg })) } : {}),
         result: result ? jsonSafe({ ...result, touchdown: null }) : null,
         // [t, x, y, z, vs, gs] per sample (t exact: the 0.25 s spacing and the 5-minute window use it)
         track: track.map((p) => [p.t, r2(p.x), r2(p.y), r2(p.z), r3(p.vs), r3(p.gs)]),
@@ -442,9 +483,11 @@ export function createScorer() {
     // airports' own end objects), or null, which leaves no runway (and so no approach parts).
     load(o, resolveEnd) {
       rf = null; landing = null; td = null; result = null; peakG = 0; bt.reset(); airborneSince = null;
-      clearTrack(); damage = [];
+      clearTrack(); damage = []; scraped = []; collapsed = [];
       if (!o) return;
       damage = Array.isArray(o.damage) ? o.damage.map((d) => ({ t: d.t, reason: String(d.reason) })) : [];
+      scraped = Array.isArray(o.scraped) ? o.scraped.map((d) => ({ t: d.t, reason: String(d.reason) })) : [];   // v0.8.0
+      collapsed = Array.isArray(o.collapsed) ? o.collapsed.map((d) => ({ t: d.t, leg: d.leg | 0 })) : [];
       if (o.landing && resolveEnd) {
         const r = resolveEnd(o.landing.icao, o.landing.ident, { x: o.landing.x, y: o.landing.y });
         if (r && r.end && r.other) {
@@ -472,9 +515,14 @@ export function createScorer() {
       // A lift-off (the take-off, or a touch-and-go) starts a new approach. A rewind takes back the damage
       // after the moment it went back to.
       if (damage.length && s.t < damage[damage.length - 1].t) damage = damage.filter((d) => d.t <= s.t);
+      if (scraped.length && s.t < scraped[scraped.length - 1].t) scraped = scraped.filter((d) => d.t <= s.t);        // v0.8.0
+      if (collapsed.length && s.t < collapsed[collapsed.length - 1].t) collapsed = collapsed.filter((d) => d.t <= s.t);
       for (const e of events) {
-        if (e.type === 'liftoff') { clearTrack(); if (!td) damage = []; if (!td) bt.air(s.t); }
+        if (e.type === 'liftoff') { clearTrack(); if (!td) damage = []; if (!td) bt.air(s.t); if (!td) { scraped = []; collapsed = []; } }
         if (e.type === 'damage' && !result) { damage.push({ t: s.t, reason: e.reason }); if (damage.length > 10) damage.shift(); }
+        // v0.8.0: a belly landing's scrapes and a collapsing leg, for the card's gear row
+        if (e.type === 'scrape' && !result) { scraped.push({ t: s.t, reason: e.reason }); if (scraped.length > 10) scraped.shift(); }
+        if (e.type === 'gearCollapse' && !result) collapsed.push({ t: s.t, leg: e.leg | 0 });
       }
       if (!td && !s.onGround && s.t - lastSampleT >= APPROACH.sampleS) {
         lastSampleT = s.t;
@@ -489,6 +537,7 @@ export function createScorer() {
             surface: e.surface || 'runway',
             wind: windAtTouchdown(s, rf),
             ...(s.indestructible ? { indestructible: true } : {}),
+            ...gearAtTouchdown(s),   // v0.8.0: the legs not down, and whether a gear failure is why
             approach: rf && landing ? approachStats(track, rf, landing.end.elevM ?? 0, groundZ) : null };
           peakG = e.g;
           bt.start(s.t);                          // v0.5.5: if no first contact started the landing already
@@ -552,11 +601,17 @@ export function createScorer() {
       // v0.4.1: Indestructible held it together, from 10 s before the touchdown on. v0.5.5: half off (v0.5.4: 10 at most).
       const dmg = damage.filter((d) => d.t >= td.t - 10).map((d) => d.reason);
       if (dmg.length) off('Would have crashed', DAMAGE_SHORT[dmg[0]] || dmg[0], 'half', Math.floor(points / 2), COST.crash);
+      // v0.8.0: a landing with the gear not all down, survived within the limits (Indestructible's has its own row above):
+      // a row that says what kind of landing it was. No deduction when a gear failure was the cause; the gear simply
+      // left up takes half, as a landing off a runway does.
+      const gear = td.indestructible ? null : gearLanding(td, scraped.filter((d) => d.t >= td.t - 10).map((d) => d.reason), collapsed.filter((d) => d.t >= td.t - 10));
+      if (gear) off(gear.short, gear.failure ? 'a failure' : 'not lowered', gear.failure ? 'no deduction' : 'half', gear.failure ? points : Math.floor(points / 2), gear.failure ? 0 : COST.gearUp);
       parts.push(...pens);
       const cost = parts.reduce((a, p) => a + p.cost, 0);
       result = { points, grade: grade(points), parts, cost: +cost.toFixed(4), touchdown: td, offRunway: !td.onRunway,
         runway: td.onRunway && landing ? landing.end.ident : null, lda: rf ? rf.lda : null, aim, approach: ap,
-        ...(td.indestructible ? { indestructible: true } : {}), ...(dmg.length ? { damage: [...new Set(dmg)] } : {}) };
+        ...(td.indestructible ? { indestructible: true } : {}), ...(dmg.length ? { damage: [...new Set(dmg)] } : {}),
+        ...(gear ? { gear } : {}) };
       return result;
     },
   };

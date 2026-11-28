@@ -83,6 +83,7 @@ export function createAutopilotBoeing(A) {
       engageAp() {
         const S = S0(), X = X0();
         if (S.onGround || S.agl < 100 * FT || X.airTime < 5) return false;
+        if (S.law === 'secondary' || S.law === 'direct') return false;   // v0.8.0 (part 7): no AP in the secondary or direct mode
         ap.ap = true;
         // Whatever the flight director was doing stays; otherwise HDG HOLD and V/S or ALT.
         if (ap.lateral === 'ROLLOUT' || ap.lateral === 'HDG') ap.lateral = 'HDG HOLD';

@@ -14,17 +14,35 @@
 // levers; together, every ring sits where the one lever's did), and a white "WING TANKS DROPPED" memo under the
 // systems for 20 s of sim time after a design's wing tanks are dropped.
 //
-// createEicas(cv) -> { draw(view), setType(def) }
+// v0.8.0: each engine's FUEL CONTROL switch under its fuel flow (always: RUN, CUTOFF, START with its progress, or why
+// it can't start; a red FIRE beside it while the engine burns), clicked through switchAt(x, y) (the canvas's CSS px:
+// the engine's index or -1); and the failures' messages as a list on the right, warnings red, cautions amber, above
+// the "ENG n OFF" lines (three at most, the rest counted).
+//
+// createEicas(cv) -> { draw(view), setType(def), switchAt(x, y) }
 
 import { C, font, DEG, clamp } from '../common.js';
 import { createEngines } from '../../sim/engines.js';
-import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO } from '../engine-row.js';
+import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO, switchFace, SWITCH_LABEL, rectAt } from '../engine-row.js';
+import { alertsOf } from '../../sim/checklists.js';
+import { drawHydBoxes } from '../hyd-boxes.js';   // v0.8.0 (part 7)
 import { isa, RHO0 } from '../../sim/atmosphere.js';
 import { thrustRefMode, refPhi, flapFraction, leverFraction, flapLabel, egtEstimate, EGT_RED, n2Estimate } from './logic.js';
 
 // N1's arc: Boeing's, 210° from the lower left round to just past the right.
 const A0 = 150 * DEG, A1 = 360 * DEG;
 const N1_MAX = 110, N1_RED = 104;
+
+// v0.8.0 legs: each leg's position for the gear indication (nose, left, right; a collapsed leg up), or null when
+// nothing about the gear is failed and the three agree (then the one box draws from gearPos, exactly as before).
+// The same as engines-panel.js's gearLegsShown (kept apart so neither screen imports the other).
+export function gearLegsShown(st) {
+  const G = st.gearLegs;
+  if (!G) return null;
+  const F = st.gearLegFlags || [0, 0, 0];
+  if (!(st.gearSys || F[0] || F[1] || F[2]) && G[0] === G[1] && G[1] === G[2]) return null;
+  return [0, 1, 2].map((i) => (F[i] & 4 ? 0 : clamp(G[i] ?? 1, 0, 1)));
+}
 
 export function createEicas(cv) {
   const { ctx } = cv;
@@ -100,7 +118,7 @@ export function createEicas(cv) {
     const x0 = 0.455 * s, valX = 0.82 * s;
     label(s, 'TOTAL FUEL', x0, 0.03 * s); value(s, fmt(st.fuelKg), valX, 0.03 * s); units(s, 'KG', valX, 0.03 * s);
     label(s, 'GROSS WT', x0, 0.075 * s); value(s, fmt(st.mass), valX, 0.075 * s); units(s, 'KG', valX, 0.075 * s);
-    gear(s, st, x0, 0.14 * s);
+    gear(s, st, x0, 0.14 * s, view);
     speedbrake(s, st, view, x0, 0.22 * s);
     trim(s, st, x0, 0.305 * s);
     if (st.parkingBrake) {
@@ -108,15 +126,27 @@ export function createEicas(cv) {
       ctx.fillText('PARKING BRAKE', x0, 0.39 * s);
     }
     flaps(s, st, 0.885 * s, 0.045 * s, 0.49 * s);
+    if (st.hyd && st.hyd.on) drawHydBoxes(ctx, s, st, 'boeing', 'row');   // v0.8.0 (part 7): only while state.hyd.on
     simRate(s, view, 0.97 * s, 0.585 * s);
     // Engines torn off their pylons: an amber line each under the systems (Boeing's caution colour).
     const offs = []; e.forEach((en, i) => { if (en?.off) offs.push(i + 1); });
     let nLines = 0;
+    // v0.8.0: the failures' messages, then the switches under the engines.
+    const msgs = alertsOf(st, view.controls, 'boeing');
+    if (msgs.length) {
+      const shown = msgs.length > 3 ? msgs.slice(0, 2) : msgs;
+      ctx.textAlign = 'left';
+      shown.forEach((m, k) => { ctx.fillStyle = m.level === 'warning' ? C.red : C.amber; fit(m.title, s * 0.03, 0.4 * s, true); ctx.fillText(m.title, x0, 0.435 * s + k * 0.04 * s); });
+      if (msgs.length > 3) { ctx.fillStyle = C.white; fit(`+${msgs.length - 2} MORE`, s * 0.026, 0.4 * s, true); ctx.fillText(`+${msgs.length - 2} MORE`, x0, 0.435 * s + 2 * 0.04 * s); }
+      nLines = Math.min(3, msgs.length);
+    }
+    switches(s, st, e, n);
+    const offY = 0.435 * s + nLines * 0.04 * s;
     if (offs.length) {
       ctx.fillStyle = C.amber; ctx.textAlign = 'left';
       const lines = offs.length > 4 ? [offs.slice(0, 3).map((i) => `ENG ${i}`).join(' ') + ' OFF', offs.slice(3).map((i) => `ENG ${i}`).join(' ') + ' OFF'] : offs.map((i) => `ENG ${i} OFF`);
-      lines.forEach((t, k) => { fit(t, s * 0.03, 0.4 * s, true); ctx.fillText(t, x0, 0.435 * s + k * 0.04 * s); });
-      nLines = lines.length;
+      lines.forEach((t, k) => { fit(t, s * 0.03, 0.4 * s, true); ctx.fillText(t, x0, offY + k * 0.04 * s); });
+      nLines += lines.length;
     }
     // v0.5.6: the wing tanks' drop, a white memo under the cautions for 20 s of sim time.
     if (tanksMemo(st)) {
@@ -265,8 +295,29 @@ export function createEicas(cv) {
   }
 
   // The gear: Boeing's three words in one, DOWN in a green box, UP in white, slashes in transit.
-  function gear(s, st, x0, y) {
+  // v0.8.0 legs: with a gear failure in, the expanded display: the three legs apart, left main, nose, right main
+  // [EST: the order and the boxes' size; Boeing's EICAS shows each leg's DN, UP or hatched box on a disagreement],
+  // each DN green, UP white, hatched in transit; a leg not down with the lever down has an amber box [EST].
+  function gear(s, st, x0, y, view) {
     label(s, 'GEAR', x0, y);
+    const legs = gearLegsShown(st);
+    if (legs) {
+      const wantDown = view?.controls ? !!view.controls.gearDown : true, bw = 0.06 * s, bh = 0.042 * s, xc = x0 + 0.18 * s;
+      const order = [1, 0, 2];   // left main, nose, right main, left to right
+      for (let k = 0; k < 3; k++) {
+        const g = legs[order[k]], bx = xc + (k - 1) * 0.068 * s;
+        if (g > 0.99) box(s, bx, y, bw, 'DN', s * 0.03, C.green, C.green);
+        else if (g < 0.01) box(s, bx, y, bw, 'UP', s * 0.03, C.white, wantDown ? C.amber : C.frame);
+        else {
+          ctx.save(); ctx.beginPath(); ctx.rect(bx - bw / 2, y - bh / 2, bw, bh); ctx.clip();
+          ctx.strokeStyle = C.white; ctx.lineWidth = Math.max(1.2, s * 0.003); ctx.beginPath();
+          for (let q = -bh; q < bw + bh; q += 0.02 * s) { ctx.moveTo(bx - bw / 2 + q, y + bh / 2); ctx.lineTo(bx - bw / 2 + q + bh, y - bh / 2); }
+          ctx.stroke(); ctx.restore();
+          ctx.strokeStyle = wantDown ? C.amber : C.white; ctx.strokeRect(bx - bw / 2, y - bh / 2, bw, bh);
+        }
+      }
+      return;
+    }
     const g = st.gearPos ?? 1, x = x0 + 0.18 * s, w = 0.13 * s, h = 0.042 * s;
     if (g > 0.99) box(s, x, y, w, 'DOWN', s * 0.032, C.green, C.green);
     else if (g < 0.01) box(s, x, y, w, 'UP', s * 0.032, C.white, C.frame);
@@ -348,5 +399,40 @@ export function createEicas(cv) {
     ctx.fillText(short ? `SIM RATE ${ts}× (${ta.toFixed(1)}×)` : `SIM RATE ${ts}×`, x, y);
   }
 
-  return { draw, setType };
+  // v0.8.0: the FUEL CONTROL switches, a box under each engine's fuel flow; their rectangles kept for the clicks.
+  let swRects = [];
+  function switches(s, st, e, n) {
+    swRects = [];
+    let xs, bw, lx, lw;
+    if (n === 2) { xs = [0.095 * s, 0.335 * s]; bw = 0.11 * s; lx = 0.215 * s; lw = 0.12 * s; }
+    else {
+      const gap = (n >= 6 ? 0.052 : 0.07) * s, row = engineRow(n, { x0: 0.005 * s, x1: 0.435 * s, gap });
+      xs = row.xs; bw = Math.min(0.11 * s, 0.9 * row.w); lx = row.labelX; lw = gap - 0.006 * s;
+    }
+    const y = 0.594 * s, h = 0.036 * s;
+    ctx.fillStyle = C.white; ctx.textAlign = 'center';
+    fitMin(SWITCH_LABEL.boeing, s * 0.018, lw, false, s * 0.011); fill(SWITCH_LABEL.boeing, lx, y);
+    for (let i = 0; i < n; i++) {
+      const en = e[i] || {};
+      if (en.off) continue;
+      const f = switchFace(en, 'boeing'), bx = xs[i] - bw / 2, by = y - h / 2;
+      ctx.fillStyle = 'rgba(16,22,28,0.95)'; ctx.fillRect(bx, by, bw, h);
+      if (f.progress >= 0) { ctx.fillStyle = 'rgba(47,227,255,0.22)'; ctx.fillRect(bx, by, bw * f.progress, h); }
+      ctx.strokeStyle = f.fire ? C.red : C.frame; ctx.lineWidth = f.fire ? Math.max(2, s * 0.005) : Math.max(1, s * 0.0028);
+      ctx.strokeRect(bx, by, bw, h);
+      const a = f.fire ? 'FIRE ' : '', b = f.text;
+      fit(a + b, s * 0.024, bw - 0.01 * s, true);
+      const w = ctx.measureText(a + b).width;
+      let l = xs[i] - w / 2;
+      ctx.textAlign = 'left';
+      if (a) { ctx.fillStyle = C.red; ctx.fillText(a, l, y); l += ctx.measureText(a).width; }
+      ctx.fillStyle = C[f.col]; ctx.fillText(b, l, y);
+      ctx.textAlign = 'center';
+      swRects.push({ x: bx, y: by, w: bw, h, i });
+    }
+  }
+  function switchAt(x, y) { return rectAt(swRects, x, y); }
+  function switchRect(i) { const r = swRects.find((q) => q.i === i); return r ? { ...r } : null; }
+
+  return { draw, setType, switchAt, switchRect };
 }

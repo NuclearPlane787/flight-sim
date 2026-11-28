@@ -15,6 +15,9 @@ import { createFcu } from './fcu.js';
 import { createBoeingPfd } from './boeing/pfd.js';
 import { createBoeingNd } from './boeing/nd.js';
 import { createEicas } from './boeing/eicas.js';
+import { switchSig } from './engine-row.js';   // v0.8.0 warn
+import { alertsOf, alertsKey } from '../sim/checklists.js';   // v0.8.0 warn
+import { hydSig } from './hyd-boxes.js';   // v0.8.0 (part 7)
 import { createMcp } from './boeing/mcp.js';
 import * as store from '../store.js';
 
@@ -48,7 +51,7 @@ export function createHud(root, { airports, coast } = {}) {
   // v0.5.7: the keys as bound (main.js: keys.js keyNamesOf()), for the Boeing MCP's tooltips (made on its first use).
   let keyNames = null;
   function setKeyNames(fn) { keyNames = typeof fn === 'function' ? fn : null; boeing?.fcu.setKeyNames?.(keyNames); if (silenceBtn) silenceBtn.title = silenceTip(); }
-  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, setPanelScale, setSilenced, get panelScale() { return panelScale; }, onlaw: null, onview: null, onpause: null, onsilence: null, poke, el };
+  const hud = { update, resize, setCoast, setTopInset, setType, setPause, setKeyNames, setPanelScale, setSilenced, get panelScale() { return panelScale; }, engineSwitchAt: (x, y) => (eng.switchAt ? eng.switchAt(x, y) : -1), engineSwitchRect: (i) => (eng.switchRect ? eng.switchRect(i) : null), onlaw: null, onview: null, onpause: null, onsilence: null, poke, el };
   // v0.7.4 (Shane's item 12: "a small button on the left panel, where there is empty space, that silences the warning
   // sounds"): in the PFD's bottom right corner, empty on all three types' PFDs; lit while something is silenced.
   // Clicks go to main.js (hud.onsilence); main.js says when it's lit (setSilenced). Its key is the Controls page's.
@@ -222,7 +225,7 @@ export function createHud(root, { airports, coast } = {}) {
     const sP = [
       r(st.ias * KT, 10), r(st.pos.z * FT), r(st.pitch / DEG, 20), r(st.roll / DEG, 10), r(st.hdg / DEG, 10), r(st.vs * FPM, 0.1),
       r(st.agl * FT), r(st.beta / DEG, 5), r(st.mach, 100), r(st.vls), r(st.vmax), r(st.valphaProt), r(st.valphaMax), r(st.vsw), r(st.vfeNext),
-      st.onGround ? 1 : 0, st.law === 'normal' || !st.law ? 0 : 1, r(st.pos.x, 0.05), r(st.pos.y, 0.05), r(st.vel.x), r(st.vel.y),
+      st.onGround ? 1 : 0, st.law === 'normal' || !st.law ? 0 : st.law, r(st.pos.x, 0.05), r(st.pos.y, 0.05), r(st.vel.x), r(st.vel.y),
       ap.ap ? 1 : 0, ap.athr ? 1 : 0, ap.spdKt, ap.hdgDeg, ap.altFt, ap.vsFpm, ap.vertical, ap.lateral, ap.thrustMode, st.detent, st.flapLever,
       w.stall, w.overspeed, w.pullUp, w.sinkRate, w.tooLowGear, w.apDisc, st.crashed, v.dest, boxTick, r(st.groundH),
     ];
@@ -245,6 +248,10 @@ export function createHud(root, { airports, coast } = {}) {
       sE.push(r(sp.stab, 500), ap.thrustMode, ap.lateral, ap.vertical, st.onGround ? 1 : 0, r(st.vs * FPM, 0.01), st.flapLever, r(st.pos.z, 0.01), r(st.mach, 100));
     } else sP.push(ap.armedLateral, ap.armedVertical, ap.trkFpa ? 1 : 0, ap.fpaDeg);   // v0.7.4: the A321's LOC, APPR and TRK-FPA
     sE.push(r(st.n1Idle, 10), ap.athrWake ? 1 : 0);   // v0.7.4: the thrust limit above the dials
+    sE.push(switchSig(st), alertsKey(alertsOf(st, v.controls, isBoeing ? 'boeing' : 'airbus')), hydSig(st));   // v0.8.0 warn: the switches and the messages; part 7: the hydraulics' boxes
+    // v0.8.0 legs: each leg, and the lever (the legs' string only while a gear failure is in: nothing made a frame otherwise)
+    const gl = st.gearLegs, gf = st.gearLegFlags;
+    sE.push(gl && (st.gearSys || (gf && (gf[0] | gf[1] | gf[2])) || gl[0] !== gl[1] || gl[1] !== gl[2]) ? gl.map((x) => r(x, 50)).join() + '/' + gf.join() + '/' + st.gearSys : '', v.controls?.gearDown);
     if (!panelsHidden) {          // hidden, they aren't drawn; showing them again pokes a full draw
       if (force || changed(sigP, sP)) { pfd.draw(dv, now); sigP = sP; }
       if (force || changed(sigN, sN)) { nd.draw(dv); sigN = sN; }

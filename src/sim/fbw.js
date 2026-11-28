@@ -44,6 +44,24 @@ export function asymmetryInto(o, A, E, V, rTurn) {
   return o;
 }
 
+// v0.8.0 (part 7): the law that flies, as a number: 0 normal, 1 the A321's alternate law (the Boeings' secondary mode),
+// 2 direct. The worse of the pilot's choice (controls.law: the A321 knows 'alternate' and 'direct', a Boeing 'secondary'
+// and 'direct'; anything else, as today, is the normal law) and the law the hydraulics leave (E.hydLaw, absent = 0).
+export function lawLevel(law, hydLaw, boeing) {
+  const p = law === 'direct' ? 2 : law === (boeing ? 'secondary' : 'alternate') ? 1 : 0;
+  const h = hydLaw | 0;
+  return h > p ? (h > 2 ? 2 : h) : p;
+}
+// The state's name for it (state.law).
+export function lawName(level, boeing) {
+  return level >= 2 ? 'direct' : level === 1 ? (boeing ? 'secondary' : 'alternate') : 'normal';
+}
+// v0.8.0 (part 7) [EST]: the direct law's gearing, stick to elevator (and to the stabiliser's manual trim): full
+// deflection up to DIRECT_V_FULL, then falling as 1/IAS² (so the pitch moment, and the g, a full stick gives stay about
+// the same above it), never under DIRECT_K_MIN. At 250 kt about 0.52 of full travel; at 320 kt 0.32.
+const DIRECT_V_FULL = 180 * 0.514444, DIRECT_K_MIN = 0.3;
+export const directGearing = (ias) => (ias > DIRECT_V_FULL ? Math.max(DIRECT_K_MIN, (DIRECT_V_FULL / ias) * (DIRECT_V_FULL / ias)) : 1);
+
 export function createFbw(A) {
   // v0.5.3, Part 3: the pitch and roll loops invert the sim's moments with the design's own control powers and
   // inertias (E.elevScale, E.rollScale, E.Iyy, E.Ixx), so they need nothing. What works in surface deflection does:
@@ -69,7 +87,8 @@ export function createFbw(A) {
   // c: controls. E: per-step environment (see sim.js). Writes X.elevCmd, X.uRoll, X.rudCmd,
   // X.thsRate, X.protAlpha, X.protSpeed, X.alphaFloorTrig, X.flare.
   function fbwStep(X, c, E, dt) {
-    const normal = c.law !== 'alternate';
+    const lvl = lawLevel(c.law, E.hydLaw, false);   // v0.8.0: 'alternate' 1 as before; 'direct' or the hydraulics' 2
+    const normal = lvl === 0, direct = lvl === 2;
     const flt = X.flt;
     const V = Math.max(E.tas, 30);
     const sp = c.pitch, sr = c.roll, sy = c.yaw;
@@ -89,7 +108,13 @@ export function createFbw(A) {
     // Levers at TOGA: a go-around. It leaves (and blocks) the flare and the landing path law,
     // so full back stick gets the plain load-factor pull to climb away.
     const goAround = c.thrust > 0.9;
-    if (flt > 0) {
+    if (flt > 0 && direct) {
+      // v0.8.0 (part 7), the direct law [EST: from what is public of the A320 family]: the stick moves the elevator,
+      // geared down with speed (directGearing()); no load-factor demand, no path hold, no protections, no flare law.
+      // Released, the elevator goes back to neutral and the aircraft flies where the stabiliser's trim leaves it.
+      elevLaw = (sp > 0 ? sp * A.ELEV_UP : sp * A.ELEV_DN) * directGearing(E.ias) * K_PITCH;
+      X.flare = false; X.holdLatched = false; X.protAlphaLatched = false;
+    } else if (flt > 0) {
       const nzMax = flaps ? A.NZ_MAX_FLAPS : A.NZ_MAX_CLEAN;
       const nzMin = flaps ? A.NZ_MIN_FLAPS : A.NZ_MIN_CLEAN;
       // Bank compensation up to 33°, so a hands-off turn holds its path.
@@ -205,7 +230,11 @@ export function createFbw(A) {
 
     // Auto-trim: the stabiliser offloads the elevator (frozen in the flare, on the ground,
     // in α prot and beyond 33° bank).
-    if (flt >= 1 && !X.flare && !protAlpha && Math.abs(E.phi) < A.BANK_NEUTRAL) {
+    // v0.8.0 (part 7): in the direct law no auto-trim: off the ground's take-off setting the stabiliser moves only by the
+    // manual trim (controls.trim: +1 nose up, the trim keys), at the stabiliser's full rate [EST].
+    if (direct && !(E.onGround && E.gs < 30)) {
+      X.thsRate = clamp(c.trim || 0, -1, 1) * A.THS_RATE;
+    } else if (flt >= 1 && !X.flare && !protAlpha && Math.abs(E.phi) < A.BANK_NEUTRAL) {
       X.thsRate = clamp(0.8 * X.elev, -A.THS_RATE, A.THS_RATE);
     } else if (E.onGround && E.gs < 30) {
       X.thsRate = clamp(0.5 * (X.thsTakeoff - X.ths), -A.THS_RATE, A.THS_RATE);

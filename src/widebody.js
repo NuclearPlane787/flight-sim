@@ -18,7 +18,7 @@
 import * as THREE from '../vendor/three.module.js';
 import {
   Builder, grid, slab, cylBetween, boxAt, lathe, sphereAt, foilPoint, foilPiece, plateOffset, toModel, SIGNS, SHROUD_LIFT,
-  plateBetween, wheelFaces, addWheelFaces,
+  plateBetween, wheelFaces, addWheelFaces, legPos,
 } from './aircraft.js';
 import { UV } from './livery.js';
 import { createWidebodyLivery, finBoxFor, fuseUVFor } from './livery-widebody.js';
@@ -949,14 +949,16 @@ export function createWidebody(spec, opts = {}) {
     }
 
     // Gear.
-    const gp = clamp(state.gearPos ?? 1, 0, 1), up = 1 - gp;
-    rot('mainLegL', -up * 88 * DEG);
-    rot('mainLegR', up * 88 * DEG);
-    rot('noseLeg', -up * 104 * DEG);
-    rot('noseBrace', up * nBraceAngle);
-    const stay = up * Math.atan2(GS.stayDY ?? STAY_DY, GS.stayDZ ?? STAY_DZ);
-    rot('stayL', -stay);
-    rot('stayR', stay);
+    const gp = clamp(state.gearPos ?? 1, 0, 1);
+    // v0.8.0: each leg its own (aircraft.js's legPos: nose, left, right; L = the sim's left, body y > 0).
+    const gN = legPos(state, 0, gp), upN = 1 - gN, upL = 1 - legPos(state, 1, gp), upR = 1 - legPos(state, 2, gp);
+    rot('mainLegL', -upL * 88 * DEG);
+    rot('mainLegR', upR * 88 * DEG);
+    rot('noseLeg', -upN * 104 * DEG);
+    rot('noseBrace', upN * nBraceAngle);
+    const stayK = Math.atan2(GS.stayDY ?? STAY_DY, GS.stayDZ ?? STAY_DZ);
+    rot('stayL', -(upL * stayK));
+    rot('stayR', upR * stayK);
     const gc = state.gearCompression || EMPTY;
     const cl = gc.left ?? staticComp.main, cr = gc.right ?? staticComp.main;
     // The rear axle stays where the sim's contact point is: tilting about the beam's centre would
@@ -987,8 +989,8 @@ export function createWidebody(spec, opts = {}) {
     animateEngines(state.engines || EMPTY_LIST, dt);
 
     // Lights, as aircraft.js.
-    gearNow = gp;
-    const f = flashAt(clock), L = lights, gearLamp = gp > 0.97 ? 1 : 0, seen = cockpitView ? 0 : 1;
+    gearNow = gN;   // v0.8.0: the taxi lamp is on the nose leg (gp when nothing is failed)
+    const f = flashAt(clock), L = lights, gearLamp = gearNow > 0.97 ? 1 : 0, seen = cockpitView ? 0 : 1;
     for (let i = 0; i < LAMPS.length; i++) {
       const k = LAMPS[i].key;
       levels[i] = k === 'navL' || k === 'navR' || k === 'tail' ? L.nav

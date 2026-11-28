@@ -10,6 +10,7 @@ import { createCallouts } from './audio/callouts.js';
 import { createScorer, runwayFrame, aimingPoint, landingRunway, runwayEndRefs } from './score.js';
 import { createLogbook, logTimes } from './ui/logbook.js';
 import { createWeatherWindow, WEATHER_TAB, addWeatherTab } from './ui/weather-window.js';
+import { createFailuresWindow, FAILURES_TAB, addFailuresTab, failuresView, applyFailAction } from './ui/failures-window.js';   // v0.8.0 tab
 import { presetWeather, weatherContext, routeWeather } from './sim/weather-presets.js';
 import { createScorePanel } from './ui/score-panel.js';
 import { baroValueText } from './ui/fcu.js';   // v0.6.0: Shift+B's toast in the BARO's unit (inches in Japan)
@@ -28,8 +29,11 @@ import { designStore, designName } from './designs-store.js';
 import { resolveDef } from './sim/designs.js';
 import { createLoadWindow, TAB_ICONS } from './ui/load-window.js';
 import { createSpray } from './world/spray.js';
+import { createEngineSmoke } from './world/engine-smoke.js';   // v0.8.0
+import { createSparks } from './world/sparks.js';   // v0.8.0 legs
 import { runwayStateOf, moveDestination, createWeatherFollower } from './sim/weather.js';
 import { createTerrainLoader } from './world/region.js';
+import { snapshotForPrediction, jumpIndex, describe as describeFailure, LEGS as GEAR_LEGS } from './sim/failures.js';   // v0.8.0
 import { REGION_ID, dataUrl, defaultPlan, planInRegion, regionOfSave, switchRegion, takeCarry, rememberRegion, airportShortName, regionName } from './world/regions.js';   // v0.7.0: one region a page
 
 const STEP = 1 / 120;
@@ -93,6 +97,9 @@ async function boot() {
 
   ui.loadingText.textContent = 'Loading terrain and airports…';
   const base = dataUrl(import.meta.url, '../');   // v0.7.0: the page's region's folder (data/ for East Asia, data/europe/ for Europe)
+  // v0.8.0: data/ is its own repository; if it isn't cloned, say so in one line with the clone command (world/data-check.js).
+  const dataLine = await import('./world/data-check.js').then((m) => m.checkData(base)).catch(() => null);
+  if (dataLine) { ui.loadingText.textContent = dataLine; return; }
   const [hf, rw, coast, , urban] = await Promise.all([
     hfMod.loadHeightfield(base), rwMod.loadAirports(base),
     fetch(base + 'coast-region.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
@@ -130,7 +137,8 @@ async function boot() {
   ui.loadingText.textContent = 'Building the world…';
   const world = await worldMod.createWorld({ renderer, scene, baseUrl: base, heightfield: hf, airports });
   // The aircraft and its cockpit, one pair per type, built the first time it's flown (v0.3.0).
-  let aircraft = null, cockpit = null, spray = null;
+  let aircraft = null, cockpit = null, spray = null, smoke = null;
+  let sparks = null;   // v0.8.0 legs
   const models = new Map();
   // v0.5.0: `id` is a type id or a type entry (a design's, from sim/designs.js: its own model, kept by its key).
   function modelFor(id) {
@@ -144,6 +152,14 @@ async function boot() {
       // v0.4.2: the wheels' spray on a wet or snowy runway.
       m.spray = createSpray(def.geo.GEAR, world.uniforms);
       m.aircraft.object.add(m.spray.object);
+      // v0.8.0: the smoke of an engine on fire (?smoke80=0: none made). Invisible, so no draw call, until one burns.
+      m.smoke = createEngineSmoke(def.geo.NACELLES || def.geo.ENGINES, world.uniforms);
+      if (m.smoke) m.aircraft.object.add(m.smoke.object);
+      // v0.8.0 legs: a belly slide's sparks, invisible until one. OFF unless the page's address has ?sparks80=1 (the
+      // lead, 23:15: the pictures reader judged them "cotton balls", and after two mends they still read as white dots,
+      // not sparks: by the brief a look marked worse is off by default. The module's own switch, ?sparks80=0, still
+      // makes nothing.)
+      m.sparks = /[?&]sparks80=1\b/.test(location.search) ? createSparks(def.geo) : null; if (m.sparks) m.aircraft.object.add(m.sparks.object);
       // A design's model is kept for its last flight only: an edited design is a new one (the base types' stay). Not
       // disposed (its parts may share buffers with the base's): the browser frees it with the page.
       if (def.design) for (const [k, old] of models) if (old.design && k !== key && old.aircraft !== aircraft) models.delete(k);
@@ -155,7 +171,8 @@ async function boot() {
 
   function showModel(id) {
     if (aircraft) scene.remove(aircraft.object);
-    ({ aircraft, cockpit, spray } = modelFor(id));
+    ({ aircraft, cockpit, spray, smoke } = modelFor(id));
+    sparks = modelFor(id).sparks;   // v0.8.0 legs
     scene.add(aircraft.object);
     lastNight = -1;     // the night's look goes to the new model at the next frame
   }
@@ -261,6 +278,9 @@ async function boot() {
     return def;
   }
   const hud = hudMod.createHud($('hud'), { airports, coast });
+  // v0.8.0 warn: the failure warnings' master lights and aurals, the checklist panel, the engine screens' switches.
+  const alerts = (await import('./ui/alerts.js')).createAlerts({ sim, hud, synth, input });
+  window.__fsAlerts = alerts;   // (for the browser checks: switchPoint(i), lit, list)
   const map = mapMod.createMap($('map-root'), { airports, coast, urban });
   map.loadExtras?.(base);   // v0.7.4: the map's country borders and names (its region's country-lines.json; none if missing)
   const setup = setupMod.createSetup($('setup-root'), { airports, coast });
@@ -279,11 +299,12 @@ async function boot() {
   let skyWin = null;   // the Sky window (src/ui/sky-window.js), once it's loaded
   let loadWin = null;  // v0.3.2: the Weight window (src/ui/load-window.js), the Sky window's second tab
   let weatherWin = null;  // v0.4.0: the Weather tab (src/ui/weather-window.js)
+  let failWin = null;     // v0.8.0 tab: the Failures tab (src/ui/failures-window.js)
   let shownWeather = null;   // v0.4.0: the settings the world last drew
   const wxLook = createWeatherFollower();   // v0.7.4: the weather where the camera is (weather by place)
   let lTab = 'sky';    // the L window's tab last shown
   // Both of the L window's tabs closed (a new flight, the menu: else an Esc handler would still catch).
-  function closeLWindow() { if (skyWin?.isOpen) skyWin.close(); if (loadWin?.isOpen) loadWin.close(); if (weatherWin?.isOpen) weatherWin.close(); }
+  function closeLWindow() { if (skyWin?.isOpen) skyWin.close(); if (loadWin?.isOpen) loadWin.close(); if (weatherWin?.isOpen) weatherWin.close(); if (failWin?.isOpen) failWin.close(); }   // v0.8.0 tab: failWin
   const geo = [0, 0];
   function placeNow() { const s = sim.state; const g = toGeo(s.pos.x, s.pos.y); return { lat: g[0], lon: g[1] }; }
 
@@ -349,7 +370,7 @@ async function boot() {
     // above it. (The A321's start is as it always was.)
     const finalFlap = sim.type.data.FINAL_FLAP_LEVER ?? 1;
     const ic = { x, y, z, hdg: ax.hdg, onGround: false, iasMs: 180 / KT, flapLever: finalFlap, gearDown: false,
-      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan), ...loadParts(keep) };
+      fuelKg: keep ? keep.fuelKg : plan.fuelKg, payloadKg: keep ? keep.payloadKg : payloadOf(plan), ...loadParts(keep), keepFailures: !!keep };   // v0.8.0: a skip to final in flight keeps what has failed and what is armed
     sim.reset(ic);
     let finalKt = 180;
     if (sim.state.vmm && sim.state.vmm * KT + 10 > finalKt) {
@@ -422,6 +443,8 @@ async function boot() {
     // v0.4.0: the plan's weather, before the aircraft is placed (the reset and the trim read the wind).
     // v0.7.4: the departure's (p.weather) and the destination's (p.weatherDest; the departure's when left out).
     sim.setWeather(routeWeather(p.weather || 'clear', p.weatherDest, weatherContext(airports, p)));
+    sim.setFailures(null);   // v0.8.0: a new flight starts with nothing armed (the plan is the world's, as the weather: a load brings its own)
+    alerts.reset();          // and nothing acknowledged from the flight before
     store.save('lastflight', p);
     map.setWaypoints(p.waypoints || []);
     // The time of day: Now (the real time in Korea), or the one picked in the setup. Restart the
@@ -542,6 +565,7 @@ async function boot() {
   const endRefs = runwayEndRefs(airports);
   function applyState(st) {
     plan = st.plan;
+    alerts.reset();   // v0.8.0: nothing acknowledged from the flight before (the code review's fourth: a loaded save's fire came up silent)
     store.save('lastflight', plan);
     dest = runwayEnds(plan.dest, plan.arrRunway);
     destOther = dest ? dest.other : null;
@@ -689,6 +713,13 @@ async function boot() {
   }
 
   function jumpTo(sample) {
+    // v0.8.0: a jump whose target lies past a hidden (random) failure's moment ends at the last sample before it, and
+    // the failure fires there (failures.js's jumpIndex(); the predicted path never showed it).
+    if (sim.failures && prediction) {
+      let i = prediction.indexOf(sample);
+      if (i < 0) i = prediction.findIndex((q) => q.t >= sample.t);   // (a copy of a sample: by its time)
+      if (i >= 0) sample = prediction[jumpIndex(sim.failures, sim._core.fDone, prediction, i)];
+    }
     // v0.6.0: the target's tiles load behind the fade, and the fade waits for them.
     const tilesIn = terrainLoader.whenReadyAt(sample.x, sample.y), ready = tilesIn;
     fadeThen(() => {
@@ -1091,7 +1122,18 @@ async function boot() {
       if (e.type === 'damage') toast(`Indestructible: that was a crash (${e.reason})`, 3500);
       // v0.5.0: a pylon past its limit.
       if (e.type === 'engineOff') { toast(`Engine ${e.engine + 1} tore off its pylon: too much thrust for it`, 5000); clearPrediction(); }
+      // v0.8.0: failures. The warning lights, the messages and the checklist say the rest (ui/alerts.js).
+      // A failure the player armed by name is confirmed in a line; a random one says nothing here (a leg armed to
+      // collapse, or a gear that won't come down, shows itself only when it is met), and time compression drops for both.
+      if (e.type === 'failure') { setTimeScale(1); clearPrediction(); if (!e.hidden && /^gear-/.test(e.kind)) toast('Failure: ' + describeFailure(e, sim.state.engines.length), 2500); }   // (an engine's, the hydraulics' and the flaps' failures have their warning light, message and checklist: no line over them)
+      if (e.type === 'engineStart') { clearPrediction(); toast(`Engine ${e.engine + 1} is running`, 2500); }
+      if (e.type === 'fireOut') toast(`Engine ${e.engine + 1}: the fire is out`, 3500);
+      if (e.type === 'gearCollapse') { setTimeScale(1); toast(`${GEAR_LEGS[e.leg]} gear collapsed`, 4000); }
+      if (e.type === 'scrape') toast(`Scraping: ${String(e.reason).replace(/ (impact|strike)$/, '')} on the ground`, 2500);
+      if (e.type === 'repair') clearPrediction();
       if (e.type === 'apDisconnect') { setTimeScale(1); clearPrediction(); }
+      if (e.type === 'ratOut') toast('The ram air turbine is out', 2500);   // v0.8.0 (part 7)
+      if (e.type === 'apDisconnect' && e.reason === 'law') toast('Autopilot off: not available in this flight control law', 3500);
       if (e.type === 'apDisconnect' && e.reason === 'rollout') toast('Rollout done: the autopilot’s off, you have the aircraft', 3500);
       if (e.type === 'athrWake') toast('AIRSPEED LOW: the autothrottle woke up', 3000);
       // v0.2.2: R or F while the A/THR moved the lever took it over (to idle, at the RETARD,
@@ -1143,7 +1185,7 @@ async function boot() {
     if (key !== apKey || now - lastPredictReal > 20000) {
       apKey = key;
       lastPredictReal = now;
-      predictor.request(sim.snapshot(), {});
+      predictor.request(snapshotForPrediction(sim.snapshot()), {});   // v0.8.0: without the hidden failures
     }
   }
 
@@ -1262,6 +1304,7 @@ async function boot() {
     if (skyWin?.isOpen && ++skyWinTick % 6 === 0) skyWin.update();
     if (loadWin?.isOpen && ++skyWinTick % 6 === 0) loadWin.update();   // the fuel as it burns
     if (weatherWin?.isOpen && ++skyWinTick % 6 === 0) weatherWin.update();
+    if (failWin?.isOpen && ++skyWinTick % 6 === 0) failWin.update();   // v0.8.0 tab: the countdowns, what fired
   }
   // The A321's lights by phase (src/aircraft-lights.js), and its lamps' beam for the ground's shaders.
   const lampP = new THREE.Vector3(), lampD = new THREE.Vector3();
@@ -1298,10 +1341,12 @@ async function boot() {
     aircraft.setCockpitView(seat);
     cockpit.object.visible = seat;
     aircraft.update(s, dt);
+    if (smoke) smoke.update({ engines: s.engines, tas: s.tas, dt, paused });   // v0.8.0
+    if (sparks) sparks.update({ state: s, dt, paused });   // v0.8.0 legs
     // v0.4.2: the spray off the wheels.
     if (spray) {
       const wx = wxLook.at(sim.weather, s.pos.x, s.pos.y, s.t);   // v0.7.4: the runway's own weather (by place; v0.7.9: at the sim's time)
-      spray.update({ gs: s.gs, onGround: s.onGround, runway: runwayStateOf(wx), rain: wx?.precip?.kind === 'rain' ? wx.precip.rate : 0, dt, paused });
+      spray.update({ gs: s.gs, onGround: s.onGround, runway: runwayStateOf(wx), rain: wx?.precip?.kind === 'rain' ? wx.precip.rate : 0, dt, paused, legs: s.gearLegs });   // v0.8.0 legs: legs
     }
     // A Boeing's wings bend with the lift they carry (none on the wheels), eased so they rise through
     // the rotation. briefs/V0-3-0.md's "nice" list.
@@ -1338,6 +1383,7 @@ async function boot() {
     view.taxiPhase = gate.phase; view.taxiAssigned = gate.route;   // v0.7.9: the path map draws the assigned route while taxiing (no allocation)
     view.viewId = rig.view.id;
     hud.update(view);
+    alerts.update();   // v0.8.0 warn
     if (map.isOpen) map.update(view);
     synthOpts.inside = seat; synthOpts.timeScale = timeScale; synthOpts.paused = paused;
     // Outside, where the listener is (v0.2.2): the nose camera is ahead of the engines; 3rd
@@ -1416,7 +1462,7 @@ async function boot() {
   // the Weight window as its second tab. Both stand at the bottom-left; \ opens the tab last shown. ----
   if (skyWinMod?.createSkyWindow) {
     skyWin = skyWinMod.createSkyWindow($('skywin-root'), { clock, place: placeNow,
-      tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }, WEATHER_TAB] });
+      tabs: [{ id: 'sky', label: 'Sky' }, { id: 'load', label: 'Weight', icon: TAB_ICONS.load, title: 'Fuel and payload' }, WEATHER_TAB, FAILURES_TAB] });   // v0.8.0 tab: FAILURES_TAB
     skyWin.onclose = () => requestFrame();
     skyWin.ontab = (t) => showLTab(t);
     // A time set in the window shows at once, also while paused (the game draws on demand then).
@@ -1432,6 +1478,20 @@ async function boot() {
   weatherWin = createWeatherWindow($('skywin-root'), { get: weatherNow, onapply: applyWeather });
   weatherWin.onclose = () => requestFrame();
   weatherWin.ontab = (t) => showLTab(t);
+  // v0.8.0 tab: the Failures tab (arm, disarm, repair), on the Weight's and Weather's own tab rows too.
+  addFailuresTab(loadWin.el); addFailuresTab(weatherWin.el);
+  failWin = createFailuresWindow($('skywin-root'), {
+    get: () => failuresView(sim, { crashed: !!(crashed || sim.state.crashed), paused }),
+    onapply: (a) => {
+      if (!plan) return { ok: false, text: 'Start or load a scenario first.' };
+      const r = applyFailAction(sim, a);
+      if (r.ok) { apKey = ''; saveNow('failures'); if (paused) renderOnce(); else requestFrame(); }   // a new predicted path
+      return r;
+    },
+  });
+  failWin.onclose = () => requestFrame();
+  failWin.ontab = (t) => showLTab(t);
+  // (end v0.8.0 tab)
   function weatherNow() {
     return { settings: sim.weather, ctx: weatherContext(airports, plan), crashed: !!(crashed || sim.state.crashed), t: sim.state.t };   // v0.7.9: t, for a front set in flight
   }
@@ -1446,7 +1506,7 @@ async function boot() {
   // Open the L window on a tab ('sky' or 'load'), closing the other.
   function showLTab(t) {
     if (inMenu || !plan) return;
-    const wins = { sky: skyWin, load: loadWin, weather: weatherWin };
+    const wins = { sky: skyWin, load: loadWin, weather: weatherWin, failures: failWin };   // v0.8.0 tab: failures
     const win = wins[t];
     if (!win) return;
     lTab = t;
@@ -1457,7 +1517,7 @@ async function boot() {
   function openSky() { showLTab('sky'); }
   function toggleL() {
     if (inMenu || !plan) return;
-    if (skyWin?.isOpen || loadWin?.isOpen || weatherWin?.isOpen) closeLWindow();
+    if (skyWin?.isOpen || loadWin?.isOpen || weatherWin?.isOpen || failWin?.isOpen) closeLWindow();   // v0.8.0 tab: failWin
     else showLTab(lTab === 'sky' && !skyWin ? 'load' : lTab);
   }
   // Cmd/Ctrl+L is the one Ctrl binding (PLAN.md): it can't lose anything, so it's the exception. v0.5.7: the plain key
@@ -1523,6 +1583,7 @@ async function boot() {
     sim, ap, input, rig, scorer, callouts, predictor, map, world, renderer, gate, airports, scene, menu, setup, logbook, settingsPage, controlsPage, hud,   // v0.6.2: hud for checks
     get aircraft() { return aircraft; }, get cockpit() { return cockpit; }, useType,
     get synth() { return synth; },
+    alerts,   // v0.8.0: the master lights, the checklist panel and the engine switches (switchPoint(i), lit, list)
     silenceWarnings, setMix, get mix() { return { ...mixVols }; },   // v0.7.4
     get prediction() { return prediction; },
     get timeScale() { return timeScale; },
@@ -1536,7 +1597,7 @@ async function boot() {
     startFlight, skipToFinal, jumpTo, changeRoute, selectView, scenarios, clock, captureState, applyState, saveNow, loadScenario, exitToMenu, newScenario,
     get current() { return current; }, get inMenu() { return inMenu; }, get lastSaveMs() { return lastSaveMs; }, get frames() { return renderer.info.render.frame; },
     get landed() { return landed; }, get plan() { return plan; }, setTimeScale: (r) => { if (r === 1 || canCompress()) setTimeScale(r); return timeScale; },
-    setPaused, rewindNow, requestPredict: () => { predictor.request(sim.snapshot(), {}); },
+    setPaused, rewindNow, requestPredict: () => { predictor.request(snapshotForPrediction(sim.snapshot()), {}); },
     get skyWin() { return skyWin; }, get loadWin() { return loadWin; }, get weatherWin() { return weatherWin; }, get weatherCtx() { return weatherContext(airports, plan); }, showLTab, toggleL, applyLoad, saveCopy,   // v0.3.2
     renderOnce, runwayEnds, runwayAxis,
     gridToMagDeg: (h, x, y) => gridToMag(h, x, y) / DEG,

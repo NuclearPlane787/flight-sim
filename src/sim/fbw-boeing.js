@@ -13,7 +13,7 @@
 // Body axes: x forward, y right, z down; p roll right +, q pitch up +, r yaw right +.
 
 import { RHO0 } from './atmosphere.js';
-import { gainFor, asymmetryInto } from './fbw.js';
+import { gainFor, asymmetryInto, lawLevel, directGearing } from './fbw.js';
 
 const G = 9.80665;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -75,10 +75,15 @@ export function createFbwBoeing(A) {
   // release and swung 2.7° back, the 787 1.2° and 1.1° (Shane, v0.4.2: "the 777's pitch stabilisation only improved
   // by a little"). Capped, both stop within about 1° and settle in under a second (tests/boeing-pitch-settle.test.mjs).
   const PATH_Q_MAX = 2.2 * DEG;
+  // v0.8.0 (part 7) [EST]: the secondary mode's pitch-rate damping, rad of elevator per rad/s of pitch rate (the direct
+  // mode has none).
+  const KQ_SECONDARY = 1.5;
 
   function fbwStep(X, c, E, dt) {
     // On the mains it's the ground law, whatever the blend says, so the nose comes down by itself.
     const w = E.onGround ? 0 : X.flt;
+    // v0.8.0 (part 7): 1 the secondary mode, 2 the direct mode (fbw.js's lawLevel()); 0 the normal mode as before.
+    const lvl = lawLevel(c.law, E.hydLaw, true);
     const V = Math.max(E.tas, 30);
     const sp = c.pitch, sr = c.roll, sy = c.yaw;
     const cphi = Math.cos(E.phi), sphi = Math.sin(E.phi);
@@ -134,12 +139,21 @@ export function createFbwBoeing(A) {
     const trimSw = c.trim || 0;
     const goAround = c.thrust > 0.9;
     if (w <= 0) X.flare = false;
-    if (w > 0 && E.autoTrim) {
+    if (w > 0 && E.autoTrim && !lvl) {
       const flareCond = !E.apOn && !goAround && E.aglFt < 50 && E.gearDown && !E.onGround && E.vs < 0.5;
       if (flareCond && !X.flare && E.aglFt > 30) { X.flare = true; X.flareTheta = E.theta; X.flareT = 0; }
     }
-    if (X.flare && (E.aglFt > 60 || !E.autoTrim || E.apOn || goAround)) X.flare = false;
-    if (w > 0) {
+    if (X.flare && (E.aglFt > 60 || !E.autoTrim || E.apOn || goAround || lvl)) X.flare = false;
+    if (w > 0 && lvl) {
+      // v0.8.0 (part 7) [EST]: the secondary and direct modes. The column moves the elevator, geared down with speed
+      // as the A321's direct law (fbw.js's directGearing()); the secondary mode adds a plain pitch-rate damper. No
+      // speed stability held by the law (the stabiliser is the pilot's: the trim switches), no auto-trim (E.autoTrim
+      // is ignored), no protections. The reference speed and path follow what's flown, so the normal mode carries on
+      // from it if it comes back.
+      elevLaw = (sp > 0 ? sp * A.ELEV_UP : sp * A.ELEV_DN) * directGearing(E.ias) * K_PITCH;
+      if (lvl === 1) elevLaw -= KQ_SECONDARY * E.q * K_PITCH;
+      X.vRef = clamp(E.ias, vmm, vTop); X.boGam = E.gamma; X.holdLatched = false;
+    } else if (w > 0) {
       const nzMax = flaps ? A.NZ_MAX_FLAPS : A.NZ_MAX_CLEAN;
       const nzMin = flaps ? A.NZ_MIN_FLAPS : A.NZ_MIN_CLEAN;
       const cg = Math.cos(E.gamma);
@@ -227,7 +241,9 @@ export function createFbwBoeing(A) {
 
     // The stabiliser offloads the elevator, so the surfaces look right and nothing saturates. It
     // isn't what holds the speed: that's vRef. On the ground it goes to its take-off setting.
-    if (w >= 1) X.thsRate = clamp(0.8 * X.elev, -A.THS_RATE, A.THS_RATE);
+    // v0.8.0 (part 7): in the secondary and direct modes the trim switches move the stabiliser, at its full rate [EST].
+    if (lvl && !(E.onGround && E.gs < 30)) X.thsRate = clamp(trimSw, -1, 1) * A.THS_RATE;
+    else if (w >= 1) X.thsRate = clamp(0.8 * X.elev, -A.THS_RATE, A.THS_RATE);
     else if (E.onGround && E.gs < 30) X.thsRate = clamp(0.5 * (X.thsTakeoff - X.ths), -A.THS_RATE, A.THS_RATE);
     else X.thsRate = 0;
 
@@ -276,6 +292,8 @@ export function createFbwBoeing(A) {
       uLaw = E.rollScale > 1 ? (lNeed - E.lOther) / E.rollScale : sr;
     }
     X.uRoll = clamp((1 - w) * sr + w * uLaw, -1, 1);
+    // v0.8.0 (part 7): in the secondary and direct modes the wheel moves the roll surfaces: no bank held, no protection.
+    if (lvl && w > 0) { X.uRoll = clamp(sr, -1, 1); X.rollLatched = false; X.boBankBack = false; protBank = false; }
 
     // ---------------- Yaw: coordination and damper, as fbw.js ----------------
     const rudLim = E.rudLim;
@@ -283,7 +301,7 @@ export function createFbwBoeing(A) {
     if (w > 0) {
       const rTurn = G * sphi / V;
       const kr = Math.min(1.2, 40 / V) * K_YAW;
-      rud += w * (-kr * (E.r - rTurn - asy.r) + 0.8 * K_YAW * (E.beta - asy.beta));   // v0.5.8: asy as fbw.js
+      rud += w * (-kr * (E.r - rTurn - asy.r) + (lvl ? 0 : 0.8 * K_YAW * (E.beta - asy.beta)));   // v0.8.0: the damper only when degraded   // v0.5.8: asy as fbw.js
     }
     X.rudCmd = clamp(rud, -rudLim, rudLim);
 

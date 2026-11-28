@@ -16,10 +16,17 @@
 // levers; together, every ring sits where the one lever's did), and "WING TANKS DROPPED" at the bottom left for 20 s
 // of sim time after a design's wing tanks are dropped.
 //
-// createEnginesPanel(cv) -> { draw(view), setType(def) }
+// v0.8.0: each engine's ENG MASTER switch under its fuel flow (always: ON, OFF, START with its progress, or why it
+// can't start; a red FIRE beside it while the engine burns), clicked through switchAt(x, y) (the canvas's CSS px: the
+// engine's index or -1); and with a failure, ECAM's messages in the lower part (in place of the spoilers and the
+// brakes while there are any): the first alert's title in red or amber, its next actions in cyan, the others' titles.
+//
+// createEnginesPanel(cv) -> { draw(view), setType(def), switchAt(x, y) }
 
 import { C, font, DEG, clamp } from './common.js';
-import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO } from './engine-row.js';
+import { engineRow, engineCountOf, ringN1, dropMemo, DROP_MEMO, switchFace, SWITCH_LABEL, rectAt } from './engine-row.js';
+import { alertsOf, nextStep } from '../sim/checklists.js';
+import { drawHydBoxes } from './hyd-boxes.js';   // v0.8.0 (part 7)
 import { createEngines, LEVER_CL } from '../sim/engines.js';
 import * as A321 from '../sim/a321neo.js';
 
@@ -54,6 +61,16 @@ function tlaN1(l) {
 const SLATS = [0, 18, 22, 27];        // A321: slats 0, 1, 2/3, FULL (deg)
 const FLAPS = [0, 10, 14, 21, 25];    // A321: flaps 0, 1+F, 2, 3, FULL (deg)
 const CONF_TARGET = { '0': [0, 0], '1': [18, 0], '1+F': [18, 10], '2': [22, 14], '3': [22, 21], FULL: [27, 25] };
+
+// v0.8.0 legs: each leg's position for the gear indication (nose, left, right; a collapsed leg up), or null when
+// nothing about the gear is failed and the three agree: then the one gearPos draws, exactly as before.
+export function gearLegsShown(st) {
+  const G = st.gearLegs;
+  if (!G) return null;
+  const F = st.gearLegFlags || [0, 0, 0];
+  if (!(st.gearSys || F[0] || F[1] || F[2]) && G[0] === G[1] && G[1] === G[2]) return null;
+  return [0, 1, 2].map((i) => (F[i] & 4 ? 0 : clamp(G[i] ?? 1, 0, 1)));
+}
 
 export function createEnginesPanel(cv) {
   const { ctx } = cv;
@@ -109,9 +126,13 @@ export function createEnginesPanel(cv) {
     ctx.fillText(st.cgMac !== undefined ? (st.cgMac * (st.cgMac < 1 ? 100 : 1)).toFixed(1) + '%' : '--', fx + 0.31 * s, 0.16 * s);
 
     flaps(s, st, fx, 0.235 * s);
-    gear(s, st, 0.03 * s, 0.4 * s);
-    spoilers(s, st, view, 0.34 * s, 0.4 * s);
-    brakes(s, st, 0.72 * s, 0.4 * s);
+    gear(s, st, 0.03 * s, 0.4 * s, view);
+    switches(s, st, eng, n);   // v0.8.0
+    if (!ecam(s, st, view)) {   // v0.8.0: ECAM's messages, when there are any, in the spoilers' and brakes' place
+      spoilers(s, st, view, 0.34 * s, 0.4 * s);
+      brakes(s, st, 0.72 * s, 0.4 * s);
+    }
+    if (st.hyd && st.hyd.on) drawHydBoxes(ctx, s, st, 'airbus', 'column');   // v0.8.0 (part 7): only while state.hyd.on
     simRate(s, view, 0.97 * s, 0.595 * s);
     // v0.5.6: the wing tanks' drop, a white memo line under the gear for 20 s of sim time.
     if (tanksMemo(st)) {
@@ -311,15 +332,19 @@ export function createEnginesPanel(cv) {
   }
 
   // Gear: three triangles; green down and locked, red in transit, nothing when up.
-  function gear(s, st, x0, y0) {
+  // v0.8.0 legs: with a gear failure in, each triangle is its own leg's (nose, left, right), and a leg not locked
+  // where the lever asks is a red triangle (outlined, as in transit), up included [EST: the A320's ECAM WHEEL page
+  // and the LDG GEAR indicator show red for "not locked in the selected position"].
+  function gear(s, st, x0, y0, view) {
     ctx.fillStyle = C.white; ctx.font = font(s * 0.026); ctx.textAlign = 'left';
     ctx.fillText('LDG GEAR', x0, y0);
-    const g = st.gearPos ?? 1;
+    const g0 = st.gearPos ?? 1, legs = gearLegsShown(st), wantDown = view?.controls ? !!view.controls.gearDown : true;
     const pos = [[x0 + 0.13 * s, y0 + 0.06 * s], [x0 + 0.05 * s, y0 + 0.14 * s], [x0 + 0.21 * s, y0 + 0.14 * s]];
-    for (const [x, y] of pos) {
+    for (let i = 0; i < 3; i++) {
+      const [x, y] = pos[i], g = legs ? legs[i] : g0;
       ctx.strokeStyle = C.frame; ctx.lineWidth = Math.max(1, s * 0.003);
       ctx.strokeRect(x - 0.035 * s, y - 0.028 * s, 0.07 * s, 0.056 * s);
-      if (g < 0.01) { ctx.fillStyle = C.dim; ctx.font = font(s * 0.024); ctx.textAlign = 'center'; ctx.fillText('UP', x, y); continue; }
+      if (g < 0.01 && !(legs && wantDown)) { ctx.fillStyle = C.dim; ctx.font = font(s * 0.024); ctx.textAlign = 'center'; ctx.fillText('UP', x, y); continue; }
       const col = g > 0.99 ? C.green : C.red;
       ctx.fillStyle = col;
       ctx.beginPath(); ctx.moveTo(x - 0.024 * s, y - 0.018 * s); ctx.lineTo(x + 0.024 * s, y - 0.018 * s); ctx.lineTo(x, y + 0.02 * s); ctx.closePath();
@@ -378,5 +403,73 @@ export function createEnginesPanel(cv) {
     ctx.fillText(short ? `SIM RATE ${ts}× (${ta.toFixed(1)}×)` : `SIM RATE ${ts}×`, x, y);
   }
 
-  return { draw, setType };
+  // v0.8.0: the ENG MASTER switches, a box under each engine's fuel flow; their rectangles kept for the clicks.
+  let swRects = [];
+  function switches(s, st, eng, n) {
+    swRects = [];
+    let xs, bw, lx, lw;
+    if (n === 2) { xs = [0.135 * s, 0.385 * s]; bw = 0.11 * s; lx = 0.26 * s; lw = 0.13 * s; }
+    else {
+      const gap = (n >= 6 ? 0.06 : 0.075) * s, row = engineRow(n, { x0: 0.005 * s, x1: 0.545 * s, gap });
+      xs = row.xs; bw = Math.min(0.105 * s, 0.9 * row.w); lx = row.labelX; lw = gap - 0.008 * s;
+    }
+    const y = 0.345 * s, h = 0.04 * s;
+    ctx.fillStyle = C.white; ctx.textAlign = 'center';
+    fitText(SWITCH_LABEL.airbus, lx, y, s * 0.022, lw, s * 0.012);
+    for (let i = 0; i < n; i++) {
+      const e = eng[i] || {};
+      if (e.off) continue;
+      const f = switchFace(e, 'airbus'), bx = xs[i] - bw / 2, by = y - h / 2;
+      ctx.fillStyle = 'rgba(16,22,28,0.95)'; ctx.fillRect(bx, by, bw, h);
+      if (f.progress >= 0) { ctx.fillStyle = 'rgba(47,227,255,0.22)'; ctx.fillRect(bx, by, bw * f.progress, h); }
+      ctx.strokeStyle = f.fire ? C.red : C.frame; ctx.lineWidth = f.fire ? Math.max(2, s * 0.005) : Math.max(1, s * 0.003);
+      ctx.strokeRect(bx, by, bw, h);
+      twoPart(f.fire ? 'FIRE ' : '', C.red, f.text, C[f.col], xs[i], y, s * 0.028, bw - 0.01 * s);
+      swRects.push({ x: bx, y: by, w: bw, h, i });
+    }
+  }
+  // Two words in two colours, centred at x and fitted to maxW together.
+  function twoPart(a, ca, b, cb, x, y, size, maxW) {
+    ctx.font = font(size, true);
+    let w = ctx.measureText(a + b).width;
+    if (w > maxW) { ctx.font = font(size * maxW / w, true); w = ctx.measureText(a + b).width; }
+    ctx.textAlign = 'left';
+    let l = x - w / 2;
+    if (a) { ctx.fillStyle = ca; ctx.fillText(a, l, y); l += ctx.measureText(a).width; }
+    ctx.fillStyle = cb; ctx.fillText(b, l, y);
+  }
+  function switchAt(x, y) { return rectAt(swRects, x, y); }
+  function switchRect(i) { const r = swRects.find((q) => q.i === i); return r ? { ...r } : null; }
+
+  // v0.8.0: ECAM's messages (src/sim/checklists.js): false when there are none.
+  function ecam(s, st, view) {
+    const list = alertsOf(st, view.controls, 'airbus');
+    if (!list.length) return false;
+    const x0 = 0.33 * s, maxW = 0.99 * s - x0, lh = 0.037 * s, size = s * 0.029;
+    let y = 0.395 * s;
+    const yMax = 0.575 * s;
+    const a = list[0];
+    ctx.textAlign = 'left';
+    ctx.fillStyle = a.level === 'warning' ? C.red : C.amber;
+    fitText(a.title, x0, y, size, maxW, s * 0.018, true);
+    ctx.fillRect(x0, y + size * 0.55, Math.min(maxW, ctx.measureText(a.title).width), Math.max(1, s * 0.0025));   // ECAM's underlined title
+    y += lh;
+    const k0 = Math.max(0, nextStep(a));
+    let shown = 0;
+    for (let k = k0; k < a.steps.length && y <= yMax && shown < 3; k++) {
+      const stp = a.steps[k];
+      if (stp.done || stp.ready === false) continue;   // (not one that can't be done: "ENG MASTER 2 .... ON" with the fire handle out: the pictures review)
+      ctx.fillStyle = stp.kind === 'note' ? C.white : C.cyan;
+      fitText((stp.kind === 'note' ? '' : '-') + stp.text.replace(' ..... ', ' .... '), x0 + 0.01 * s, y, size * 0.92, maxW - 0.01 * s, s * 0.016, false);
+      y += lh; shown++;
+    }
+    for (let j = 1; j < list.length && y <= yMax; j++) {
+      ctx.fillStyle = list[j].level === 'warning' ? C.red : C.amber;
+      fitText(list[j].title, x0, y, size, maxW, s * 0.018, true);
+      y += lh;
+    }
+    return true;
+  }
+
+  return { draw, setType, switchAt, switchRect };
 }

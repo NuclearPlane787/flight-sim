@@ -56,6 +56,7 @@ function createAp(core, target = {}) {
     engageAp() {
       const S = core.state;
       if (S.onGround || S.agl < 100 * A.FT || core.X.airTime < 5) return false;
+      if (S.law === 'direct') return false;   // v0.8.0 (part 7): no AP in the direct law
       ap.ap = true;
       ap.lateral = 'HDG';
       const dh = ap.altFt * A.FT - S.altInd;

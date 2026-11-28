@@ -29,6 +29,13 @@ def sha(path):
     return h.hexdigest()
 
 
+def skipped(rel):
+    """v0.8.0: data/ is its own repository, so an install never writes into a .git folder, nor over the
+    README.md at the folder's top (data/README.md is the data repository's own)."""
+    parts = rel.replace('\\', '/').split('/')
+    return '.git' in parts or rel == 'README.md'
+
+
 def main(argv):
     dry = '--dry-run' in argv
     argv = [a for a in argv if a != '--dry-run']
@@ -41,6 +48,10 @@ def main(argv):
         if line:
             digest, rel = line.split('  ', 1)
             rows.append((digest, rel[2:] if rel.startswith('./') else rel))
+    skip = [rel for digest, rel in rows if skipped(rel)]
+    if skip:
+        print(f'{len(skip)} listed file(s) left out (.git, README.md: the data repository\'s own): {skip[:5]}')
+        rows = [(d, r) for d, r in rows if not skipped(r)]
     bad = [rel for digest, rel in rows if not os.path.isfile(os.path.join(tree, rel)) or sha(os.path.join(tree, rel)) != digest]
     if bad:
         sys.exit(f'{len(bad)} staged file(s) missing or changed since the list was made (nothing copied): {bad[:5]}')

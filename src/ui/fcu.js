@@ -282,8 +282,9 @@ export function createFcu(root, hud) {
     fcuLights(ap, lights); light(locBtn, lights.loc === 2); light(apprBtn, lights.appr === 2);   // v0.7.4
     if (unitBtn) { const u = baro?.inHg ? 'in' : 'hpa'; if (unitBtn.on !== u) { unitBtn.el.dataset.u = u; unitBtn.on = u; } }
     if (metricBtn) light(metricBtn, metricAltOn(v));
-    const lawT = (v.state?.law || 'normal') === 'normal' ? 'LAW NORM' : 'LAW ALTN';
-    if (law.textContent !== lawT) { law.textContent = lawT; law.classList.toggle('altn', lawT === 'LAW ALTN'); }
+    const lawS = v.state?.law || 'normal';   // v0.8.0 (part 7): the law that flies (the hydraulics' too), LAW DIR in direct
+    const lawT = lawS === 'normal' ? 'LAW NORM' : lawS === 'direct' ? 'LAW DIR' : 'LAW ALTN';
+    if (law.textContent !== lawT) { law.textContent = lawT; law.classList.toggle('altn', lawT !== 'LAW NORM'); }
   }
 
   return { el, update, close: knobs.close, get editing() { return knobs.edit ? knobs.edit.k : null; } };
